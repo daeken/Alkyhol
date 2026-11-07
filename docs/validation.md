@@ -6,6 +6,17 @@ See the latest direct-Metal record for current implementation evidence.
 
 ## Manual AMD64 body unwinding: native Windows, hosted Mac and physical M4
 
+All 27 CI jobs pass at strict-reference revision `fb8fe7a`: three
+[PE jobs](https://github.com/daeken/Alkyhol/actions/runs/42415391964) and all 24
+[conformance jobs](https://github.com/daeken/Alkyhol/actions/runs/42415391802).
+Downloaded clean Windows/hosted reports and fresh clean physical M4/Rosetta
+execution at that same revision agree on the identical executed PE/source identity
+and all 34 raw DWORDs. Both normal and forced-rebase host executions pass. The
+69 PE host tests, eight lifetime compiler checks, 19 portable tests, 203 Python
+tests and Clippy pass; prior frozen native binary, SDK/source/COM, shader and Metal
+comparisons remain intact. This establishes the finite manual frame-restoration
+contract below; exception dispatch/resumption and general unwind remain separate.
+
 The new owned MIT PE SHA-256 is
 `01526ce4bd95eac7b9c868459b5ebe7177849e4f1c6688e9b0bf2ad7e3bd182e`.
 Physical M4/Rosetta development execution agrees on all 34 raw words in normal
@@ -19,7 +30,9 @@ CONTEXT/RUNTIME_FUNCTION layout assertions also pass under MSVC. All three
 `5d92635`. Downloaded clean native/hosted records and clean physical execution
 at that same revision agree on every word and PE/source identity. The complete
 actual native record is frozen at `pe/reference/virtual-unwind-windows-v1.json`;
-drivers/comparisons now require its exact inputs and results by default.
+drivers/comparisons now require its exact inputs and results by default. Initial
+`5d92635` also passes all 27 jobs, including all 24 conformance jobs in
+[42415039878](https://github.com/daeken/Alkyhol/actions/runs/42415039878).
 
 The bounded RtlVirtualUnwind implementation supports v1 flags-zero/frame-zero
 recipes at NOP body control points, with PUSH_NONVOL, ALLOC_SMALL and both large

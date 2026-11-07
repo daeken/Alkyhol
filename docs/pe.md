@@ -814,7 +814,9 @@ has host tests only. Native Windows SDK layout assertions compile separately;
 Windows executes the identical PE rather than rebuilding it. Native results and
 frozen input identities are recorded in [validation](validation.md). All 34 raw
 words agree on native Windows, hosted Mac and physical M4 at `5d92635`; the native
-record at `pe/reference/virtual-unwind-windows-v1.json` is required by default.
+record at `pe/reference/virtual-unwind-windows-v1.json` is required by default. Strict-reference
+revision `fb8fe7a` passes all 27 CI jobs; downloaded clean native/hosted reports
+and clean physical M4 execution at that same revision agree on all 34 words.
 
 Primary contracts: [RtlVirtualUnwind](https://learn.microsoft.com/en-us/windows/win32/api/winnt/nf-winnt-rtlvirtualunwind),
 [AMD64 CONTEXT](https://learn.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-context)
