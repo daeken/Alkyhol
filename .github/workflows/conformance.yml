@@ -64,20 +64,18 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y mesa-vulkan-drivers libvulkan1
       - run: cargo fmt --manifest-path graphics/Cargo.toml --check
-      - run: cargo clippy --manifest-path graphics/Cargo.toml --all-targets -- -D warnings
+      - run: cargo clippy --manifest-path graphics/Cargo.toml --locked --all-targets -- -D warnings
       - name: Exercise a real Metal device
         if: runner.os == 'macOS'
         env:
           ALKYHOL_PPM: triangle.ppm
-        run: cargo run --manifest-path graphics/Cargo.toml --example hello_triangle
+        run: cargo run --manifest-path graphics/Cargo.toml --locked --example hello_triangle
       - name: Exercise explicit software Vulkan adapter
         if: runner.os == 'Linux'
         env:
           ALKYHOL_PPM: triangle.ppm
           XDG_RUNTIME_DIR: /tmp
-        run: cargo run --manifest-path graphics/Cargo.toml --example hello_triangle -- --allow-software
-      - name: Record resolved dependency lock for reproducibility
-        run: python3 -c "import base64,gzip,pathlib; print('ALKYHOL_LOCKFILE=' + base64.b64encode(gzip.compress(pathlib.Path('graphics/Cargo.lock').read_bytes())).decode())"
+        run: cargo run --manifest-path graphics/Cargo.toml --locked --example hello_triangle -- --allow-software
       - uses: actions/upload-artifact@v4
         with:
           name: graphics-${{ runner.os }}

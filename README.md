@@ -46,10 +46,13 @@ The [offscreen graphics milestone](docs/graphics.md) provides a restricted
 D3D12-shaped Rust API over wgpu with a clear/triangle/readback sample:
 
 ```sh
-cargo run --manifest-path graphics/Cargo.toml --example hello_triangle
+cargo run --manifest-path graphics/Cargo.toml --locked --example hello_triangle
 ```
 
 The dependency-free root tests validate command lifecycles, state transitions,
 rejected submissions and copy footprints. GPU execution is checked separately;
 a missing device, missing dependencies or a skipped run never counts as a passing
 GPU result.
+
+See [executed validation](docs/validation.md) for host/backend identities, actual
+CI results and the limits of the current sample evidence.

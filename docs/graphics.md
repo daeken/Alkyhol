@@ -1,17 +1,17 @@
 # Graphics milestone: offscreen clear and triangle
 
 `alkyhol-d3d12` is a separate Rust crate using pinned wgpu 27.0.1 and pollster
-0.4.0. It translates a restricted D3D12-shaped command sequence into real GPU
+0.4.0, with the CI-resolved transitive dependency lock checked in. It translates a restricted D3D12-shaped command sequence into real GPU
 commands. macOS selects Metal, Windows selects DX12, Linux selects Vulkan. There
 is no noop backend. A software adapter must be explicitly requested and is labeled
 in the sample output; software Vulkan results are not Metal evidence.
 
 ```sh
-cargo run --manifest-path graphics/Cargo.toml --example hello_triangle
+cargo run --manifest-path graphics/Cargo.toml --locked --example hello_triangle
 # Linux CI without a physical GPU:
-cargo run --manifest-path graphics/Cargo.toml --example hello_triangle -- --allow-software
+cargo run --manifest-path graphics/Cargo.toml --locked --example hello_triangle -- --allow-software
 # Optional RGB image output:
-ALKYHOL_PPM=triangle.ppm cargo run --manifest-path graphics/Cargo.toml --example hello_triangle
+ALKYHOL_PPM=triangle.ppm cargo run --manifest-path graphics/Cargo.toml --locked --example hello_triangle
 ```
 
 The Rust facade exposes `D3D12CreateDevice`, `CreateCommittedResource`,
