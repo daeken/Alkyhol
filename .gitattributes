@@ -6,3 +6,6 @@ shader/samples/miniengine/*.generated.hlsli -text whitespace=cr-at-eol,-blank-at
 
 cpp/licenses/* -text whitespace=cr-at-eol
 cpp/bridge/*.patch whitespace=-blank-at-eol
+
+# Shared C++ probes must have identical actual bytes on native Windows and macOS.
+cpp/tests/* text eol=lf

@@ -49,8 +49,8 @@ as CI diagnostics. COM apartment rules are documented by
 they do not by themselves promise this object's reference implementation is atomic.
 
 The existing CI now also runs the same COM/DirectInput probe sources against
-independent native Windows SDK libraries and compares their outputs/descriptor
-bytes with Rust. Native results for that addition remain pending. Prior intake
+independent native Windows SDK libraries and compares their outputs/normalized descriptor
+fields with Rust. Native results for that addition remain pending. Prior intake
 `0c72f0a` passed all twelve earlier jobs in
 [42351798268](https://github.com/daeken/Alkyhol/actions/runs/42351798268); this predates
 the complete build and cannot validate it by implication. The preceding shader

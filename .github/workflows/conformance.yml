@@ -71,7 +71,7 @@ jobs:
         with:
           pattern: cpp-[mW]*
           path: cpp-observations
-      - name: Compare COM probe results and all DirectInput descriptor bytes
+      - name: Compare COM probe results and all DirectInput descriptor fields
         run: |
           python3 - <<'PY'
           import json

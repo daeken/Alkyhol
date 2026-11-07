@@ -38,7 +38,7 @@ def run(output,compiler_tests=False):
         result=subprocess.run([str(executable)],cwd=build,capture_output=True,text=True)
         (build/(name+'.run.log')).write_text(result.stdout+result.stderr)
         if result.returncode:raise RuntimeError(f'{name} execution failed: {result.returncode}\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}')
-        records.append({'source':str(source.relative_to(ROOT)),'source_sha256':hashlib.sha256(source.read_bytes()).hexdigest(),'command':command,'executable_sha256':hashlib.sha256(executable.read_bytes()).hexdigest()})
+        records.append({'source':source.relative_to(ROOT).as_posix(),'source_sha256':hashlib.sha256(source.read_bytes()).hexdigest(),'command':command,'executable_sha256':hashlib.sha256(executable.read_bytes()).hexdigest()})
         if name in shared:observations[name]=result.stdout
         if name=='com_blob' and not windows:
             stress=subprocess.run([str(executable),'--unsynchronized-stress'],cwd=build,capture_output=True,text=True)
