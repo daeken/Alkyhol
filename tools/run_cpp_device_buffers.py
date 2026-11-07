@@ -65,9 +65,11 @@ def run(output):
             compiler=subprocess.check_output(['clang++','--version'],text=True);backend='Rust restricted Metal COM device buffers'
             inputs += [ROOT/'Cargo.toml',ROOT/'Cargo.lock',ROOT/'cpp/runtime/Cargo.toml',ROOT/'cpp/runtime/Cargo.lock',library,*sorted((ROOT/'src').glob('*.rs')),*sorted((ROOT/'cpp/runtime/src').glob('*.rs')),*sorted(p for p in (ROOT/'cpp/include').rglob('*') if p.is_file())]
         hashes=lambda:{p.relative_to(ROOT).as_posix():hashlib.sha256(p.read_bytes()).hexdigest() for p in inputs}
-        before=hashes();subprocess.run(command,cwd=scratch,capture_output=True,text=True,check=True,timeout=120)
+        before=hashes();compiled=subprocess.run(command,cwd=scratch,capture_output=True,text=True,timeout=120)
+        if compiled.returncode:raise RuntimeError('buffer probe compilation failed:\n'+compiled.stdout+compiled.stderr)
         digest=hashlib.sha256(executable.read_bytes()).hexdigest()
-        result=subprocess.run([str(executable)],capture_output=True,text=True,cwd=scratch,check=True,timeout=30)
+        result=subprocess.run([str(executable)],capture_output=True,text=True,cwd=scratch,timeout=30)
+        if result.returncode:raise RuntimeError(f'buffer probe execution failed: {result.returncode}\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}')
         observation=validate_observation(result.stdout)
         if not native:
             for mode in ['trap-view','trap-heap','trap-copy','trap-footprints','trap-tiling']:
