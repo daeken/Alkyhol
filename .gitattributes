@@ -1,0 +1,2 @@
+# Preserve the pinned Microsoft shader's original CRLF bytes on every host.
+shader/tests/fixtures/microsoft-hello-triangle.hlsl -text whitespace=cr-at-eol

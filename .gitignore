@@ -6,4 +6,5 @@ __pycache__/
 *.ppm
 /sakura/target/
 /miniengine/target/
+/shader/target/
 /miniengine-geometry.json

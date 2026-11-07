@@ -40,7 +40,8 @@ This is sample-level evidence for the restricted contracts in
 no native D3D12 differential reference. Hosted Metal uses Apple's paravirtual GPU,
 not an identified physical Apple Silicon GPU. Software Vulkan evidence is labeled
 separately. No game execution, exhaustive API coverage, binary ABI compatibility,
-COM compatibility, HLSL/DXIL translation or game equivalence has been established.
+COM compatibility, general HLSL/DXIL translation or game equivalence has been established.
+The newer restricted shader milestone is recorded in [shaders.md](shaders.md).
 
 ## Expanded tests and Microsoft sample ports
 

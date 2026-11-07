@@ -51,6 +51,35 @@ jobs:
           assert all(r['samples'] == baseline for r in reports), reports
           print('Windows SDK, macOS and Linux sample observations agree')
           PY
+  shader:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/cache@v4
+        with:
+          path: |
+            local/upstream/DirectXShaderCompiler
+            local/dxc-build
+          key: dxc-${{ runner.os }}-${{ runner.arch }}-b106a961d09221b3c5bdb37be45b679257da08b8-v1
+      - name: Build pinned Microsoft HLSL frontend
+        run: python tools/build_dxc.py --jobs 3
+      - run: cargo fmt --manifest-path shader/Cargo.toml --check
+      - run: cargo clippy --manifest-path shader/Cargo.toml --locked --all-targets -- -D warnings
+      - name: Translate DXIL and execute generated Metal (hosted GPU, no RT claim)
+        env:
+          DXC: ${{ github.workspace }}/local/dxc-build/bin/dxc
+        run: cargo test --manifest-path shader/Cargo.toml --locked -- --nocapture 2>&1 | tee shader-validation.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: shader-Metal-validation
+          path: shader-validation.txt
   graphics:
     strategy:
       fail-fast: false

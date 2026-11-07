@@ -25,6 +25,8 @@ assuming that exported D3D12/DXGI symbols represent the complete graphics surfac
    threads/TLS, overlapped files, timing, input/XInput, sockets, COM and audio.
 5. D3D12 descriptor/root-signature translation, barriers, fences, indirect draws,
    compute, shader translation and explicit unsupported-capability reporting.
+   Current priority is the [automatic DXIL-to-MSL path](shaders.md), whose first
+   tested contract covers vertex/pixel/compute shaders and discrete resources.
 
 D3D12's entire feature surface cannot be assumed to map directly to Metal. DXR, vendor
 extensions and game shaders require investigation. Keep feature support separate

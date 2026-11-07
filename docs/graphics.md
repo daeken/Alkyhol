@@ -15,7 +15,9 @@ The Rust source facade retains D3D12CreateDevice, CreateCommittedResource,
 CreateGraphicsPipelineState, CreateCommandList, ExecuteCommandLists and
 ReadbackRGBA8. Shader source is now native MSL with vertex vs_main and fragment
 fs_main. No COM descriptors, guest calling conventions or HLSL/DXIL translator
-are implied. The compatibility constructor retains its old boolean argument but
+are implied by that graphics method. A separate [shader crate](shaders.md) now
+translates a restricted DXIL contract to MSL with explicit binding metadata.
+The compatibility constructor retains its old boolean argument but
 rejects software-backend requests. Native Metal device/queue accessors support
 compute, presentation and hardware ray-tracing extensions for the Sakura target.
 
