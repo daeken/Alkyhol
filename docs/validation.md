@@ -4,7 +4,17 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
-## Dynamic AMD64 function-table metadata: physical M4, native run pending
+## Dynamic AMD64 function-table metadata: native Windows, hosted Mac and physical M4
+
+All three [PE jobs](https://github.com/daeken/Alkyhol/actions/runs/42412363341)
+pass on `d86fd18`. Downloaded clean native Windows/hosted Mac records and clean
+physical M4 execution at that same revision agree on the identical executed
+PE/source identity and all 37 raw DWORDs. Normal and forced-rebase host results
+agree, including all three generated functions reached through lookup results.
+The complete native record is frozen at `pe/reference/function-tables-windows-v1.json`;
+drivers and comparisons require its exact inputs/results by default. A missing-
+reference/joint-drift guard brings the Python suite to 197. Strict full conformance
+CI remains to be recorded separately. This does not establish live unwinding.
 
 RtlAddFunctionTable/RtlLookupFunctionEntry/RtlDeleteFunctionTable now maintain a
 bounded explicit dynamic metadata list inside ProcessContext. Real Win64 wrappers
@@ -22,10 +32,10 @@ original record/base/field identities, exact entry/end/gap lookups, two independ
 table lifecycles and actual calls to three emitted functions through resolved
 base/RVA addresses. A minimal valid leaf unwind header is supplied; no exception
 or unwind is executed. The extracted Mach-O PE payload equals the input. Native
-Windows receives the identical PE; that independent comparison is pending.
+Windows receives the identical PE, and that independent comparison agrees above.
 
 All 64 PE host tests, eight lifetime compiler checks, 19 portable arm64 tests,
-196 Python tests and PE Clippy pass locally. Four host units cover real Win64
+197 Python tests and PE Clippy pass locally. Four host units cover real Win64
 lookup/delete/base identity, metadata caps/shapes/overflow, scoped teardown and
 host-thread isolation, plus child-process status-78 rejection of unsupported
 lookup forms. Abstract metadata bound tests and host invalid-input/miss-output

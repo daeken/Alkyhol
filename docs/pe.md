@@ -754,6 +754,12 @@ python3 tools/run_pe_function_tables.py --fixture local/pe/function-tables/funct
 ```
 
 Physical M4/Rosetta normal/forced-rebase execution agrees on all 37 raw words.
+All three PE jobs pass on `d86fd18`
+([run](https://github.com/daeken/Alkyhol/actions/runs/42412363341)); downloaded clean
+native/hosted records and clean physical M4 execution at that same revision agree
+on the identical PE/source identity and all results. The full native record is
+frozen at `pe/reference/function-tables-windows-v1.json` and required by default,
+including its exact input identity. No live unwinding was exercised.
 Native evidence and executed revisions are recorded in [validation](validation.md).
 This is finite function-table API evidence, not exception or game compatibility.
 
