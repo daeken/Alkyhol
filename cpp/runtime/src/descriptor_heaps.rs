@@ -81,12 +81,10 @@ unsafe extern "C" fn cpu(this: *mut Heap) -> CpuHandle {
     }
 }
 unsafe extern "C" fn gpu(this: *mut Heap) -> GpuHandle {
+    // Measured native WARP returns nonzero opaque GPU handles for CPU-only
+    // heaps too. Visibility is the descriptor flag, not the address bits.
     GpuHandle {
-        ptr: if unsafe { (*this).description.flags } == 1 {
-            unsafe { (*this).storage.gpu_address() }
-        } else {
-            0
-        },
+        ptr: unsafe { (*this).storage.gpu_address() },
     }
 }
 #[repr(C)]
@@ -175,7 +173,7 @@ pub(super) unsafe extern "C" fn create(
         if storage.as_ptr().is_null() || storage.contents().is_null() {
             return E_OUTOFMEMORY;
         }
-        if desc.flags == 1 && storage.gpu_address() == 0 {
+        if storage.gpu_address() == 0 {
             return E_NOTIMPL;
         }
         unsafe {
@@ -376,7 +374,7 @@ mod tests {
         });
     }
     #[test]
-    fn all_cpu_heap_types_have_real_distinct_ranges_and_no_gpu_visible_handle() {
+    fn cpu_heap_visibility_is_not_inferred_from_opaque_gpu_handle_bits() {
         autoreleasepool(|| unsafe {
             let d = make();
             let mut heaps = Vec::new();
@@ -390,7 +388,9 @@ mod tests {
                         node: 1,
                     },
                 );
-                assert_eq!(gpu(h).ptr, 0);
+                assert_eq!(description(h).flags, 0);
+                assert_ne!(gpu(h).ptr, 0);
+                assert_eq!(gpu(h).ptr, (*h).storage.gpu_address());
                 assert_eq!(increment(d, kind), 64);
                 heaps.push(h);
             }

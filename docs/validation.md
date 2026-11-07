@@ -9,8 +9,8 @@ See the latest direct-Metal record for current implementation evidence.
 The explicit Metal subset now supplies typed 11-slot ID3D12DescriptorHeap objects
 for all four heap types. Shader-visible allocation is limited to CBV/SRV/UAV and
 sampler heaps. Real retained Shared Metal buffers reserve 64-byte virtual slots;
-CPU handles identify their actual backing addresses and visible GPU handles use
-actual native GPU addresses. Non-visible GPU handles are null. This is empty heap
+CPU handles identify their actual backing addresses and GPU handles use actual
+native GPU addresses. Visibility is determined by flags, not handle bits. This is empty heap
 storage/metadata/ownership support, not initialized views or shader binding.
 View/sampler creation, descriptor copies and command-list binding still abort
 with explicit unavailable diagnostics; no successful empty descriptor operation
@@ -48,6 +48,20 @@ No native heap parity is claimed from that failure. The observer now records the
 actual value in diagnostics and separately records the all-ones invalid sentinel,
 while preserving both fields in comparison. This measures the native distinction
 before deciding how the backend should represent it; no frozen oracle is changed.
+
+Native SDK/WARP execution on `0ee8f58` in
+[42369744013](https://github.com/daeken/Alkyhol/actions/runs/42369744013) then
+recorded nonzero, non-sentinel GPU handles for all twelve heaps, including the
+CPU-only heaps. All returned node masks are 1. Actual WARP strides are
+`[64,64,32,8]`, while Metal reserves `[64,64,64,64]`; both are retained as driver
+facts. The native report is frozen at `cpp/reference/descriptor-heaps-windows-v1.json`.
+Rust now exposes the real backing GPU address for CPU-only heaps as well; it
+does not infer visibility or binding permission from those bits. This corrects
+the mismatch rather than excluding it from comparison. The unchanged observer's
+invariants now match locally, and future live pairs must also match the frozen
+native invariants. Native remeasurement of this fix remains pending. The Python
+suite now has 99 passing tests. No initialized descriptor or native shader use
+is established by this allocation reference.
 
 ## Byte-granular COM buffer copies: physical GPU evidence
 

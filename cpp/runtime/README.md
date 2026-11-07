@@ -298,8 +298,10 @@ limit (2048 for samplers), with node mask 0/1 and no other flags. Valid null-out
 capability queries return S_FALSE without allocating or retaining an object.
 
 Each heap owns real Shared Metal backing storage with 64-byte virtual slots. Its
-CPU handle refers to the actual mapped start; a visible GPU handle is the native
-GPU start, and a non-visible one is null. These are opaque source-ABI handles,
+CPU handle refers to the actual mapped start; the GPU handle uses the native
+GPU start. Native WARP also returns nonzero GPU-handle bits for CPU-only heaps,
+so visibility and binding permission come from the flags, not the pointer bits.
+These are opaque source-ABI handles,
 not permission for callers to dereference descriptor memory, a Windows driver
 encoding or an initialized Metal argument table. The backend increment describes
 its own reserved slot stride, as required by [handle arithmetic](https://learn.microsoft.com/windows/win32/api/d3d12/nf-d3d12-id3d12device-getdescriptorhandleincrementsize).

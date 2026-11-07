@@ -1,0 +1,199 @@
+{
+  "schema_version": 1,
+  "backend": "native Windows SDK WARP descriptor heaps",
+  "observation": {
+    "scenario": "descriptor-heaps-v1",
+    "strides": [
+      64,
+      64,
+      32,
+      8
+    ],
+    "heaps": [
+      {
+        "desc": [
+          0,
+          17,
+          0,
+          1
+        ],
+        "cpu_present": true,
+        "gpu_present": true,
+        "gpu_invalid_sentinel": false,
+        "last_cpu_index": 16,
+        "last_gpu_index": 0
+      },
+      {
+        "desc": [
+          0,
+          17,
+          0,
+          1
+        ],
+        "cpu_present": true,
+        "gpu_present": true,
+        "gpu_invalid_sentinel": false,
+        "last_cpu_index": 16,
+        "last_gpu_index": 0
+      },
+      {
+        "desc": [
+          0,
+          17,
+          1,
+          1
+        ],
+        "cpu_present": true,
+        "gpu_present": true,
+        "gpu_invalid_sentinel": false,
+        "last_cpu_index": 16,
+        "last_gpu_index": 16
+      },
+      {
+        "desc": [
+          0,
+          17,
+          1,
+          1
+        ],
+        "cpu_present": true,
+        "gpu_present": true,
+        "gpu_invalid_sentinel": false,
+        "last_cpu_index": 16,
+        "last_gpu_index": 16
+      },
+      {
+        "desc": [
+          1,
+          17,
+          0,
+          1
+        ],
+        "cpu_present": true,
+        "gpu_present": true,
+        "gpu_invalid_sentinel": false,
+        "last_cpu_index": 16,
+        "last_gpu_index": 0
+      },
+      {
+        "desc": [
+          1,
+          17,
+          0,
+          1
+        ],
+        "cpu_present": true,
+        "gpu_present": true,
+        "gpu_invalid_sentinel": false,
+        "last_cpu_index": 16,
+        "last_gpu_index": 0
+      },
+      {
+        "desc": [
+          1,
+          17,
+          1,
+          1
+        ],
+        "cpu_present": true,
+        "gpu_present": true,
+        "gpu_invalid_sentinel": false,
+        "last_cpu_index": 16,
+        "last_gpu_index": 16
+      },
+      {
+        "desc": [
+          1,
+          17,
+          1,
+          1
+        ],
+        "cpu_present": true,
+        "gpu_present": true,
+        "gpu_invalid_sentinel": false,
+        "last_cpu_index": 16,
+        "last_gpu_index": 16
+      },
+      {
+        "desc": [
+          2,
+          17,
+          0,
+          1
+        ],
+        "cpu_present": true,
+        "gpu_present": true,
+        "gpu_invalid_sentinel": false,
+        "last_cpu_index": 16,
+        "last_gpu_index": 0
+      },
+      {
+        "desc": [
+          2,
+          17,
+          0,
+          1
+        ],
+        "cpu_present": true,
+        "gpu_present": true,
+        "gpu_invalid_sentinel": false,
+        "last_cpu_index": 16,
+        "last_gpu_index": 0
+      },
+      {
+        "desc": [
+          3,
+          17,
+          0,
+          1
+        ],
+        "cpu_present": true,
+        "gpu_present": true,
+        "gpu_invalid_sentinel": false,
+        "last_cpu_index": 16,
+        "last_gpu_index": 0
+      },
+      {
+        "desc": [
+          3,
+          17,
+          0,
+          1
+        ],
+        "cpu_present": true,
+        "gpu_present": true,
+        "gpu_invalid_sentinel": false,
+        "last_cpu_index": 16,
+        "last_gpu_index": 0
+      }
+    ],
+    "parent_lifetime": true
+  },
+  "diagnostics": "heap type=0 visible=0 node=0 returned_node=1 gpu=0000013d471490e0\nheap type=0 visible=0 node=1 returned_node=1 gpu=0000013d4af01640\nheap type=0 visible=1 node=0 returned_node=1 gpu=0000013d48bb1000\nheap type=0 visible=1 node=1 returned_node=1 gpu=0000013d48bb2000\nheap type=1 visible=0 node=0 returned_node=1 gpu=0000013d4af01a90\nheap type=1 visible=0 node=1 returned_node=1 gpu=0000013d471e5b70\nheap type=1 visible=1 node=0 returned_node=1 gpu=0000013d48bb3000\nheap type=1 visible=1 node=1 returned_node=1 gpu=0000013d48bb4000\nheap type=2 visible=0 node=0 returned_node=1 gpu=0000013d471c68e0\nheap type=2 visible=0 node=1 returned_node=1 gpu=0000013d471c7540\nheap type=3 visible=0 node=0 returned_node=1 gpu=0000013d471c71e0\nheap type=3 visible=0 node=1 returned_node=1 gpu=0000013d471c6730\n",
+  "source_revision": "0ee8f58019809477fc97d261a54e39c657097d6f",
+  "tracked_tree_clean": true,
+  "host": "Windows-2025Server-10.0.26100-SP0",
+  "machine": "AMD64",
+  "compiler": "usage: cl [ option... ] filename... [ /link linkoption... ]\nMicrosoft (R) C/C++ Optimizing Compiler Version 19.51.36260 for x64\nCopyright (C) Microsoft Corporation.  All rights reserved.\n\n",
+  "windows_sdk": "10.0.26100.0\\",
+  "build_command": [
+    "cl",
+    "/nologo",
+    "/W4",
+    "/WX",
+    "/EHsc",
+    "/std:c++17",
+    "D:\\a\\Alkyhol\\Alkyhol\\cpp\\tests\\descriptor_heaps.cpp",
+    "/Fe:C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\alkyhol-device-buffers-fi3d32f8\\descriptor_heaps.exe",
+    "/link",
+    "d3d12.lib",
+    "dxgi.lib",
+    "dxguid.lib"
+  ],
+  "artifacts": {
+    "cpp/tests/descriptor_heaps.cpp": "2226d06a257f1a60c44d041f2e9647bc4c82f8a6f94f9cea0796337102d45756",
+    "tools/run_cpp_device_buffers.py": "68989c53ff5fa184abc09a490636cf1d0a7af88fc00a6393c604455066cb68de",
+    "tools/run_cpp_descriptor_heaps.py": "982f2d42bf9939242420227f3791f92c9d701697e3967a73a79ea4eb1acb03ed"
+  },
+  "executable_sha256": "e6bf6124f18710f9e29b1f94c3d400578ac8e7ca5b8cfbf9b3f1add318155538"
+}

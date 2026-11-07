@@ -4,9 +4,9 @@ import argparse
 import json
 from pathlib import Path
 if __package__:
-    from .run_cpp_device_buffers import run_probe
+    from .run_cpp_device_buffers import ROOT,run_probe
 else:
-    from run_cpp_device_buffers import run_probe
+    from run_cpp_device_buffers import ROOT,run_probe
 SOURCE='cpp/tests/descriptor_heaps.cpp'
 def validate_observation(text):
     result=json.loads(text)
@@ -31,6 +31,8 @@ def compare_reports(reports,revision):
         validate_observation(json.dumps(report['observation']))
     if not reports[0]['artifacts'].get(SOURCE) or reports[0]['artifacts'][SOURCE]!=reports[1]['artifacts'].get(SOURCE):raise ValueError('descriptor-heap probe bytes differ')
     if semantic_observation(reports[0]['observation'])!=semantic_observation(reports[1]['observation']):raise ValueError('native and Metal descriptor-heap invariants differ')
+    frozen=json.loads((ROOT/'cpp/reference/descriptor-heaps-windows-v1.json').read_text())
+    if semantic_observation(reports[0]['observation'])!=semantic_observation(frozen['observation']):raise ValueError('live descriptor-heap invariants differ from frozen native contract')
 def run(output):return run_probe(output,'descriptor_heaps','descriptor heaps',validate_observation)
 if __name__=='__main__':
     parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--output',type=Path,required=True)

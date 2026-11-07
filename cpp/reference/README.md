@@ -133,3 +133,20 @@ and canonical observation SHA-256
 are checked separately; future live pairs must also match this native snapshot.
 The backend utility is open MSL memory-copy code, not general D3D12 shader or
 rendering support. Original sample shader bodies and prior references are intact.
+
+## Native descriptor-heap allocation reference
+
+`descriptor-heaps-windows-v1.json` preserves SDK/WARP execution on `0ee8f58`
+in CI 42369744013, with twelve type/visibility/node-mask cases. The first probe
+had incorrectly equated nonzero GPU-handle bits with visibility. Native WARP
+actually returned nonzero, non-sentinel GPU handles for CPU-only heaps too.
+The expanded observer records that fact and diagnostics independently; the Metal
+getter was corrected to expose its actual backing GPU addresses without implying
+binding permission. Flags govern visibility. No frozen expectation was weakened.
+
+Raw WARP strides are `[64,64,32,8]`; Metal reserves `[64,64,64,64]`. The comparator
+excludes only those opaque driver stride values, preserving both raw reports,
+and requires exact returned descriptions, handle presence/sentinel state,
+indices computed using each actual stride and parent identity. Future live pairs
+must also match this unchanged native invariant snapshot. This finite allocation
+reference does not initialize descriptor views or establish shader binding/use.
