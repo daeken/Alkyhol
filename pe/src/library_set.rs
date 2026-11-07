@@ -28,7 +28,7 @@ fn dependency(
     symbol: &ImportSymbol,
     indices: &BTreeMap<String, usize>,
 ) -> Result<Option<usize>> {
-    if module.eq_ignore_ascii_case("kernel32.dll") {
+    if crate::abi::is_builtin(module) {
         if resolve_builtin(module, symbol).is_none() {
             return Err(format!("unsupported builtin import {module}!{symbol:?}"));
         }

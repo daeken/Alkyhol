@@ -4,6 +4,37 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## Win64 virtual COM: physical M4, native comparison pending
+
+The binary d3dcompiler_47 provider now exposes D3DCreateBlob through a Win64
+factory and a separate five-slot Win64 ID3DBlob vtable over the existing native
+Rust blob. QueryInterface translates native identity back to the guest wrapper;
+all five methods enter actual ABI adapters and the existing allocation/data/
+reference implementation. Native source-ABI COM interfaces are unchanged. The
+builtin namespace is reserved consistently across executable/DLL/bundle loading.
+
+The owned no-CRT PE SHA-256 is
+`ec197196d90cc8987169cbb6308034bd1bda026f7d84165d07fb5b917ab386cd`.
+Physical M4/Rosetta normal and forced-rebase runs produce all 23 expected DWORDs:
+canonical IUnknown/shared buffer predicates, unsupported-IID `0x80004002` with
+cleared output, reference transitions 5→4→3→2→1→0, buffer lengths 37/16384,
+and client-written checksums `850568607`/`2478659192`. Data survives alias releases
+while the original reference remains live. The extracted Mach-O PE bytes match
+the exact input hash. Native Windows will execute that identical PE against its
+real d3dcompiler_47; its comparison is wired into PE CI and remains pending.
+[Contract/reproduction](pe.md#binary-com-id3dblob).
+
+All 50 PE tests, four lifetime compiler checks, 19 portable arm64 tests, 166 Python
+tests and PE formatting/Clippy pass. Two host blob units cover real Win64 virtual
+identity/data/ownership plus explicit failure contracts; a third new unit binds
+the builtin through closed-bundle metadata without supplying a system DLL.
+Every previous frozen executable, released u-config case and DLL observer passes
+again locally, including forced rebase. Null-output/null-IID, zero-size and huge
+allocation behavior is host-only here, and no native zero-fill or concurrent-
+reference parity is inferred. Prior docs-only `3411d84` passes all 27 jobs
+(PE 42401067461; conformance 42401067373). No original source/asset/shader, older
+frozen reference, native shader-tool requirement or game data changes.
+
 ## Closed DLL bundle lifecycle: native Windows, hosted Mac and physical M4
 
 All 27 jobs pass at strict-reference revision `08aaf02`: three

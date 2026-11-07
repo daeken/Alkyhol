@@ -29,3 +29,4 @@ pe/fixtures/exports/* text eol=lf
 pe/fixtures/failed-attach/* text eol=lf
 pe/fixtures/dependent/* text eol=lf
 pe/fixtures/ordinal/* text eol=lf
+pe/fixtures/binary-com/* text eol=lf

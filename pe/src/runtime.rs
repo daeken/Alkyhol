@@ -38,7 +38,7 @@ pub struct LoadedImage {
 }
 impl LoadedImage {
     /// Map checked AMD64 PE data, apply DIR64 relocations and bind an explicit
-    /// kernel32 whitelist. `rebase` deliberately avoids the preferred address.
+    /// builtin Win64 whitelists. `rebase` deliberately avoids the preferred address.
     pub fn load(bytes: &[u8], rebase: bool) -> Result<Self> {
         let image = Image::parse(bytes)?;
         image.check_startup()?;
@@ -193,7 +193,7 @@ impl Drop for LoadedImage {
 
 /// An isolated, explicitly loaded trusted DLL. This is not a process module
 /// cache or guest LoadLibrary/GetProcAddress implementation. Imports/forwarders
-/// can target only the supported kernel32 ABI with the isolated load constructor;
+/// can target only the supported builtin ABI with the isolated load constructor;
 /// see LinkedLibrary for explicitly borrowed DLL dependencies.
 pub struct LoadedLibrary {
     mapping: LoadedImage,
@@ -405,7 +405,7 @@ pub(crate) fn dll_basename(name: &str) -> Result<String> {
         || !name
             .bytes()
             .all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b))
-        || name == "kernel32.dll"
+        || abi::is_builtin(&name)
     {
         return Err("invalid or reserved explicit DLL basename".into());
     }
@@ -699,6 +699,7 @@ mod tests {
         let bytes = dependent_fixture(log.get(), true);
         for name in [
             "kernel32.dll",
+            "d3dcompiler_47.dll",
             "../custom.dll",
             "custom",
             "",
@@ -920,7 +921,13 @@ mod tests {
             unsafe { crate::LibrarySet::load(&[("ROOT.dll", &root), ("root.DLL", &leaf)], true) }
                 .is_err()
         );
-        for name in ["../root.dll", "kernel32.dll", "", "root"] {
+        for name in [
+            "../root.dll",
+            "kernel32.dll",
+            "d3dcompiler_47.dll",
+            "",
+            "root",
+        ] {
             assert!(unsafe { crate::LibrarySet::load(&[(name, &root)], true) }.is_err());
         }
         assert!(unsafe { crate::LibrarySet::load(&[("root.dll", &root)], true) }.is_err());
@@ -1036,6 +1043,25 @@ mod tests {
             },
             (2, 0, 0)
         );
+    }
+    #[test]
+    fn closed_bundle_binds_binary_blob_builtin_without_a_supplied_system_dll() {
+        let log = lifecycle_log();
+        let mut bytes = dependent_fixture(log.get(), true);
+        bytes[0x6d0..0x6d4].copy_from_slice(&0x1000u32.to_le_bytes());
+        bytes[0x7c0..0x800].fill(0);
+        bytes[0x7c0..0x7d3].copy_from_slice(b"d3dcompiler_47.dll\0");
+        bytes[0x7a0..0x7a8].copy_from_slice(&0x21e0u64.to_le_bytes());
+        bytes[0x7e2..0x7f0].copy_from_slice(b"D3DCreateBlob\0");
+        let set = unsafe { crate::LibrarySet::load(&[("client.dll", &bytes)], true) }.unwrap();
+        let client = set.get("client.dll").unwrap();
+        assert_eq!(
+            unsafe { client.mapping.base.add(0x3020).cast::<usize>().read() },
+            abi::resolve("d3dcompiler_47.dll", "D3DCreateBlob").unwrap()
+        );
+        assert!(set.get("d3dcompiler_47.dll").is_none());
+        drop(set);
+        assert_eq!(unsafe { (*log.get()).calls }, 2);
     }
     #[test]
     fn unsupported_library_features_fail_before_any_guest_initializer() {

@@ -146,11 +146,16 @@ mod shims {
 }
 
 pub(crate) fn resolve(module: &str, name: &str) -> Option<usize> {
-    // A vendor DLL exporting the same name is not kernel32.
-    if !module.eq_ignore_ascii_case("kernel32.dll") {
-        return None;
+    if module.eq_ignore_ascii_case("kernel32.dll") {
+        return shims::address(name).or_else(|| crate::process::address(name));
     }
-    shims::address(name).or_else(|| crate::process::address(name))
+    if module.eq_ignore_ascii_case("d3dcompiler_47.dll") {
+        return crate::binary_com::address(name);
+    }
+    None
+}
+pub(crate) fn is_builtin(module: &str) -> bool {
+    module.eq_ignore_ascii_case("kernel32.dll") || module.eq_ignore_ascii_case("d3dcompiler_47.dll")
 }
 
 #[cfg(test)]
@@ -184,5 +189,15 @@ mod tests {
         assert!(resolve("kernel32.dll", "getlasterror").is_none());
         assert!(resolve("kernel32.dll", "CreateThread").is_none());
         assert!(resolve("kernel32.dll", "GetProcAddress").is_none());
+        assert!(resolve("D3DCOMPILER_47.dll", "D3DCreateBlob").is_some());
+        for (module, name) in [
+            ("vendor.dll", "D3DCreateBlob"),
+            ("kernel32.dll", "D3DCreateBlob"),
+            ("d3dcompiler_47.dll", "d3dcreateblob"),
+            ("d3dcompiler_47.dll", "D3DCompile"),
+            ("d3dcompiler_43.dll", "D3DCreateBlob"),
+        ] {
+            assert!(resolve(module, name).is_none());
+        }
     }
 }

@@ -61,8 +61,9 @@ including uninitialized section bytes; imports/fixups are applied before final
 permissions. Import slots cannot overlap relocation fixups.
 
 The ordinary executable and isolated DLL constructors resolve imports by exact
-symbol and case-insensitive **kernel32.dll** identity only. The explicit borrowed
-dependency API below also accepts named imports from caller-supplied DLL instances.
+symbol from the explicit **kernel32.dll** and **d3dcompiler_47.dll** whitelists,
+with case-insensitive DLL identity. The dependency APIs below also accept named/
+ordinal imports from caller-supplied DLL instances.
 No arbitrary `dlsym` of native exports, name-only DLL matching, fallback
 libraries or successful unknown stubs occur. The compiler-generated
 `extern "win64"` wrappers preserve the Windows argument/return and nonvolatile
@@ -73,7 +74,7 @@ addresses in this deliberately shared process. This is not a pointer conversion
 scheme for another address space and is not a memory safety sandbox.
 
 The original PE fixture exercises these 24 bridges; the [released u-config
-program](u-config.md) adds ten process-service names (34 explicit names total):
+program](u-config.md) adds ten process-service names (34 kernel32 names total):
 
 | Area | Imports |
 | --- | --- |
@@ -83,6 +84,9 @@ program](u-config.md) adds ten process-service names (34 explicit names total):
 | Semaphores | CreateSemaphoreW, ReleaseSemaphore |
 | Timing | QueryPerformanceCounter, QueryPerformanceFrequency, Sleep |
 | Dynamic TLS slots | TlsAlloc, TlsFree, TlsGetValue, TlsSetValue |
+
+The separate binary-COM milestone below adds d3dcompiler_47!D3DCreateBlob and
+five explicit Win64 ID3DBlob virtual slots.
 
 The existing [restricted kernel contracts](contracts.md) still apply: for example,
 file sharing must be FILE_SHARE_READ|WRITE|DELETE, security/template/named objects
@@ -123,13 +127,13 @@ explicitly reviewed native evidence milestone, not silently updating expected
 output. See [validation](validation.md) for executed revisions and CI results.
 
 Static TLS/callbacks, unwind/SEH, CFG/load config, delay/bound imports, system-DLL ordinal resolution,
-Filesystem DLL discovery, process-global module loading, CLR, dynamic lookup, guest threads/callbacks, COM vtable ABI
+Filesystem DLL discovery, process-global module loading, CLR, dynamic lookup, guest threads/callbacks, general COM vtable ABI
 bridges, general Windows process structures and Windows CRT startup are not implemented in this
 binary path. Unsupported metadata or imports fail before entry; unrecognized
 instructions are **not** statically detected. Trusted code must not issue Windows
 syscalls or access GS/TEB/PEB, throw exceptions or retain pointers after unmapping.
-The source-ABI COM/Metal runtime cannot be passed directly to guest Win64 COM
-callers; its vtables also need explicit binary ABI bridges.
+Source-ABI COM/Metal pointers require explicit Win64 adapters. The ID3DBlob
+adapter below covers that interface; general binary graphics COM remains separate.
 
 Game executables, assets and their inventories stay ignored/local. A static game
 import inventory can prioritize API families but cannot establish dynamic lookup,
@@ -228,7 +232,7 @@ This object represents an **isolated library instance**, not Windows' global
 module manager. There is no same-file cache/reference count, DLL dependency graph,
 loader-lock/reentrancy support, guest LoadLibrary/GetProcAddress/FreeLibrary export,
 static TLS, SEH/unwind support or thread notification. Imports and forwarders may
-only target the explicit kernel32 bridge whitelist. Unsupported dependencies,
+only target the explicit builtin bridge whitelists. Unsupported dependencies,
 ordinal forwarders and startup metadata fail before DllMain. Any required
 ProcessContext must be installed and kept alive by the trusted embedding caller;
 all exported pointer lifetimes end with their library/context. Guest instructions
@@ -446,3 +450,44 @@ Native shared-leaf notification counts are not
 measured by these DLLs; the once-only diamond count is host-unit evidence.
 The strict `08aaf02` revision passes all 27 CI jobs, with a clean physical M4 run
 matching the same-revision native Windows/hosted records and frozen reference.
+
+## Binary COM: ID3DBlob
+
+The d3dcompiler_47.dll provider exposes exactly D3DCreateBlob. It creates a real
+owned Rust COM blob and wraps its native interface in a separate five-slot
+**Win64** vtable: QueryInterface, AddRef, Release, GetBufferPointer and GetBufferSize.
+Native source-ABI interface pointers never escape through a guest QueryInterface;
+successful queries retain the guest identity and acquire the underlying reference.
+The final Release frees the native object/data and its exclusive wrapper once.
+Allocation, data access and atomic reference semantics reuse `src/com.rs`; source
+C++ vtables and callers retain their existing native ABI.
+
+The two builtin DLL identities are reserved across isolated/dependent/bundle
+loading. Unknown compiler exports, wrong DLL versions/names and system ordinals
+fail preflight. Shader compilation retains its existing open toolchain. macOS
+does not load a Windows compiler DLL to implement this memory interface.
+
+An owned no-CRT PE64 fixture imports D3DCreateBlob and performs actual virtual
+calls through every slot, queries IUnknown/ID3DBlob aliases, checks canonical
+IUnknown identity and shared data, records unsupported-IID HRESULT/output clearing,
+balances reference transitions through final release and verifies 37/16384-byte
+buffer contents before/after alias release. It writes every byte before reading;
+native zero initialization is not assumed. The exact executable is transferred
+to Windows, where the OS's d3dcompiler_47 implementation is the independent peer.
+The native comparison is pending until recorded in [validation](validation.md).
+
+```sh
+python3 tools/build_pe_binary_com.py
+python3 tools/run_pe_binary_com.py --fixture local/pe/binary-com/binary-com.exe --output local/pe/binary-com-alkyhol.json
+```
+
+Physical M4 executes all 23 output words normally and after forced rebase; the
+Mach-O's extracted PE payload hash equals the original file. Separate host units
+cover null-output/null-IID, zero-size and impossible-allocation behavior. Those
+edge cases and stronger atomic ownership are host contracts, not new native
+Windows observations. General COM activation/marshaling, guest threads, binary
+D3D12 devices and game compatibility remain separate milestones.
+
+Primary contracts: [D3DCreateBlob](https://learn.microsoft.com/en-us/windows/win32/api/d3dcompiler/nf-d3dcompiler-d3dcreateblob),
+[ID3D10Blob/ID3DBlob inheritance](https://learn.microsoft.com/en-us/windows/win32/api/d3dcommon/nn-d3dcommon-id3d10blob)
+and [IUnknown::QueryInterface](https://learn.microsoft.com/en-us/windows/win32/api/unknwn/nf-unknwn-iunknown-queryinterface%28refiid_void%29).

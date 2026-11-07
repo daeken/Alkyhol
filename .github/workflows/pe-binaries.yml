@@ -49,6 +49,20 @@ jobs:
         run: |
           python tools/build_pe_library_set.py
           python tools/run_pe_library_set.py --directory local/pe/library-set --output local/pe/library-set-alkyhol.json
+      - name: Execute unchanged PE virtual COM calls through all five Win64 ID3DBlob slots
+        run: |
+          python tools/build_pe_binary_com.py
+          python tools/run_pe_binary_com.py --fixture local/pe/binary-com/binary-com.exe --output local/pe/binary-com-alkyhol.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe-binary-com-fixture
+          path: |
+            local/pe/binary-com/binary-com.exe
+            local/pe/binary-com/binary-com-fixture.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe-binary-com-alkyhol
+          path: local/pe/binary-com-alkyhol.json
       - uses: actions/upload-artifact@v4
         with:
           name: pe-library-set-fixture
@@ -187,6 +201,16 @@ jobs:
           path: local/pe/library-set
       - name: Observe Windows sharing a real dependency between the identical two consumer DLLs
         run: python tools/run_pe_library_set.py --directory local/pe/library-set --output local/pe/library-set-windows.json
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe-binary-com-fixture
+          path: local/pe/binary-com
+      - name: Execute the identical PE vtable caller against real Windows d3dcompiler_47 COM
+        run: python tools/run_pe_binary_com.py --fixture local/pe/binary-com/binary-com.exe --output local/pe/binary-com-windows.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe-binary-com-windows
+          path: local/pe/binary-com-windows.json
       - uses: actions/upload-artifact@v4
         with:
           name: pe-library-set-windows
@@ -285,3 +309,12 @@ jobs:
           name: pe-library-set-windows
           path: local/pe/observations
       - run: python tools/compare_pe_library_set.py local/pe/observations/library-set-windows.json local/pe/observations/library-set-alkyhol.json
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe-binary-com-alkyhol
+          path: local/pe/observations
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe-binary-com-windows
+          path: local/pe/observations
+      - run: python tools/compare_pe_binary_com.py local/pe/observations/binary-com-windows.json local/pe/observations/binary-com-alkyhol.json

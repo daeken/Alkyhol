@@ -8,6 +8,8 @@ pub use image::{Export, ExportTable, ExportTarget, Image, Import, ImportSymbol, 
 #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
 mod abi;
 #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
+mod binary_com;
+#[cfg(all(target_os = "macos", target_arch = "x86_64"))]
 mod process;
 #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
 pub use process::ProcessContext;
