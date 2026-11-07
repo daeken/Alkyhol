@@ -14,7 +14,9 @@ struct FileFixture {
 impl FileFixture {
     fn new() -> Self {
         static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
-        let path = std::env::temp_dir().join(format!(
+        // Relative POSIX-style paths also exercise the facade on Windows, where
+        // std::env::temp_dir() would contain an intentionally unsupported DOS path.
+        let path = PathBuf::from(format!(
             "alkyhol-ffi-{}-{}",
             std::process::id(),
             NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)

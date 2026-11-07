@@ -45,8 +45,12 @@ cl /nologo /W4 /WX samples\kernel_contract.c /Fe:kernel_contract.exe
 kernel_contract.exe
 ```
 
-The sample creates its file exclusively; run in an empty scratch directory. The
-runner uses an isolated temporary directory and checks the exact JSON observation.
+The sample uses CREATE_NEW; run in an empty scratch directory. The
+runner uses a separate temporary directory for each sample and checks exact JSON observations.
 The C source is original project code informed by the linked Microsoft docs, not
 a copied upstream program. Sample success covers only its assertions. CI compares
 native Windows and native Alkyhol observations when those jobs actually execute.
+
+The same runner now includes the [Microsoft sample adaptations](../samples/msdn/README.md).
+Those ports have explicit differences from their upstream examples; in particular,
+they do not establish share-denial, named events or Windows thread APIs.

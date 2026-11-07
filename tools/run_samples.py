@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build/run the same C contract probe on the current host, in a fresh directory."""
+"""Build/run portable C/C++ samples; compare only deterministic observations."""
 import argparse
 import hashlib
 import json
@@ -11,38 +11,74 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 EXPECTED = dict.fromkeys(('file_roundtrip', 'eof', 'truncate', 'errors', 'auto_reset', 'manual_reset', 'clock_monotonic'), True)
+SAMPLES = {
+    'kernel_contract': ('samples/kernel_contract.c', EXPECTED),
+    'msdn_file_write': ('samples/msdn/file_write.c', dict.fromkeys(('write_count', 'readback', 'eof'), True)),
+    'msdn_event_readers': ('samples/msdn/event_readers.cpp', dict.fromkeys(('all_readers', 'manual_stays_signaled', 'reset'), True)),
+}
+
+
+def unique_object(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f'duplicate observation key: {key}')
+        result[key] = value
+    return result
+
+
+def run_observation(command, expected, cwd, timeout=10):
+    result = subprocess.run(command, check=True, cwd=cwd, capture_output=True, text=True, timeout=timeout)
+    observation = json.loads(result.stdout, object_pairs_hook=unique_object)
+    if (not isinstance(observation, dict) or observation != expected
+            or any(type(v) is not bool for v in observation.values())):
+        raise RuntimeError(f'unexpected observation: {observation}')
+    return observation
+
+
+def compile_command(source, exe):
+    cpp = source.suffix == '.cpp'
+    if os.name == 'nt':
+        return ['cl', '/nologo', '/W4', '/WX', *(['/EHsc', '/std:c++14'] if cpp else []),
+                str(source), '/Fe:' + str(exe)]
+    library = ROOT / 'target/debug'
+    return [os.environ.get('CXX' if cpp else 'CC', 'c++' if cpp else 'cc'),
+            '-std=c++11' if cpp else '-std=c11', '-Wall', '-Wextra', '-Werror',
+            *(['-pthread'] if cpp else []), '-I' + str(ROOT / 'include'), str(source),
+            '-L' + str(library), '-lalkyhol', '-Wl,-rpath,' + str(library), '-o', str(exe)]
+
 
 def run(output=None):
-    with tempfile.TemporaryDirectory(prefix='alkyhol-sample-') as scratch:
-        exe = Path(scratch) / ('kernel_contract.exe' if os.name == 'nt' else 'kernel_contract')
-        source = ROOT / 'samples/kernel_contract.c'
-        if os.name == 'nt':
-            command = ['cl', '/nologo', '/W4', '/WX', str(source), '/Fe:' + str(exe)]
-        else:
-            library = ROOT / 'target/debug'
-            command = [os.environ.get('CC', 'cc'), '-std=c11', '-Wall', '-Wextra', '-Werror', '-I' + str(ROOT / 'include'),
-                       str(source), '-L' + str(library), '-lalkyhol', '-Wl,-rpath,' + str(library), '-o', str(exe)]
-        compiler = subprocess.run([command[0]] if os.name == 'nt' else [command[0], '--version'],
-                                  capture_output=True, text=True)
-        subprocess.run(command, check=True, cwd=scratch)
-        result = subprocess.run([str(exe)], check=True, cwd=scratch, capture_output=True, text=True)
-        observation = json.loads(result.stdout)
-        if observation != EXPECTED or any(type(v) is not bool for v in observation.values()):
-            raise RuntimeError(f'unexpected observation: {observation}')
-        report = {'schema_version': 1, 'host': platform.platform(), 'machine': platform.machine(),
-                  'backend': 'Windows SDK' if os.name == 'nt' else 'Alkyhol native C ABI', 'observation': observation}
-        revision = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=ROOT, capture_output=True, text=True, check=True).stdout.strip()
-        clean = subprocess.run(['git', 'diff', '--quiet', 'HEAD'], cwd=ROOT).returncode == 0
-        inputs = [source]
-        if os.name != 'nt':
-            inputs.extend([ROOT / 'include/alkyhol.h', *sorted((ROOT / 'src').glob('*.rs'))])
-            inputs.append(ROOT / 'target/debug' / ('libalkyhol.dylib' if platform.system() == 'Darwin' else 'libalkyhol.so'))
-        report['source_revision'] = revision
-        report['tracked_tree_clean'] = clean
-        report['compiler'] = (compiler.stdout + compiler.stderr).strip()
-        report['artifacts'] = {str(p.relative_to(ROOT)): hashlib.sha256(p.read_bytes()).hexdigest() for p in inputs}
-        if output: output.write_text(json.dumps(report, indent=2) + '\n')
-        print(json.dumps(report, indent=2))
+    observations, compilers, executables = {}, {}, {}
+    inputs = [Path(__file__).resolve(), ROOT / 'Cargo.toml', ROOT / 'Cargo.lock']
+    for name, (relative_source, expected) in SAMPLES.items():
+        source = ROOT / relative_source
+        inputs.append(source)
+        with tempfile.TemporaryDirectory(prefix=f'alkyhol-{name}-') as scratch:
+            exe = Path(scratch) / (name + ('.exe' if os.name == 'nt' else ''))
+            command = compile_command(source, exe)
+            compiler = subprocess.run([command[0]] if os.name == 'nt' else [command[0], '--version'],
+                                      capture_output=True, text=True, timeout=30)
+            compilers[name] = (compiler.stdout + compiler.stderr).strip()
+            subprocess.run(command, check=True, cwd=scratch, timeout=120)
+            observations[name] = run_observation([str(exe)], expected, scratch)
+            executables[name] = hashlib.sha256(exe.read_bytes()).hexdigest()
+    if os.name != 'nt':
+        inputs.extend([ROOT / 'include/alkyhol.h', *sorted((ROOT / 'src').glob('*.rs'))])
+        inputs.append(ROOT / 'target/debug' / ('libalkyhol.dylib' if platform.system() == 'Darwin' else 'libalkyhol.so'))
+    report = {
+        'schema_version': 2, 'host': platform.platform(), 'machine': platform.machine(),
+        'backend': 'Windows SDK' if os.name == 'nt' else 'Alkyhol native C ABI',
+        'observation': observations['kernel_contract'], 'samples': observations,
+        'source_revision': subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=ROOT, capture_output=True, text=True, check=True).stdout.strip(),
+        'tracked_tree_clean': subprocess.run(['git', 'diff', '--quiet', 'HEAD'], cwd=ROOT).returncode == 0,
+        'compilers': compilers, 'executables': executables,
+        'artifacts': {str(p.relative_to(ROOT)): hashlib.sha256(p.read_bytes()).hexdigest() for p in inputs},
+    }
+    if output:
+        output.write_text(json.dumps(report, indent=2) + '\n')
+    print(json.dumps(report, indent=2))
+    return report
 
 if __name__ == '__main__':
     p = argparse.ArgumentParser(description=__doc__); p.add_argument('--output', type=Path)

@@ -1,6 +1,11 @@
 import importlib.util
 from pathlib import Path
 import struct
+import hashlib
+import json
+import subprocess
+import sys
+import tempfile
 import unittest
 
 spec = importlib.util.spec_from_file_location('pe_imports', Path(__file__).resolve().parents[1] / 'tools/pe_imports.py')
@@ -61,6 +66,45 @@ class ImportTests(unittest.TestCase):
     def test_header_directory_overflow(self):
         data = bytearray(fixture()); struct.pack_into('<I', data, 0x98 + 108, 0xffff)
         with self.assertRaises(pe.PEError): pe.PE(data)
+
+    def test_inventory_and_cli_bind_actual_file_identity(self):
+        with tempfile.TemporaryDirectory() as directory:
+            binary = Path(directory) / 'fixture.exe'
+            binary.write_bytes(fixture())
+            result = pe.inventory(binary)
+            self.assertEqual(result['sha256'], hashlib.sha256(binary.read_bytes()).hexdigest())
+            self.assertEqual(result['size'], len(binary.read_bytes()))
+            self.assertEqual(result['binary'], 'fixture.exe')
+            output = Path(directory) / 'inventory.json'
+            subprocess.run([sys.executable, str(Path(pe.__file__)), str(binary), '--output', str(output)], check=True, capture_output=True)
+            self.assertEqual(json.loads(output.read_text()), result)
+            binary.write_bytes(b'invalid')
+            output.unlink()
+            failure = subprocess.run([sys.executable, str(Path(pe.__file__)), str(binary), '--output', str(output)], capture_output=True)
+            self.assertNotEqual(failure.returncode, 0)
+            self.assertFalse(output.exists())
+
+    def test_header_and_section_rva_ranges(self):
+        p = pe.PE(fixture())
+        self.assertEqual(p.offset(0x100, 4), 0x100)
+        self.assertEqual(p.offset(0x1000, 4), 0x200)
+        for rva in [0x200, 0x9999, -1]:
+            with self.subTest(rva=rva), self.assertRaises(pe.PEError): p.offset(rva)
+        for offset, length in [(-1, 1), (0, -1), (len(p.data), 1)]:
+            with self.assertRaises(pe.PEError): p.take(offset, length)
+
+    def test_import_lookup_fallback_and_absent_directories(self):
+        data = bytearray(fixture()); struct.pack_into('<I', data, 0x200, 0)
+        self.assertEqual(pe.PE(data).imports(), pe.PE(fixture()).imports())
+        p = pe.PE(fixture()); p.directories = []
+        self.assertEqual(p.imports(), [])
+        with self.assertRaises(pe.PEError): p.thunks(0)
+
+    def test_nonascii_name_and_unknown_delay_attributes_fail(self):
+        data = bytearray(fixture()); data[0x280] = 255
+        with self.assertRaises(pe.PEError): pe.PE(data).imports()
+        data = bytearray(fixture(delay=True)); struct.pack_into('<I', data, 0x200, 2)
+        with self.assertRaises(pe.PEError): pe.PE(data).imports(True)
 
 
 if __name__ == '__main__': unittest.main()

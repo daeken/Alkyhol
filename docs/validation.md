@@ -38,6 +38,21 @@ not an identified physical Apple Silicon GPU. Software Vulkan evidence is labele
 separately. No game execution, exhaustive API coverage, binary ABI compatibility,
 COM compatibility, HLSL/DXIL translation or game equivalence has been established.
 
+## Expanded tests and Microsoft sample ports
+
+On macOS 27.0.1 ARM64, Rust 1.99.1, Apple Clang 21.0.0 and a physical Apple M4
+Metal adapter, local execution passed 32 root Rust tests, 18 Python tests, four
+real-device integration tests, all three portable C/C++ samples and the original
+clear/triangle/readback example. Root and graphics Clippy checks with warnings
+denied passed. The [test map](testing.md) records what each function/unit exercises.
+
+The new [Microsoft ports](../samples/msdn/README.md) cover synchronous file writing
+with a readback check and event-gated readers. They include pinned provenance and
+MIT attribution. Deliberate API substitutions are documented; the separate upstream
+asynchronous file read example is not ported. Native Windows comparison of these
+ports must come from the new workflow's executed results, not the historical run
+above or this local Metal execution.
+
 ## Reproduce
 
 ```sh
@@ -49,6 +64,7 @@ python3 -m unittest discover -s tests -v
 python3 tools/run_samples.py --output local/kernel-observation.json
 cargo fmt --manifest-path graphics/Cargo.toml --check
 cargo clippy --manifest-path graphics/Cargo.toml --locked --all-targets -- -D warnings
+cargo test --manifest-path graphics/Cargo.toml --locked -- --nocapture
 cargo run --manifest-path graphics/Cargo.toml --locked --example hello_triangle
 ```
 
