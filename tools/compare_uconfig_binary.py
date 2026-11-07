@@ -27,7 +27,7 @@ def compare(reports, reference=None):
     for key in ['program', 'revision', 'input_sha256', 'observations']:
         if native[key] != host[key]:
             raise ValueError(f'native Windows/Alkyhol mismatch: {key}')
-    spec = json.loads((ROOT / 'pe/fixtures/u-config/cases.json').read_text())
+    spec = json.loads((ROOT / 'pe/fixtures/u-config/cases.json').read_text(encoding='utf-8'))
     expected = {c['id']: {'status': c['status'], 'stdout_hex': c['stdout'].encode().hex(),
                            'stderr_hex': c['stderr'].encode().hex()} for c in spec['cases']}
     if native['observations'] != expected:
@@ -35,7 +35,7 @@ def compare(reports, reference=None):
     if native['forced_rebase_observations'] is not None or host['forced_rebase_observations'] != host['observations']:
         raise ValueError('forced rebasing was not executed or differs')
     if reference is None and REFERENCE.exists():
-        reference = json.loads(REFERENCE.read_text())
+        reference = json.loads(REFERENCE.read_text(encoding='utf-8'))
     if reference is not None:
         if reference['backend'] != 'native Windows PE64 / kernel32' or reference['tracked_tree_clean'] is not True:
             raise ValueError('invalid frozen native reference')
@@ -49,7 +49,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('reports', type=Path, nargs='+')
     args = parser.parse_args()
-    count = compare([json.loads(path.read_text()) for path in args.reports])
+    count = compare([json.loads(path.read_text(encoding='utf-8')) for path in args.reports])
     print(f'Native Windows and Alkyhol agree on {count} cases from unchanged released u-config {PE_SHA256}')
 
 

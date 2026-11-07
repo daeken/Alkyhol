@@ -16,7 +16,7 @@ from run_uconfig_binary import guest_stderr
 
 class ReleasedPEProtocolTests(unittest.TestCase):
     def reports(self):
-        spec = json.loads((ROOT / 'pe/fixtures/u-config/cases.json').read_text())
+        spec = json.loads((ROOT / 'pe/fixtures/u-config/cases.json').read_text(encoding='utf-8'))
         observations = {c['id']: {'status': c['status'], 'stdout_hex': c['stdout'].encode().hex(),
                                   'stderr_hex': c['stderr'].encode().hex()} for c in spec['cases']}
         native = {'schema_version': 1, 'backend': 'native Windows PE64 / kernel32',
@@ -63,6 +63,12 @@ class ReleasedPEProtocolTests(unittest.TestCase):
                        prefix.replace(b'true', b'false')]:
             with self.assertRaises(ValueError):
                 guest_stderr(stderr, True)
+
+    def test_unicode_case_has_the_same_explicit_utf8_meaning_on_every_host(self):
+        spec = json.loads((ROOT / 'pe/fixtures/u-config/cases.json').read_text(encoding='utf-8'))
+        case = next(c for c in spec['cases'] if c['id'] == 'quoted-unicode-variable')
+        self.assertEqual(case['stdout'].encode('utf-8').hex(), 'cebbf09f8cb82071756f746564202276616c756522207461696c5c0a')
+        self.assertIn('λ🌸', case['args'][0])
 
     def test_fetch_hash_failure_never_becomes_success(self):
         with tempfile.TemporaryDirectory() as d:

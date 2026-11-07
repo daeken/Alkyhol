@@ -42,6 +42,14 @@ launcher execution is now quiet; observers explicitly request `--loader-info`
 when checking the mapping diagnostic. This changes host reporting, not the
 embedded upstream bytes or successful API semantics.
 
+The corrected-label run 42385854756 then catches a real *input* discrepancy in
+the Unicode case: Windows Python decoded the UTF-8 corpus using its legacy locale
+encoding. Its released program correctly echoed that unintended mojibake; Mac
+correctly echoed lambda/cherry-blossom. All corpus/report JSON now explicitly
+uses UTF-8; the unchanged corpus bytes and guest expectations are not weakened.
+A literal UTF-8 case-identity test guards this boundary (133 Python tests).
+Native execution must be repeated with the corrected input before claiming parity.
+
 ## PE64 binary execution: first physical Rosetta milestone
 
 The strict-reference revision `14c009d` passes all 27 CI jobs: the three

@@ -64,12 +64,12 @@ def main():
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
     binary = args.binary.resolve()
-    provenance = json.loads((binary.parent / 'provenance.json').read_text())
+    provenance = json.loads((binary.parent / 'provenance.json').read_text(encoding='utf-8'))
     if digest(binary) != PE_SHA256 or digest(binary.parent / 'pkg-config.c') != SOURCE_SHA256 or digest(binary.parent / 'UNLICENSE') != LICENSE_SHA256:
         raise ValueError('released binary/source/license identity differs')
     if provenance['pe_sha256'] != PE_SHA256 or provenance['source_sha256'] != SOURCE_SHA256 or provenance['rebuilt'] is not False or provenance['patched'] is not False:
         raise ValueError('invalid release provenance')
-    spec = json.loads((CORPUS / 'cases.json').read_text())
+    spec = json.loads((CORPUS / 'cases.json').read_text(encoding='utf-8'))
     if platform.system() == 'Darwin':
         from translate_pe import translate, embedded_payload
         executable = translate(binary, ROOT / 'local/pe/u-config/pkg-config-macos')
