@@ -61,6 +61,21 @@ jobs:
         run: |
           python tools/build_pe_linked_image.py
           python tools/run_pe_linked_image.py --directory local/pe/linked-image --output local/pe/linked-image-alkyhol.json
+      - name: Execute real guest module handle and named/ordinal export lookup APIs
+        run: |
+          python tools/build_pe_dynamic_lookup.py
+          python tools/run_pe_dynamic_lookup.py --directory local/pe/dynamic-lookup --output local/pe/dynamic-lookup-alkyhol.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe-dynamic-lookup-fixture
+          path: |
+            local/pe/dynamic-lookup/dynamic-lookup.exe
+            local/pe/dynamic-lookup/alkyhol_exports.dll
+            local/pe/dynamic-lookup/dynamic-lookup-fixture.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe-dynamic-lookup-alkyhol
+          path: local/pe/dynamic-lookup-alkyhol.json
       - uses: actions/upload-artifact@v4
         with:
           name: pe-linked-image-fixture
@@ -248,6 +263,16 @@ jobs:
           path: local/pe/linked-image
       - name: Let native Windows bind and enter the identical EXE and unchanged DLL
         run: python tools/run_pe_linked_image.py --directory local/pe/linked-image --output local/pe/linked-image-windows.json
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe-dynamic-lookup-fixture
+          path: local/pe/dynamic-lookup
+      - name: Observe the identical guest EXE using actual Windows module and export lookup
+        run: python tools/run_pe_dynamic_lookup.py --directory local/pe/dynamic-lookup --output local/pe/dynamic-lookup-windows.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe-dynamic-lookup-windows
+          path: local/pe/dynamic-lookup-windows.json
       - uses: actions/upload-artifact@v4
         with:
           name: pe-linked-image-windows
@@ -385,3 +410,12 @@ jobs:
           name: pe-linked-image-windows
           path: local/pe/observations
       - run: python tools/compare_pe_linked_image.py local/pe/observations/linked-image-windows.json local/pe/observations/linked-image-alkyhol.json
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe-dynamic-lookup-alkyhol
+          path: local/pe/observations
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe-dynamic-lookup-windows
+          path: local/pe/observations
+      - run: python tools/compare_pe_dynamic_lookup.py local/pe/observations/dynamic-lookup-windows.json local/pe/observations/dynamic-lookup-alkyhol.json

@@ -131,7 +131,7 @@ fn fail(error: u32) -> i32 {
     ffi::SetLastError(error);
     0
 }
-unsafe fn wide(ptr: *const u16) -> std::result::Result<String, u32> {
+pub(crate) unsafe fn wide(ptr: *const u16) -> std::result::Result<String, u32> {
     if ptr.is_null() {
         return Err(INVALID_PARAMETER);
     }

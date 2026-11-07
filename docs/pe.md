@@ -90,6 +90,9 @@ program](u-config.md) adds ten process-service names (34 kernel32 names total):
 The separate binary-COM milestone below adds d3dcompiler_47!D3DCreateBlob and
 five explicit Win64 ID3DBlob virtual slots. The serializer milestone adds
 d3d12!D3D12SerializeRootSignature and D3D12SerializeVersionedRootSignature.
+The scoped guest lookup milestone adds GetModuleHandleW/GetProcAddress (36
+kernel32 names total); these require an explicit ModuleContext for supported
+DLL lookups and do not create fake builtin/main-image module handles.
 
 The existing [restricted kernel contracts](contracts.md) still apply: for example,
 file sharing must be FILE_SHARE_READ|WRITE|DELETE, security/template/named objects
@@ -178,9 +181,9 @@ slots, unsupported absolute/out-of-image targets and malformed metadata fail.
 
 This metadata API does not execute code. `LoadedImage::load` still accepts EXEs
 only and normal `check_startup` rejects DLLs. An explicit isolated runtime API is
-now available below; general dependent-library initialization, guest
-LoadLibrary/GetProcAddress/FreeLibrary, module caching/reference counts and
-Windows exceptions remain unavailable. The
+now available below; broader dependency support and scoped guest export lookup
+are documented separately. Guest LoadLibrary/FreeLibrary, global module caching/
+reference counts and Windows exceptions remain unavailable. The
 existing EXE startup gates and both frozen native binary observers remain intact.
 Six new host parser units exercise these rules, every truncated prefix, aliases,
 ordinal-only/empty tables, zero-entry DLLs and malformed forwarder/table bounds.
@@ -595,3 +598,49 @@ add binary D3D12 device execution or game compatibility.
 
 Primary contracts: [D3D12SerializeRootSignature](https://learn.microsoft.com/en-us/windows/win32/api/d3d12/nf-d3d12-d3d12serializerootsignature)
 and [D3D12SerializeVersionedRootSignature](https://learn.microsoft.com/en-us/windows/win32/api/d3d12/nf-d3d12-d3d12serializeversionedrootsignature).
+
+## Scoped guest module and export lookup
+
+`ModuleContext::install(&[(name, &dll), ...])` exposes 1..64 already attached
+explicit DLLs to real Win64 GetModuleHandleW/GetProcAddress bridges on this thread.
+It snapshots their resolved export metadata and retains dependency-owner borrows
+through teardown. The thread-bound guard rejects nested installation, duplicate
+case-insensitive names, duplicate actual image bases and builtin replacement.
+Installing/dropping a view neither initializes/detaches DLLs nor increments a
+module reference. Paired compiler checks reject dropping an owner before its view.
+
+GetModuleHandleW accepts case-insensitive ASCII DLL basenames, including omitted
+`.dll` and trailing-period handling. It returns the **actual full-width PE image
+base**, not a kernel handle token. GetProcAddress accepts that exact registered
+base and a bounded case-sensitive ASCII name or low-word ordinal. Named aliases,
+NONAME exports, data and already resolved forwarders preserve their actual target
+addresses. Missing modules return NULL/ERROR_MOD_NOT_FOUND; missing symbols return
+NULL/ERROR_PROC_NOT_FOUND. Calls without a view, main-image NULL lookup, builtin
+module-image lookup, paths and Unicode module identities fail honestly with
+ERROR_NOT_SUPPORTED. Host invalid-handle/string/ordinal edge contracts are tested
+separately and are not inferred to match every native Windows edge behavior.
+
+This is an explicit borrowed lookup view, not a guest LoadLibrary/FreeLibrary
+implementation, process-global loader/cache, filesystem search or general PEB/TEB.
+DLL attach/detach occur outside this view; lookup from those callbacks is not
+provided. Guest threads/reentrancy, ANSI lookup and implicit main/builtin module
+images remain unsupported. Already returned raw pointers may not outlive their
+module owners or the trusted runtime contract.
+
+The owned EXE retains one static Direct import to force native DLL attachment,
+then invokes the real guest lookup APIs. It checks an actual MZ header at the
+module base, case/extension handling, name/ordinal/alias targets, initialized BSS,
+shared writable data, forwarded calls and missing-name/module error results.
+Both the unchanged EXE and the earlier frozen DLL run as checked snapshots.
+
+```sh
+python3 tools/build_pe_dynamic_lookup.py
+python3 tools/run_pe_dynamic_lookup.py --directory local/pe/dynamic-lookup --output local/pe/dynamic-lookup-alkyhol.json
+```
+
+Physical M4/Rosetta passes all 21 raw words normally and with both images rebased.
+Native evidence is tracked in [validation](validation.md). These are finite owned
+binary tests, not general Windows loader or game compatibility claims.
+
+Primary contracts: [GetModuleHandleW](https://learn.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-getmodulehandlew)
+and [GetProcAddress](https://learn.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-getprocaddress).

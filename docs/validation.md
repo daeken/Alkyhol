@@ -4,6 +4,35 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## Guest module/export lookup: physical M4, independent native run pending
+
+The new ModuleContext retains explicit attached DLL owner borrows and exposes
+real Win64 GetModuleHandleW/GetProcAddress bridges with actual full-width image
+bases and resolved named/ordinal/code/data/forwarded targets. It does not add a
+guest loader, fake module handles, implicit main/builtin images or DLL callback
+lookup. Unsupported contexts and shapes fail honestly; view teardown neither
+detaches nor reinitializes DLLs. The old binary fixtures/references are intact.
+
+The owned EXE SHA-256 is
+`369d6e7ffcbc6a098ff6e46281e3c18e2bdb8f170202cf906ff606d08f8b0540`,
+with unchanged dependency DLL
+`423d6e191a3ebb4f4f5ce11710591edc9ebe163ece79bd35cc6fe5146d13399d`.
+Physical M4/Rosetta normal and forced-rebase runs agree on all 21 raw DWORDs:
+actual PE-header/module identity, case/extension lookup, Direct/Alias/ordinal
+target identity, NONAME calls, named/ordinal data sharing and writes, initialized
+BSS, forwarded LastError calls and missing-symbol/module failures. Both images
+actually rebase in the forced run. The same two binaries are transferred to
+native Windows; that independent comparison is pending.
+
+All 57 PE host tests, eight lifetime compiler checks, 19 portable arm64 tests,
+184 Python tests and PE Clippy pass locally. Host units execute real lookup
+targets and forwarders, reject duplicate/nested/invalid registries, preserve
+64-bit module identity instead of truncating kernel-handle bits, check scoped
+teardown and thread isolation, and exercise unsupported/null/string/ordinal
+failures. Those edge/error cases and host-thread isolation are separate from
+native observations and do not enable guest threads. No sample/shader/asset or
+game data changes; no game compatibility claim.
+
 ## EXEs linked to borrowed DLLs: native Windows, hosted Mac and physical M4
 
 All 27 jobs pass at strict-reference revision `36e91cc`: three

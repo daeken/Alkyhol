@@ -32,3 +32,4 @@ pe/fixtures/ordinal/* text eol=lf
 pe/fixtures/binary-com/* text eol=lf
 pe/fixtures/root-signatures/* text eol=lf
 pe/fixtures/linked-image/* text eol=lf
+pe/fixtures/dynamic-lookup/* text eol=lf

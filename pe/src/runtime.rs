@@ -363,6 +363,11 @@ impl LoadedLibrary {
     pub fn base_address(&self) -> usize {
         self.mapping.base as usize
     }
+    pub(crate) fn export_bindings(&self) -> impl Iterator<Item = (u32, &[String], usize)> {
+        self.symbols
+            .iter()
+            .map(|(ordinal, names, address)| (*ordinal, names.as_slice(), *address))
+    }
     pub fn relocated(&self) -> bool {
         self.mapping.relocated
     }
@@ -726,6 +731,168 @@ mod tests {
         bytes[0x7c0..0x7cb].copy_from_slice(b"custom.dll\0");
         bytes[0x7d2..0x7d8].copy_from_slice(b"Entry\0");
         bytes
+    }
+    fn lookup_bridges() -> (
+        unsafe extern "win64" fn(*const u16) -> usize,
+        unsafe extern "win64" fn(usize, usize) -> usize,
+    ) {
+        unsafe {
+            (
+                std::mem::transmute::<usize, unsafe extern "win64" fn(*const u16) -> usize>(
+                    abi::resolve("kernel32.dll", "GetModuleHandleW").unwrap(),
+                ),
+                std::mem::transmute::<usize, unsafe extern "win64" fn(usize, usize) -> usize>(
+                    abi::resolve("kernel32.dll", "GetProcAddress").unwrap(),
+                ),
+            )
+        }
+    }
+    #[test]
+    fn guest_module_lookup_returns_real_bases_exports_ordinals_and_forwarded_calls() {
+        let (module, symbol) = lookup_bridges();
+        let log = lifecycle_log();
+        let mut bytes = lifecycle_fixture(log.get(), true, None);
+        bytes[0x6d0..0x6d4].copy_from_slice(&0x1100u32.to_le_bytes());
+        bytes[0x500..0x506].copy_from_slice(&[0xb8, 42, 0, 0, 0, 0xc3]);
+        let library = unsafe { LoadedLibrary::load(&bytes, true) }.unwrap();
+        let forward_log = lifecycle_log();
+        let forward = unsafe {
+            LoadedLibrary::load(
+                &lifecycle_fixture(forward_log.get(), true, Some("kernel32.GetLastError")),
+                true,
+            )
+        }
+        .unwrap();
+        let context =
+            crate::ModuleContext::install(&[("custom.dll", &library), ("forward.dll", &forward)])
+                .unwrap();
+        for name in ["CUSTOM.DLL", "custom", "custom.dll."] {
+            let wide: Vec<u16> = name.encode_utf16().chain([0]).collect();
+            assert_eq!(unsafe { module(wide.as_ptr()) }, library.base_address());
+        }
+        assert_eq!(
+            unsafe { (library.base_address() as *const u16).read() },
+            0x5a4d
+        );
+        let name = b"Entry\0";
+        let address = unsafe { symbol(library.base_address(), name.as_ptr() as usize) };
+        assert_eq!(address, library.get_name("Entry").unwrap() as usize);
+        assert_eq!(unsafe { symbol(library.base_address(), 17) }, address);
+        let call: unsafe extern "win64" fn() -> u32 = unsafe { std::mem::transmute(address) };
+        assert_eq!(unsafe { call() }, 42);
+        let forwarded: unsafe extern "win64" fn() -> u32 =
+            unsafe { std::mem::transmute(symbol(forward.base_address(), name.as_ptr() as usize)) };
+        alkyhol::ffi::SetLastError(0x3456);
+        assert_eq!(unsafe { forwarded() }, 0x3456);
+        assert_eq!(
+            unsafe { ((*log.get()).calls, (*forward_log.get()).calls) },
+            (1, 1)
+        );
+        drop(context);
+        assert_eq!(unsafe { call() }, 42);
+        assert_eq!(unsafe { (*log.get()).calls }, 1);
+        drop(forward);
+        drop(library);
+        assert_eq!(
+            unsafe { ((*log.get()).calls, (*forward_log.get()).calls) },
+            (2, 2)
+        );
+    }
+    #[test]
+    fn guest_module_lookup_scope_errors_and_pointer_width_are_explicit() {
+        let (module, symbol) = lookup_bridges();
+        assert_eq!(unsafe { module(ptr::null()) }, 0);
+        assert_eq!(alkyhol::ffi::GetLastError(), 50);
+        assert_eq!(unsafe { symbol(0, 0) }, 0);
+        assert_eq!(alkyhol::ffi::GetLastError(), 50);
+        assert!(crate::ModuleContext::install(&[]).is_err());
+        let log = lifecycle_log();
+        let library =
+            unsafe { LoadedLibrary::load(&lifecycle_fixture(log.get(), true, None), true) }
+                .unwrap();
+        for inputs in [
+            vec![("custom.dll", &library); 65],
+            vec![("custom.dll", &library), ("CUSTOM.DLL", &library)],
+            vec![("one.dll", &library), ("two.dll", &library)],
+        ] {
+            assert!(crate::ModuleContext::install(&inputs).is_err());
+        }
+        for name in [
+            "../custom.dll",
+            "",
+            "kernel32.dll",
+            "d3d12.dll",
+            "d3dcompiler_47.dll",
+        ] {
+            assert!(crate::ModuleContext::install(&[(name, &library)]).is_err());
+        }
+        let context = crate::ModuleContext::install(&[("custom.dll", &library)]).unwrap();
+        assert!(crate::ModuleContext::install(&[("custom.dll", &library)]).is_err());
+        let base = library.base_address();
+        assert_ne!(base >> 32, 0);
+        for bad in [0, base ^ 0x100000000, base as u32 as usize] {
+            assert_eq!(unsafe { symbol(bad, 17) }, 0);
+            assert_eq!(alkyhol::ffi::GetLastError(), 6);
+        }
+        for ordinal in [0, 16, 18, 65535] {
+            assert_eq!(unsafe { symbol(base, ordinal) }, 0);
+            assert_eq!(alkyhol::ffi::GetLastError(), 127);
+        }
+        for name in [b"entry\0".as_slice(), b"Missing\0"] {
+            assert_eq!(unsafe { symbol(base, name.as_ptr() as usize) }, 0);
+            assert_eq!(alkyhol::ffi::GetLastError(), 127);
+        }
+        for (name, error) in [
+            ("unknown.dll", 126),
+            ("../custom.dll", 50),
+            ("kernel32", 50),
+            ("🌸.dll", 50),
+        ] {
+            let wide: Vec<u16> = name.encode_utf16().chain([0]).collect();
+            assert_eq!(unsafe { module(wide.as_ptr()) }, 0);
+            assert_eq!(alkyhol::ffi::GetLastError(), error);
+        }
+        assert_eq!(unsafe { module([0xd800u16, 0].as_ptr()) }, 0);
+        assert_eq!(alkyhol::ffi::GetLastError(), 1113);
+        let bad = vec![b'x'; 4096];
+        assert_eq!(unsafe { symbol(base, bad.as_ptr() as usize) }, 0);
+        assert_eq!(alkyhol::ffi::GetLastError(), 87);
+        assert_eq!(unsafe { symbol(base, c"bad\xff".as_ptr() as usize) }, 0);
+        assert_eq!(alkyhol::ffi::GetLastError(), 87);
+        assert_eq!(
+            unsafe { symbol(base, 17) },
+            library.get_ordinal(17).unwrap() as usize
+        );
+        drop(context);
+        assert_eq!(unsafe { symbol(base, 17) }, 0);
+        assert_eq!(alkyhol::ffi::GetLastError(), 50);
+        drop(library);
+        assert_eq!(unsafe { (*log.get()).calls }, 2);
+    }
+    #[test]
+    fn guest_module_views_do_not_escape_to_other_host_threads() {
+        let log = lifecycle_log();
+        let library =
+            unsafe { LoadedLibrary::load(&lifecycle_fixture(log.get(), true, None), true) }
+                .unwrap();
+        let context = crate::ModuleContext::install(&[("custom.dll", &library)]).unwrap();
+        let base = library.base_address();
+        alkyhol::ffi::SetLastError(0x1234);
+        std::thread::spawn(move || {
+            let (_, symbol) = lookup_bridges();
+            assert_eq!(unsafe { symbol(base, 17) }, 0);
+            assert_eq!(alkyhol::ffi::GetLastError(), 50);
+        })
+        .join()
+        .unwrap();
+        assert_eq!(alkyhol::ffi::GetLastError(), 0x1234);
+        let (_, symbol) = lookup_bridges();
+        assert_eq!(
+            unsafe { symbol(base, 17) },
+            library.get_ordinal(17).unwrap() as usize
+        );
+        drop(context);
+        drop(library);
     }
     #[test]
     fn linked_executable_calls_named_ordinal_and_forwarded_targets_without_reinitializing_dll() {
