@@ -108,7 +108,9 @@ processes verify real protection faults for header/code/read-only-data writes an
 writable-data execution; allowed data writes and code execution pass. These host
 assertions and ABI observations are distinct from native Windows observations.
 Native Windows, hosted Mac and physical M4 executions agree on the identical
-fixture at `77631c7` (PE workflow 42382929856). The full native report is frozen in
+fixture at `77631c7` (PE workflow 42382929856). Strict-reference revision
+`14c009d` then passes all three PE jobs and all 24 existing conformance jobs, with
+a fresh matching physical M4 run. The full native report is frozen in
 [`pe/reference/windows-v1.json`](../pe/reference/windows-v1.json); future pairs
 must match its PE/source identities and observations. This deliberately detects
 joint drift as well as mismatched hosts. Changing this fixture requires a new,

@@ -6,6 +6,15 @@ See the latest direct-Metal record for current implementation evidence.
 
 ## PE64 binary execution: first physical Rosetta milestone
 
+The strict-reference revision `14c009d` passes all 27 CI jobs: the three
+[PE binary jobs](https://github.com/daeken/Alkyhol/actions/runs/42383191376) and all
+24 existing [conformance jobs](https://github.com/daeken/Alkyhol/actions/runs/42383191362).
+Downloaded clean native/hosted reports and a fresh clean physical M4 run at that
+same revision match the frozen native record, including exact transferred /
+extracted PE identity, all 19 words and 12 Unicode-file bytes. Both Alkyhol
+forced-rebase executions agree. The original SDK/source/COM/Metal/shader evidence
+remains intact; no original sample source or graphics implementation was changed.
+
 The new `pe/` crate maps checked AMD64 Windows EXEs and supplies explicit Win64
 bridges to the real Rust kernel. `tools/translate_pe.py` embeds unchanged PE bytes
 in a read-only Mach-O section and links that x86-64 host to Alkyhol. This is a
