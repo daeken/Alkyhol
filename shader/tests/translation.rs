@@ -162,6 +162,60 @@ fn original_sponza_adapter_declares_real_ray_queries_and_original_entry_bodies()
 }
 
 #[test]
+fn explicit_metal_attachment_contract_widens_rgb_and_rejects_invalid_requests() {
+    let file =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("samples/miniengine/original/PresentSDRPS.hlsl");
+    let bytes = compile_hlsl_with_options(
+        &dxc(),
+        &file,
+        "main",
+        Stage::Pixel,
+        &HlslOptions {
+            strip_root_signature: true,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let shader = translate_dxil_with_options(
+        &bytes,
+        "main",
+        &MslOptions {
+            fragment_output_components: &[(0, 4)],
+        },
+    )
+    .unwrap();
+    assert!(shader.msl.contains("float4"));
+    for output in [
+        &[(0, 0)][..],
+        &[(0, 5)][..],
+        &[(8, 4)][..],
+        &[(0, 4), (0, 3)][..],
+    ] {
+        assert!(
+            translate_dxil_with_options(
+                &bytes,
+                "main",
+                &MslOptions {
+                    fragment_output_components: output
+                }
+            )
+            .is_err()
+        );
+    }
+    let compute = compile("compute.hlsl", "CSMain", Stage::Compute);
+    assert!(
+        translate_dxil_with_options(
+            &compute,
+            "CSMain",
+            &MslOptions {
+                fragment_output_components: &[(0, 4)]
+            }
+        )
+        .is_err()
+    );
+}
+
+#[test]
 fn unsupported_descriptor_arrays_counters_and_geometry_stage_fail() {
     let temp = tempfile::tempdir().unwrap();
     let file = temp.path().join("unsupported.hlsl");

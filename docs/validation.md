@@ -4,6 +4,31 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## Original tone/display HLSL: local evidence
+
+The physical M4 passed all 15 MiniEngine and 14 shader tests, plus all 31 Python
+tests, shader regeneration equality and shader/MiniEngine formatting/Clippy.
+Unmodified original tone mapping, SDR display, fullscreen vertices, copies and
+shaded live upsampling now execute through the open translation components.
+The independent 13×7 GPU test checks exposure 2, the Stanard/sRGB curve, opaque
+RGBA capture alpha and log luminance. Shader translation now explicitly pads RGB
+outputs for Metal RGBA attachment formats rather than modifying the HLSL.
+
+The full 960×540 shaded/reflection capture was saved locally and the rebuilt
+live app visibly rendered around 59.8 FPS at that resolution. The cold headless
+frame took 0.051s; neither observation is an uncapped steady-state GPU benchmark.
+HDR intermediates use RGBA32Float instead of packed RGB; bloom strength stays 0
+and adaptive exposure remains absent. Geometry and shading quality were not reduced.
+
+[Run 42340939662](https://github.com/daeken/Alkyhol/actions/runs/42340939662)
+passed all ten jobs on the initial shader revision `b1d643b`.
+[Run 42342151549](https://github.com/daeken/Alkyhol/actions/runs/42342151549)
+passed all ten jobs on original ray-generation/barycentric revision `d3cf021`.
+The hosted shader/Metal results are distinct from physical RT tests above.
+These runs precede the local tone/display milestone and do not validate it by
+implication. Original shaded-hit/Sakura migration and native full DXR pixel
+comparison remain outstanding.
+
 ## Original Sponza HLSL migration: local evidence
 
 The physical Apple M4 passed 13 MiniEngine tests after adopting original HLSL

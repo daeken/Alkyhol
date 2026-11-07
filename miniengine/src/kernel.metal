@@ -42,7 +42,7 @@ kernel void render_scene(instance_acceleration_structure scene [[buffer(0)]],con
     colour+=surface.reflectivity*lit_colour(reflected,reflection.direction,shadow_visibility(reflected,scene,counts),false);
    }
   }
-  colour=display_colour(colour);
+  // Linear HDR; unchanged original HLSL tone/display passes run next.
  }
  if(!all(isfinite(colour))){atomic_fetch_add_explicit(&counts[41],1,memory_order_relaxed);output.write(float4(1,0,1,1),pixel);return;}
  output.write(float4(colour,1),pixel);

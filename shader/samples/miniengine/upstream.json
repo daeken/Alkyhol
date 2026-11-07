@@ -21,6 +21,76 @@
       "upstream_path": "Samples/Desktop/D3D12Raytracing/src/D3D12RaytracingMiniEngineSample/ModelViewerRayTracing.h",
       "bytes": 1409,
       "sha256": "209be9abbc44fc0340d54a806490372faa0babee152b0506ad759fc7b766fdcd"
+    },
+    "BilinearUpsamplePS.hlsl": {
+      "upstream_path": "MiniEngine/Core/Shaders/BilinearUpsamplePS.hlsl",
+      "bytes": 837,
+      "sha256": "4659ef2d11e9b8487021dbae855861bb6d1a3e4a84f56872900c137ffe823e13"
+    },
+    "PresentRS.hlsli": {
+      "upstream_path": "MiniEngine/Core/Shaders/PresentRS.hlsli",
+      "bytes": 1063,
+      "sha256": "06ad7511de8f87016c89cb412d4c6c957d408d7369656e773038cc80ce1ee6ed"
+    },
+    "ShaderUtility.hlsli": {
+      "upstream_path": "MiniEngine/Core/Shaders/ShaderUtility.hlsli",
+      "bytes": 4071,
+      "sha256": "33ffdabe7b5e52ade264967a255d97f5b8d53e67a286a4cb5224cadf6f055ca8"
+    },
+    "PixelPacking.hlsli": {
+      "upstream_path": "MiniEngine/Core/Shaders/PixelPacking.hlsli",
+      "bytes": 621,
+      "sha256": "d1d026eb6ccaf0df9beac9e929e4b19ed182d2253f5e097ffd70604c89c463e9"
+    },
+    "PixelPacking_R11G11B10.hlsli": {
+      "upstream_path": "MiniEngine/Core/Shaders/PixelPacking_R11G11B10.hlsli",
+      "bytes": 5384,
+      "sha256": "677e2813188b2ae69bc9772d6c8b3e3f811682bc9de58fec02a5902146e156d0"
+    },
+    "ColorSpaceUtility.hlsli": {
+      "upstream_path": "MiniEngine/Core/Shaders/ColorSpaceUtility.hlsli",
+      "bytes": 5971,
+      "sha256": "5fc3f5f2ebb21f6d812af6596ffb4502d54150ae4921b7ce851928db6fca6d9a"
+    },
+    "PixelPacking_RGBM.hlsli": {
+      "upstream_path": "MiniEngine/Core/Shaders/PixelPacking_RGBM.hlsli",
+      "bytes": 1388,
+      "sha256": "f2046ec894543644380c6f8506c0745f35178221263c5bc4e151d8bddbe42ec6"
+    },
+    "PixelPacking_RGBE.hlsli": {
+      "upstream_path": "MiniEngine/Core/Shaders/PixelPacking_RGBE.hlsli",
+      "bytes": 3324,
+      "sha256": "0d65fe2bddc9e8e5d3c8791ad8ae73d0cfb388a87f952f9621880872a288bf60"
+    },
+    "BufferCopyPS.hlsl": {
+      "upstream_path": "MiniEngine/Core/Shaders/BufferCopyPS.hlsl",
+      "bytes": 824,
+      "sha256": "ffee21866e9766229dabcbb55494a50ebc46fe450cce3f5e5f40b90a803b2d9b"
+    },
+    "ScreenQuadPresentVS.hlsl": {
+      "upstream_path": "MiniEngine/Core/Shaders/ScreenQuadPresentVS.hlsl",
+      "bytes": 1091,
+      "sha256": "69b8f7b1028daf7c8ca7fdfd3ce2a2c9ce3cd1aca83b43ad8a4fdc99fe86551f"
+    },
+    "PresentSDRPS.hlsl": {
+      "upstream_path": "MiniEngine/Core/Shaders/PresentSDRPS.hlsl",
+      "bytes": 715,
+      "sha256": "497933beecc12a137651e9ea691234fd343decdc203f16a47b7457f515e22922"
+    },
+    "ToneMapCS.hlsl": {
+      "upstream_path": "MiniEngine/Core/Shaders/ToneMapCS.hlsl",
+      "bytes": 2165,
+      "sha256": "d1c760cf3f560071ce10d91688f94833d35137ce89e39b8d7770082f5aa17593"
+    },
+    "PostEffectsRS.hlsli": {
+      "upstream_path": "MiniEngine/Core/Shaders/PostEffectsRS.hlsli",
+      "bytes": 1096,
+      "sha256": "3e469ae20f56cedf833e2d12df6897f5a8e9d7e74b42040bb380999e32e53776"
+    },
+    "ToneMappingUtility.hlsli": {
+      "upstream_path": "MiniEngine/Core/Shaders/ToneMappingUtility.hlsli",
+      "bytes": 3698,
+      "sha256": "bd826f488cfd8f4563af5e5f03163368c036853e473561e5983f5cfb3468d956"
     }
   }
 }

@@ -1,0 +1,31 @@
+{
+  "msl": "#include <metal_stdlib>\n#include <simd/simd.h>\n\nusing namespace metal;\n\nstruct main0_out\n{\n    float4 SV_Target [[color(0)]];\n};\n\nfragment main0_out main0(texture2d<float> _8 [[texture(0)]], float4 gl_FragCoord [[position]])\n{\n    main0_out out = {};\n    float4 _25 = _8.read(uint2(uint2(uint(int(gl_FragCoord.x)), uint(int(gl_FragCoord.y)))), 0u);\n    out.SV_Target.x = _25.x;\n    out.SV_Target.y = _25.y;\n    out.SV_Target.z = _25.z;\n    out.SV_Target.w = _25.w;\n    return out;\n}\n\n",
+  "entry_point": "main0",
+  "stage": "Pixel",
+  "threads_per_group": null,
+  "resources": [
+    {
+      "class": "Srv",
+      "space": 0,
+      "register": 0,
+      "kind": "Texture2D",
+      "namespace": "Texture",
+      "metal_index": 0,
+      "spirv_set": 1,
+      "spirv_binding": 0
+    }
+  ],
+  "vertex_inputs": [],
+  "dxil_spirv_version": [
+    2,
+    72,
+    1
+  ],
+  "requires_ray_query": false,
+  "fragment_output_components": [
+    [
+      0,
+      4
+    ]
+  ]
+}

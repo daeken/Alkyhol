@@ -78,6 +78,7 @@ pub struct Renderer {
     original_bary_enabled: bool,
     original_camera: crate::original::CameraPipeline,
     camera_rays: Buffer,
+    postprocess: crate::postprocess::Postprocess,
 }
 impl Renderer {
     pub fn new(assets: &Path, width: u32, height: u32) -> Result<Self, String> {
@@ -210,6 +211,7 @@ impl Renderer {
             width as u64 * height as u64 * 32,
             MTLResourceOptions::StorageModePrivate,
         );
+        let postprocess = crate::postprocess::Postprocess::new(native, width, height)?;
         Ok(Self {
             textures,
             texture_arguments,
@@ -228,6 +230,7 @@ impl Renderer {
             original_bary_enabled: true,
             original_camera,
             camera_rays,
+            postprocess,
         })
     }
     pub fn set_mode(&mut self, mode: RenderMode) {
@@ -250,6 +253,8 @@ impl Renderer {
             width as u64 * height as u64 * 32,
             MTLResourceOptions::StorageModePrivate,
         );
+        self.postprocess
+            .resize(self.device.metal_device(), width, height);
         self.width = width;
         self.height = height;
         Ok(())
@@ -277,8 +282,13 @@ impl Renderer {
             }
             let command = self.device.metal_queue().new_command_buffer();
             if self.mode == RenderMode::Bary && self.original_bary_enabled {
-                self.original_bary
-                    .encode(command, &self.scene, camera, &self.output, &self.counts);
+                self.original_bary.encode(
+                    command,
+                    &self.scene,
+                    camera,
+                    &self.postprocess.input,
+                    &self.counts,
+                );
             } else {
                 self.original_camera.encode(
                     command,
@@ -303,7 +313,7 @@ impl Renderer {
                 for texture in &self.textures {
                     encoder.use_resource(texture, MTLResourceUsage::Read);
                 }
-                encoder.set_texture(0, Some(&self.output));
+                encoder.set_texture(0, Some(&self.postprocess.input));
                 self.scene.use_resources(encoder);
                 encoder.dispatch_threads(
                     MTLSize::new(self.width as u64, self.height as u64, 1),
@@ -311,17 +321,29 @@ impl Renderer {
                 );
                 encoder.end_encoding();
             }
+            let shaded = matches!(
+                self.mode,
+                RenderMode::Lit
+                    | RenderMode::LitNoShadows
+                    | RenderMode::LitShadowRays
+                    | RenderMode::Reflections
+            );
+            self.postprocess.encode(command, &self.output, shaded);
             if let Some(drawable) = drawable {
-                let pass = RenderPassDescriptor::new();
-                let a = pass.color_attachments().object_at(0).unwrap();
-                a.set_texture(Some(drawable.texture()));
-                a.set_load_action(MTLLoadAction::DontCare);
-                a.set_store_action(MTLStoreAction::Store);
-                let encoder = command.new_render_command_encoder(pass);
-                encoder.set_render_pipeline_state(&self.presentation);
-                encoder.set_fragment_texture(0, Some(&self.output));
-                encoder.draw_primitives(MTLPrimitiveType::Triangle, 0, 3);
-                encoder.end_encoding();
+                if shaded {
+                    self.postprocess.present_shaded(command, drawable.texture());
+                } else {
+                    let pass = RenderPassDescriptor::new();
+                    let a = pass.color_attachments().object_at(0).unwrap();
+                    a.set_texture(Some(drawable.texture()));
+                    a.set_load_action(MTLLoadAction::DontCare);
+                    a.set_store_action(MTLStoreAction::Store);
+                    let encoder = command.new_render_command_encoder(pass);
+                    encoder.set_render_pipeline_state(&self.presentation);
+                    encoder.set_fragment_texture(0, Some(&self.output));
+                    encoder.draw_primitives(MTLPrimitiveType::Triangle, 0, 3);
+                    encoder.end_encoding();
+                }
                 command.present_drawable(drawable);
             }
             complete(command).map_err(|e| e.to_string())?;
@@ -398,6 +420,8 @@ fn output_texture(device: &DeviceRef, width: u32, height: u32) -> Result<Texture
     d.set_width(width as u64);
     d.set_height(height as u64);
     d.set_storage_mode(MTLStorageMode::Private);
-    d.set_usage(MTLTextureUsage::ShaderRead | MTLTextureUsage::ShaderWrite);
+    d.set_usage(
+        MTLTextureUsage::ShaderRead | MTLTextureUsage::ShaderWrite | MTLTextureUsage::RenderTarget,
+    );
     Ok(device.new_texture(&d))
 }

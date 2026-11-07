@@ -111,14 +111,21 @@ every primary ray. View 2 additionally calls original `Hit`/`Miss` bodies throug
 the open-source DXC/DXIL/SPIR-V/MSL path with real inline ray queries. Explicit
 source adapters, generated artifacts and their limits are documented in
 [shader intake](../shader/samples/miniengine/README.md). Shaded hit logic and
-postprocessing remain manual MSL in this milestone. No proprietary compiler is used.
+postprocessing were initially manual MSL. Tone mapping, SDR display, fullscreen
+vertices/copies and shaded live upsampling now use unchanged original HLSL and
+its complete include closure through the translator. Shaded hit logic remains
+manual. No proprietary shader converter is used.
 
 The physical M4 passed all 13 MiniEngine tests including exact original/manual
 view-2 pixel and hit-count agreement across all five presets, plus a hosted-compatible
 camera compute test for cbuffer layout, emitted rays and padded-dispatch guards.
 Using the original matrix-based camera changed three mesh assignments at 129×73
 compared with the older direct-basis camera math; all views now share the original
-HLSL-generated rays, preserving the strict cross-view checks. This is not evidence
+HLSL-generated rays, preserving the strict cross-view checks. A subsequent
+milestone passes all 15 MiniEngine tests, including independent original
+tone/display/luminance GPU checks at 13×7. Its intermediate is RGBA32Float instead
+of packed R11G11B10; fixed exposure 2 and zero bloom strength preserve the current
+effect scope. This is not evidence
 of native Windows full-frame DXR parity.
 
 Continue the remaining MiniEngine postprocessing paths through tested milestones;

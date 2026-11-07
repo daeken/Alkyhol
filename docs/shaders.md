@@ -1,6 +1,6 @@
 # Direct3D shader translation to Metal
 
-Project constraint: the compiler/translation toolchain must be open source and
+Project constraint: the shader translation components must be open source and
 freely available without an account-gated proprietary compiler. Apple's Metal
 Shader Converter is deliberately excluded. Native Metal remains the host API.
 
@@ -70,8 +70,16 @@ semantic linker or D3D12 root-signature/descriptor-heap runtime. Successful
 translation is not proof of arbitrary shader semantics, DXR support or game
 compatibility. Sakura still uses manual MSL. Sponza now uses original HLSL ray
 generation in all modes and original hit/miss bodies for view 2 through explicit
-[source adapters](../shader/samples/miniengine/README.md). Its material and
-postprocessing paths are still manual MSL; no full DXR binary translation is claimed.
+[source adapters](../shader/samples/miniengine/README.md). Original MiniEngine
+tone/display/fullscreen shaders and their include closure also execute through
+this chain. Material/shadow/reflection hit logic is still manual MSL; no full DXR
+binary translation is claimed. Native Metal compilation/runtime remains supplied
+by the host platform.
+
+`translate_dxil_with_options` additionally accepts explicit fragment-output
+component counts. This is needed when an original RGB shader targets a Metal
+RGBA attachment. Generated metadata records the requested attachment components;
+invalid stages/counts/locations/duplicates fail. Shader source remains unchanged.
 
 ## Executed local validation
 

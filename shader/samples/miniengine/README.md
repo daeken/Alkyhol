@@ -17,7 +17,18 @@ implement arbitrary shader tables, recursion or full DXR library translation.
 specialized split of that particular entry (which does not read the returned
 payload); the next pass performs actual traversal. All Sponza modes consume the
 original HLSL-generated primary rays. The shaded modes still use manual MSL for
-materials, shadows/reflections and display, while view 2 uses original hit/miss.
+materials and shadow/reflection hit logic, while view 2 uses original hit/miss.
+
+Tone mapping, SDR display conversion, fullscreen vertices, diagnostic copies and
+shaded live upsampling now compile the unmodified `ToneMapCS.hlsl`,
+`PresentSDRPS.hlsl`, `ScreenQuadPresentVS.hlsl`, `BufferCopyPS.hlsl` and
+`BilinearUpsamplePS.hlsl`, together with their full original include closure.
+The runtime explicitly replaces their root signatures with reflected bindings,
+supplies the original linear-clamp sampler, exposure 2 and zero bloom strength,
+and selects the typed-UAV-load path. Adaptive exposure and bloom remain absent.
+Linear HDR/SDR uses RGBA32Float instead of the original packed RGB framebuffer;
+RGB fragment outputs are explicitly widened for Metal RGBA attachments and the
+host preserves an opaque alpha. No edits to source or generated MSL implement this.
 
 The generated JSON files contain compiler-emitted MSL and authoritative binding
 metadata. They are checked in so running an app does not need a compiler download.
@@ -33,3 +44,7 @@ physical M4 additionally ran a full-scene A/B comparison at 129×73 for each of
 five camera presets: exact RGBA8 pixels, per-mesh nearest-hit counts and misses
 agree with the manual intersector reference using the same original camera rays.
 This is internal Metal agreement, not a native Windows DXR frame comparison.
+An additional 13×7 real-GPU compute/raster test compares tone-mapped/display RGB
+to an independent scalar curve (one UNORM8 code for quantization) and the original
+log-luminance output (absolute tolerance 2e-6). The physical M4 passed all 15
+MiniEngine and 14 shader tests. Hosted Metal does not supply RT evidence.

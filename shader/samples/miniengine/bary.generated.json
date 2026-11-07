@@ -65,5 +65,6 @@
     72,
     1
   ],
-  "requires_ray_query": true
+  "requires_ray_query": true,
+  "fragment_output_components": []
 }

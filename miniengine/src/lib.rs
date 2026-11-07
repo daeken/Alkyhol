@@ -4,4 +4,5 @@ pub mod dds;
 pub mod h3d;
 mod material_paths;
 mod original;
+mod postprocess;
 pub mod renderer;

@@ -26,3 +26,8 @@ Other fixtures are original Alkyhol MIT-licensed contract probes. `checker.hlsl`
 implements the existing independent native D3D12 checker scenario; the native
 reference and frozen pixel oracle remain unchanged. Public generated DXIL may be
 used for tests; proprietary game shaders/captures stay local.
+
+The [MiniEngine shader package](samples/miniengine/README.md) also records the
+complete unmodified source/include closure for its migrated ray-generation,
+hit/miss, tone, display and fullscreen shaders. Its `upstream.json` binds every
+original file to the same pinned Microsoft source revision and exact SHA-256.

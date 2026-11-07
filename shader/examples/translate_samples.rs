@@ -1,5 +1,7 @@
 //! Rebuild checked-in generated shader source and binding metadata, or verify it.
-use alkyhol_shader::{HlslOptions, Stage, compile_hlsl_with_options, translate_dxil};
+use alkyhol_shader::{
+    HlslOptions, MslOptions, Stage, compile_hlsl_with_options, translate_dxil_with_options,
+};
 use std::path::Path;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -12,29 +14,72 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Err("unexpected arguments".into());
     }
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    for (input, entry, output) in [
+    for (input, entry, stage, output) in [
         (
             "samples/miniengine/bary.hlsl",
             "AlkyholMain",
+            Stage::Compute,
             "samples/miniengine/bary.generated.json",
         ),
         (
             "samples/miniengine/camera.hlsl",
             "AlkyholMain",
+            Stage::Compute,
             "samples/miniengine/camera.generated.json",
+        ),
+        (
+            "samples/miniengine/original/ToneMapCS.hlsl",
+            "main",
+            Stage::Compute,
+            "samples/miniengine/tone.generated.json",
+        ),
+        (
+            "samples/miniengine/original/PresentSDRPS.hlsl",
+            "main",
+            Stage::Pixel,
+            "samples/miniengine/display.generated.json",
+        ),
+        (
+            "samples/miniengine/original/ScreenQuadPresentVS.hlsl",
+            "main",
+            Stage::Vertex,
+            "samples/miniengine/screen.generated.json",
+        ),
+        (
+            "samples/miniengine/original/BufferCopyPS.hlsl",
+            "main",
+            Stage::Pixel,
+            "samples/miniengine/copy.generated.json",
+        ),
+        (
+            "samples/miniengine/original/BilinearUpsamplePS.hlsl",
+            "main",
+            Stage::Pixel,
+            "samples/miniengine/upsample.generated.json",
         ),
     ] {
         let bytes = compile_hlsl_with_options(
             Path::new(dxc),
             &root.join(input),
             entry,
-            Stage::Compute,
+            stage,
             &HlslOptions {
                 shader_model_6_5: true,
-                ..Default::default()
+                strip_root_signature: true,
+                defines: &[("SUPPORT_TYPED_UAV_LOADS", "1")],
             },
         )?;
-        let shader = translate_dxil(&bytes, entry)?;
+        let shader = translate_dxil_with_options(
+            &bytes,
+            entry,
+            &MslOptions {
+                fragment_output_components: if stage == Stage::Pixel {
+                    &[(0, 4)]
+                } else {
+                    &[]
+                },
+            },
+        )?;
         let text = serde_json::to_string_pretty(&shader)? + "\n";
         let path = root.join(output);
         if check {

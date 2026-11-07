@@ -1,0 +1,15 @@
+{
+  "msl": "#include <metal_stdlib>\n#include <simd/simd.h>\n\nusing namespace metal;\n\nstruct main0_out\n{\n    float2 TexCoord [[user(locn1)]];\n    float4 gl_Position [[position]];\n};\n\nvertex main0_out main0(uint gl_VertexIndex [[vertex_id]], uint gl_BaseVertex [[base_vertex]])\n{\n    main0_out out = {};\n    uint _18 = gl_VertexIndex - gl_BaseVertex;\n    float _24 = float(_18 & 2u);\n    float _25 = float((_18 << 1u) & 2u);\n    out.gl_Position.x = (_24 * 2.0) + (-1.0);\n    out.gl_Position.y = 1.0 - (_25 * 2.0);\n    out.gl_Position.z = 0.0;\n    out.gl_Position.w = 1.0;\n    out.TexCoord.x = _24;\n    out.TexCoord.y = _25;\n    return out;\n}\n\n",
+  "entry_point": "main0",
+  "stage": "Vertex",
+  "threads_per_group": null,
+  "resources": [],
+  "vertex_inputs": [],
+  "dxil_spirv_version": [
+    2,
+    72,
+    1
+  ],
+  "requires_ray_query": false,
+  "fragment_output_components": []
+}

@@ -1,0 +1,80 @@
+{
+  "msl": "#pragma clang diagnostic ignored \"-Wmissing-prototypes\"\n\n#include <metal_stdlib>\n#include <simd/simd.h>\n\nusing namespace metal;\n\ntemplate <typename ImageT>\nvoid spvImageFence(ImageT img) { img.fence(); }\n\nstruct SSBO\n{\n    uint _m0[1];\n};\n\nstruct _23\n{\n    float4 _m0[2];\n};\n\nkernel void main0(constant _23& _25 [[buffer(0)]], const device SSBO& __restrict _9 [[buffer(1)]], texture2d<float> _13 [[texture(0)]], texture2d<float, access::read_write> _16 [[texture(1)]], texture2d<float, access::write> _19 [[texture(2)]], sampler _28 [[sampler(0)]], uint3 gl_GlobalInvocationID [[thread_position_in_grid]])\n{\n    spvImageFence(_16);\n    float4 _55 = _16.read(uint2(uint2(gl_GlobalInvocationID.x, gl_GlobalInvocationID.y)));\n    float4 _65 = _13.sample(_28, float2(_25._m0[0u].x * (float(gl_GlobalInvocationID.x) + 0.5), (float(gl_GlobalInvocationID.y) + 0.5) * _25._m0[0u].y), level(0.0));\n    float _80 = as_type<float>(_9._m0[0u]);\n    float _81 = _80 * ((_65.x * _25._m0[0u].z) + _55.x);\n    float _82 = _80 * ((_65.y * _25._m0[0u].z) + _55.y);\n    float _83 = _80 * ((_65.z * _25._m0[0u].z) + _55.z);\n    float _88 = _81 * sqrt(_81);\n    float _89 = _82 * sqrt(_82);\n    float _90 = sqrt(_83) * _83;\n    float _95 = _88 / (_88 + 0.3849001824855804443359375);\n    float _96 = _89 / (_89 + 0.3849001824855804443359375);\n    float _97 = _90 / (_90 + 0.3849001824855804443359375);\n    _16.write(float4(_95, _96, _97, _95), uint2(uint2(gl_GlobalInvocationID.x, gl_GlobalInvocationID.y)));\n    _19.write(float4(log2((dot(float3(_95, _96, _97), float3(0.21267099678516387939453125, 0.71516001224517822265625, 0.072168998420238494873046875)) * 15.0) + 1.0) * 0.25), uint2(uint2(gl_GlobalInvocationID.x, gl_GlobalInvocationID.y)));\n}\n\n",
+  "entry_point": "main0",
+  "stage": "Compute",
+  "threads_per_group": [
+    8,
+    8,
+    1
+  ],
+  "resources": [
+    {
+      "class": "Cbv",
+      "space": 0,
+      "register": 0,
+      "kind": "ConstantBuffer",
+      "namespace": "Buffer",
+      "metal_index": 0,
+      "spirv_set": 0,
+      "spirv_binding": 0
+    },
+    {
+      "class": "Srv",
+      "space": 0,
+      "register": 0,
+      "kind": "StructuredBuffer",
+      "namespace": "Buffer",
+      "metal_index": 1,
+      "spirv_set": 1,
+      "spirv_binding": 0
+    },
+    {
+      "class": "Srv",
+      "space": 0,
+      "register": 1,
+      "kind": "Texture2D",
+      "namespace": "Texture",
+      "metal_index": 0,
+      "spirv_set": 1,
+      "spirv_binding": 1
+    },
+    {
+      "class": "Uav",
+      "space": 0,
+      "register": 0,
+      "kind": "Texture2D",
+      "namespace": "Texture",
+      "metal_index": 1,
+      "spirv_set": 2,
+      "spirv_binding": 0
+    },
+    {
+      "class": "Uav",
+      "space": 0,
+      "register": 1,
+      "kind": "Texture2D",
+      "namespace": "Texture",
+      "metal_index": 2,
+      "spirv_set": 2,
+      "spirv_binding": 1
+    },
+    {
+      "class": "Sampler",
+      "space": 0,
+      "register": 0,
+      "kind": "Sampler",
+      "namespace": "Sampler",
+      "metal_index": 0,
+      "spirv_set": 3,
+      "spirv_binding": 0
+    }
+  ],
+  "vertex_inputs": [],
+  "dxil_spirv_version": [
+    2,
+    72,
+    1
+  ],
+  "requires_ray_query": false,
+  "fragment_output_components": []
+}

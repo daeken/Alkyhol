@@ -1,0 +1,41 @@
+{
+  "msl": "#include <metal_stdlib>\n#include <simd/simd.h>\n\nusing namespace metal;\n\nstruct main0_out\n{\n    float4 SV_Target [[color(0)]];\n};\n\nstruct main0_in\n{\n    float2 TexCoord [[user(locn1)]];\n};\n\nfragment main0_out main0(main0_in in [[stage_in]], texture2d<float> _8 [[texture(0)]], sampler _11 [[sampler(0)]])\n{\n    main0_out out = {};\n    float3 SV_Target = {};\n    float4 _34 = _8.sample(_11, float2(in.TexCoord.x, in.TexCoord.y), level(0.0));\n    float _36 = _34.x;\n    float _37 = _34.y;\n    float _38 = _34.z;\n    SV_Target.x = (_36 < 0.003130800090730190277099609375) ? (_36 * 12.9200000762939453125) : ((exp2(log2(_36) * 0.4166666567325592041015625) * 1.05499994754791259765625) + (-0.054999999701976776123046875));\n    SV_Target.y = (_37 < 0.003130800090730190277099609375) ? (_37 * 12.9200000762939453125) : ((exp2(log2(_37) * 0.4166666567325592041015625) * 1.05499994754791259765625) + (-0.054999999701976776123046875));\n    SV_Target.z = (_38 < 0.003130800090730190277099609375) ? (_38 * 12.9200000762939453125) : ((exp2(log2(_38) * 0.4166666567325592041015625) * 1.05499994754791259765625) + (-0.054999999701976776123046875));\n    out.SV_Target.xyz = SV_Target;\n    return out;\n}\n\n",
+  "entry_point": "main0",
+  "stage": "Pixel",
+  "threads_per_group": null,
+  "resources": [
+    {
+      "class": "Srv",
+      "space": 0,
+      "register": 0,
+      "kind": "Texture2D",
+      "namespace": "Texture",
+      "metal_index": 0,
+      "spirv_set": 1,
+      "spirv_binding": 0
+    },
+    {
+      "class": "Sampler",
+      "space": 0,
+      "register": 0,
+      "kind": "Sampler",
+      "namespace": "Sampler",
+      "metal_index": 0,
+      "spirv_set": 3,
+      "spirv_binding": 0
+    }
+  ],
+  "vertex_inputs": [],
+  "dxil_spirv_version": [
+    2,
+    72,
+    1
+  ],
+  "requires_ray_query": false,
+  "fragment_output_components": [
+    [
+      0,
+      4
+    ]
+  ]
+}

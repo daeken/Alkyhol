@@ -81,6 +81,7 @@ pub struct Translation {
     pub vertex_inputs: Vec<VertexInput>,
     pub dxil_spirv_version: (u32, u32, u32),
     pub requires_ray_query: bool,
+    pub fragment_output_components: Vec<(u32, u32)>,
 }
 
 /// Original D3D vertex semantics mapped to Metal attribute locations.
@@ -313,6 +314,21 @@ impl Bindings {
 /// Translate a compiled DXIL container to MSL 2.3. Unsupported stages/resources
 /// fail explicitly. This does not implement D3D12 root signatures or DXR dispatch.
 pub fn translate_dxil(bytes: &[u8], entry: &str) -> Result<Translation> {
+    translate_dxil_with_options(bytes, entry, &MslOptions::default())
+}
+
+/// Target attachment component counts, when the host uses a wider attachment
+/// than the source shader's output (e.g. original RGB display into RGBA Metal).
+#[derive(Default)]
+pub struct MslOptions<'a> {
+    pub fragment_output_components: &'a [(u32, u32)],
+}
+
+pub fn translate_dxil_with_options(
+    bytes: &[u8],
+    entry: &str,
+    options: &MslOptions<'_>,
+) -> Result<Translation> {
     validate_entry(entry)?;
     validate_container(bytes)?;
     let blob = ParsedBlob::parse(bytes).map_err(|e| format!("DXIL parse: {e}"))?;
@@ -401,6 +417,19 @@ pub fn translate_dxil(bytes: &[u8], entry: &str) -> Result<Translation> {
     let words = converter.compiled_spirv().map_err(|e| e.to_string())?;
     let mut compiler =
         Compiler::<targets::Msl>::new(Module::from_words(&words)).map_err(|e| e.to_string())?;
+    let mut locations = std::collections::BTreeSet::new();
+    for &(location, components) in options.fragment_output_components {
+        if stage != Stage::Pixel
+            || location >= 8
+            || !(1..=4).contains(&components)
+            || !locations.insert(location)
+        {
+            return Err("invalid fragment output component contract".into());
+        }
+        compiler
+            .set_fragment_output_components(location, components)
+            .map_err(|e| e.to_string())?;
+    }
     let requires_ray_query = compiler
         .declared_capabilities()
         .map_err(|e| e.to_string())?
@@ -448,7 +477,10 @@ pub fn translate_dxil(bytes: &[u8], entry: &str) -> Result<Translation> {
             )
             .map_err(|e| e.to_string())?;
     }
+    let fragment_output_components = options.fragment_output_components.to_vec();
+    let pad_fragment_outputs = !fragment_output_components.is_empty();
     let mut options = msl::CompilerOptions::default();
+    options.pad_fragment_output_components = pad_fragment_outputs;
     options.version = msl::MslVersion::new(2, 3, 0);
     let artifact = compiler
         .compile(&options)
@@ -476,5 +508,6 @@ pub fn translate_dxil(bytes: &[u8], entry: &str) -> Result<Translation> {
         vertex_inputs: state.vertex_inputs.values().cloned().collect(),
         dxil_spirv_version: dxil_spirv::version(),
         requires_ray_query,
+        fragment_output_components,
     })
 }
