@@ -345,7 +345,10 @@ native/hosted reports and clean physical M4 execution at that same revision agre
 on the identical EXE/DLL/sources, actual import thunks and all raw results.
 `pe/reference/linked-image-windows-v1.json` freezes the complete native record;
 drivers/comparisons require its exact identities/results by default.
-Further CI evidence is recorded in [validation](validation.md).
+Strict-reference revision `36e91cc` passes all 27 CI jobs; clean native/hosted
+records and fresh physical M4 execution agree at that same revision, with both
+host images actually rebased in the forced run. Exact CI evidence is recorded
+in [validation](validation.md).
 This finite owned EXE/DLL test does not establish game compatibility.
 
 ## Explicit borrowed DLL dependencies

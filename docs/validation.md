@@ -6,6 +6,14 @@ See the latest direct-Metal record for current implementation evidence.
 
 ## EXEs linked to borrowed DLLs: native Windows, hosted Mac and physical M4
 
+All 27 jobs pass at strict-reference revision `36e91cc`: three
+[PE jobs](https://github.com/daeken/Alkyhol/actions/runs/42406899110) and all 24
+[conformance jobs](https://github.com/daeken/Alkyhol/actions/runs/42406899070).
+Downloaded clean Windows/hosted reports and fresh clean physical M4 execution at
+that same revision agree with the frozen EXE/DLL/source/import identities and all
+14 raw words. Both host images actually relocate in the forced run. All earlier
+frozen binary, SDK/source/COM, shader and Metal comparisons remain intact.
+
 All three [PE jobs](https://github.com/daeken/Alkyhol/actions/runs/42406635787)
 pass on `c24f203`. Downloaded clean native Windows/hosted Mac records and a clean
 physical M4 record at that same revision agree on the identical EXE/DLL/source
@@ -14,7 +22,8 @@ results agree, with both images actually relocated in the forced run. The
 complete native report is frozen at `pe/reference/linked-image-windows-v1.json`;
 drivers and comparisons require that exact binary/source/import record by
 default. Missing-reference and joint-drift guards bring the Python suite to 179.
-The full conformance result remains to be recorded for the strict revision.
+Initial `c24f203` also passes all 27 jobs: the PE run above and all 24 conformance
+jobs ([42406635857](https://github.com/daeken/Alkyhol/actions/runs/42406635857)).
 
 `LinkedImage` maps a checked EXE against explicitly supplied attached DLLs while
 retaining their borrows through unmapping. It shares the existing named/ordinal
