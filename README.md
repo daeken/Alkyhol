@@ -50,6 +50,10 @@ See the [test map](docs/testing.md) for function and logical-unit coverage.
 
 ## Graphics
 
+[MiniEngine Sponza](docs/miniengine.md) provides a second geometry debugging
+scene with the original Bary Rays path and added neutral/normal/depth views.
+
+
 [Sakura Forest](docs/sakura.md) is the concrete application target: a faithful
 Rust/Metal port of Microsoft’s ray-traced sample using its original scene and
 assets. The graphics crate no longer depends on wgpu.

@@ -15,6 +15,7 @@ fn native_triangle_hits_misses_transforms_barycentrics_masks_and_invalid_inputs(
             mesh: 0,
             transform: [[2., 0., 0.], [0., 2., 0.], [0., 0., 2.], [3., 0., 5.]],
             mask: 1,
+            disable_culling: true,
         };
         for bad in [&[][..], &mesh[..2], &[[f32::NAN, 0., 0.]; 3]] {
             assert!(build_triangle_scene(&device, &[bad], &[instance]).is_err());
@@ -60,5 +61,70 @@ kernel void test_hits(instance_acceleration_structure scene [[buffer(0)]],device
         assert!((values[2] - 0.5).abs() < 1e-5);
         assert_eq!(values[3], 0.);
         assert_eq!(&values[4..], &[-1.; 8]);
+    });
+}
+
+#[test]
+#[ignore = "requires physical Metal RT; verifies nearest selection and ray-controlled instance culling"]
+fn multiple_mesh_instances_choose_nearest_and_honor_culling_override() {
+    objc::rc::autoreleasepool(|| {
+        let device = pollster::block_on(D3D12CreateDevice(false)).unwrap();
+        assert!(device.adapter_info().ray_tracing);
+        let near = [[-1., -1., 0.], [1., -1., 0.], [0., 1., 0.]];
+        let far = [[-1., -1., 2.], [1., -1., 2.], [0., 1., 2.]];
+        let native = device.metal_device();
+        let library=native.new_library_with_source(r#"
+#include <metal_stdlib>
+#include <metal_raytracing>
+using namespace metal;using namespace raytracing;
+kernel void depth_and_cull(instance_acceleration_structure scene [[buffer(0)]],device float4* out [[buffer(1)]],uint id [[thread_position_in_grid]]) {
+ ray r;r.origin=float3(0,0,(id%2)?20:0);r.direction=float3(0,0,(id%2)?-1:1);r.min_distance=.001f;r.max_distance=100;
+ intersector<triangle_data,instancing> tracer;tracer.assume_geometry_type(geometry_type::triangle);tracer.force_opacity(forced_opacity::opaque);tracer.accept_any_intersection(false);
+ tracer.set_triangle_front_facing_winding(winding::clockwise);tracer.set_triangle_cull_mode(id>=2?triangle_cull_mode::back:triangle_cull_mode::none);
+ auto hit=tracer.intersect(r,scene,1);out[id]=hit.type==intersection_type::none?float4(-1):float4(hit.distance,float(hit.instance_id),float(hit.primitive_id),1);
+}
+"#,&CompileOptions::new()).unwrap();
+        let function = library.get_function("depth_and_cull", None).unwrap();
+        let pipeline = native
+            .new_compute_pipeline_state_with_function(&function)
+            .unwrap();
+        for disable_culling in [false, true] {
+            let instances = [
+                TriangleInstance {
+                    mesh: 1,
+                    transform: [[1., 0., 0.], [0., 1., 0.], [0., 0., 1.], [0., 0., 8.]],
+                    mask: 1,
+                    disable_culling,
+                },
+                TriangleInstance {
+                    mesh: 0,
+                    transform: [[1., 0., 0.], [0., 1., 0.], [0., 0., 1.], [0., 0., 3.]],
+                    mask: 1,
+                    disable_culling,
+                },
+            ];
+            let scene = build_triangle_scene(&device, &[&near, &far], &instances).unwrap();
+            let output = native.new_buffer(64, MTLResourceOptions::StorageModeShared);
+            let command = device.metal_queue().new_command_buffer();
+            let encoder = command.new_compute_command_encoder();
+            encoder.set_compute_pipeline_state(&pipeline);
+            encoder.set_acceleration_structure(0, Some(&scene.acceleration));
+            encoder.set_buffer(1, Some(&output), 0);
+            scene.use_resources(encoder);
+            encoder.dispatch_threads(MTLSize::new(4, 1, 1), MTLSize::new(4, 1, 1));
+            encoder.end_encoding();
+            complete(command).unwrap();
+            let hits =
+                unsafe { std::slice::from_raw_parts(output.contents().cast::<[f32; 4]>(), 4) };
+            assert_eq!(hits[0], [3., 1., 0., 1.]);
+            assert_eq!(hits[1], [10., 0., 0., 1.]);
+            if disable_culling {
+                assert_eq!(hits[2], hits[0]);
+                assert_eq!(hits[3], hits[1]);
+            } else {
+                assert_eq!(hits[2..].iter().filter(|h| h[3] == 1.).count(), 1);
+                assert_eq!(hits[2..].iter().filter(|h| **h == [-1.; 4]).count(), 1);
+            }
+        }
     });
 }

@@ -9,6 +9,8 @@ pub struct TriangleInstance {
     /// Column-major affine packed float4x3, matching Metal's native descriptor.
     pub transform: [[f32; 3]; 4],
     pub mask: u32,
+    /// Disable triangle culling regardless of ray flags (Sakura uses double-sided rays).
+    pub disable_culling: bool,
 }
 pub struct TriangleScene {
     pub acceleration: AccelerationStructure,
@@ -112,7 +114,11 @@ pub fn build_triangle_scene(
             .map(|i| MTLAccelerationStructureInstanceDescriptor {
                 transformation_matrix: i.transform,
                 options: MTLAccelerationStructureInstanceOptions::Opaque
-                    | MTLAccelerationStructureInstanceOptions::DisableTriangleCulling,
+                    | if i.disable_culling {
+                        MTLAccelerationStructureInstanceOptions::DisableTriangleCulling
+                    } else {
+                        MTLAccelerationStructureInstanceOptions::None
+                    },
                 mask: i.mask,
                 intersection_function_table_offset: 0,
                 acceleration_structure_index: i.mesh,

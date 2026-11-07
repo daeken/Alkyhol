@@ -81,6 +81,18 @@ jobs:
         with:
           name: sakura-layout-Metal-host
           path: sakura-layout.txt
+      - run: cargo fmt --manifest-path miniengine/Cargo.toml --check
+      - run: cargo clippy --manifest-path miniengine/Cargo.toml --locked --all-targets -- -D warnings
+      - name: Test MiniEngine H3D parser and CLI (hosted GPU lacks RT)
+        run: |
+          python tools/fetch_miniengine.py
+          cargo test --manifest-path miniengine/Cargo.toml --locked
+          cargo test --manifest-path miniengine/Cargo.toml --locked --test model -- --include-ignored
+          python tools/run_miniengine_geometry.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: miniengine-geometry-Mac
+          path: miniengine-geometry.json
       - name: Exercise a real Metal device
         if: runner.os == 'macOS'
         env:
@@ -119,6 +131,12 @@ jobs:
         with:
           name: sakura-layout-Windows
           path: sakura-layout.txt
+      - name: Observe native MSVC H3D struct ABI and expanded geometry bytes
+        run: python tools/run_miniengine_geometry.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: miniengine-geometry-Windows
+          path: miniengine-geometry.json
       - name: Execute actual Windows SDK D3D12 with explicit WARP
         run: python tools/run_graphics_contract.py --output graphics-contract.json
       - uses: actions/upload-artifact@v4
@@ -171,4 +189,29 @@ jobs:
           assert all(len(b)==13525*49 and len(b.splitlines())==13525 for b in observed)
           assert observed[0]==observed[1], 'Sakura instance float bits differ from native MSVC'
           print('All 13,525 instance records agree, SHA256:',hashlib.sha256(observed[0]).hexdigest())
+          PY
+
+  compare-miniengine-geometry:
+    needs: [graphics, graphics-reference]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: miniengine-geometry-*
+          path: geometry
+      - name: Compare all expanded Sponza attribute bytes with native MSVC
+        run: |
+          python3 - <<'PY'
+          import json, subprocess
+          from pathlib import Path
+          reports=[json.loads(p.read_text()) for p in Path('geometry').glob('*/miniengine-geometry.json')]
+          assert len(reports)==2
+          assert {r['backend'] for r in reports}=={'native MSVC H3D ABI','Rust H3D reader'}
+          revision=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
+          assert all(r['revision']==revision and r['tracked_tree_clean'] is True for r in reports)
+          for key in ['scenario','asset_sha256','expanded_bytes','expanded_sha256']:
+              assert reports[0][key]==reports[1][key],key
+          assert reports[0]['expanded_bytes']==46858664
+          print('Native MSVC and Rust agree on every expanded Sponza geometry/attribute byte:',reports[0]['expanded_sha256'])
           PY

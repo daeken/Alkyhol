@@ -95,6 +95,7 @@ fn full_scene_gpu_nearest_hits_agree_with_independent_cpu_triangles() {
                     i.position,
                 ],
                 mask: 1,
+                disable_culling: true,
             })
             .collect::<Vec<_>>();
         let scene = build_triangle_scene(&device, &slices, &descriptors).unwrap();

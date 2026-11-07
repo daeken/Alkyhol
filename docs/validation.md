@@ -349,3 +349,33 @@ asserts only the finite density range for this part; it does not count them as
 host/GPU equality or native DXR evidence. Original sky math, loop counts and the
 working full-frame output are retained. The user clarified that the purple/noisy
 sky matches the sample screenshot; the remaining visual concern is trunk coverage.
+
+## MiniEngine Sponza geometry diagnostics, 2026-11-07
+
+Physical M4/macOS 27.0.1/Rust 1.99.1 rendered the original pinned Sponza H3D with
+34 meshes, 27 materials and 278,919 triangles. Six MiniEngine integration tests
+passed explicitly including pinned assets and actual GPU rendering: three parser/
+asset tests, camera, CLI and full-scene view/capture/resize checks. All four views
+accounted for the same primary rays and repeated full pixels matched at fixed
+view. Original Bary Rays was observed in a live window around 59 FPS at 960×540;
+UI switching from 2 to 1 visibly returned to Geometry diagnostic after the controls
+fix. The neutral diagnostic is not the original raster/material shading mode.
+
+Two physical graphics ray tests passed, including the new two-mesh far-first /
+near-second instance scene and both directions with ray backface culling enabled
+or disabled via instance override. Existing Sakura instances retain their prior
+culling behavior. The original Sakura geometry/shader audit code revision
+`fa757f6` passed all eight existing CI jobs in run
+[42336806679](https://github.com/daeken/Alkyhol/actions/runs/42336806679).
+
+The Rust H3D stream contains 46,858,664 bytes, including material/count headers and
+every expanded original vertex attribute bit (including unused NaN tangents).
+Local SHA-256: `0d937fea9ee97a5f38a8dcec326ae0ce48b154d36613a70358cf1c136478f51e`.
+The original H3D asset SHA-256 is
+`c52e851f67a37892acf229df7cce8e2b8aff997a087bc41fa8c48beb73b45747`.
+A native MSVC mirror of the pinned serialized structs asserts the SIMD record
+sizes and independently expands the uint16 index stream. Its CI comparison is
+newly defined; no native result is claimed until that job actually completes.
+There is no full MiniEngine native DXR pixel comparison yet. Textured lighting,
+shadow/reflection modes and postprocessing remain subsequent work requested by
+the user; diagnostic rendering does not count as those effects being implemented.

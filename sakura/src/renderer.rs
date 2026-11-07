@@ -72,6 +72,7 @@ impl Renderer {
                     i.position,
                 ],
                 mask: 1,
+                disable_culling: true,
             })
             .collect::<Vec<_>>();
         let scene =

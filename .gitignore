@@ -5,3 +5,5 @@ __pycache__/
 *.pyc
 *.ppm
 /sakura/target/
+/miniengine/target/
+/miniengine-geometry.json

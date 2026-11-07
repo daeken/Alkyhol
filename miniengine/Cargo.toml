@@ -1,0 +1,22 @@
+[package]
+name = "alkyhol-miniengine"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+description = "MiniEngine Sponza geometry diagnostics over native Metal"
+
+[dependencies]
+alkyhol-d3d12 = { path = "../graphics" }
+metal = "=0.32.0"
+objc = "=0.2.7"
+pollster = "=0.4.0"
+glam = "=0.30.9"
+bytemuck = { version = "=1.25.0", features = ["derive"] }
+image = { version = "=0.25.9", default-features = false, features = ["png"] }
+winit = "=0.30.12"
+raw-window-handle = "=0.6.2"
+core-graphics-types = "=0.2.0"
+
+[features]
+# Compatibility with objc 0.2 macro cfg checks.
+cargo-clippy = []

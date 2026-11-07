@@ -1,0 +1,49 @@
+{
+  "repository": "https://github.com/microsoft/DirectX-Graphics-Samples",
+  "revision": "68a2b1e97f71642924e74c7757ca21756ad221b5",
+  "directory": "Samples/Desktop/D3D12Raytracing/src/D3D12RaytracingMiniEngineSample",
+  "assets": {
+    "Sponza/sponza.h3d": {
+      "bytes": 17535860,
+      "sha256": "c52e851f67a37892acf229df7cce8e2b8aff997a087bc41fa8c48beb73b45747"
+    }
+  },
+  "sources": {
+    "ModelViewer.cpp": {
+      "bytes": 64449,
+      "sha256": "308b8df3661f8da19c999230948bbfbd282d0eb6609e0c00f63cc7ce6a922cbd"
+    },
+    "hitShaderLib.hlsl": {
+      "bytes": 783,
+      "sha256": "82eb4c731fec8e96a073addcb4eb1a5eff02931ab480a63196578bf652dccdb6"
+    },
+    "missShaderLib.hlsl": {
+      "bytes": 695,
+      "sha256": "ef3ffe89bc8b4e1787e27d5b8c61536f3263e4a5c1427351b9450d64bfdebfd9"
+    },
+    "RayGenerationShaderLib.hlsl": {
+      "bytes": 920,
+      "sha256": "227e0d9c57137935648f03c8f2825d21dd3d329a8d8286208b2adc60928ed798"
+    },
+    "ModelViewerRayTracing.h": {
+      "bytes": 1409,
+      "sha256": "209be9abbc44fc0340d54a806490372faa0babee152b0506ad759fc7b766fdcd"
+    },
+    "MiniEngine/Model/ModelH3D.h": {
+      "bytes": 6934,
+      "sha256": "58996e21a88d3be0619552240a4ab99d8741844ef66ebf954f908b9220adfcee"
+    },
+    "MiniEngine/Model/ModelH3D.cpp": {
+      "bytes": 12859,
+      "sha256": "a94683d65b5cbcf8e1ba6e0da4fcb56f1f50764371b547e63d2a2552e0471874"
+    },
+    "MiniEngine/Model/SponzaRenderer.cpp": {
+      "bytes": 16306,
+      "sha256": "05f8a7983c5a138930adcee527f6eb7773bdaf6ff1809d55468d8be07fd73067"
+    },
+    "MiniEngine/Core/CameraController.cpp": {
+      "bytes": 8012,
+      "sha256": "8e8bbe4308fe40f3e06044e41ec27f71e224d45d96b81eca0ab04a5ad301fef5"
+    }
+  }
+}

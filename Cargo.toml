@@ -9,4 +9,4 @@ description = "Incremental Win32 source compatibility for native hosts"
 crate-type = ["rlib", "cdylib", "staticlib"]
 
 [workspace]
-exclude = ["graphics", "sakura"]
+exclude = ["graphics", "sakura", "miniengine"]
