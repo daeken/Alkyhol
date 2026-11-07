@@ -80,11 +80,10 @@ def main():
     old = json.loads(DEPENDENCY_REFERENCE.read_text(encoding='utf-8'))
     if manifest['binaries']['alkyhol_exports.dll'] != old['dll_sha256'] or any(manifest['sources'][s] != digest for s, digest in old['sources'].items()):
         raise ValueError('changed frozen dependency identity')
-    if REFERENCE.exists():
-        reference = json.loads(REFERENCE.read_text(encoding='utf-8'))
-        for field in ['binaries', 'sources', 'imports']:
-            if manifest[field] != reference[field]:
-                raise ValueError(f'changed frozen ordinal fixture: {field}')
+    reference = json.loads(REFERENCE.read_text(encoding='utf-8'))
+    for field in ['binaries', 'sources', 'imports']:
+        if manifest[field] != reference[field]:
+            raise ValueError(f'changed frozen ordinal fixture: {field}')
     for name, digest in manifest['binaries'].items():
         if hashlib.sha256((directory / name).read_bytes()).hexdigest() != digest:
             raise ValueError('changed ordinal DLL identity')

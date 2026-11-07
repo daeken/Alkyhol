@@ -381,8 +381,12 @@ uses ordinal code to initialize state, Evaluate mixes named/code/data imports,
 and three exports forward by ordinal to code/data. Independent Python inventory
 and the Rust parser both check the actual LLVM-produced mixed thunks. Physical
 M4 normal/forced-rebase runs agree on all seven actual call/data/target fields;
-both DLLs relocate in the forced case. The Windows comparison is pending until
-an executed result is recorded in [validation](validation.md).
+both DLLs relocate in the forced case. Native Windows, hosted Mac and clean
+physical M4 records agree at `150ca60` ([PE run 42397230715](https://github.com/daeken/Alkyhol/actions/runs/42397230715)).
+The full native report is frozen at `pe/reference/ordinal-windows-v1.json`;
+drivers require the exact frozen DLL/source/import identities before entry and
+comparisons require its native execution results, rejecting joint drift too.
+See [validation](validation.md) for exact executed revisions.
 
 ```sh
 python3 tools/build_pe_ordinal.py

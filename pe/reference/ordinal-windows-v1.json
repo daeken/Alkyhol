@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "backend": "native Windows ordinal DLLs",
+  "binaries": {
+    "alkyhol_exports.dll": "423d6e191a3ebb4f4f5ce11710591edc9ebe163ece79bd35cc6fe5146d13399d",
+    "alkyhol_ordinal.dll": "49ce61a1f2ecf91a4ed14672370cd6db579c350d297d041c31e76ad093f09fdc"
+  },
+  "sources": {
+    "pe/fixtures/ordinal/library.c": "63830babe71a92f171dc41e5bfcea5bb0027943ef207fd7cfd0e8189bc48125e",
+    "pe/fixtures/ordinal/library.def": "b4a7dd99bb0369c8df5a9cfbfd52c34c3c6135695599afde8d320566c07535f6",
+    "pe/fixtures/ordinal/imports.def": "119d5f29d8fcb11b5ce94dd28d68ce0b42341d5100201c39e29f62985e991d8e",
+    "pe/fixtures/exports/library.c": "b2b9fcf9581d59e982b7754354eb8798616e0d0903b1816f786d4331ec263b96",
+    "pe/fixtures/exports/library.def": "a011d8748d774d3f147a0352277adfddc574416aa9a4610f152766a1db874493"
+  },
+  "imports": [
+    {
+      "module": "alkyhol_exports.dll",
+      "symbols": [
+        {
+          "ordinal": 21
+        },
+        {
+          "name": "Direct"
+        },
+        {
+          "ordinal": 23
+        }
+      ]
+    }
+  ],
+  "normal": {
+    "common": {
+      "evaluation": 324508621,
+      "initial": 305419905,
+      "through_call": 305419905,
+      "forward_data": 826366246,
+      "through_matches_ordinal": true,
+      "data_matches_ordinal": true,
+      "direct_matches_ordinal": true
+    },
+    "relocated": null
+  },
+  "rebased": null,
+  "revision": "150ca60285053b47797349085963948f639a0577",
+  "tracked_tree_clean": true
+}

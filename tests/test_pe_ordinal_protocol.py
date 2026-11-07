@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'tools'))
 from compare_pe_ordinal import compare, NATIVE, HOST
 from build_pe_ordinal import SOURCES, IMPORTS
-from run_pe_ordinal import DEPENDENCY_REFERENCE, EXPECTED, check_result
+from run_pe_ordinal import REFERENCE, DEPENDENCY_REFERENCE, EXPECTED, check_result
 
 
 class OrdinalProtocolTests(unittest.TestCase):
@@ -29,6 +29,17 @@ class OrdinalProtocolTests(unittest.TestCase):
         check_result(reports[0]['normal'], windows=True)
         check_result(reports[1]['rebased'], rebase=True)
         self.assertEqual(compare(reports, reference=reports[0]), 7)
+
+    def test_default_frozen_native_record_rejects_joint_consumer_drift(self):
+        native = json.loads(REFERENCE.read_text(encoding='utf-8'))
+        host = copy.deepcopy(native)
+        host.update(backend=HOST, normal={'common': copy.deepcopy(EXPECTED), 'relocated': [False, True]},
+                    rebased={'common': copy.deepcopy(EXPECTED), 'relocated': [True, True]})
+        self.assertEqual(compare([native, host]), 7)
+        for r in [native, host]:
+            r['binaries']['alkyhol_ordinal.dll'] = 'e' * 64
+        with self.assertRaises(ValueError):
+            compare([native, host])
 
     def test_wrong_data_calls_target_identities_and_rebase_flags_fail(self):
         for key in EXPECTED:

@@ -22,7 +22,7 @@ const PRIVATE_ANON: i32 = 2 | 0x1000; // Darwin MAP_PRIVATE | MAP_ANON; never MA
 fn resolve_builtin(module: &str, symbol: &ImportSymbol) -> Option<usize> {
     match symbol {
         ImportSymbol::Name(name) => abi::resolve(module, name),
-        // System DLL ordinal tables vary by Windows build. Never guess one.
+        // Only named system imports have a validated bridge contract.
         ImportSymbol::Ordinal(_) => None,
     }
 }

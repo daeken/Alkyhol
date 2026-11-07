@@ -37,14 +37,13 @@ def compare(reports, reference=None):
     check_result(host['rebased'], rebase=True)
     if host['normal']['common'] != native['normal']['common'] or host['rebased']['common'] != native['normal']['common']:
         raise ValueError('actual ordinal execution differs')
-    if reference is None and REFERENCE.exists():
+    if reference is None:
         reference = json.loads(REFERENCE.read_text(encoding='utf-8'))
-    if reference is not None:
-        if reference['backend'] != NATIVE or reference['schema_version'] != 1 or reference['tracked_tree_clean'] is not True:
-            raise ValueError('invalid frozen native ordinal reference')
-        for field in ['binaries', 'sources', 'imports', 'normal']:
-            if native[field] != reference[field]:
-                raise ValueError(f'changed frozen native ordinal evidence: {field}')
+    if reference['backend'] != NATIVE or reference['schema_version'] != 1 or reference['tracked_tree_clean'] is not True:
+        raise ValueError('invalid frozen native ordinal reference')
+    for field in ['binaries', 'sources', 'imports', 'normal']:
+        if native[field] != reference[field]:
+            raise ValueError(f'changed frozen native ordinal evidence: {field}')
     return len(native['normal']['common'])
 
 

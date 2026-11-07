@@ -4,7 +4,7 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
-## Mixed ordinal DLL imports/forwarders: physical M4, native comparison pending
+## Mixed ordinal DLL imports/forwarders: native Windows, hosted Mac and physical M4
 
 The PE parser now retains named and ordinal imports in distinct ImportSymbol
 variants. Two new portable units check mixed order, 0/65535 metadata boundaries,
@@ -21,17 +21,24 @@ ordinals 17, 21 and 23. Physical M4/Rosetta normal and forced-rebase runs agree 
 Evaluate `324508621`, initializer/forwarded call `305419905`, forwarded data
 `826366246` and three actual resolved pointer-equality predicates. Both DLLs
 actually relocate in the forced run. This is actual trusted DLL execution, not
-static inventory alone. Native Windows comparison is wired into the existing PE
-workflow and remains pending. [Contract/reproduction](pe.md#explicit-ordinal-imports-and-forwarders).
+static inventory alone. All three [PE jobs](https://github.com/daeken/Alkyhol/actions/runs/42397230715)
+pass at `150ca60`. Downloaded clean native Windows/hosted Mac reports and a clean
+physical M4 run at that same revision agree on both DLL/source identities,
+the independently inventoried mixed thunks and all seven execution observations.
+The complete actual native report is frozen at `pe/reference/ordinal-windows-v1.json`.
+Future drivers require its DLL/source/import identity before entry, and the
+comparator requires its native execution observations. [Contract/reproduction](pe.md#explicit-ordinal-imports-and-forwarders).
 
 All 43 PE tests plus two lifetime compiler checks pass under Rosetta, 19 portable
 arm64 tests and 155 Python tests pass, and formatting/PE Clippy pass. The frozen
 original executable, all eleven released u-config cases and successful/failed/
 dependent DLL observers pass again locally, including forced rebase. Launcher
 diagnostics retain the exact existing named-only format for old binary observers.
-Four new synthetic protocol units reject identity/call/data/target/rebase drift;
+Four initial synthetic protocol units reject identity/call/data/target/rebase drift;
 those host assertions are separate from native Windows evidence. All 27 CI jobs
 passed on prior docs-only `cd993fd` (PE 42396358867; conformance 42396358846).
+The default frozen-reference regression adds a fifth protocol unit and brings
+Python coverage to 156 passing tests; frozen original observers are unchanged.
 
 ## Explicit DLL-to-DLL linking: native Windows, hosted Mac and physical M4
 
