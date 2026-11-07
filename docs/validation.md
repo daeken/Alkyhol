@@ -32,12 +32,14 @@ material shading/reflections around 59.7 FPS, and keys 2, 1 and 7 switched views
 successfully. These loaded-machine UI/cold observations are not controlled
 steady-state benchmarks. Geometry, texture mips and render quality were retained.
 
-[Run 42344311350](https://github.com/daeken/Alkyhol/actions/runs/42344311350)
-passed all ten jobs on Sakura source migration revision `581845c`. Native MSVC
-Sponza attributes, Sakura placements, portable Windows SDK observations and the
-native WARP checker comparisons continue to agree. Hosted Metal lacks RT; this
-CI evidence precedes the current material migration. Native full shaded DXR
-frame parity and general DXR library translation remain unmeasured/unimplemented.
+[Run 42347064101](https://github.com/daeken/Alkyhol/actions/runs/42347064101)
+passed all ten jobs on material migration revision `5984b3e`. Native MSVC Sponza
+attributes, Sakura placements, portable Windows SDK observations and the native
+WARP checker comparisons continue to agree. Hosted Metal compute/raster tests,
+source extraction and exact shader regeneration also passed; that GPU lacks RT.
+Native full shaded DXR frame parity and general DXR library translation remain
+unmeasured/unimplemented. The preceding Sakura revision `581845c` also passed all
+ten jobs in [42344311350](https://github.com/daeken/Alkyhol/actions/runs/42344311350).
 
 ## Original Sakura HLSL bodies: local evidence
 
