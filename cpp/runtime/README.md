@@ -57,3 +57,34 @@ passed all fourteen jobs on `c8475d0`. The hosted C++ probe enumerated Apple
 Paravirtual device (no native Metal RT); the physical M4 probe enumerated Apple
 M4. Each checked all vtable slots and parent/descriptor invariants against its
 own actual Metal inventory. Neither is original C++ rendering evidence.
+
+## Restricted device/resource milestone
+
+`AlkyholCreateMetalDeviceSubset` is an explicit, separately named constructor for
+real Metal-backed ID3D12Device/ID3D12Resource source-ABI work. It is not wired into
+D3D12CreateDevice and makes no feature-level claim. The native API remains
+unavailable until the runtime can satisfy its contract; original sample startup
+therefore remains gated. The subset does not advertise Device5 or DXR capability.
+
+The full typed device/resource vtables have 44/15 SDK slots. Supported behavior is
+IUnknown/Object inheritance, naming/private data, one-node and adapter identity,
+UPLOAD/READBACK committed buffers (normal properties, node masks 1, flags zero,
+row-major, one subresource, initial GENERIC_READ/COPY_DEST respectively), coherent
+Shared-storage Map/Unmap, by-value GetDesc, actual Metal GPU addresses, heap
+properties and retained parent-device lifetime. Zero-width and invalid scalar
+buffer shapes fail; other resource types/flags/heaps/alignment are unsupported.
+
+HRESULT operations that are unimplemented fail and clear interface outputs.
+Unsupported void/struct getters with no meaningful error result abort with a
+specific diagnostic instead of silently continuing with successful empty results.
+The allocation-info getter uses the SDK's invalid-size sentinel. Options5 reports
+no implemented DXR, render passes or tiled-resource extension; this is runtime
+capability, independent of the physical Metal device's ray-tracing property.
+
+A Rust integration unit fills the actual COM-owned shared buffer with a native
+Metal blit command, waits for successful GPU completion and checks all 512 bytes
+through Map. This is actual resource/backend evidence, not command submission
+through COM, a shader/rendering test, feature-level conformance or game compatibility.
+A shared C++ upload/readback probe records returned descriptors, heap properties,
+CPU-visible data checksums, GPU-address presence and parent lifetime on Metal and
+independent Windows SDK/WARP. Native comparison results must be recorded after CI.

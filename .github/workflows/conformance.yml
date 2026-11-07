@@ -244,6 +244,12 @@ jobs:
         with:
           python-version: '3.12'
       - uses: ilammy/msvc-dev-cmd@v1
+      - name: Observe native WARP buffer descriptors, maps and resource ownership
+        run: python tools/run_cpp_device_buffers.py --output cpp-device-buffers.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cpp-device-buffers-Windows
+          path: cpp-device-buffers.json
       - name: Observe native D3D12 COM private-data and interface ownership
         run: python tools/run_cpp_object_reference.py --output cpp-object-reference.json
       - uses: actions/upload-artifact@v4
@@ -381,7 +387,34 @@ jobs:
       - run: cargo test --manifest-path cpp/runtime/Cargo.toml --locked
       - name: Execute all C++ factory/adapter vtable slots against actual Metal
         run: python tools/run_cpp_metal_factory.py --output cpp-metal-factory.json
+      - name: Exercise restricted COM device/resources backed by real Metal buffers
+        run: python tools/run_cpp_device_buffers.py --output cpp-device-buffers.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cpp-device-buffers-Metal
+          path: cpp-device-buffers.json
       - uses: actions/upload-artifact@v4
         with:
           name: cpp-metal-factory
           path: cpp-metal-factory.json
+
+  compare-cpp-device-buffers:
+    needs: [cpp-metal-factory, graphics-reference]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: cpp-device-buffers-*
+          path: cpp-buffer-observations
+      - name: Compare native WARP and restricted Metal COM buffer behavior
+        run: |
+          python3 - <<'PY'
+          import json, subprocess
+          from pathlib import Path
+          from tools.run_cpp_device_buffers import compare_reports
+          reports=[json.loads(p.read_text()) for p in Path('cpp-buffer-observations').glob('*/*.json')]
+          revision=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
+          compare_reports(reports,revision)
+          print('All shared upload/readback descriptors, heap properties, mapped data and parent ownership checks agree; feature-level conformance not claimed')
+          PY

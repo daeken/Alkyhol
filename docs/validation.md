@@ -4,6 +4,38 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## Restricted Metal COM device and committed buffers: local evidence
+
+A separately named `AlkyholCreateMetalDeviceSubset` now constructs real retained
+Metal-backed ID3D12Device/Resource interfaces, with typed 44/15-slot vtables.
+This is explicitly not D3D12CreateDevice or a feature-level claim. That native API
+and the original application's startup gate remain unavailable. Options5 reports
+no implemented DXR/render-pass/tiled-resource extensions, regardless of physical
+Metal RT support; Device5 QueryInterface fails honestly.
+
+On physical M4, actual x86-64 C++ virtual calls create UPLOAD and READBACK buffers
+of 257 and 1024 bytes, exercise large by-value resource descriptors and by-value
+adapter LUID ABI, map/write/unmap/remap, obtain heap properties and native Metal
+GPU addresses, and verify retained device identity after releasing caller handles.
+Observed mapped checksums are 4261412018/3966715333 for the two widths. These are
+CPU data/ABI observations; matching native WARP behavior remains pending CI.
+Unsupported void/struct operations are separately checked to abort with a
+specific diagnostic, never counted as supported behavior or successful results.
+
+A distinct Rust integration unit creates the same COM-backed shared buffer,
+submits a native Metal blit fill, waits for Completed status and verifies every
+one of its 512 mapped bytes is 5a. This is physical GPU-backed resource evidence,
+not COM command-list execution, shader execution, original C++ rendering or a
+native D3D12 feature-level claim. Six new device/resource units (12 runtime total)
+and runtime Clippy pass; all 64 Python tests pass locally. The unchanged original
+C++ sample relinks with the updated library and still exits 78 at its honest
+D3D12CreateDevice preflight. No original source, asset or shader is modified.
+
+A new CI comparison will require clean identical revisions and source bytes for
+the independent native WARP and restricted Metal buffer probes. Neither expected
+native heap/descriptor values nor successful calls are manufactured by its parser.
+See [restricted runtime](../cpp/runtime/README.md) for exact supported constraints.
+
 ## Direct-Metal DXGI factory/adapter COM: local discovery evidence
 
 The new combined Rust COM runtime constructs actual Metal-backed DXGI factory

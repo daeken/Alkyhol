@@ -36,7 +36,7 @@ def run(output):
     helper=overlay/'_mingw_dxhelper.h'
     if not helper.exists():helper.symlink_to(mingw/'mingw-w64-headers/include/_mingw_dxhelper.h')
     inputs=[ROOT/'Cargo.toml',ROOT/'Cargo.lock',ROOT/'cpp/upstream.json',ROOT/'cpp/runtime/Cargo.toml',ROOT/'cpp/runtime/Cargo.lock',
-            ROOT/'cpp/runtime/src/lib.rs',ROOT/'cpp/tests/metal_factory.cpp',Path(__file__).resolve(),
+            *sorted((ROOT/'cpp/runtime/src').glob('*.rs')),ROOT/'cpp/tests/metal_factory.cpp',Path(__file__).resolve(),
             *sorted((ROOT/'src').glob('*.rs')),*sorted(p for p in (ROOT/'cpp/include').rglob('*') if p.is_file())]
     hashes=lambda:{p.relative_to(ROOT).as_posix():hashlib.sha256(p.read_bytes()).hexdigest() for p in inputs}
     before=hashes()

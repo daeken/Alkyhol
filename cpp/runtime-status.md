@@ -17,6 +17,7 @@ COM device is implemented. This is a build milestone, not a functioning renderer
 | Wide printf | Windows wide string/character conventions used by original helpers, including `%s`, `%S`, `%ws`; bounded formats, not all MSVC printf extensions |
 | DirectInput public tables | 256 keyboard and 11 mouse object descriptors with public GUIDs; metadata only |
 | DXGI discovery | Real Metal factory through IDXGIFactory6 and adapter through IDXGIAdapter1; retained devices, parent ownership, descriptors, metadata and LUID lookup; no swap chains/outputs/device capability |
+| Restricted device/resource constructor | Explicit non-feature-level Metal-backed subset; real shared UPLOAD/READBACK buffers, Map/Unmap/descriptors/parent ownership/GPU addresses; not used by D3D12CreateDevice |
 | D3D12 creation | Explicit E_NOTIMPL and cleared interface outputs; no device, resource or command capability success |
 | D3D12 root serialization/debug/experiments | Explicit failures; no serialized blob or debug interface |
 | Window/message/input services | Explicit unavailable diagnostics/failure returns; no simulated window, silent event loop or successful input device |

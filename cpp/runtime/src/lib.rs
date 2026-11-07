@@ -829,3 +829,6 @@ mod tests {
         });
     }
 }
+
+mod device;
+pub use device::AlkyholCreateMetalDeviceSubset;
