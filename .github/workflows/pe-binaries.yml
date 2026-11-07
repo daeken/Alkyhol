@@ -33,6 +33,20 @@ jobs:
           python tools/run_pe_exports.py --dll local/pe/export-fixture/alkyhol_exports.dll --output local/pe/exports-metadata.json
       - name: Execute the frozen owned DLL through Alkyhol, including DllMain and exports
         run: python tools/run_pe_library.py --dll local/pe/export-fixture/alkyhol_exports.dll --output local/pe/library-runtime.json
+      - name: Execute a genuine failed DLL initializer and its ordered cleanup with imported APIs
+        run: |
+          python tools/build_pe_failed_attach.py
+          python tools/run_pe_failed_attach.py --dll local/pe/failed-attach/alkyhol_failed_attach.dll --output local/pe/failed-attach-alkyhol.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe-failed-attach-fixture
+          path: |
+            local/pe/failed-attach/alkyhol_failed_attach.dll
+            local/pe/failed-attach/failed-attach-fixture.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe-failed-attach-alkyhol
+          path: local/pe/failed-attach-alkyhol.json
       - uses: actions/upload-artifact@v4
         with:
           name: pe-library-runtime
@@ -103,6 +117,16 @@ jobs:
           path: local/pe/export-fixture
       - name: Resolve actual named, ordinal, data and forwarded exports using Windows
         run: python tools/run_pe_exports.py --dll local/pe/export-fixture/alkyhol_exports.dll --output local/pe/exports-windows.json
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe-failed-attach-fixture
+          path: local/pe/failed-attach
+      - name: Observe real Windows failed DLL initialization and cleanup of the identical binary
+        run: python tools/run_pe_failed_attach.py --dll local/pe/failed-attach/alkyhol_failed_attach.dll --output local/pe/failed-attach-windows.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe-failed-attach-windows
+          path: local/pe/failed-attach-windows.json
       - uses: actions/upload-artifact@v4
         with:
           name: pe-exports-windows
@@ -149,3 +173,12 @@ jobs:
           name: pe-library-runtime
           path: local/pe/observations
       - run: python tools/compare_pe_library.py local/pe/observations/exports-windows.json local/pe/observations/library-runtime.json
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe-failed-attach-alkyhol
+          path: local/pe/observations
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe-failed-attach-windows
+          path: local/pe/observations
+      - run: python tools/compare_pe_failed_attach.py local/pe/observations/failed-attach-windows.json local/pe/observations/failed-attach-alkyhol.json

@@ -26,3 +26,4 @@ pe/fixtures/u-config/** text eol=lf
 
 # Identical owned DLL source bytes for the actual Windows export observer.
 pe/fixtures/exports/* text eol=lf
+pe/fixtures/failed-attach/* text eol=lf

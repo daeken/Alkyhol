@@ -4,6 +4,31 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## Failed DLL initialization: physical M4 trace, native comparison pending
+
+A separate owned no-CRT DLL (SHA-256
+`207e9f12aec86c44d23f6b0f256cc6c0201c078b0560fd36a5e808f0d151a433`)
+now exercises actual imported GetStdHandle/WriteFile/SetLastError from its C
+DllMain, failed ATTACH and ordered cleanup DETACH. On physical M4 under Rosetta,
+normal and forced-rebase runs both emit exactly two 16-byte trace records:
+reasons `[1,0]`, counter `[1,2]`, NULL-reserved flags `[1,1]` and magic
+`0xa17ac0de`. The Rust unsafe constructor rejects attachment and retains actual
+guest last-error `0x1234`. No product runtime change or successful error stub is
+introduced. The existing PE workflow will run the identical DLL with actual
+native Windows LoadLibraryW; that comparison remains pending. Windows loader
+last-error is recorded separately, not equated to the Rust constructor's sentinel.
+All 36 PE Rust tests under Rosetta, 17 portable arm64 tests, 144 Python tests,
+PE formatting and Clippy pass locally. Five new protocol units reject crashed,
+missing/duplicate/reordered traces, invented success, identity/rebase drift and
+changed frozen native evidence; these synthetic negatives are host assertions.
+[Probe contract](pe.md#failed-dll-initialization-probe).
+
+Existing docs/research revision `7230e57` passed all three
+[PE jobs](https://github.com/daeken/Alkyhol/actions/runs/42392689707) and all 24
+[conformance jobs](https://github.com/daeken/Alkyhol/actions/runs/42392689720).
+That run predates the failed-attach probe and is not evidence for its new native
+comparison. Existing frozen native executable/DLL comparisons remain unchanged.
+
 ## Isolated PE64 DLL execution: physical M4 milestone
 
 All 27 jobs now pass on `cf5be5e`: the three expanded

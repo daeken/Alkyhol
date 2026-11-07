@@ -261,3 +261,31 @@ General module loading and unmeasured lifecycle effects remain separate.
 A [PE32 feasibility note](pe32.md) records the user's 32-bit question, primary
 WoW64/Rosetta sources and observed current 4-GiB page-zero reservation. It is
 research only; no Alkyhol 32-bit mode switch or runtime support is claimed.
+
+## Failed DLL initialization probe
+
+`pe/fixtures/failed-attach/library.c` is a separate owned no-CRT DLL that calls
+actual imported GetStdHandle, WriteFile and SetLastError from DllMain. Its original
+ATTACH returns FALSE. ATTACH and cleanup DETACH each write a 16-byte record to an
+inherited pipe: reason, incremented zero-initialized counter, NULL-reserved check
+and fixed magic. A volatile absolute counter pointer retains a DIR64 relocation.
+Exact 32-byte output requires one ATTACH followed by one DETACH, with persistent
+state and successful Win64 IAT calls; crashes, missing/reordered/duplicate records
+and wrong bytes fail. This is additional negative-path evidence, not a change to
+the frozen successful DLL or an implementation of guest LoadLibraryW.
+
+```sh
+python3 tools/build_pe_failed_attach.py
+python3 tools/run_pe_failed_attach.py --dll local/pe/failed-attach/alkyhol_failed_attach.dll --output local/pe/failed-attach-alkyhol.json
+```
+
+Physical M4 observes the exact trace normally and with forced rebase. The existing
+PE workflow now transfers that identical DLL to Windows for actual LoadLibraryW
+rejection and compares its trace separately from metadata/success observations.
+The Windows comparison is pending until an executed run is recorded in
+[validation](validation.md). Last-error fields are deliberately backend-specific:
+the Rust unsafe constructor returns an error string and retains the DLL's actual
+SetLastError sentinel `0x1234`; native Windows LoadLibraryW owns its loader error.
+Those interfaces have different contracts. No Win32 loader-error parity is
+claimed by comparing the shared lifecycle trace. General module-manager,
+dependencies, threads, TLS and SEH restrictions above still apply.
