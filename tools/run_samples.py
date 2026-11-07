@@ -17,6 +17,7 @@ SAMPLES = {
     'msdn_event_readers': ('samples/msdn/event_readers.cpp', dict.fromkeys(('all_readers', 'manual_stays_signaled', 'reset'), True)),
     'msdn_semaphore_workers': ('samples/msdn/semaphore_workers.cpp', dict.fromkeys(('permit_capacity', 'all_workers', 'bounded_active', 'previous_count', 'errors'), True)),
     'msdn_thread_local_storage': ('samples/msdn/thread_local_storage.cpp', dict.fromkeys(('initial_null', 'thread_isolation', 'common_payload', 'null_clears_error', 'invalid_index'), True)),
+    'msdn_creating_threads': ('samples/msdn/creating_threads.c', dict.fromkeys(('parameters', 'thread_ids', 'pending', 'completion', 'exit_codes', 'persistent_signal'), True)),
 }
 
 

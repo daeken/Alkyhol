@@ -19,11 +19,14 @@ made safe by null checks. Output parameters must not alias input buffers.
 | SetEvent / ResetEvent | Saturating signaled bit; notify one/all | No waiter-order guarantee |
 | CreateSemaphoreW | Unnamed counting semaphore; nonnegative initial count, positive maximum, initial ≤ maximum | Null security/name; process-local, no inheritance or named namespace |
 | ReleaseSemaphore | Positive increment, optional previous count, atomic maximum enforcement | Overflow fails with ERROR_TOO_MANY_POSTS and leaves count unchanged; no waiter-order/fairness guarantee |
-| WaitForSingleObject | Event/semaphore waits, zero/finite/infinite timeout; each successful semaphore wait consumes one permit | Other waitable object types unsupported; closing a handle during a wait is not supported |
+| WaitForSingleObject | Event/semaphore/thread waits, zero/finite/infinite timeout; semaphore success consumes one permit, thread completion stays signaled | Other waitable object types unsupported; closing a handle during a wait is not supported |
 | QueryPerformanceCounter/Frequency | Monotonic nanosecond counter, fixed 1GHz frequency | Epoch unrelated to Windows boot time; no exact scheduling guarantee |
 | Sleep | Host sleep/yield | No Windows scheduler/alertable behavior emulation |
 | TlsAlloc / TlsFree | Process-local dynamic slots; allocation initializes all threads' values to null, slots reusable | 1,088 slots; indexes opaque; exhaustion returns TLS_OUT_OF_INDEXES with ERROR_NOT_ENOUGH_MEMORY in this host implementation |
 | TlsGetValue / TlsSetValue | Per-host-thread opaque pointer-sized values; null is valid; successful get clears last-error | Live allocated indices only; no pointer dereference/ownership, PE static TLS, FLS or DLL attach callbacks |
+| CreateThread | Native host C callback, void* parameter, DWORD return, optional DWORD thread ID; callback may start before the call returns | Null security, stack size 0 (host default), flags 0 only; no PE callbacks/DLL loader, inheritance, stack reserve/commit semantics, suspension or priority |
+| GetExitCodeThread | Nonblocking pending STILL_ACTIVE or returned DWORD after full host termination | Null output/wrong handle fail; native exceptions/ExitThread/TerminateThread unsupported |
+| GetCurrentThreadId | Stable nonzero Alkyhol ID, unique across live host threads using this instance | Process-local opaque identity, not a system-wide host OS ID |
 
 Unsupported flags/options return `ERROR_NOT_SUPPORTED`; unknown handles fail.
 The safe Rust methods return `WinError`; the C facade sets last-error on failure.
@@ -81,3 +84,20 @@ allocation order and reuse timing are host assertions, not measured Windows resu
 See Microsoft's [TLS allocation](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-tlsalloc),
 [get](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-tlsgetvalue)
 and [free](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-tlsfree) contracts.
+
+Thread callbacks and parameters must remain valid host code/storage until the
+worker terminates, including if its handle is closed early. Closing a running
+thread handle detaches it; it does not stop the callback. Completion includes the
+host thread's TLS destructors, not just callback return. This initial backend uses
+one additional detached host monitor per worker to join it and publish completion;
+querying the exit code never joins the worker. This has extra resource/scheduling
+cost and does not claim Windows latency or resource-limit behavior. Exit code 259
+can be returned by a terminated callback; check the wait result to tell it apart
+from a pending worker. Callbacks must return normally without unwinding across the
+C boundary. A panic in the safe Rust worker API becomes an explicit host
+ERROR_PROCESS_ABORTED failure for wait/query; this does not emulate a Windows
+exception or silently report a zero exit code. Null callbacks are rejected here,
+not treated as Windows' asynchronously invalid start-address behavior.
+See [CreateThread](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-createthread),
+[GetExitCodeThread](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-getexitcodethread)
+and [GetCurrentThreadId](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-getcurrentthreadid).

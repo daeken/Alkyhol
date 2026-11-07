@@ -12,6 +12,7 @@ typedef int32_t BOOL;
 typedef uint32_t DWORD;
 typedef int32_t LONG;
 typedef uint16_t WCHAR;
+typedef DWORD (*LPTHREAD_START_ROUTINE)(void*);
 typedef union { int64_t QuadPart; } LARGE_INTEGER;
 #define TRUE 1
 #define FALSE 0
@@ -42,6 +43,8 @@ typedef union { int64_t QuadPart; } LARGE_INTEGER;
 #define ERROR_TOO_MANY_POSTS 298
 #define ERROR_SUCCESS 0
 #define TLS_OUT_OF_INDEXES UINT32_MAX
+#define STILL_ACTIVE 259
+#define CREATE_SUSPENDED 4
 DWORD GetLastError(void);
 void SetLastError(DWORD);
 BOOL CloseHandle(HANDLE);
@@ -65,6 +68,9 @@ DWORD TlsAlloc(void);
 BOOL TlsFree(DWORD);
 void* TlsGetValue(DWORD);
 BOOL TlsSetValue(DWORD, void*);
+HANDLE CreateThread(const void*, size_t, LPTHREAD_START_ROUTINE, void*, DWORD, DWORD*);
+BOOL GetExitCodeThread(HANDLE, DWORD*);
+DWORD GetCurrentThreadId(void);
 #ifdef __cplusplus
 }
 #endif

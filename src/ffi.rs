@@ -277,3 +277,50 @@ pub extern "C" fn TlsGetValue(index: u32) -> *mut c_void {
 pub extern "C" fn TlsSetValue(index: u32, value: *mut c_void) -> i32 {
     boolean(crate::tls::set(index, value as usize))
 }
+
+pub type ThreadStart = unsafe extern "C" fn(*mut c_void) -> u32;
+#[cfg_attr(not(target_os = "windows"), unsafe(no_mangle))]
+pub unsafe extern "C" fn CreateThread(
+    security: *const c_void,
+    stack_size: usize,
+    start: Option<ThreadStart>,
+    parameter: *mut c_void,
+    flags: u32,
+    thread_id: *mut u32,
+) -> Handle {
+    if !security.is_null() || stack_size != 0 || flags != 0 {
+        return handle(Err(WinError(ERROR_NOT_SUPPORTED)), 0);
+    }
+    let Some(start) = start else {
+        return handle(Err(WinError(ERROR_INVALID_PARAMETER)), 0);
+    };
+    // Expose only opaque address bits to the Send closure. Caller must keep the
+    // host parameter and callback valid until termination, even after CloseHandle.
+    let parameter = parameter as usize;
+    handle(
+        kernel()
+            .create_thread(move || unsafe { start(parameter as *mut c_void) })
+            .map(|(handle, id)| {
+                if !thread_id.is_null() {
+                    unsafe {
+                        *thread_id = id;
+                    }
+                }
+                handle
+            }),
+        0,
+    )
+}
+#[cfg_attr(not(target_os = "windows"), unsafe(no_mangle))]
+pub unsafe extern "C" fn GetExitCodeThread(h: Handle, code: *mut u32) -> i32 {
+    if code.is_null() {
+        return boolean(Err(WinError(ERROR_INVALID_PARAMETER)));
+    }
+    boolean(kernel().thread_exit_code(h).map(|value| unsafe {
+        *code = value;
+    }))
+}
+#[cfg_attr(not(target_os = "windows"), unsafe(no_mangle))]
+pub extern "C" fn GetCurrentThreadId() -> u32 {
+    current_thread_id()
+}

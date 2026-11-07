@@ -7,8 +7,10 @@ use std::{
     path::Path,
     sync::{
         Arc, Condvar, Mutex, OnceLock,
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicU32, AtomicUsize, Ordering},
+        mpsc,
     },
+    thread::{self, JoinHandle},
     time::{Duration, Instant},
 };
 
@@ -26,6 +28,7 @@ pub const ERROR_INVALID_PARAMETER: u32 = 87;
 pub const ERROR_NEGATIVE_SEEK: u32 = 131;
 pub const ERROR_ALREADY_EXISTS: u32 = 183;
 pub const ERROR_TOO_MANY_POSTS: u32 = 298;
+pub const ERROR_PROCESS_ABORTED: u32 = 1067;
 pub const ERROR_NO_UNICODE_TRANSLATION: u32 = 1113;
 pub const GENERIC_READ: u32 = 0x8000_0000;
 pub const GENERIC_WRITE: u32 = 0x4000_0000;
@@ -40,6 +43,7 @@ pub const WAIT_OBJECT_0: u32 = 0;
 pub const WAIT_TIMEOUT: u32 = 258;
 pub const WAIT_FAILED: u32 = u32::MAX;
 pub const INFINITE: u32 = u32::MAX;
+pub const STILL_ACTIVE: u32 = 259;
 
 thread_local! { static LAST_ERROR: Cell<u32> = const { Cell::new(0) }; }
 pub fn get_last_error() -> u32 {
@@ -47,6 +51,24 @@ pub fn get_last_error() -> u32 {
 }
 pub fn set_last_error(error: u32) {
     LAST_ERROR.set(error);
+}
+
+thread_local! { static THREAD_ID: Cell<u32> = const { Cell::new(0) }; }
+static NEXT_THREAD_ID: AtomicU32 = AtomicU32::new(1);
+#[allow(deprecated)]
+fn allocate_thread_id() -> WinResult<u32> {
+    NEXT_THREAD_ID
+        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
+        .map_err(|_| WinError(ERROR_NOT_ENOUGH_MEMORY))
+}
+/// Opaque identity within Alkyhol, not the host OS's system-wide thread ID.
+pub fn current_thread_id() -> u32 {
+    THREAD_ID.with(|id| {
+        if id.get() == 0 {
+            id.set(allocate_thread_id().expect("thread ID namespace exhausted"));
+        }
+        id.get()
+    })
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -108,10 +130,37 @@ impl SemaphoreObject {
         }
     }
 }
+struct ThreadObject {
+    outcome: Mutex<Option<WinResult<u32>>>,
+    changed: Condvar,
+}
+impl ThreadObject {
+    fn wait(&self, milliseconds: u32) -> WinResult<u32> {
+        let deadline = (milliseconds != INFINITE)
+            .then(|| Instant::now() + Duration::from_millis(milliseconds.into()));
+        let mut outcome = self.outcome.lock().unwrap();
+        loop {
+            if let Some(result) = *outcome {
+                return result.map(|_| WAIT_OBJECT_0);
+            }
+            match deadline {
+                None => outcome = self.changed.wait(outcome).unwrap(),
+                Some(end) => {
+                    let remaining = end.saturating_duration_since(Instant::now());
+                    if remaining.is_zero() {
+                        return Ok(WAIT_TIMEOUT);
+                    }
+                    outcome = self.changed.wait_timeout(outcome, remaining).unwrap().0;
+                }
+            }
+        }
+    }
+}
 enum Object {
     File(FileObject),
     Event(EventObject),
     Semaphore(SemaphoreObject),
+    Thread(Arc<ThreadObject>),
 }
 
 #[derive(Default)]
@@ -338,10 +387,58 @@ impl Kernel {
         semaphore.changed.notify_all();
         Ok(previous)
     }
+    /// Start a native host worker. Default host stack, normal callback return only.
+    pub fn create_thread(
+        &self,
+        start: impl FnOnce() -> u32 + Send + 'static,
+    ) -> WinResult<(Handle, u32)> {
+        let id = allocate_thread_id()?;
+        let completion = Arc::new(ThreadObject {
+            outcome: Mutex::new(None),
+            changed: Condvar::new(),
+        });
+        let monitor = completion.clone();
+        let (sender, receiver) = mpsc::channel::<JoinHandle<u32>>();
+        // Start the monitor before the user worker. Failure to create either host
+        // thread cannot report a successful CreateThread with no completion path.
+        // If worker creation fails, dropping sender lets the monitor exit quietly.
+        let reaper = thread::Builder::new().spawn(move || {
+            if let Ok(worker) = receiver.recv() {
+                let result = worker.join().map_err(|_| WinError(ERROR_PROCESS_ABORTED));
+                *monitor.outcome.lock().unwrap() = Some(result);
+                monitor.changed.notify_all();
+            }
+        })?;
+        drop(reaper); // Internal monitor owns its completion state until join finishes.
+        let worker = thread::Builder::new().spawn(move || {
+            THREAD_ID.with(|current| current.set(id));
+            start()
+        })?;
+        sender
+            .send(worker)
+            .expect("thread completion monitor ended unexpectedly");
+        let handle = self.insert(Object::Thread(completion));
+        Ok((handle, id))
+    }
+    pub fn thread_exit_code(&self, handle: Handle) -> WinResult<u32> {
+        let object = self.object(handle)?;
+        let Object::Thread(worker) = &*object else {
+            return Err(WinError(ERROR_INVALID_HANDLE));
+        };
+        Ok(worker
+            .outcome
+            .lock()
+            .unwrap()
+            .transpose()?
+            .unwrap_or(STILL_ACTIVE))
+    }
     pub fn wait(&self, handle: Handle, milliseconds: u32) -> WinResult<u32> {
         let object = self.object(handle)?;
         if let Object::Semaphore(semaphore) = &*object {
             return Ok(semaphore.wait(milliseconds));
+        }
+        if let Object::Thread(worker) = &*object {
+            return worker.wait(milliseconds);
         }
         let Object::Event(event) = &*object else {
             return Err(WinError(ERROR_NOT_SUPPORTED));
