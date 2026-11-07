@@ -51,3 +51,9 @@ Original sample linking now selects this Metal COM library by default. The prior
 root-only implementation remains an explicit `--runtime root` option for CPU
 reference work; there is no automatic fallback. The original application still
 exits 78 at its D3D12 device preflight, before original initialization.
+
+[CI 42359772543](https://github.com/daeken/Alkyhol/actions/runs/42359772543)
+passed all fourteen jobs on `c8475d0`. The hosted C++ probe enumerated Apple
+Paravirtual device (no native Metal RT); the physical M4 probe enumerated Apple
+M4. Each checked all vtable slots and parent/descriptor invariants against its
+own actual Metal inventory. Neither is original C++ rendering evidence.

@@ -30,7 +30,13 @@ all factory IID versions, selection failures, parent lifetimes and atomic refs.
 The original unchanged C++ application relinks against the combined Metal library
 (default) and still exits 78 at unavailable D3D12 device creation. The explicit
 root-only build remains available; no automatic backend fallback is introduced.
-A new hosted Metal CI job is configured; its first result is pending.
+[CI 42359772543](https://github.com/daeken/Alkyhol/actions/runs/42359772543)
+passed all fourteen jobs on `c8475d0`, including the new runtime Rust units and
+actual x86-64 C++ Metal factory calls. Downloaded hosted evidence identifies
+Apple Paravirtual device, registry ID 4294967703, advisory budget 5010800640 and
+native Metal RT=false. Physical M4 and hosted observations are deliberately not
+compared as identical hardware descriptions. Existing native Windows, metadata,
+shader and graphics/geometry comparisons all remain passing.
 See [runtime mapping](../cpp/runtime/README.md) for exact APIs, field semantics
 and the remaining device/queue/resource and rendering boundary.
 
