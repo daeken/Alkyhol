@@ -33,9 +33,12 @@ Each manual unwind records control offset, handler absence, caller RIP, RSP
 delta, establisher, RBX/R12/R13 restoration, equality of all 16 XMM6 bytes, flags
 and a predicate checking every other seeded context byte. All 68 DWORDs are compared exactly with the
 identical PE on native Windows, alongside executed PE/source hashes, clean
-revision and normal/forced-rebase host observations. Native results are pending
-the first independent CI execution; local physical M4/Rosetta development runs
-pass. See [validation](validation.md) for the actual tested revisions and results.
+revision and normal/forced-rebase host observations. Downloaded native Windows/
+hosted Mac records and clean physical M4/Rosetta execution at `67343b6` agree on
+all 68 words and exact executed PE/source identities. The complete actual native
+record is frozen at `pe/reference/unwind-prologue-windows-v1.json`, required by
+default to detect joint input drift. See [validation](validation.md) for exact CI
+runs and the scope of the native observations.
 
 Host tests separately cover every accepted boundary and rejection of other
 offsets, each multi-slot operand form, invalid skipped opcodes/slots/save extents,

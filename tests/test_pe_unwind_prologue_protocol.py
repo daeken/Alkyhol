@@ -74,6 +74,16 @@ class UnwindPrologueProtocolTests(unittest.TestCase):
         for r in reports: r.update(pe_sha256='e'*64, executed_pe_sha256='e'*64)
         with self.assertRaises(ValueError): compare(reports, reference=self.reports()[0])
 
+    def test_default_frozen_native_record_and_exact_inputs_are_required(self):
+        native = json.loads(REFERENCE.read_text(encoding='utf-8'))
+        host = copy.deepcopy(native)
+        host.update(backend=HOST, rebased=copy.deepcopy(host['normal']))
+        self.assertEqual(compare([native,host]),68)
+        with tempfile.TemporaryDirectory() as directory:
+            with mock.patch('compare_pe_unwind_prologue.REFERENCE',Path(directory)/'missing.json'):
+                with self.assertRaises(FileNotFoundError):compare([native,host])
+        for record in [native,host]:record.update(pe_sha256='e'*64,executed_pe_sha256='e'*64)
+        with self.assertRaises(ValueError):compare([native,host])
 
 
 if __name__ == '__main__': unittest.main()

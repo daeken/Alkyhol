@@ -4,7 +4,7 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
-## Partial-prologue manual restoration: physical M4 development
+## Partial-prologue manual restoration: native Windows and physical M4
 
 The new owned unchanged PE observer constructs six partial-prologue/body CONTEXT
 inputs from a real fully executed frame's saved stack words. Physical M4/Rosetta
@@ -12,13 +12,23 @@ normal and forced-rebase runs pass all 68 raw DWORDs, including two pushes, a
 168-byte allocation, R13/XMM6 saves, precise stack results and preservation of
 all unrelated seeded bytes. These are curated manual-unwind contexts, not CPU
 snapshots of interrupted prologues or Windows exception dispatch. The original
-static/body fixtures remain unchanged. Independent native Windows execution is
-pending the first CI run; no native parity claim is made yet.
+static/body fixtures remain unchanged. Downloaded clean native Windows/hosted Mac
+records and clean physical M4 execution at `67343b6` agree on all 68 raw DWORDs
+and exact executed PE/source identities. Native Windows runs the identical PE
+with SHA-256 `2661b67008de5120b699c6bbb00e09e92992d12628aea335338b8ef2492d4a9a`.
+The actual native record is frozen at `pe/reference/unwind-prologue-windows-v1.json`
+and required by default. A missing-reference/joint-input-drift guard brings the
+Python suite to 240. Native coverage is these six curated contexts for one
+assembler-generated function; broader recipe shapes remain host assertions.
+All 27 CI jobs pass at `67343b6`: three
+[PE jobs](https://github.com/daeken/Alkyhol/actions/runs/42426111979) and all 24
+[conformance jobs](https://github.com/daeken/Alkyhol/actions/runs/42426111974).
+Older frozen binary, SDK/source/COM, shader and Metal comparisons remain green.
 
 The runtime validates the full supported v1 recipe before skipping unexecuted
 operations at function entry/recorded operation boundaries. Completed body PCs
 still require NOP and unknown prologue PCs/epilogues/handlers remain unsupported.
-All 89 PE host tests/nine compiler checks, 27 portable tests, 239 Python tests and
+All 89 PE host tests/nine compiler checks, 27 portable tests, 240 Python tests and
 Clippy pass. See [partial prologue restoration](unwind-prologue.md) for contracts,
 source provenance and the difference between constructed and captured states.
 

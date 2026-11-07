@@ -28,7 +28,7 @@ def compare(reports, reference=None):
         if native[field] != host[field]: raise ValueError(f'unwind-prologue identity mismatch: {field}')
     if native['rebased'] is not None or host['rebased'] != expected or type(host['rebased']['status']) is not int or any(type(v) is not int for v in host['rebased']['words']):
         raise ValueError('missing exact forced-rebase code execution')
-    if reference is None and REFERENCE.exists(): reference = json.loads(REFERENCE.read_text(encoding='utf-8'))
+    if reference is None: reference = json.loads(REFERENCE.read_text(encoding='utf-8'))
     if reference is not None:
         if reference['backend'] != NATIVE or type(reference['schema_version']) is not int or reference['schema_version'] != 1 or reference['tracked_tree_clean'] is not True:
             raise ValueError('invalid frozen native unwind-prologue reference')
