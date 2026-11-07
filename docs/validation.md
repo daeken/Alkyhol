@@ -4,6 +4,35 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## Mixed ordinal DLL imports/forwarders: physical M4, native comparison pending
+
+The PE parser now retains named and ordinal imports in distinct ImportSymbol
+variants. Two new portable units check mixed order, 0/65535 metadata boundaries,
+literal named `#23`, ILT fallback, reserved bits and backed named hints. Two
+runtime units check real borrowed ordinal IAT/export targets and pre-entry
+rejection of malformed/missing/zero/system ordinals. No kernel32 ordinal table is
+guessed and no sparse native-error parity is assumed.
+
+The new owned consumer DLL (SHA-256
+`49ce61a1f2ecf91a4ed14672370cd6db579c350d297d041c31e76ad093f09fdc`)
+keeps the original frozen dependency unchanged. Its actual LLVM import table has
+ordinal 21 data, named Direct and ordinal 23 NONAME code. Three forwarders target
+ordinals 17, 21 and 23. Physical M4/Rosetta normal and forced-rebase runs agree on
+Evaluate `324508621`, initializer/forwarded call `305419905`, forwarded data
+`826366246` and three actual resolved pointer-equality predicates. Both DLLs
+actually relocate in the forced run. This is actual trusted DLL execution, not
+static inventory alone. Native Windows comparison is wired into the existing PE
+workflow and remains pending. [Contract/reproduction](pe.md#explicit-ordinal-imports-and-forwarders).
+
+All 43 PE tests plus two lifetime compiler checks pass under Rosetta, 19 portable
+arm64 tests and 155 Python tests pass, and formatting/PE Clippy pass. The frozen
+original executable, all eleven released u-config cases and successful/failed/
+dependent DLL observers pass again locally, including forced rebase. Launcher
+diagnostics retain the exact existing named-only format for old binary observers.
+Four new synthetic protocol units reject identity/call/data/target/rebase drift;
+those host assertions are separate from native Windows evidence. All 27 CI jobs
+passed on prior docs-only `cd993fd` (PE 42396358867; conformance 42396358846).
+
 ## Explicit DLL-to-DLL linking: native Windows, hosted Mac and physical M4
 
 All 27 jobs pass on the final implementation `9b766e5`: three

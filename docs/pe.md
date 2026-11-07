@@ -122,7 +122,7 @@ joint drift as well as mismatched hosts. Changing this fixture requires a new,
 explicitly reviewed native evidence milestone, not silently updating expected
 output. See [validation](validation.md) for executed revisions and CI results.
 
-Static TLS/callbacks, unwind/SEH, CFG/load config, delay/bound/ordinal imports,
+Static TLS/callbacks, unwind/SEH, CFG/load config, delay/bound imports, system-DLL ordinal resolution,
 Automatic dependent-DLL loading, CLR, dynamic lookup, guest threads/callbacks, COM vtable ABI
 bridges, general Windows process structures and Windows CRT startup are not implemented in this
 binary path. Unsupported metadata or imports fail before entry; unrecognized
@@ -316,7 +316,7 @@ The owner borrows each LoadedLibrary for its lifetime and drops its own DLL befo
 releasing those borrows. `library()` exposes lookups or a borrow for another
 explicit dependent DLL, retaining transitive lifetimes. The embedding caller loads
 the acyclic dependency order. No filesystem search, automatic graph discovery,
-global cache/refcount, guest LoadLibrary/GetProcAddress, ordinal import/forwarder,
+global cache/refcount, guest LoadLibrary/GetProcAddress, system-DLL ordinal resolution,
 loader-lock/reentrancy, TLS, thread or SEH support is implied.
 
 The new owned `pe/fixtures/dependent` consumer is linked once against the **unchanged
@@ -355,3 +355,40 @@ consumer has no further explicit use. These are lifetime checks, separate from
 executed DLL behavior; see [validation](validation.md) for exact revisions.
 The final `9b766e5` implementation passes all 27 CI jobs, with a clean physical
 M4 run matching the same-revision Windows/hosted records and frozen reference.
+
+## Explicit ordinal imports and forwarders
+
+`Import.symbol` now uses `ImportSymbol::Name(String)` or `Ordinal(u16)`, retaining
+the PE32+ high-bit distinction instead of encoding ordinals as guessed names.
+The parser checks reserved thunk bits, low-16-bit ordinals, backed named hints,
+ordered/disjoint IAT slots and normal termination. Literal named `#23` remains a
+name. Zero ordinals are retained as metadata; runtime resolution rejects them.
+The implementation follows Microsoft's [import lookup table and export forwarder
+format](https://learn.microsoft.com/en-us/windows/win32/debug/pe-format#the-idata-section).
+
+LinkedLibrary resolves ordinals 1..65535 only from explicitly supplied attached
+DLLs, including exported data and NONAME code. Forwarders such as `module.#23`
+use checked decimal syntax and the same biased ordinal lookup. Empty, signed,
+hexadecimal, overflowing or zero ordinal forwarders fail. Missing/sparse slots
+fail before consumer DllMain. That policy is not a claim of full Windows sparse-
+ordinal error behavior. System DLL ordinals remain unsupported: no per-Windows-
+build kernel32 ordinal map is invented. Isolated/default executable loading,
+ownership, startup gates and named-kernel32 whitelist remain as documented above.
+
+The owned `pe/fixtures/ordinal` consumer imports named Direct plus ordinal 21 data
+and ordinal 23 NONAME code from the **unchanged frozen** export DLL. Its DllMain
+uses ordinal code to initialize state, Evaluate mixes named/code/data imports,
+and three exports forward by ordinal to code/data. Independent Python inventory
+and the Rust parser both check the actual LLVM-produced mixed thunks. Physical
+M4 normal/forced-rebase runs agree on all seven actual call/data/target fields;
+both DLLs relocate in the forced case. The Windows comparison is pending until
+an executed result is recorded in [validation](validation.md).
+
+```sh
+python3 tools/build_pe_ordinal.py
+python3 tools/run_pe_ordinal.py --directory local/pe/ordinal --output local/pe/ordinal-alkyhol.json
+```
+
+No general module manager, TEB/static TLS, unwind/SEH, binary COM or game
+compatibility follows from these finite owned-DLL observations. The previous
+frozen native executable, DLL and released-program comparisons remain intact.

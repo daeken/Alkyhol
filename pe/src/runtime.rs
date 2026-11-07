@@ -1,4 +1,4 @@
-use crate::{Image, Result, abi};
+use crate::{Image, ImportSymbol, Result, abi};
 use std::{collections::BTreeMap, ffi::c_void, ptr};
 
 unsafe extern "C" {
@@ -19,6 +19,14 @@ const WRITE: i32 = 2;
 const EXEC: i32 = 4;
 const PRIVATE_ANON: i32 = 2 | 0x1000; // Darwin MAP_PRIVATE | MAP_ANON; never MAP_FIXED.
 
+fn resolve_builtin(module: &str, symbol: &ImportSymbol) -> Option<usize> {
+    match symbol {
+        ImportSymbol::Name(name) => abi::resolve(module, name),
+        // System DLL ordinal tables vary by Windows build. Never guess one.
+        ImportSymbol::Ordinal(_) => None,
+    }
+}
+
 /// Owned executable mapping. Loading performs all metadata/import checks before
 /// allocation and never enters guest code. Dropping unmaps it; code may not retain
 /// pointers or start threads beyond the mapping's lifetime.
@@ -34,20 +42,21 @@ impl LoadedImage {
     pub fn load(bytes: &[u8], rebase: bool) -> Result<Self> {
         let image = Image::parse(bytes)?;
         image.check_startup()?;
-        Self::map(&image, rebase, &abi::resolve)
+        Self::map(&image, rebase, &resolve_builtin)
     }
     fn map(
         image: &Image<'_>,
         rebase: bool,
-        resolve: &impl Fn(&str, &str) -> Option<usize>,
+        resolve: &impl Fn(&str, &ImportSymbol) -> Option<usize>,
     ) -> Result<Self> {
         let bytes = image.bytes;
         let imports = image.imports()?;
         let relocations = image.relocations()?;
         let mut bindings = Vec::new();
         for import in &imports {
-            let address = resolve(&import.module, &import.symbol)
-                .ok_or_else(|| format!("unsupported import {}!{}", import.module, import.symbol))?;
+            let address = resolve(&import.module, &import.symbol).ok_or_else(|| {
+                format!("unsupported import {}!{:?}", import.module, import.symbol)
+            })?;
             if relocations
                 .iter()
                 .any(|&r| r < import.iat + 8 && import.iat < r + 8)
@@ -200,12 +209,12 @@ impl LoadedLibrary {
     /// loader operations are supported. Any ProcessContext used by the DLL must
     /// outlive this object. Drop executes PROCESS_DETACH on this same thread.
     pub unsafe fn load(bytes: &[u8], rebase: bool) -> Result<Self> {
-        unsafe { Self::load_resolved(bytes, rebase, &abi::resolve) }
+        unsafe { Self::load_resolved(bytes, rebase, &resolve_builtin) }
     }
     unsafe fn load_resolved(
         bytes: &[u8],
         rebase: bool,
-        resolve: &impl Fn(&str, &str) -> Option<usize>,
+        resolve: &impl Fn(&str, &ImportSymbol) -> Option<usize>,
     ) -> Result<Self> {
         let image = Image::parse_dll(bytes)?;
         image.check_library_startup()?;
@@ -316,7 +325,7 @@ pub struct LinkedLibrary<'a> {
     _dependencies: BTreeMap<String, &'a LoadedLibrary>,
 }
 impl<'a> LinkedLibrary<'a> {
-    /// Bind named imports and named forwarders to explicit dependency instances.
+    /// Bind named/ordinal imports and forwarders to explicit dependency instances.
     /// Names are ASCII DLL basenames, matched case-insensitively. Symbols remain
     /// case-sensitive. kernel32 is reserved for the explicit native ABI bridges.
     /// At most 64 dependencies are accepted. None are loaded or reinitialized.
@@ -325,7 +334,8 @@ impl<'a> LinkedLibrary<'a> {
     /// LoadedLibrary's trusted-code/context rules apply to this DLL and every
     /// dependency. The caller must supply the intended module identities and a
     /// correctly initialized acyclic dependency order. Reentrancy, threads, SEH,
-    /// static TLS and ordinal imports/forwarders remain unsupported.
+    /// static TLS and system-DLL/zero ordinals remain unsupported. Missing and
+    /// sparse ordinal slots fail before entry, without guessing Windows quirks.
     pub unsafe fn load(
         bytes: &[u8],
         rebase: bool,
@@ -354,11 +364,17 @@ impl<'a> LinkedLibrary<'a> {
                 return Err("duplicate case-insensitive DLL dependency".into());
             }
         }
-        let resolve = |module: &str, symbol: &str| {
-            abi::resolve(module, symbol).or_else(|| {
+        let resolve = |module: &str, symbol: &ImportSymbol| {
+            resolve_builtin(module, symbol).or_else(|| {
                 modules
                     .get(&module.to_ascii_lowercase())
-                    .and_then(|library| library.get_name(symbol))
+                    .and_then(|library| match symbol {
+                        ImportSymbol::Name(name) => library.get_name(name),
+                        ImportSymbol::Ordinal(ordinal) if *ordinal != 0 => {
+                            library.get_ordinal(u32::from(*ordinal))
+                        }
+                        ImportSymbol::Ordinal(_) => None,
+                    })
                     .map(|p| p as usize)
             })
         };
@@ -384,17 +400,31 @@ impl Drop for LinkedLibrary<'_> {
     }
 }
 
-fn resolve_forwarder(value: &str, resolve: &impl Fn(&str, &str) -> Option<usize>) -> Result<usize> {
+fn resolve_forwarder(
+    value: &str,
+    resolve: &impl Fn(&str, &ImportSymbol) -> Option<usize>,
+) -> Result<usize> {
     let (module, name) = value.rsplit_once('.').ok_or("invalid export forwarder")?;
     let module = if module.to_ascii_lowercase().ends_with(".dll") {
         module.to_owned()
     } else {
         format!("{module}.dll")
     };
-    if name.starts_with('#') {
-        return Err("ordinal export forwarders are unsupported".into());
-    }
-    resolve(&module, name).ok_or_else(|| format!("unsupported export forwarder {value}"))
+    let symbol = if let Some(digits) = name.strip_prefix('#') {
+        if digits.is_empty() || !digits.bytes().all(|b| b.is_ascii_digit()) {
+            return Err("invalid decimal ordinal forwarder".into());
+        }
+        let ordinal = digits
+            .parse::<u16>()
+            .map_err(|_| "ordinal forwarder exceeds 16 bits")?;
+        if ordinal == 0 {
+            return Err("zero ordinal forwarders are unsupported".into());
+        }
+        ImportSymbol::Ordinal(ordinal)
+    } else {
+        ImportSymbol::Name(name.to_owned())
+    };
+    resolve(&module, &symbol).ok_or_else(|| format!("unsupported export forwarder {value}"))
 }
 
 #[cfg(test)]
@@ -695,7 +725,7 @@ mod tests {
                 "wrong-symbol" => invalid[0x7d2] = b'e',
                 "wrong-module" => invalid[0x7c0] = b'x',
                 "ordinal" => {
-                    invalid[0x7a0..0x7a8].copy_from_slice(&0x8000000000000011u64.to_le_bytes())
+                    invalid[0x7a0..0x7a8].copy_from_slice(&0x8000000000000012u64.to_le_bytes())
                 }
                 "overlapping-relocation" => {
                     invalid[0x608..0x60a].copy_from_slice(&0xa020u16.to_le_bytes())
@@ -747,6 +777,77 @@ mod tests {
         assert_eq!(unsafe { (*middle_log.get()).calls }, 2);
         drop(leaf);
         assert_eq!(unsafe { (*leaf_log.get()).calls }, 2);
+    }
+    #[test]
+    fn explicit_ordinal_iat_and_forwarders_use_actual_biased_export_slots() {
+        for forwarder in ["custom.#17", "custom.dll.#00017"] {
+            let child_log = lifecycle_log();
+            let child_bytes = lifecycle_fixture(child_log.get(), true, None);
+            let child = unsafe { LoadedLibrary::load(&child_bytes, true) }.unwrap();
+            let log = lifecycle_log();
+            let mut bytes = dependent_fixture(log.get(), true);
+            bytes[0x6f0..0x710].fill(0);
+            bytes[0x6f0..0x6f0 + forwarder.len()].copy_from_slice(forwarder.as_bytes());
+            bytes[0x7a0..0x7a8].copy_from_slice(&0x8000000000000011u64.to_le_bytes());
+            let parent =
+                unsafe { LinkedLibrary::load(&bytes, true, &[("CUSTOM.dll", &child)]) }.unwrap();
+            let address = child.get_ordinal(17).unwrap();
+            assert_eq!(parent.library().get_name("Entry"), Some(address));
+            assert_eq!(
+                unsafe {
+                    parent
+                        .library()
+                        .mapping
+                        .base
+                        .add(0x3020)
+                        .cast::<usize>()
+                        .read()
+                },
+                address as usize
+            );
+            drop(parent);
+            assert_eq!(
+                unsafe { ((*log.get()).calls, (*child_log.get()).calls) },
+                (2, 1)
+            );
+        }
+    }
+    #[test]
+    fn unsupported_or_malformed_ordinals_fail_before_consumer_entry() {
+        let child_log = lifecycle_log();
+        let child_bytes = lifecycle_fixture(child_log.get(), true, None);
+        let child = unsafe { LoadedLibrary::load(&child_bytes, true) }.unwrap();
+        let log = lifecycle_log();
+        for forwarder in [
+            "custom.#",
+            "custom.#+17",
+            "custom.#-1",
+            "custom.#65536",
+            "custom.#0x11",
+            "custom.#0",
+            "custom.#18",
+            "kernel32.#17",
+        ] {
+            let mut bytes = dependent_fixture(log.get(), true);
+            bytes[0x6f0..0x710].fill(0);
+            bytes[0x6f0..0x6f0 + forwarder.len()].copy_from_slice(forwarder.as_bytes());
+            assert!(
+                unsafe { LinkedLibrary::load(&bytes, true, &[("custom.dll", &child)]) }.is_err(),
+                "{forwarder}"
+            );
+        }
+        for ordinal in [0, 16, 18, 65535] {
+            let mut bytes = dependent_fixture(log.get(), true);
+            bytes[0x7a0..0x7a8].copy_from_slice(&(0x8000000000000000u64 | ordinal).to_le_bytes());
+            assert!(
+                unsafe { LinkedLibrary::load(&bytes, true, &[("custom.dll", &child)]) }.is_err()
+            );
+        }
+        let mut system = dependent_fixture(log.get(), true);
+        system[0x7c0..0x7cd].copy_from_slice(b"kernel32.dll\0");
+        system[0x7a0..0x7a8].copy_from_slice(&0x8000000000000011u64.to_le_bytes());
+        assert!(unsafe { LinkedLibrary::load(&system, true, &[("custom.dll", &child)]) }.is_err());
+        assert_eq!(unsafe { (*log.get()).calls }, 0);
     }
     #[test]
     fn unsupported_library_features_fail_before_any_guest_initializer() {

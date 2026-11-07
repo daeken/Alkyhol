@@ -1,0 +1,5 @@
+LIBRARY alkyhol_exports.dll
+EXPORTS
+    Direct @17
+    OrdinalCall @23 NONAME
+    DataByOrdinal @21 NONAME DATA

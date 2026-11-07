@@ -1,0 +1,7 @@
+LIBRARY alkyhol_ordinal
+EXPORTS
+    Evaluate
+    Initial DATA
+    Through="alkyhol_exports.#23"
+    ForwardData="alkyhol_exports.#21"
+    ForwardDirect="alkyhol_exports.#17"

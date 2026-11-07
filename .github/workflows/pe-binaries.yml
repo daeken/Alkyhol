@@ -41,6 +41,21 @@ jobs:
         run: |
           python tools/build_pe_dependent.py
           python tools/run_pe_dependent.py --directory local/pe/dependent --output local/pe/dependent-alkyhol.json
+      - name: Execute genuine mixed named and ordinal code/data imports and ordinal forwarders
+        run: |
+          python tools/build_pe_ordinal.py
+          python tools/run_pe_ordinal.py --directory local/pe/ordinal --output local/pe/ordinal-alkyhol.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe-ordinal-fixture
+          path: |
+            local/pe/ordinal/alkyhol_exports.dll
+            local/pe/ordinal/alkyhol_ordinal.dll
+            local/pe/ordinal/ordinal-fixture.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe-ordinal-alkyhol
+          path: local/pe/ordinal-alkyhol.json
       - uses: actions/upload-artifact@v4
         with:
           name: pe-dependent-fixture
@@ -144,6 +159,16 @@ jobs:
           path: local/pe/dependent
       - name: Let the real Windows loader resolve and initialize the identical dependent DLLs
         run: python tools/run_pe_dependent.py --directory local/pe/dependent --output local/pe/dependent-windows.json
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe-ordinal-fixture
+          path: local/pe/ordinal
+      - name: Let Windows resolve identical mixed ordinal code/data thunks and forwarders
+        run: python tools/run_pe_ordinal.py --directory local/pe/ordinal --output local/pe/ordinal-windows.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe-ordinal-windows
+          path: local/pe/ordinal-windows.json
       - uses: actions/upload-artifact@v4
         with:
           name: pe-dependent-windows
@@ -216,3 +241,12 @@ jobs:
           name: pe-dependent-windows
           path: local/pe/observations
       - run: python tools/compare_pe_dependent.py local/pe/observations/dependent-windows.json local/pe/observations/dependent-alkyhol.json
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe-ordinal-alkyhol
+          path: local/pe/observations
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe-ordinal-windows
+          path: local/pe/observations
+      - run: python tools/compare_pe_ordinal.py local/pe/observations/ordinal-windows.json local/pe/observations/ordinal-alkyhol.json

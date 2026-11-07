@@ -3,7 +3,7 @@
 mod command_line;
 pub use command_line::windows_command_line;
 mod image;
-pub use image::{Export, ExportTable, ExportTarget, Image, Import, Section};
+pub use image::{Export, ExportTable, ExportTarget, Image, Import, ImportSymbol, Section};
 
 #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
 mod abi;

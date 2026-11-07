@@ -86,10 +86,22 @@ fn main() {
         let imports = image.imports()?;
         let relocs = image.relocations()?;
         if info {
+            let ordinal_count = imports
+                .iter()
+                .filter(|i| matches!(i.symbol, alkyhol_pe::ImportSymbol::Ordinal(_)))
+                .count();
+            let kinds = if ordinal_count == 0 {
+                format!("{} named imports", imports.len())
+            } else {
+                format!(
+                    "{} named imports, {ordinal_count} ordinal imports",
+                    imports.len() - ordinal_count
+                )
+            };
             eprintln!(
-                "PE64: {} sections, {} named imports, {} DIR64 fixups",
+                "PE64: {} sections, {}, {} DIR64 fixups",
                 image.sections.len(),
-                imports.len(),
+                kinds,
                 relocs.len()
             );
         }

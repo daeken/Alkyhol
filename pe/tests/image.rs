@@ -1,4 +1,4 @@
-use alkyhol_pe::Image;
+use alkyhol_pe::{Image, ImportSymbol};
 
 fn put16(b: &mut [u8], i: usize, n: u16) {
     b[i..i + 2].copy_from_slice(&n.to_le_bytes());
@@ -124,8 +124,12 @@ fn named_imports_use_checked_lookup_and_separate_iat() {
     let i = p.imports().unwrap();
     assert_eq!(i.len(), 1);
     assert_eq!(
-        (&*i[0].module, &*i[0].symbol, i[0].iat),
-        ("kernel32.dll", "GetLastError", 0x2080)
+        (&*i[0].module, &i[0].symbol, i[0].iat),
+        (
+            "kernel32.dll",
+            &ImportSymbol::Name("GetLastError".into()),
+            0x2080
+        )
     );
     let mut fallback = b.clone();
     put32(&mut fallback, 0x400, 0);
@@ -138,7 +142,7 @@ fn malformed_imports_never_become_empty_success() {
         (0x404, 1, 4),
         (0x410, 0x1000, 4),
         (0x410, 0x2081, 4),
-        (0x460, 0x8000000000000001, 8),
+        (0x460, 0x8000000000010001, 8),
         (0x460, 0x2300, 8),
         (0x44c, 0x80, 1),
     ] {
@@ -153,6 +157,59 @@ fn malformed_imports_never_become_empty_success() {
     let mut b = imports_fixture();
     directory(&mut b, 1, 0x2000, 20);
     assert!(Image::parse(&b).unwrap().imports().is_err());
+}
+#[test]
+fn named_and_biased_ordinal_thunks_are_distinct_and_keep_order() {
+    let mut b = imports_fixture();
+    put32(&mut b, 0x400, 0x20c0);
+    put64(&mut b, 0x4c0, 0x20a0);
+    put64(&mut b, 0x4c8, 0x8000000000000017);
+    put64(&mut b, 0x4d0, 0x800000000000ffff);
+    put64(&mut b, 0x4d8, 0x8000000000000000);
+    let imports = Image::parse(&b).unwrap().imports().unwrap();
+    assert_eq!(
+        imports.iter().map(|i| &i.symbol).collect::<Vec<_>>(),
+        [
+            &ImportSymbol::Name("GetLastError".into()),
+            &ImportSymbol::Ordinal(23),
+            &ImportSymbol::Ordinal(65535),
+            &ImportSymbol::Ordinal(0)
+        ]
+    );
+    assert_eq!(
+        imports.iter().map(|i| i.iat).collect::<Vec<_>>(),
+        [0x2080, 0x2088, 0x2090, 0x2098]
+    );
+    let mut named_number = imports_fixture();
+    named_number[0x4a2..0x4af].fill(0);
+    named_number[0x4a2..0x4a6].copy_from_slice(b"#23\0");
+    assert_eq!(
+        Image::parse(&named_number).unwrap().imports().unwrap()[0].symbol,
+        ImportSymbol::Name("#23".into())
+    );
+    assert_ne!(ImportSymbol::Name("#23".into()), ImportSymbol::Ordinal(23));
+}
+#[test]
+fn ordinal_reserved_bits_and_unbacked_named_hint_are_not_silently_masked() {
+    for value in [
+        0x8000000000010017,
+        0x8000000100000017,
+        0xc000000000000017,
+        0x80000000,
+        0x100000000,
+        0x1ffe,
+    ] {
+        let mut b = imports_fixture();
+        put64(&mut b, 0x460, value);
+        assert!(Image::parse(&b).unwrap().imports().is_err(), "{value:x}");
+    }
+    let mut b = imports_fixture();
+    put32(&mut b, 0x400, 0); // Valid ILT fallback to ordinal IAT.
+    put64(&mut b, 0x480, 0x8000000000000017);
+    assert_eq!(
+        Image::parse(&b).unwrap().imports().unwrap()[0].symbol,
+        ImportSymbol::Ordinal(23)
+    );
 }
 #[test]
 fn relocation_blocks_are_bounded_typed_and_disjoint() {

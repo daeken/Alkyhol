@@ -13,9 +13,16 @@ pub struct Section {
     pub rights: u32,
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ImportSymbol {
+    Name(String),
+    /// Low 16-bit biased ordinal. Zero is preserved as metadata, but the
+    /// bounded runtime does not resolve it without native evidence.
+    Ordinal(u16),
+}
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Import {
     pub module: String,
-    pub symbol: String,
+    pub symbol: ImportSymbol,
     pub iat: usize,
 }
 /// An export can address code or data. Forwarder text is retained verbatim;
@@ -274,7 +281,9 @@ impl<'a> Image<'a> {
         }
         Err("unterminated import name".into())
     }
-    /// Parse bounded, named, unbound eager imports. Ordinals are unsupported.
+    /// Parse bounded named/ordinal unbound eager imports. Reserved thunk bits
+    /// must be zero; named hints and names must be file-backed. No resolution
+    /// or promise about native sparse-ordinal behavior follows from parsing.
     pub fn imports(&self) -> Result<Vec<Import>> {
         let (rva, len) = self.directories[1];
         let mut result = Vec::new();
@@ -305,10 +314,18 @@ impl<'a> Image<'a> {
                     terminated = true;
                     break;
                 }
-                if value >> 32 != 0 {
-                    return Err("ordinal/non-RVA import unsupported".into());
-                }
-                let symbol = self.string(value as usize + 2)?;
+                let symbol = if value & (1 << 63) != 0 {
+                    if value & !((1 << 63) | 0xffff) != 0 {
+                        return Err("nonzero reserved ordinal thunk bits".into());
+                    }
+                    ImportSymbol::Ordinal(value as u16)
+                } else {
+                    if value >> 31 != 0 {
+                        return Err("nonzero reserved name thunk bits".into());
+                    }
+                    self.file_range(value as usize, 2)?;
+                    ImportSymbol::Name(self.string(value as usize + 2)?)
+                };
                 if !slots.insert(iat + i * 8) {
                     return Err("overlapping IAT slots".into());
                 }
