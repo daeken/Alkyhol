@@ -1,6 +1,8 @@
 //! Native C ABI. Pointer parameters must reference valid host memory of the documented
 //! length/alignment, including writable output pointers. Non-null does not prove validity.
 //! This is not a guest-memory boundary or a memory safety sandbox.
+//! On Windows the Rust functions remain mangled to avoid interposing kernel32
+//! used by std itself. The portable C probe uses the real Windows SDK there.
 #![allow(non_snake_case)]
 #![allow(clippy::missing_safety_doc)] // Shared pointer contract above and in the C header.
 use crate::kernel::*;
@@ -24,15 +26,15 @@ fn handle(result: WinResult<Handle>, failure: Handle) -> Handle {
         }
     }
 }
-#[unsafe(no_mangle)]
+#[cfg_attr(not(target_os = "windows"), unsafe(no_mangle))]
 pub extern "C" fn GetLastError() -> u32 {
     get_last_error()
 }
-#[unsafe(no_mangle)]
+#[cfg_attr(not(target_os = "windows"), unsafe(no_mangle))]
 pub extern "C" fn SetLastError(error: u32) {
     set_last_error(error);
 }
-#[unsafe(no_mangle)]
+#[cfg_attr(not(target_os = "windows"), unsafe(no_mangle))]
 pub extern "C" fn CloseHandle(h: Handle) -> i32 {
     boolean(kernel().close_handle(h))
 }
@@ -52,7 +54,7 @@ unsafe fn wide_string(ptr: *const u16) -> WinResult<String> {
     }
     Err(WinError(ERROR_INVALID_PARAMETER))
 }
-#[unsafe(no_mangle)]
+#[cfg_attr(not(target_os = "windows"), unsafe(no_mangle))]
 pub unsafe extern "C" fn CreateFileW(
     name: *const u16,
     access: u32,
@@ -75,7 +77,7 @@ pub unsafe extern "C" fn CreateFileW(
     })();
     handle(result, INVALID_HANDLE_VALUE)
 }
-#[unsafe(no_mangle)]
+#[cfg_attr(not(target_os = "windows"), unsafe(no_mangle))]
 pub unsafe extern "C" fn ReadFile(
     h: Handle,
     buffer: *mut c_void,
@@ -103,7 +105,7 @@ pub unsafe extern "C" fn ReadFile(
         *transferred = n as u32;
     }))
 }
-#[unsafe(no_mangle)]
+#[cfg_attr(not(target_os = "windows"), unsafe(no_mangle))]
 pub unsafe extern "C" fn WriteFile(
     h: Handle,
     buffer: *const c_void,
@@ -131,7 +133,7 @@ pub unsafe extern "C" fn WriteFile(
         *transferred = n as u32;
     }))
 }
-#[unsafe(no_mangle)]
+#[cfg_attr(not(target_os = "windows"), unsafe(no_mangle))]
 pub unsafe extern "C" fn GetFileSizeEx(h: Handle, size: *mut i64) -> i32 {
     if size.is_null() {
         return boolean(Err(WinError(ERROR_INVALID_PARAMETER)));
@@ -144,7 +146,7 @@ pub unsafe extern "C" fn GetFileSizeEx(h: Handle, size: *mut i64) -> i32 {
         Ok(())
     }))
 }
-#[unsafe(no_mangle)]
+#[cfg_attr(not(target_os = "windows"), unsafe(no_mangle))]
 pub unsafe extern "C" fn SetFilePointerEx(
     h: Handle,
     distance: i64,
@@ -159,15 +161,15 @@ pub unsafe extern "C" fn SetFilePointerEx(
         }
     }))
 }
-#[unsafe(no_mangle)]
+#[cfg_attr(not(target_os = "windows"), unsafe(no_mangle))]
 pub extern "C" fn SetEndOfFile(h: Handle) -> i32 {
     boolean(kernel().set_end_of_file(h))
 }
-#[unsafe(no_mangle)]
+#[cfg_attr(not(target_os = "windows"), unsafe(no_mangle))]
 pub extern "C" fn FlushFileBuffers(h: Handle) -> i32 {
     boolean(kernel().flush_file(h))
 }
-#[unsafe(no_mangle)]
+#[cfg_attr(not(target_os = "windows"), unsafe(no_mangle))]
 pub unsafe extern "C" fn CreateEventW(
     security: *const c_void,
     manual: i32,
@@ -179,15 +181,15 @@ pub unsafe extern "C" fn CreateEventW(
     }
     kernel().create_event(manual != 0, initial != 0)
 }
-#[unsafe(no_mangle)]
+#[cfg_attr(not(target_os = "windows"), unsafe(no_mangle))]
 pub extern "C" fn SetEvent(h: Handle) -> i32 {
     boolean(kernel().set_event(h))
 }
-#[unsafe(no_mangle)]
+#[cfg_attr(not(target_os = "windows"), unsafe(no_mangle))]
 pub extern "C" fn ResetEvent(h: Handle) -> i32 {
     boolean(kernel().reset_event(h))
 }
-#[unsafe(no_mangle)]
+#[cfg_attr(not(target_os = "windows"), unsafe(no_mangle))]
 pub extern "C" fn WaitForSingleObject(h: Handle, ms: u32) -> u32 {
     match kernel().wait(h, ms) {
         Ok(result) => result,
@@ -197,7 +199,7 @@ pub extern "C" fn WaitForSingleObject(h: Handle, ms: u32) -> u32 {
         }
     }
 }
-#[unsafe(no_mangle)]
+#[cfg_attr(not(target_os = "windows"), unsafe(no_mangle))]
 pub unsafe extern "C" fn QueryPerformanceCounter(out: *mut i64) -> i32 {
     if out.is_null() {
         return boolean(Err(WinError(ERROR_INVALID_PARAMETER)));
@@ -207,7 +209,7 @@ pub unsafe extern "C" fn QueryPerformanceCounter(out: *mut i64) -> i32 {
     }
     1
 }
-#[unsafe(no_mangle)]
+#[cfg_attr(not(target_os = "windows"), unsafe(no_mangle))]
 pub unsafe extern "C" fn QueryPerformanceFrequency(out: *mut i64) -> i32 {
     if out.is_null() {
         return boolean(Err(WinError(ERROR_INVALID_PARAMETER)));
@@ -217,7 +219,7 @@ pub unsafe extern "C" fn QueryPerformanceFrequency(out: *mut i64) -> i32 {
     }
     1
 }
-#[unsafe(no_mangle)]
+#[cfg_attr(not(target_os = "windows"), unsafe(no_mangle))]
 pub extern "C" fn Sleep(ms: u32) {
     sleep(ms);
 }
