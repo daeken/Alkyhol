@@ -88,3 +88,12 @@ through COM, a shader/rendering test, feature-level conformance or game compatib
 A shared C++ upload/readback probe records returned descriptors, heap properties,
 CPU-visible data checksums, GPU-address presence and parent lifetime on Metal and
 independent Windows SDK/WARP. Native comparison results must be recorded after CI.
+
+Native WARP observations normalize committed buffers to 65536-byte descriptor
+alignment and ALLOW_ONLY_BUFFERS heap flags (192). The implementation preserves
+these measured results with a genuinely aligned subspan of a larger Metal buffer;
+Map, GPUVirtualAddress and backend operations use that common offset. Requested
+width remains unchanged. The native record is frozen separately under
+`cpp/reference/device-shared-buffers-windows-v1.json`. Native COM identity is
+checked through canonical IUnknown round trips, without assuming all interface
+pointers share one address.

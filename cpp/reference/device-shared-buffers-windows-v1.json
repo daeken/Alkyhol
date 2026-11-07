@@ -1,0 +1,137 @@
+{
+  "schema_version": 1,
+  "backend": "native Windows SDK WARP device buffers",
+  "observation": {
+    "scenario": "device-shared-buffers-v1",
+    "resources": [
+      {
+        "heap": [
+          2,
+          0,
+          0,
+          1,
+          1
+        ],
+        "heap_flags": 192,
+        "desc": [
+          1,
+          65536,
+          257,
+          1,
+          1,
+          1,
+          0,
+          1,
+          0,
+          1,
+          0
+        ],
+        "checksum": 4261412018
+      },
+      {
+        "heap": [
+          2,
+          0,
+          0,
+          1,
+          1
+        ],
+        "heap_flags": 192,
+        "desc": [
+          1,
+          65536,
+          1024,
+          1,
+          1,
+          1,
+          0,
+          1,
+          0,
+          1,
+          0
+        ],
+        "checksum": 3966715333
+      },
+      {
+        "heap": [
+          3,
+          0,
+          0,
+          1,
+          1
+        ],
+        "heap_flags": 192,
+        "desc": [
+          1,
+          65536,
+          257,
+          1,
+          1,
+          1,
+          0,
+          1,
+          0,
+          1,
+          0
+        ],
+        "checksum": 4261412018
+      },
+      {
+        "heap": [
+          3,
+          0,
+          0,
+          1,
+          1
+        ],
+        "heap_flags": 192,
+        "desc": [
+          1,
+          65536,
+          1024,
+          1,
+          1,
+          1,
+          0,
+          1,
+          0,
+          1,
+          0
+        ],
+        "checksum": 3966715333
+      }
+    ],
+    "parent_lifetime": true,
+    "gpu_addresses_nonzero": true
+  },
+  "diagnostics": "adapter: native D3D12 WARP vendor=5140 device=140 flags=2\n",
+  "source_revision": "2b5bbe39d90f2c973ffd7277b395aea7ea81296e",
+  "tracked_tree_clean": true,
+  "host": "Windows-2025Server-10.0.26100-SP0",
+  "machine": "AMD64",
+  "compiler": "usage: cl [ option... ] filename... [ /link linkoption... ]\nMicrosoft (R) C/C++ Optimizing Compiler Version 19.51.36260 for x64\nCopyright (C) Microsoft Corporation.  All rights reserved.\n\n",
+  "windows_sdk": "10.0.26100.0\\",
+  "build_command": [
+    "cl",
+    "/nologo",
+    "/W4",
+    "/WX",
+    "/EHsc",
+    "/std:c++17",
+    "D:\\a\\Alkyhol\\Alkyhol\\cpp\\tests\\device_buffers.cpp",
+    "/Fe:C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\alkyhol-device-buffers-ohpuj5x6\\device_buffers.exe",
+    "/link",
+    "d3d12.lib",
+    "dxgi.lib",
+    "dxguid.lib"
+  ],
+  "artifacts": {
+    "cpp/tests/device_buffers.cpp": "83cf5b813dd2b16e6b40095a11c225d8fb0d3ee6a0bb07071be187fe87b6ad81",
+    "tools/run_cpp_device_buffers.py": "134375b2d60913f25558f0c5fa547873b445754425d89b5eeec2e70abe06c68d"
+  },
+  "executable_sha256": "758e9596e3c9c6c5600da6c128c9903fc9d4c4665c2b2d3415b7435e643a7813",
+  "evidence": {
+    "workflow_run": "https://github.com/daeken/Alkyhol/actions/runs/42361555862",
+    "scope": "Native WARP device/UPLOAD/READBACK buffer observation; this run exposed a Metal descriptor mismatch, not passing parity."
+  }
+}

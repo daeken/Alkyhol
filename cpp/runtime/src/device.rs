@@ -73,6 +73,7 @@ pub struct Resource {
     refs: AtomicU32,
     metadata: Metadata,
     buffer: metal::Buffer,
+    offset: usize,
     desc: ResourceDesc,
     heap: HeapProperties,
     parent: Parent,
@@ -243,14 +244,17 @@ unsafe extern "C" fn committed(
         return E_POINTER;
     }
     let heap = unsafe { *heap };
-    let desc = unsafe { *desc };
+    let mut desc = unsafe { *desc };
     if let Err(e) = valid_buffer(&heap, flags, &desc, state, clear_value) {
         return e;
     }
     if ![IID_IUNKNOWN, IID_ID3D12OBJECT, CHILD, PAGEABLE, RESOURCE].contains(unsafe { &*iid }) {
         return E_NOINTERFACE;
     }
-    if desc.width > unsafe { (*this).metal.max_buffer_length() } {
+    let Some(length) = desc.width.checked_add(65535) else {
+        return E_INVALIDARG;
+    };
+    if length > unsafe { (*this).metal.max_buffer_length() } {
         return E_INVALIDARG;
     }
     if out.is_null() {
@@ -260,11 +264,19 @@ unsafe extern "C" fn committed(
         let buffer = unsafe {
             (*this)
                 .metal
-                .new_buffer(desc.width, metal::MTLResourceOptions::StorageModeShared)
+                .new_buffer(length, metal::MTLResourceOptions::StorageModeShared)
         };
         if buffer.as_ptr().is_null() {
             return E_OUTOFMEMORY;
         }
+        let address = buffer.gpu_address();
+        if address == 0 {
+            return E_NOTIMPL;
+        }
+        let offset = ((65536 - (address & 65535)) & 65535) as usize;
+        // Preserve the measured committed-buffer descriptor and actual address
+        // alignment by exposing an aligned subspan, not a manufactured GPU VA.
+        desc.alignment = 65536;
         unsafe {
             device_add(this);
         }
@@ -273,6 +285,7 @@ unsafe extern "C" fn committed(
             refs: AtomicU32::new(1),
             metadata: Metadata::new(),
             buffer,
+            offset,
             desc,
             heap,
             parent: Parent(this),
@@ -309,7 +322,7 @@ unsafe extern "C" fn map(
     }
     if !out.is_null() {
         unsafe {
-            *out = contents;
+            *out = contents.cast::<u8>().add((*this).offset).cast();
         }
     }
     S_OK
@@ -330,7 +343,7 @@ unsafe extern "C" fn resource_desc(this: *mut Resource) -> ResourceDesc {
     unsafe { (*this).desc }
 }
 unsafe extern "C" fn gpu_address(this: *mut Resource) -> u64 {
-    unsafe { (*this).buffer.gpu_address() }
+    unsafe { (*this).buffer.gpu_address() + (*this).offset as u64 }
 }
 unsafe extern "C" fn heap_properties(
     this: *mut Resource,
@@ -344,7 +357,7 @@ unsafe extern "C" fn heap_properties(
     }
     if !flags.is_null() {
         unsafe {
-            *flags = 0;
+            *flags = 0xc0;
         }
     }
     S_OK
@@ -941,7 +954,10 @@ mod tests {
             ptr::write_bytes(mapped.cast::<u8>(), 0x83, 512);
             unmap(resource, 0, ptr::null());
             assert_eq!(*mapped.cast::<u8>().add(511), 0x83);
-            assert_eq!(resource_desc(resource), desc());
+            let mut expected = desc();
+            expected.alignment = 65536;
+            assert_eq!(resource_desc(resource), expected);
+            assert_eq!(gpu_address(resource) & 65535, 0);
             assert_ne!(gpu_address(resource), 0);
             assert_eq!(device_release(device), 1);
             let mut parent = ptr::null_mut();
@@ -973,7 +989,11 @@ mod tests {
             let queue = (*device).metal.new_command_queue();
             let command = queue.new_command_buffer();
             let blit = command.new_blit_command_encoder();
-            blit.fill_buffer(&(*resource).buffer, metal::NSRange::new(0, 512), 0x5a);
+            blit.fill_buffer(
+                &(*resource).buffer,
+                metal::NSRange::new((*resource).offset as u64, 512),
+                0x5a,
+            );
             blit.end_encoding();
             command.commit();
             command.wait_until_completed();

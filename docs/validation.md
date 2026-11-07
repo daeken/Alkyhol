@@ -34,6 +34,21 @@ D3D12CreateDevice preflight. No original source, asset or shader is modified.
 A new CI comparison will require clean identical revisions and source bytes for
 the independent native WARP and restricted Metal buffer probes. Neither expected
 native heap/descriptor values nor successful calls are manufactured by its parser.
+Initial native probe runs rejected an unjustified assumption that a device
+interface pointer must equal its IUnknown pointer. The probe now verifies COM's
+canonical IUnknown identity across round trips and parent interfaces instead;
+this does not require arbitrary interface addresses to match. The frozen earlier
+metadata observer is unchanged.
+
+Native SDK execution in
+[42361555862](https://github.com/daeken/Alkyhol/actions/runs/42361555862) then exposed
+a real implementation mismatch: committed-buffer descriptors report alignment
+65536 and heap flags 192 (ALLOW_ONLY_BUFFERS), rather than the input zero values.
+The full native report is preserved separately. Rust now matches those measured
+returns and exposes an actually 64-KiB-aligned subspan of its Metal allocation;
+CPU mapping, native GPU address and the direct Metal blit all use the same offset.
+No GPU address is synthesized. Physical observations now match the independently
+downloaded native record; a fresh CI comparison remains pending.
 See [restricted runtime](../cpp/runtime/README.md) for exact supported constraints.
 
 ## Direct-Metal DXGI factory/adapter COM: local discovery evidence
