@@ -20,11 +20,19 @@ semaphores, timing predicates and file seek/truncation/readback. All 15 report
 words and the separate 12 file bytes match independent expectations. Eleven PE
 Rust tests pass on the x86-64 process (eight portable parser units plus import
 identity, mapping/entry and isolated real permission-fault tests); eight portable
-tests also pass on native arm64. Root Rust tests (77), Python tests (124), PE
+tests also pass on native arm64. Root Rust tests (77), Python tests (127), PE
 Clippy and formatting pass locally. This is host/Rosetta evidence; native Windows
 comparison is pending the new workflow and must be recorded separately. Existing
 source/COM/Metal/sample implementations and fixtures are unchanged. The exact
 bounded [binary contract](pe.md) lists unsupported startup/CRT/COM operations.
+
+Initial CI 42382565164 passed the hosted Mac execution/permission tests but stopped
+before Windows execution: checkout converted fixture source LF to CRLF, correctly
+failing the exact-source check. The fixtures now pin LF through `.gitattributes`;
+no observer predicate or kernel behavior was relaxed. Packaging additionally
+extracts the actual linked read-only Mach-O section and verifies the PE snapshot
+hash. Execution reports compare that extracted/transferred payload identity.
+Three portable packaging-negative units pass (127 Python tests total).
 
 ## COM compute dispatch: physical Metal command-list evidence
 

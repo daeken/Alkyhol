@@ -38,8 +38,9 @@ local/pe/program-macos
 local/pe/program-macos --rebase
 ```
 
-Packaging embeds an unchanged snapshot in read-only `__ALKYHOL,__pefile` and writes
-an adjacent identity report. Packaging alone is not validation or execution.
+Packaging embeds an unchanged snapshot in read-only `__ALKYHOL,__pefile`, extracts
+that section from the finished Mach-O to verify its exact SHA-256 against the
+input snapshot, and writes an adjacent identity report. Packaging alone is not validation or execution.
 `--inspect` checks startup/import support and creates/destroys a checked mapping
 without entering guest code. Missing support exits 78. Runtime arguments currently
 belong to the host: there is no Windows command line/environment/PEB yet.

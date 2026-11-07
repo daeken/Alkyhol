@@ -50,18 +50,22 @@ def main():
     if platform.system() == 'Windows':
         executable = pe
         backend = 'native Windows PE64 / kernel32'
+        executed_digest = hashlib.sha256(executable.read_bytes()).hexdigest()
     elif platform.system() == 'Darwin':
-        from translate_pe import translate
+        from translate_pe import translate, embedded_payload
         executable = translate(pe, ROOT / 'local/pe/contract-macho')
         backend = 'Alkyhol Win64 ABI / x86-64 Mach-O'
+        executed_digest = hashlib.sha256(embedded_payload(executable.read_bytes())).hexdigest()
     else:
         raise RuntimeError('execution requires Windows or macOS')
+    if executed_digest != manifest['pe_sha256']:
+        raise RuntimeError('executed payload differs from transferred PE fixture')
     normal = observe(executable)
     rebased = observe(executable, True) if platform.system() == 'Darwin' else None
     if rebased is not None and normal != rebased:
         raise RuntimeError('rebased PE observations differ')
     report = {'schema_version': 1, 'backend': backend, 'host_machine': platform.machine(),
-              'pe_sha256': manifest['pe_sha256'], 'sources': manifest['sources'],
+              'pe_sha256': manifest['pe_sha256'], 'executed_pe_sha256': executed_digest, 'sources': manifest['sources'],
               'observation': normal, 'forced_rebase_observation': rebased,
               'revision': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
               'tracked_tree_clean': not subprocess.check_output(['git', 'status', '--porcelain', '--untracked-files=no'], cwd=ROOT, text=True).strip()}

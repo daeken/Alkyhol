@@ -14,6 +14,9 @@ def compare(reports):
     native, host = (by_backend[k] for k in ['native Windows PE64 / kernel32', 'Alkyhol Win64 ABI / x86-64 Mach-O'])
     if not all(r['schema_version'] == 1 and r['tracked_tree_clean'] is True for r in reports):
         raise ValueError('unclean or unsupported report schema')
+    for r in reports:
+        if r['executed_pe_sha256'] != r['pe_sha256']:
+            raise ValueError('executed payload differs from original PE')
     for field in ['revision', 'pe_sha256', 'sources', 'observation']:
         if native[field] != host[field]:
             raise ValueError(f'PE execution mismatch: {field}')

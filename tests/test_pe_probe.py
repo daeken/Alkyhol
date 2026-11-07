@@ -12,7 +12,7 @@ spec.loader.exec_module(module)
 class PEComparisonTests(unittest.TestCase):
     def reports(self):
         native = {'backend': 'native Windows PE64 / kernel32', 'schema_version': 1,
-                  'tracked_tree_clean': True, 'revision': 'a' * 40, 'pe_sha256': 'b' * 64,
+                  'tracked_tree_clean': True, 'revision': 'a' * 40, 'pe_sha256': 'b' * 64, 'executed_pe_sha256': 'b' * 64,
                   'sources': {'sample.c': 'c' * 64}, 'observation': {'status': 0, 'words': [1, 2], 'file_hex': '00ff'},
                   'forced_rebase_observation': None}
         host = copy.deepcopy(native)
@@ -24,7 +24,7 @@ class PEComparisonTests(unittest.TestCase):
         self.assertEqual(module.compare(self.reports()), 'b' * 64)
 
     def test_payload_source_revision_and_results_cannot_drift(self):
-        for field, value in [('pe_sha256', 'd' * 64), ('sources', {}), ('revision', 'e' * 40),
+        for field, value in [('pe_sha256', 'd' * 64), ('executed_pe_sha256', 'd' * 64), ('sources', {}), ('revision', 'e' * 40),
                              ('observation', {'status': 0, 'words': [9], 'file_hex': ''})]:
             with self.subTest(field=field):
                 reports = self.reports()
