@@ -4,7 +4,7 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
-## Registered static PE function tables: initial physical evidence
+## Registered static PE function tables: native Windows and physical M4
 
 The owned unchanged PE SHA-256 is
 `70071d28d28a2d6167450e4fe7c8a8096adbb132ec6f1e82a6ab4cca16539e48`.
@@ -14,8 +14,15 @@ execution matches all 20 raw words in normal and forced-rebase runs. It resolves
 original static record/base/ranges, observes rejected guest deletion and retained
 lookup, then manually restores a real active RBX/R12/small-allocation frame and
 checks preserved seeded context bytes. Actual execution returns normally; no
-Windows exception is raised or dispatched. Native Windows execution using its OS
-module tables is newly defined and pending.
+Windows exception is raised or dispatched. All three [PE jobs](https://github.com/daeken/Alkyhol/actions/runs/42424556455)
+pass at `9a01d74`. Downloaded clean native Windows/hosted Mac records and clean
+physical M4 execution at that same revision agree on all 20 words and exact
+executed PE/source identity. Native Windows uses its actual OS module tables;
+its static deletion returns false and lookup remains available. The complete
+native record is frozen at `pe/reference/static-functions-windows-v1.json` and
+required by default. A missing-reference/joint-input-drift guard brings the Python
+suite to 234. Native coverage is one generated push/small-allocation frame; other
+supported recipe forms and lifecycle failures remain host assertions.
 
 RegisteredImage borrows ProcessContext and unregisters before unmapping. The
 launcher now selects this EXE path; ordinary LoadedImage/DLL/library startup

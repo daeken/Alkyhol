@@ -29,7 +29,7 @@ cleans up the mapping and preserves prior entries. The shared registry bounds of
 64 tables/65,536 aggregate entries still apply. No Mach-O OS unwind registration
 or guest-thread support is implied.
 
-The older `LoadedImage::load` and DLL/library APIs retain their original `.pdata`
+The older `LoadedImage::load`, `LinkedImage` and DLL/library APIs retain their original `.pdata`
 startup gate. Static DLL registration/detach integration remains separate. The
 standalone launcher selects RegisteredImage automatically for EXEs, including
 those without static records; those existing programs retain their exact output
@@ -82,3 +82,9 @@ Primary contracts: [AMD64 function/unwind records](https://learn.microsoft.com/e
 [PE exception directory](https://learn.microsoft.com/en-us/windows/win32/debug/pe-format#the-pdata-section),
 [RtlLookupFunctionEntry](https://learn.microsoft.com/en-us/windows/win32/api/winnt/nf-winnt-rtllookupfunctionentry)
 and [RtlVirtualUnwind](https://learn.microsoft.com/en-us/windows/win32/api/winnt/nf-winnt-rtlvirtualunwind).
+
+All 20 raw words agree on native Windows, hosted Mac and physical M4 at `9a01d74`.
+The actual native record at `pe/reference/static-functions-windows-v1.json` is
+frozen and required by default, including exact executed PE/source identity.
+This native observer covers one assembler-generated v1 push/small-allocation frame;
+other static recipe forms and lifecycle failure boundaries have host assertions.
