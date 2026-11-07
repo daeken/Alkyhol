@@ -4,6 +4,34 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## EXEs linked to borrowed DLLs: physical M4, native comparison pending
+
+`LinkedImage` maps a checked EXE against explicitly supplied attached DLLs while
+retaining their borrows through unmapping. It shares the existing named/ordinal
+resolver with `LinkedLibrary`; ordinary `LoadedImage::load` remains builtin-only.
+The owned EXE SHA-256 is
+`9d0d6eac3b3f2f79ff07e42845a7174d25218d85a30c9c20dfaa18812585ecb5`;
+the dependency remains the previously frozen DLL
+`423d6e191a3ebb4f4f5ce11710591edc9ebe163ece79bd35cc6fe5146d13399d`.
+Physical M4/Rosetta normal and forced-rebase runs agree on all 14 raw words:
+actual initialized BSS, named/ordinal/alias calls, named/ordinal data target
+identity, kernel forwarder calls, shared data writes affecting later DLL code
+and restored values. Both EXE and DLL relocate in the forced run. Native Windows
+execution of these identical two binary snapshots is pending in the PE workflow.
+The Mac observer is a Rust Mach-O host reading unchanged PE snapshots; the old
+single-file packager/launcher is unchanged and does not yet bundle DLL payloads.
+
+All 54 PE host tests, six lifetime compiler checks, 19 portable arm64 tests,
+178 Python tests and PE Clippy pass locally. New host units execute named/ordinal
+and forwarded IAT targets, verify no DLL reinitialization or early detach, and
+reject missing/duplicate/reserved dependencies, bad symbols/ordinals, static TLS
+and IAT/relocation overlap before EXE entry. A synthetic EXE initially inherited
+its helper DLL's export directory and was correctly rejected; the test now clears
+that directory rather than loosening executable startup rules. Compiler tests
+reject early dependency destruction. No earlier frozen binary/source/reference,
+graphics sample/shader/asset or game data changes. This is finite owned binary
+execution evidence, not a guest dynamic loader or game compatibility result.
+
 ## Binary D3D12 serializers: supported layouts and a measured native difference
 
 All 27 jobs pass at strict-reference revision `16c8d50`: three

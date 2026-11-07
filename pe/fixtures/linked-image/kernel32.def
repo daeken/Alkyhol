@@ -1,0 +1,6 @@
+LIBRARY KERNEL32.dll
+EXPORTS
+    SetLastError
+    GetStdHandle
+    WriteFile
+    ExitProcess

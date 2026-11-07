@@ -57,6 +57,21 @@ jobs:
         run: |
           python tools/build_pe_root_signatures.py
           python tools/run_pe_root_signatures.py --fixture local/pe/root-signatures/root-signatures.exe --output local/pe/root-signatures-alkyhol.json
+      - name: Enter an unchanged EXE importing named and ordinal code/data from the frozen DLL
+        run: |
+          python tools/build_pe_linked_image.py
+          python tools/run_pe_linked_image.py --directory local/pe/linked-image --output local/pe/linked-image-alkyhol.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe-linked-image-fixture
+          path: |
+            local/pe/linked-image/linked-image.exe
+            local/pe/linked-image/alkyhol_exports.dll
+            local/pe/linked-image/linked-image-fixture.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe-linked-image-alkyhol
+          path: local/pe/linked-image-alkyhol.json
       - uses: actions/upload-artifact@v4
         with:
           name: pe-root-signatures-fixture
@@ -227,6 +242,16 @@ jobs:
           path: local/pe/root-signatures
       - name: Execute the identical PE serializer client against real Windows d3d12
         run: python tools/run_pe_root_signatures.py --fixture local/pe/root-signatures/root-signatures.exe --output local/pe/root-signatures-windows.json
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe-linked-image-fixture
+          path: local/pe/linked-image
+      - name: Let native Windows bind and enter the identical EXE and unchanged DLL
+        run: python tools/run_pe_linked_image.py --directory local/pe/linked-image --output local/pe/linked-image-windows.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe-linked-image-windows
+          path: local/pe/linked-image-windows.json
       - uses: actions/upload-artifact@v4
         with:
           name: pe-root-signatures-windows
@@ -351,3 +376,12 @@ jobs:
           name: pe-root-signatures-windows
           path: local/pe/observations
       - run: python tools/compare_pe_root_signatures.py local/pe/observations/root-signatures-windows.json local/pe/observations/root-signatures-alkyhol.json
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe-linked-image-alkyhol
+          path: local/pe/observations
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe-linked-image-windows
+          path: local/pe/observations
+      - run: python tools/compare_pe_linked_image.py local/pe/observations/linked-image-windows.json local/pe/observations/linked-image-alkyhol.json

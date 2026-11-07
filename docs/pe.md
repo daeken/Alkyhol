@@ -63,7 +63,9 @@ permissions. Import slots cannot overlap relocation fixups.
 The ordinary executable and isolated DLL constructors resolve imports by exact
 symbol from the explicit **kernel32.dll**, **d3dcompiler_47.dll** and **d3d12.dll** whitelists,
 with case-insensitive DLL identity. The dependency APIs below also accept named/
-ordinal imports from caller-supplied DLL instances.
+ordinal imports from caller-supplied DLL instances. `LinkedImage::load` extends
+EXEs with those explicit borrowed dependencies without changing the ordinary
+`LoadedImage::load` or single-file launcher contract.
 No arbitrary `dlsym` of native exports, name-only DLL matching, fallback
 libraries or successful unknown stubs occur. The compiler-generated
 `extern "win64"` wrappers preserve the Windows argument/return and nonvolatile
@@ -299,6 +301,46 @@ loader error `1114` (ERROR_DLL_INIT_FAILED).
 Those interfaces have different contracts. No Win32 loader-error parity is
 claimed by comparing the shared lifecycle trace. General module-manager,
 dependencies, threads, TLS and SEH restrictions above still apply.
+
+## Executables with explicit borrowed DLL dependencies
+
+`LinkedImage::load(exe_bytes, rebase, dependencies)` maps an EXE against up to 64
+already attached `LoadedLibrary` instances. It binds named and biased ordinal
+code/data imports, including exports forwarded through those DLLs to other
+already resolved targets. DLL names are restricted case-insensitive basenames;
+symbol names remain case-sensitive. Builtin identities are reserved. Missing,
+zero/sparse/system ordinals and unsupported startup still fail before EXE entry.
+Loading never enters the EXE or initializes any DLL. The caller controls initial
+attachment; errors do not claim to precede attachment of those borrowed DLLs.
+
+`image()` borrows the checked mapping for the existing unsafe `enter()` API.
+An explicit destructor unmaps the EXE while Rust still requires every dependency
+owner to remain alive, including transitive owners. Paired compiler checks accept
+correct teardown and reject prematurely dropping a borrowed DLL (E0505). No
+filesystem discovery, global cache, guest LoadLibrary/GetProcAddress, static TLS,
+SEH, automatic EXE graph loader or single-file multi-module packaging is added.
+
+The new owned EXE imports Direct/Alias, Bss/Data, ordinal-21 data, NONAME ordinal-23
+code and the kernel32-forwarded GetLastError from the **unchanged frozen** export
+DLL. Actual PE thunks are independently checked. Its real instructions record
+DLL-initialized BSS, function/ordinal results, actual named/ordinal data aliasing,
+cross-DLL writes affecting later function results and restored data, then return
+normally to the host. Integer addresses pass through volatile storage so a C
+compiler cannot fold distinct extern object names as unequal instead of observing
+the actual import targets. Both binary files are copied as checked snapshots into
+a temporary directory for execution. Windows loads the actual DLL beside the
+actual EXE; the Mac observer uses the explicit Rust linking API and drops the EXE
+before detaching the DLL. This is binary execution of both files, separate from
+source compilation or static instruction rewriting.
+
+```sh
+python3 tools/build_pe_linked_image.py
+python3 tools/run_pe_linked_image.py --directory local/pe/linked-image --output local/pe/linked-image-alkyhol.json
+```
+
+Physical M4/Rosetta executes all 14 raw words normally and with both images
+actually rebased. Native comparison is recorded in [validation](validation.md).
+This finite owned EXE/DLL test does not establish game compatibility.
 
 ## Explicit borrowed DLL dependencies
 

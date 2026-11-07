@@ -27,6 +27,40 @@ pub(crate) fn resolve_builtin(module: &str, symbol: &ImportSymbol) -> Option<usi
     }
 }
 
+fn dependency_modules<'a>(
+    dependencies: &[(&str, &'a LoadedLibrary)],
+) -> Result<BTreeMap<String, &'a LoadedLibrary>> {
+    if dependencies.len() > 64 {
+        return Err("more than 64 explicit DLL dependencies".into());
+    }
+    let mut modules = BTreeMap::new();
+    for &(name, library) in dependencies {
+        let name = dll_basename(name)?;
+        if modules.insert(name, library).is_some() {
+            return Err("duplicate case-insensitive DLL dependency".into());
+        }
+    }
+    Ok(modules)
+}
+fn resolve_dependency(
+    modules: &BTreeMap<String, &LoadedLibrary>,
+    module: &str,
+    symbol: &ImportSymbol,
+) -> Option<usize> {
+    resolve_builtin(module, symbol).or_else(|| {
+        modules
+            .get(&module.to_ascii_lowercase())
+            .and_then(|library| match symbol {
+                ImportSymbol::Name(name) => library.get_name(name),
+                ImportSymbol::Ordinal(ordinal) if *ordinal != 0 => {
+                    library.get_ordinal(u32::from(*ordinal))
+                }
+                ImportSymbol::Ordinal(_) => None,
+            })
+            .map(|p| p as usize)
+    })
+}
+
 /// Owned executable mapping. Loading performs all metadata/import checks before
 /// allocation and never enters guest code. Dropping unmaps it; code may not retain
 /// pointers or start threads beyond the mapping's lifetime.
@@ -191,6 +225,69 @@ impl Drop for LoadedImage {
     }
 }
 
+/// One executable linked to explicitly supplied, already attached DLL instances.
+/// Loading only checks/maps the EXE; it does not enter or initialize guest code.
+/// DLL ownership stays with the caller, with borrows retained through unmapping.
+/// There is no filesystem discovery, guest module API or process-global cache.
+///
+/// ```no_run
+/// # use alkyhol_pe::{LinkedImage, LoadedLibrary};
+/// # fn example(exe: &[u8], dll: &[u8]) -> alkyhol_pe::Result<()> {
+/// let dependency = unsafe { LoadedLibrary::load(dll, false) }?;
+/// let program = LinkedImage::load(exe, false, &[("dependency.dll", &dependency)])?;
+/// drop(program);
+/// drop(dependency);
+/// # Ok(()) }
+/// ```
+/// ```compile_fail,E0505
+/// # use alkyhol_pe::{LinkedImage, LoadedLibrary};
+/// # fn example(exe: &[u8], dll: &[u8]) -> alkyhol_pe::Result<()> {
+/// let dependency = unsafe { LoadedLibrary::load(dll, false) }?;
+/// let _program = LinkedImage::load(exe, false, &[("dependency.dll", &dependency)])?;
+/// drop(dependency);
+/// # Ok(()) }
+/// ```
+pub struct LinkedImage<'a> {
+    image: Option<LoadedImage>,
+    _dependencies: BTreeMap<String, &'a LoadedLibrary>,
+}
+impl<'a> LinkedImage<'a> {
+    /// Bind named/ordinal code/data imports against at most 64 explicit DLLs.
+    /// DLL basenames are case-insensitive; symbol names remain case-sensitive.
+    /// Builtin names are reserved. No DLL is loaded or reinitialized here.
+    /// Missing, sparse, zero/system ordinals and unsupported startup fail before
+    /// EXE entry. The caller supplies correct dependency identities; entering
+    /// the borrowed image requires LoadedImage::enter's trusted-code contract.
+    pub fn load(
+        bytes: &[u8],
+        rebase: bool,
+        dependencies: &[(&str, &'a LoadedLibrary)],
+    ) -> Result<Self> {
+        let modules = dependency_modules(dependencies)?;
+        let image = Image::parse(bytes)?;
+        image.check_startup()?;
+        let mapped = LoadedImage::map(&image, rebase, &|name, symbol| {
+            resolve_dependency(&modules, name, symbol)
+        })?;
+        Ok(Self {
+            image: Some(mapped),
+            _dependencies: modules,
+        })
+    }
+    /// Borrow the checked mapping; its lifetime cannot escape this owner or its
+    /// transitive dependency owners. Calling enter remains explicitly unsafe.
+    pub fn image(&self) -> &LoadedImage {
+        self.image.as_ref().expect("mapped linked EXE")
+    }
+}
+impl Drop for LinkedImage<'_> {
+    fn drop(&mut self) {
+        // Explicit destruction enforces Rust drop-checking of dependency
+        // borrows even when the owner is implicitly dropped without later use.
+        drop(self.image.take());
+    }
+}
+
 /// An isolated, explicitly loaded trusted DLL. This is not a process module
 /// cache or guest LoadLibrary/GetProcAddress implementation. Imports/forwarders
 /// can target only the supported builtin ABI with the isolated load constructor;
@@ -341,30 +438,9 @@ impl<'a> LinkedLibrary<'a> {
         rebase: bool,
         dependencies: &[(&str, &'a LoadedLibrary)],
     ) -> Result<Self> {
-        if dependencies.len() > 64 {
-            return Err("more than 64 explicit DLL dependencies".into());
-        }
-        let mut modules = BTreeMap::new();
-        for &(name, library) in dependencies {
-            let name = dll_basename(name)?;
-            if modules.insert(name, library).is_some() {
-                return Err("duplicate case-insensitive DLL dependency".into());
-            }
-        }
-        let resolve = |module: &str, symbol: &ImportSymbol| {
-            resolve_builtin(module, symbol).or_else(|| {
-                modules
-                    .get(&module.to_ascii_lowercase())
-                    .and_then(|library| match symbol {
-                        ImportSymbol::Name(name) => library.get_name(name),
-                        ImportSymbol::Ordinal(ordinal) if *ordinal != 0 => {
-                            library.get_ordinal(u32::from(*ordinal))
-                        }
-                        ImportSymbol::Ordinal(_) => None,
-                    })
-                    .map(|p| p as usize)
-            })
-        };
+        let modules = dependency_modules(dependencies)?;
+        let resolve =
+            |module: &str, symbol: &ImportSymbol| resolve_dependency(&modules, module, symbol);
         let library = unsafe { LoadedLibrary::load_resolved(bytes, rebase, &resolve) }?;
         Ok(Self {
             library: Some(library),
@@ -650,6 +726,128 @@ mod tests {
         bytes[0x7c0..0x7cb].copy_from_slice(b"custom.dll\0");
         bytes[0x7d2..0x7d8].copy_from_slice(b"Entry\0");
         bytes
+    }
+    #[test]
+    fn linked_executable_calls_named_ordinal_and_forwarded_targets_without_reinitializing_dll() {
+        for forwarded in [false, true] {
+            for ordinal in [false, true] {
+                let log = lifecycle_log();
+                let mut dependency = lifecycle_fixture(
+                    log.get(),
+                    true,
+                    forwarded.then_some("kernel32.GetLastError"),
+                );
+                if !forwarded {
+                    dependency[0x6d0..0x6d4].copy_from_slice(&0x1100u32.to_le_bytes());
+                    dependency[0x500..0x506].copy_from_slice(&[0xb8, 42, 0, 0, 0, 0xc3]);
+                }
+                let library = unsafe { LoadedLibrary::load(&dependency, true) }.unwrap();
+                let parent_log = lifecycle_log();
+                let mut exe = dependent_fixture(parent_log.get(), true);
+                exe[0x96..0x98].copy_from_slice(&0x22u16.to_le_bytes());
+                exe[0x98 + 112..0x98 + 120].fill(0);
+                // Win64 entry: allocate shadow/alignment space, call the actual
+                // imported target at RVA 0x3020, restore the stack, return EAX.
+                exe[0x400..0x40f].copy_from_slice(&[
+                    0x48, 0x83, 0xec, 0x28, 0xff, 0x15, 0x16, 0x20, 0, 0, 0x48, 0x83, 0xc4, 0x28,
+                    0xc3,
+                ]);
+                if ordinal {
+                    exe[0x7a0..0x7a8].copy_from_slice(&0x8000000000000011u64.to_le_bytes());
+                }
+                assert!(LoadedImage::load(&exe, true).is_err());
+                let program = LinkedImage::load(&exe, true, &[("CuStOm.DlL", &library)]).unwrap();
+                assert!(program.image().relocated());
+                assert_eq!(
+                    unsafe { program.image().base.add(0x3020).cast::<usize>().read() },
+                    library.get_name("Entry").unwrap() as usize
+                );
+                assert_eq!(unsafe { (*log.get()).calls }, 1);
+                alkyhol::ffi::SetLastError(0x1234);
+                assert_eq!(
+                    unsafe { program.image().enter() },
+                    if forwarded { 0x1234 } else { 42 }
+                );
+                drop(program);
+                assert_eq!(unsafe { (*log.get()).calls }, 1);
+                let call: unsafe extern "win64" fn() -> u32 =
+                    unsafe { std::mem::transmute(library.get_ordinal(17).unwrap()) };
+                alkyhol::ffi::SetLastError(0x1234);
+                assert_eq!(unsafe { call() }, if forwarded { 0x1234 } else { 42 });
+                drop(library);
+                assert_eq!(unsafe { (*log.get()).calls }, 2);
+                assert_eq!(unsafe { (*parent_log.get()).calls }, 0);
+            }
+        }
+        let program = LinkedImage::load(&permission_fixture(), true, &[]).unwrap();
+        assert_eq!(unsafe { program.image().enter() }, 42);
+    }
+    #[test]
+    fn linked_executable_rejects_missing_invalid_and_unsupported_inputs_before_entry() {
+        let log = lifecycle_log();
+        let dependency = lifecycle_fixture(log.get(), true, None);
+        let library = unsafe { LoadedLibrary::load(&dependency, true) }.unwrap();
+        let parent_log = lifecycle_log();
+        let dll = dependent_fixture(parent_log.get(), true);
+        assert!(LinkedImage::load(&dll, true, &[("custom.dll", &library)]).is_err());
+        let mut exe = dll;
+        exe[0x96..0x98].copy_from_slice(&0x22u16.to_le_bytes());
+        exe[0x98 + 112..0x98 + 120].fill(0);
+        assert!(LinkedImage::load(&exe, true, &[]).is_err());
+        for module in [
+            "../custom.dll",
+            "custom",
+            "",
+            "kernel32.dll",
+            "D3D12.DLL",
+            "d3dcompiler_47.dll",
+        ] {
+            assert!(LinkedImage::load(&exe, true, &[(module, &library)]).is_err());
+        }
+        assert!(
+            LinkedImage::load(
+                &exe,
+                true,
+                &[("custom.dll", &library), ("CUSTOM.DLL", &library)]
+            )
+            .is_err()
+        );
+        assert!(LinkedImage::load(&exe, true, &vec![("custom.dll", &library); 65]).is_err());
+        for mode in [
+            "symbol-case",
+            "module",
+            "ordinal-zero",
+            "ordinal-hole",
+            "system-ordinal",
+            "tls",
+            "iat-reloc",
+        ] {
+            let mut invalid = exe.clone();
+            match mode {
+                "symbol-case" => invalid[0x7d2] = b'e',
+                "module" => invalid[0x7c0] = b'x',
+                "ordinal-zero" | "ordinal-hole" => invalid[0x7a0..0x7a8].copy_from_slice(
+                    &(0x8000000000000000u64 | if mode == "ordinal-zero" { 0 } else { 18 })
+                        .to_le_bytes(),
+                ),
+                "system-ordinal" => {
+                    invalid[0x7c0..0x7cd].copy_from_slice(b"kernel32.dll\0");
+                    invalid[0x7a0..0x7a8].copy_from_slice(&0x8000000000000011u64.to_le_bytes());
+                }
+                "tls" => invalid[0x98 + 112 + 9 * 8..0x98 + 120 + 9 * 8]
+                    .copy_from_slice(&[0, 0x20, 0, 0, 16, 0, 0, 0]),
+                "iat-reloc" => invalid[0x608..0x60a].copy_from_slice(&0xa020u16.to_le_bytes()),
+                _ => unreachable!(),
+            }
+            assert!(
+                LinkedImage::load(&invalid, true, &[("custom.dll", &library)]).is_err(),
+                "{mode}"
+            );
+        }
+        assert_eq!(unsafe { (*parent_log.get()).calls }, 0);
+        assert_eq!(unsafe { (*log.get()).calls }, 1);
+        drop(library);
+        assert_eq!(unsafe { (*log.get()).calls }, 2);
     }
     #[test]
     fn explicit_dependencies_bind_actual_iat_forwarders_and_detach_before_borrowed_dll() {
