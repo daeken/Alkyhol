@@ -66,11 +66,9 @@ def main():
     if hashlib.sha256(pe.read_bytes()).hexdigest()!=manifest['pe_sha256']:raise ValueError('changed PE identity')
     for name,digest in manifest['sources'].items():
         if hashlib.sha256((ROOT/name).read_bytes()).hexdigest()!=digest:raise ValueError('changed probe source')
-    # This new observer bootstraps its first actual native Windows reference.
-    if REFERENCE.exists():
-        reference=json.loads(REFERENCE.read_text(encoding='utf-8'))
-        for field in ['pe_sha256','sources']:
-            if manifest[field]!=reference[field]:raise ValueError('changed frozen text-conversion input')
+    reference=json.loads(REFERENCE.read_text(encoding='utf-8'))
+    for field in ['pe_sha256','sources']:
+        if manifest[field]!=reference[field]:raise ValueError('changed frozen text-conversion input')
     windows=platform.system()=='Windows'
     if windows:executable=pe;executed=hashlib.sha256(pe.read_bytes()).hexdigest();backend=NATIVE
     elif platform.system()=='Darwin':

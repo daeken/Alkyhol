@@ -21,9 +21,10 @@ def compare(reports,reference=None):
         differences=[(i,a,b) for i,(a,b) in enumerate(zip(native['normal']['words'],host['normal']['words'])) if a!=b]
         raise ValueError('native/Alkyhol UTF observations differ: '+repr(differences[:12]))
     if native['rebased'] is not None or validate(host['rebased'])!=native['normal']:raise ValueError('missing exact forced-rebase observations')
-    if reference is None and REFERENCE.exists():reference=json.loads(REFERENCE.read_text(encoding='utf-8'))
+    if reference is None:reference=json.loads(REFERENCE.read_text(encoding='utf-8'))
     if reference is not None:
-        if reference['backend']!=NATIVE or reference['tracked_tree_clean'] is not True:raise ValueError('invalid frozen native record')
+        if reference['backend']!=NATIVE or reference['tracked_tree_clean'] is not True or type(reference['schema_version']) is not int or reference['schema_version']!=1:raise ValueError('invalid frozen native record')
+        validate(reference['normal'])
         for key in ['pe_sha256','sources','normal']:
             if native[key]!=reference[key]:raise ValueError('changed frozen native text-conversion evidence: '+key)
     return WORD_COUNT

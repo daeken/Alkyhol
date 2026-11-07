@@ -6,6 +6,8 @@ import struct
 import subprocess
 import sys
 import unittest
+import tempfile
+from unittest import mock
 ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT/'tools'))
 import run_pe_text_conversion as runner
 import compare_pe_text_conversion as comparator
@@ -57,6 +59,16 @@ class TextConversionProtocolTests(unittest.TestCase):
         reports=self.reports()
         for r in reports:r.update(pe_sha256='d'*64,executed_pe_sha256='d'*64)
         with self.assertRaises(ValueError):comparator.compare(reports,reference=self.reports()[0])
+
+    def test_default_frozen_native_record_missing_reference_and_joint_input_drift(self):
+        native=json.loads(runner.REFERENCE.read_text(encoding='utf-8'))
+        host=copy.deepcopy(native);host.update(backend=runner.HOST,rebased=copy.deepcopy(native['normal']))
+        self.assertEqual(comparator.compare([native,host]),1832)
+        with tempfile.TemporaryDirectory() as directory:
+            with mock.patch.object(comparator,'REFERENCE',Path(directory)/'missing.json'):
+                with self.assertRaises(FileNotFoundError):comparator.compare([native,host])
+        for record in [native,host]:record.update(pe_sha256='d'*64,executed_pe_sha256='d'*64)
+        with self.assertRaisesRegex(ValueError,'frozen native'):comparator.compare([native,host])
 
 
 if __name__=='__main__':unittest.main()

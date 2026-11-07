@@ -4,7 +4,7 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
-## Direct UTF conversion boundaries: native discrepancy and correction
+## Direct UTF conversion boundaries: native Windows and physical M4
 
 A new owned MIT no-CRT PE SHA-256
 `2563ffb1a26e0202e47bf72e4718e02b6234230c20653e66eec564246ffe3a7f`
@@ -14,8 +14,12 @@ on all 1,832 raw DWORDs. The runtime now performs default U+FFFD replacement for
 malformed input; strict flags still fail with error 1113. Cases cover supplementary/
 maximum scalars, embedded/terminated NULs, illegal/truncated/surrogate/overlong/
 out-of-range UTF-8, lone/repeated UTF-16 surrogates and invalid zero input lengths.
-Native Windows execution is newly defined and pending; local replacement results
-alone are not independent native evidence.
+All three [PE jobs](https://github.com/daeken/Alkyhol/actions/runs/42422253798)
+pass at corrected/expanded revision `c9a974c`. Downloaded clean Windows/hosted
+records and clean physical M4 execution at that same revision agree on all 1,832
+raw words and exact executed PE/source identities. The actual native record is
+frozen at `pe/reference/text-conversion-windows-v1.json` and required by default;
+a missing-reference/joint-input-drift guard brings the Python suite to 228.
 
 The first independent [PE run](https://github.com/daeken/Alkyhol/actions/runs/42421647507)
 on `3aa1eca` correctly failed comparison: native Windows groups `ED A0 80` as two
@@ -28,7 +32,9 @@ then agrees with all 1,064 original actual Windows words under the corrected
 runtime, in normal and forced-rebase development execution. No acceptance was
 relaxed. The new, not-yet-frozen observer was expanded with lower/upper boundary
 neighbors and invalid continuations to test the generalized prefix handling;
-independent native execution of that expanded matrix remains pending.
+independent native execution of that expanded matrix at `c9a974c` agrees on all
+1,832 words, including both lower and upper rejected-prefix boundaries, valid
+neighbors, invalid continuations and retained ASCII suffixes.
 
 All successful write bytes/units and destination tails are recorded exactly.
 Strict-invalid and zero-length inputs only make queries, with no failed-query

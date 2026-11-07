@@ -35,15 +35,17 @@ above U+10FFFF, producing two replacements for `ED A0 80` and three for
 `F4 90 80 80`. The corrected runtime matches every word of that original probe on
 the unchanged first PE. The expanded matrix adds valid neighboring boundaries,
 overlong lower prefixes, illegal leaders, invalid continuations and valid suffixes
-to check the streaming adapter. See the executed validation record for which
-native observations have completed; added host hypotheses are not native evidence.
+to check the streaming adapter. Native Windows/hosted Mac/physical M4 agree on every word of the expanded matrix
+at `c9a974c`, including those added boundary hypotheses. This upgrades those
+finite cases to independently measured observations.
 
 The producer validates every call identity/order, valid-query success, strict/
 zero-length errors, query/write count agreement, output-unit width, preserved
 tails, full raw-byte decoding and complete record count. Windows receives the
 identical PE/source manifest, with no native rebuild. Native and Alkyhol outputs,
 input hashes and clean revisions must agree, including normal/forced-rebase host
-execution; the actual Windows record is frozen after independent observation.
+execution; the actual Windows record is frozen at `pe/reference/text-conversion-windows-v1.json`
+and required by default, including exact input identity and all 1,832 words.
 The source is original test code, not copied Microsoft sample code or game data.
 This finite corpus does not establish every Windows code page or string behavior.
 
