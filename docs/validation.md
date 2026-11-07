@@ -249,3 +249,15 @@ cargo run --manifest-path graphics/Cargo.toml --locked --example hello_triangle
 Create `local/` before requesting a report there. Graphics commands need access to
 the crates in their lockfile and a usable backend. Linux without hardware must add
 `-- --allow-software` and provide Vulkan/llvmpipe. A missing backend or timeout fails.
+
+## Direct Metal migration, 2026-11-07
+
+Revision `818cfe8` retired wgpu, Naga and the Vulkan graphics path. Local physical
+Apple M4/macOS 27.0.1 ARM64/Rust 1.99.1 passed 55 root tests, 26 Python tests,
+seven GPU tests, graphics Clippy and the unchanged v1 full-pixel contract. CI run
+[42334642328](https://github.com/daeken/Alkyhol/actions/runs/42334642328)
+passed all seven jobs, including exact agreement of all 1040 source and 1040 copied
+RGBA8 bytes between independent native Windows SDK D3D12 WARP and hosted direct
+Metal. The hosted Apple Paravirtual device reports ray tracing **false**; it does
+not validate Sakura ray tracing. Physical M4 ray-tracing tests are separate and
+require an explicit `--include-ignored` invocation; absence is not a passing ray test.

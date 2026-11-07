@@ -42,3 +42,11 @@ add all six results under `samples`. CI compares the full `samples` mapping.
 Reports bind source, runner, build inputs, executed library and executable hashes,
 plus compiler/host/revision identities. These describe the files that actually ran;
 they do not prove universal correctness or that a library was freshly rebuilt.
+
+`graphics/tests/raytrace.rs` builds actual triangle BLAS/TLAS and verifies a
+translated/scaled instance's distance, barycentrics and ID plus spatial and mask
+misses. It rejects incomplete/nonfinite triangles, singular transforms, missing
+instances and invalid mesh indices. Run on a physical RT-capable Metal device:
+`cargo test --manifest-path graphics/Cargo.toml --test raytrace -- --include-ignored --nocapture`.
+The test is explicitly ignored in hosted CI because its paravirtual device has no
+ray-tracing capability; an ignored test is not ray-tracing evidence.
