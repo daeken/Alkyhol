@@ -1,0 +1,324 @@
+//! Restricted Win32 kernel contracts. Handles are tokens, never host pointers.
+use std::{
+    cell::Cell,
+    collections::HashMap,
+    fs::{File, OpenOptions},
+    io::{Read, Seek, SeekFrom, Write},
+    path::Path,
+    sync::{
+        Arc, Condvar, Mutex, OnceLock,
+        atomic::{AtomicUsize, Ordering},
+    },
+    time::{Duration, Instant},
+};
+
+pub type Handle = usize;
+pub const INVALID_HANDLE_VALUE: Handle = usize::MAX;
+pub const ERROR_INVALID_FUNCTION: u32 = 1;
+pub const ERROR_FILE_NOT_FOUND: u32 = 2;
+pub const ERROR_PATH_NOT_FOUND: u32 = 3;
+pub const ERROR_ACCESS_DENIED: u32 = 5;
+pub const ERROR_INVALID_HANDLE: u32 = 6;
+pub const ERROR_NOT_SUPPORTED: u32 = 50;
+pub const ERROR_FILE_EXISTS: u32 = 80;
+pub const ERROR_INVALID_PARAMETER: u32 = 87;
+pub const ERROR_NEGATIVE_SEEK: u32 = 131;
+pub const ERROR_ALREADY_EXISTS: u32 = 183;
+pub const ERROR_NO_UNICODE_TRANSLATION: u32 = 1113;
+pub const GENERIC_READ: u32 = 0x8000_0000;
+pub const GENERIC_WRITE: u32 = 0x4000_0000;
+pub const FILE_SHARE_ALL: u32 = 7;
+pub const FILE_ATTRIBUTE_NORMAL: u32 = 0x80;
+pub const CREATE_NEW: u32 = 1;
+pub const CREATE_ALWAYS: u32 = 2;
+pub const OPEN_EXISTING: u32 = 3;
+pub const OPEN_ALWAYS: u32 = 4;
+pub const TRUNCATE_EXISTING: u32 = 5;
+pub const WAIT_OBJECT_0: u32 = 0;
+pub const WAIT_TIMEOUT: u32 = 258;
+pub const WAIT_FAILED: u32 = u32::MAX;
+pub const INFINITE: u32 = u32::MAX;
+
+thread_local! { static LAST_ERROR: Cell<u32> = const { Cell::new(0) }; }
+pub fn get_last_error() -> u32 {
+    LAST_ERROR.get()
+}
+pub fn set_last_error(error: u32) {
+    LAST_ERROR.set(error);
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WinError(pub u32);
+pub type WinResult<T> = Result<T, WinError>;
+impl From<std::io::Error> for WinError {
+    fn from(error: std::io::Error) -> Self {
+        use std::io::ErrorKind::*;
+        Self(match error.kind() {
+            NotFound => ERROR_FILE_NOT_FOUND,
+            PermissionDenied => ERROR_ACCESS_DENIED,
+            AlreadyExists => ERROR_FILE_EXISTS,
+            InvalidInput | InvalidData => ERROR_INVALID_PARAMETER,
+            // Do not silently label unknown errors as success.
+            _ => ERROR_INVALID_FUNCTION,
+        })
+    }
+}
+
+struct FileObject {
+    file: Mutex<File>,
+    read: bool,
+    write: bool,
+}
+struct EventState {
+    signaled: bool,
+    generation: u64,
+}
+struct EventObject {
+    manual: bool,
+    state: Mutex<EventState>,
+    changed: Condvar,
+}
+enum Object {
+    File(FileObject),
+    Event(EventObject),
+}
+
+#[derive(Default)]
+pub struct Kernel {
+    objects: Mutex<HashMap<Handle, Arc<Object>>>,
+}
+// Global token allocation prevents accidental handle aliasing between Kernel instances.
+static NEXT_HANDLE: AtomicUsize = AtomicUsize::new(1);
+impl Kernel {
+    #[allow(deprecated)] // fetch_update remains available on older Rust releases.
+    fn insert(&self, object: Object) -> Handle {
+        let handle = NEXT_HANDLE
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| {
+                n.checked_add(1).filter(|v| *v != INVALID_HANDLE_VALUE)
+            })
+            .expect("handle namespace exhausted");
+        self.objects
+            .lock()
+            .unwrap()
+            .insert(handle, Arc::new(object));
+        handle
+    }
+    fn object(&self, handle: Handle) -> WinResult<Arc<Object>> {
+        self.objects
+            .lock()
+            .unwrap()
+            .get(&handle)
+            .cloned()
+            .ok_or(WinError(ERROR_INVALID_HANDLE))
+    }
+    pub fn close_handle(&self, handle: Handle) -> WinResult<()> {
+        self.objects
+            .lock()
+            .unwrap()
+            .remove(&handle)
+            .map(|_| ())
+            .ok_or(WinError(ERROR_INVALID_HANDLE))
+    }
+    /// Host paths, synchronous disk files, unrestricted sharing only. See docs/contracts.md.
+    pub fn create_file(
+        &self,
+        path: &Path,
+        access: u32,
+        share: u32,
+        disposition: u32,
+        flags: u32,
+    ) -> WinResult<Handle> {
+        if access == 0 || access & !(GENERIC_READ | GENERIC_WRITE) != 0 {
+            return Err(WinError(ERROR_NOT_SUPPORTED));
+        }
+        if share != FILE_SHARE_ALL || flags != FILE_ATTRIBUTE_NORMAL {
+            return Err(WinError(ERROR_NOT_SUPPORTED));
+        }
+        if !(CREATE_NEW..=TRUNCATE_EXISTING).contains(&disposition) {
+            return Err(WinError(ERROR_INVALID_PARAMETER));
+        }
+        let read = access & GENERIC_READ != 0;
+        let write = access & GENERIC_WRITE != 0;
+        if !write && disposition != OPEN_EXISTING {
+            return Err(WinError(ERROR_NOT_SUPPORTED));
+        }
+        let mut options = OpenOptions::new();
+        options.read(read).write(write);
+        let (file, existed) = match disposition {
+            CREATE_NEW => (options.create_new(true).open(path)?, false),
+            CREATE_ALWAYS | OPEN_ALWAYS => match options.clone().create_new(true).open(path) {
+                Ok(file) => (file, false),
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => (
+                    options.truncate(disposition == CREATE_ALWAYS).open(path)?,
+                    true,
+                ),
+                Err(e) => return Err(e.into()),
+            },
+            OPEN_EXISTING => (options.open(path)?, true),
+            TRUNCATE_EXISTING => (options.truncate(true).open(path)?, true),
+            _ => unreachable!(),
+        };
+        if !file.metadata()?.is_file() {
+            return Err(WinError(ERROR_NOT_SUPPORTED));
+        }
+        if disposition == CREATE_ALWAYS || disposition == OPEN_ALWAYS {
+            set_last_error(if existed { ERROR_ALREADY_EXISTS } else { 0 });
+        }
+        Ok(self.insert(Object::File(FileObject {
+            file: Mutex::new(file),
+            read,
+            write,
+        })))
+    }
+    pub fn read_file(&self, handle: Handle, bytes: &mut [u8]) -> WinResult<usize> {
+        let object = self.object(handle)?;
+        let Object::File(file) = &*object else {
+            return Err(WinError(ERROR_INVALID_HANDLE));
+        };
+        if !file.read {
+            return Err(WinError(ERROR_ACCESS_DENIED));
+        }
+        Ok(file.file.lock().unwrap().read(bytes)?)
+    }
+    pub fn write_file(&self, handle: Handle, bytes: &[u8]) -> WinResult<usize> {
+        let object = self.object(handle)?;
+        let Object::File(file) = &*object else {
+            return Err(WinError(ERROR_INVALID_HANDLE));
+        };
+        if !file.write {
+            return Err(WinError(ERROR_ACCESS_DENIED));
+        }
+        Ok(file.file.lock().unwrap().write(bytes)?)
+    }
+    pub fn file_size(&self, handle: Handle) -> WinResult<u64> {
+        let object = self.object(handle)?;
+        let Object::File(file) = &*object else {
+            return Err(WinError(ERROR_INVALID_HANDLE));
+        };
+        Ok(file.file.lock().unwrap().metadata()?.len())
+    }
+    pub fn seek(&self, handle: Handle, distance: i64, method: u32) -> WinResult<u64> {
+        let object = self.object(handle)?;
+        let Object::File(file) = &*object else {
+            return Err(WinError(ERROR_INVALID_HANDLE));
+        };
+        let mut file = file.file.lock().unwrap();
+        // Compute the target explicitly so negative seeks have Windows' specific error.
+        let base = match method {
+            0 => 0_i128,
+            1 => file.stream_position()? as i128,
+            2 => file.metadata()?.len() as i128,
+            _ => return Err(WinError(ERROR_INVALID_PARAMETER)),
+        };
+        let target = base + i128::from(distance);
+        if target < 0 {
+            return Err(WinError(ERROR_NEGATIVE_SEEK));
+        }
+        if target > i64::MAX as i128 {
+            return Err(WinError(ERROR_INVALID_PARAMETER));
+        }
+        Ok(file.seek(SeekFrom::Start(target as u64))?)
+    }
+    pub fn set_end_of_file(&self, handle: Handle) -> WinResult<()> {
+        let object = self.object(handle)?;
+        let Object::File(file) = &*object else {
+            return Err(WinError(ERROR_INVALID_HANDLE));
+        };
+        if !file.write {
+            return Err(WinError(ERROR_ACCESS_DENIED));
+        }
+        let mut file = file.file.lock().unwrap();
+        let position = file.stream_position()?;
+        Ok(file.set_len(position)?)
+    }
+    pub fn flush_file(&self, handle: Handle) -> WinResult<()> {
+        let object = self.object(handle)?;
+        let Object::File(file) = &*object else {
+            return Err(WinError(ERROR_INVALID_HANDLE));
+        };
+        if !file.write {
+            return Err(WinError(ERROR_ACCESS_DENIED));
+        }
+        Ok(file.file.lock().unwrap().sync_all()?)
+    }
+    pub fn create_event(&self, manual: bool, initial: bool) -> Handle {
+        self.insert(Object::Event(EventObject {
+            manual,
+            state: Mutex::new(EventState {
+                signaled: initial,
+                generation: 0,
+            }),
+            changed: Condvar::new(),
+        }))
+    }
+    pub fn set_event(&self, handle: Handle) -> WinResult<()> {
+        let object = self.object(handle)?;
+        let Object::Event(event) = &*object else {
+            return Err(WinError(ERROR_INVALID_HANDLE));
+        };
+        let mut state = event.state.lock().unwrap();
+        if !state.signaled {
+            state.signaled = true;
+            state.generation = state.generation.wrapping_add(1);
+            if event.manual {
+                event.changed.notify_all();
+            } else {
+                event.changed.notify_one();
+            }
+        }
+        Ok(())
+    }
+    pub fn reset_event(&self, handle: Handle) -> WinResult<()> {
+        let object = self.object(handle)?;
+        let Object::Event(event) = &*object else {
+            return Err(WinError(ERROR_INVALID_HANDLE));
+        };
+        event.state.lock().unwrap().signaled = false;
+        Ok(())
+    }
+    pub fn wait(&self, handle: Handle, milliseconds: u32) -> WinResult<u32> {
+        let object = self.object(handle)?;
+        let Object::Event(event) = &*object else {
+            return Err(WinError(ERROR_NOT_SUPPORTED));
+        };
+        let deadline = (milliseconds != INFINITE)
+            .then(|| Instant::now() + Duration::from_millis(milliseconds.into()));
+        let mut state = event.state.lock().unwrap();
+        let generation = state.generation;
+        loop {
+            if state.signaled || (event.manual && state.generation != generation) {
+                if !event.manual {
+                    state.signaled = false;
+                }
+                return Ok(WAIT_OBJECT_0);
+            }
+            match deadline {
+                None => state = event.changed.wait(state).unwrap(),
+                Some(deadline) => {
+                    let remaining = deadline.saturating_duration_since(Instant::now());
+                    if remaining.is_zero() {
+                        return Ok(WAIT_TIMEOUT);
+                    }
+                    state = event.changed.wait_timeout(state, remaining).unwrap().0;
+                }
+            }
+        }
+    }
+}
+
+pub fn kernel() -> &'static Kernel {
+    static KERNEL: OnceLock<Kernel> = OnceLock::new();
+    KERNEL.get_or_init(Kernel::default)
+}
+pub const PERFORMANCE_FREQUENCY: i64 = 1_000_000_000;
+pub fn performance_counter() -> i64 {
+    static START: OnceLock<Instant> = OnceLock::new();
+    START.get_or_init(Instant::now).elapsed().as_nanos() as i64
+}
+pub fn sleep(milliseconds: u32) {
+    if milliseconds == 0 {
+        std::thread::yield_now();
+    } else {
+        std::thread::sleep(Duration::from_millis(milliseconds.into()));
+    }
+}

@@ -33,6 +33,9 @@ cargo build --offline
 python3 -m unittest discover -s tests -v
 ```
 
-See the individual sample instructions as implementations land. Passing portable
+The [kernel contracts and C sample instructions](docs/contracts.md) describe the
+implemented exports. `python3 tools/run_samples.py` builds and checks the portable
+C probe against the native shared library. CI also compiles that same source
+against the Windows SDK and compares the observations. Passing portable
 samples demonstrates only those tested contracts, not game compatibility. Native
 Windows comparison results must be labeled separately from host-only assertions.

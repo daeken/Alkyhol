@@ -1,0 +1,50 @@
+name: conformance
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  kernel:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: cargo fmt --check
+      - run: cargo test --offline
+      - run: cargo clippy --offline --all-targets -- -D warnings
+      - run: cargo build --offline
+      - run: python -m unittest discover -s tests -v
+      - uses: ilammy/msvc-dev-cmd@v1
+        if: runner.os == 'Windows'
+      - run: python tools/run_samples.py --output kernel-observation.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kernel-${{ runner.os }}
+          path: kernel-observation.json
+  compare:
+    needs: kernel
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: kernel-*
+          path: observations
+      - name: Compare real Windows SDK and native Alkyhol observations
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          reports = [json.loads(p.read_text()) for p in Path('observations').glob('*/kernel-observation.json')]
+          assert len(reports) == 3, reports
+          assert sum(r['backend'] == 'Windows SDK' for r in reports) == 1, reports
+          baseline = next(r['observation'] for r in reports if r['backend'] == 'Windows SDK')
+          assert all(r['observation'] == baseline for r in reports), reports
+          print('Windows SDK, macOS and Linux sample observations agree')
+          PY
