@@ -29,7 +29,7 @@ used for tests; proprietary game shaders/captures stay local.
 
 The [MiniEngine shader package](samples/miniengine/README.md) also records the
 complete unmodified source/include closure for its migrated ray-generation,
-hit/miss, tone, display and fullscreen shaders. Its `upstream.json` binds every
+hit/miss/material, SSR, tone, display and fullscreen shaders. Its `upstream.json` binds every
 original file to the same pinned Microsoft source revision and exact SHA-256.
 
 The [Sakura package](samples/sakura/README.md) preserves full original HLSL/header

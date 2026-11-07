@@ -27,11 +27,12 @@ transitive DLL dependencies need separate evidence. See [scope](docs/scope.md).
 Automatic shader translation now has a first tested milestone:
 **HLSL → DXIL → SPIR-V → MSL**, with direct compiled-DXIL input, Rust binding
 metadata and real Metal compute/raster tests. See [shader translation](docs/shaders.md)
-for commands, supported contracts and current limits. Sponza now uses original
-HLSL primary ray generation in every view and original hit/miss shader bodies in
-view 2 through explicit source adapters. Tone mapping, display and fullscreen
-passes also use original HLSL. Sakura's original material/reflection/sky bodies
-run through a bounded SER-off adapter; Sponza's shaded hit logic still uses manual MSL.
+for commands, supported contracts and current limits. Both Sakura and MiniEngine
+Sponza now use original HLSL function bodies for their default ray-traced rendering,
+including material shading, shadows/reflections and Sakura's sky. MiniEngine's
+tone/display/fullscreen passes use unchanged original HLSL too. Explicit bounded
+source adapters supply the native Metal ray-query and resource interfaces; this
+is not general DXR library translation. All translation components are open source.
 
 The core is dependency-free so file/event conformance work can run without a GPU
 or a network connection. Graphics has its own manifest and dependency resolution.

@@ -52,6 +52,19 @@ fn full_sponza_debug_views_preserve_hit_geometry_and_capture_repeatably() {
         renderer.render(&camera, None).unwrap();
         renderer.capture(&temp.join("repeat.png")).unwrap();
         assert_eq!(a, image::open(temp.join("repeat.png")).unwrap().to_rgba8());
+        renderer.set_original_shading_enabled(false);
+        let reference = renderer.render(&camera, None).unwrap();
+        assert_eq!(first.per_mesh, reference.per_mesh);
+        assert_eq!(first.misses, reference.misses);
+        renderer.set_original_shading_enabled(true);
+        assert_eq!(first, renderer.render(&camera, None).unwrap());
+        renderer.capture(&temp.join("restored-source.png")).unwrap();
+        assert_eq!(
+            a,
+            image::open(temp.join("restored-source.png"))
+                .unwrap()
+                .to_rgba8()
+        );
         for mode in [RenderMode::Bary, RenderMode::Normals, RenderMode::Depth] {
             renderer.set_mode(mode);
             assert_eq!(renderer.mode(), mode);
@@ -99,6 +112,21 @@ fn full_sponza_debug_views_preserve_hit_geometry_and_capture_repeatably() {
         );
         eprintln!(
             "Sponza shaded frame: {reflections:?}; {changed} floor pixels changed by reflections"
+        );
+        renderer.set_original_shading_enabled(false);
+        let reference = renderer.render(&camera, None).unwrap();
+        assert_eq!(reference.per_mesh, reflections.per_mesh);
+        assert_eq!(reference.reflection_rays, reflections.reflection_rays);
+        renderer.set_original_shading_enabled(true);
+        assert_eq!(reflections, renderer.render(&camera, None).unwrap());
+        renderer
+            .capture(&temp.join("restored-reflections.png"))
+            .unwrap();
+        assert_eq!(
+            reflected_pixels,
+            image::open(temp.join("restored-reflections.png"))
+                .unwrap()
+                .to_rgba8()
         );
         renderer.set_mode(RenderMode::ReflectionBary);
         let reflection_bary = renderer.render(&camera, None).unwrap();

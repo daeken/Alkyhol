@@ -91,6 +91,21 @@
       "upstream_path": "MiniEngine/Core/Shaders/ToneMappingUtility.hlsli",
       "bytes": 3698,
       "sha256": "bd826f488cfd8f4563af5e5f03163368c036853e473561e5983f5cfb3468d956"
+    },
+    "DiffuseHitShaderLib.hlsl": {
+      "upstream_path": "Samples/Desktop/D3D12Raytracing/src/D3D12RaytracingMiniEngineSample/DiffuseHitShaderLib.hlsl",
+      "bytes": 12483,
+      "sha256": "593aa627d5f4cfb8933b9acc62a701bfb382e973b8c43f3580a9b29e68e1a000"
+    },
+    "RayTracingHlslCompat.h": {
+      "upstream_path": "Samples/Desktop/D3D12Raytracing/src/D3D12RaytracingMiniEngineSample/RayTracingHlslCompat.h",
+      "bytes": 528,
+      "sha256": "cee6a3fe75dfedc173286cd03fe8de2711e099c5795be0dcb9d474b09dc0cb76"
+    },
+    "RayGenerationShaderSSRLib.hlsl": {
+      "upstream_path": "Samples/Desktop/D3D12Raytracing/src/D3D12RaytracingMiniEngineSample/RayGenerationShaderSSRLib.hlsl",
+      "bytes": 2197,
+      "sha256": "2ca5b9a134363c45f7bf4be606c27cac48b6de57d7de62b0692ec752e64a9a26"
     }
   }
 }

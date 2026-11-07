@@ -1,4 +1,4 @@
-# MiniEngine Sponza: geometry debugging milestone
+# MiniEngine Sponza
 
 The next application target is Microsoft's
 [D3D12RaytracingMiniEngineSample](https://github.com/microsoft/DirectX-Graphics-Samples/tree/68a2b1e97f71642924e74c7757ca21756ad221b5/Samples/Desktop/D3D12Raytracing/src/D3D12RaytracingMiniEngineSample),
@@ -74,8 +74,9 @@ BC1 blocks and every source mip level upload unchanged. Diffuse/specular BC1 sRG
 and normal-map linear formats are retained. The exact ModelH3D missing-slot
 choices are recorded: white diffuse, flat normal, black specular. A manifest-listed
 missing/corrupt texture fails intake; it never silently becomes a placeholder.
-Tier 2 Metal argument buffers bind all 81 material slots without a texture atlas
-or texture resampling. GPU residency is declared for their referenced resources.
+The generated HLSL material pipeline binds three fixed arrays of 27 textures
+through reflected Metal slots, without an atlas or texture resampling. The prior
+manual-MSL reference retains its Tier 2 argument buffers.
 
 Lighting ports the directional sun, ambient intensity, normal mapping, derivative
 texture sampling, Schlick modulation and specular model. Mode 6 retains the source
@@ -106,28 +107,40 @@ Image tests prove shadows change pixels, reflection changes stay within eligible
 floor pixels, diagnostic modes preserve geometry and all five original camera
 presets render without nonfinite output or immediate self-reflection hits.
 
-Original-shader migration now uses the unchanged Microsoft `RayGen` body for
-every primary ray. View 2 additionally calls original `Hit`/`Miss` bodies through
-the open-source DXC/DXIL/SPIR-V/MSL path with real inline ray queries. Explicit
-source adapters, generated artifacts and their limits are documented in
-[shader intake](../shader/samples/miniengine/README.md). Shaded hit logic and
-postprocessing were initially manual MSL. Tone mapping, SDR display, fullscreen
-vertices/copies and shaded live upsampling now use unchanged original HLSL and
-its complete include closure through the translator. Shaded hit logic remains
-manual. No proprietary shader converter is used.
+The default rendering path now uses the unchanged Microsoft primary `RayGen`,
+Bary `Hit`/`Miss`, `DiffuseHit` helpers/`Hit`, and SSR `RayGen` bodies through the
+open DXC/DXIL/SPIR-V/MSL chain. Explicit source adapters queue primary/secondary
+hits, supply real native shadow/reflection queries and restore the sample's
+finite reverse-Z projection/depth reconstruction. Mesh attribute routes split
+expanded vertices into uint16-addressable chunks without dropping triangles or
+changing the acceleration structures. Three texture descriptor arrays retain
+all 81 material slots and their original mip/color-space choices.
 
-The physical M4 passed all 13 MiniEngine tests including exact original/manual
-view-2 pixel and hit-count agreement across all five presets, plus a hosted-compatible
-camera compute test for cbuffer layout, emitted rays and padded-dispatch guards.
-Using the original matrix-based camera changed three mesh assignments at 129×73
-compared with the older direct-basis camera math; all views now share the original
-HLSL-generated rays, preserving the strict cross-view checks. A subsequent
-milestone passes all 15 MiniEngine tests, including independent original
-tone/display/luminance GPU checks at 13×7. Its intermediate is RGBA32Float instead
-of packed R11G11B10; fixed exposure 2 and zero bloom strength preserve the current
-effect scope. This is not evidence
-of native Windows full-frame DXR parity.
+The material adapter retains the port's explicit invalid-tangent repair and
+primary specular/view extensions described above. It intercepts specific calls
+in the pinned hit body and counts an unexpected call sequence as a frame error;
+these extensions are not claimed to be byte-for-byte native DXR shading behavior.
+Neutral SSAO input is 1. The named no-shadows mode uses a cleared reverse-Z depth
+input with a comparison sampler; it does not implement shadow-map rendering.
+Diagnostics without upstream counterparts are Alkyhol-owned HLSL. Prior hand-MSL
+shading remains available only through an explicit reference toggle, never as an
+automatic fallback. Controls and the full scene are preserved.
 
-Continue the remaining MiniEngine postprocessing paths through tested milestones;
-keep all diagnostic modes accessible and native DXR parity separate from Metal
-host assertions.
+Tone mapping, SDR display, fullscreen vertices/copies and shaded live upsampling
+use unchanged original HLSL and its complete include closure. The intermediate
+is RGBA32Float instead of packed R11G11B10; fixed exposure 2 and zero bloom
+strength preserve the current effect scope. No proprietary shader converter is
+used. [Shader intake](../shader/samples/miniengine/README.md) records source
+hashes, generated artifacts and the adapters' fixed contracts.
+
+Physical M4 tests cover all five source camera presets, cross-view hit counts,
+shadow/reflection effects, repeatable captures, resize, explicit reference toggle
+and exact restoration, reverse-Z endpoints/unprojection, uint16 chunk routing,
+rejected binding metadata, and independent original tone/display/luminance GPU
+checks at 13×7. Hosted Metal checks compute/texture interfaces but lacks RT.
+Native MSVC geometry-byte agreement remains separate from these physical render
+assertions. No native Windows full-frame DXR comparison has been measured.
+
+SSAO, bloom, adaptive exposure, temporal antialiasing/motion blur, local light
+grids, original raster/shadow-map paths and generic DXR shader-table/library
+translation remain future work.

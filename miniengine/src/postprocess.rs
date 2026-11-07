@@ -76,6 +76,8 @@ pub(crate) struct Postprocess {
     display: RenderPipelineState,
     copy: RenderPipelineState,
     upsample: RenderPipelineState,
+    diagnostic_present: RenderPipelineState,
+    diagnostic_slots: [u64; 2],
     display_slot: u64,
     copy_slot: u64,
     upsample_slots: [u64; 2],
@@ -133,6 +135,10 @@ impl Postprocess {
             include_str!("../../shader/samples/miniengine/upsample.generated.json"),
             "Pixel",
         )?;
+        let diagnostic = Shader::load(
+            include_str!("../../shader/samples/miniengine/diagnostic_present.generated.json"),
+            "Pixel",
+        )?;
         if tone.resources.len() != 6
             || display.resources.len() != 1
             || !screen.resources.is_empty()
@@ -153,6 +159,7 @@ impl Postprocess {
         let display_function = display.function(device)?;
         let copy_function = copy.function(device)?;
         let upsample_function = upsample.function(device)?;
+        let diagnostic_function = diagnostic.function(device)?;
         let tone_function = tone.function(device)?;
         let desc = SamplerDescriptor::new();
         desc.set_min_filter(MTLSamplerMinMagFilter::Linear);
@@ -209,6 +216,17 @@ impl Postprocess {
                 MTLPixelFormat::BGRA8Unorm,
                 true,
             )?,
+            diagnostic_present: render_pipeline(
+                device,
+                &vertex,
+                &diagnostic_function,
+                MTLPixelFormat::BGRA8Unorm,
+                false,
+            )?,
+            diagnostic_slots: [
+                diagnostic.slot("Srv", 0, "Texture")?,
+                diagnostic.slot("Sampler", 0, "Sampler")?,
+            ],
             display_slot: display.slot("Srv", 0, "Texture")?,
             copy_slot: copy.slot("Srv", 0, "Texture")?,
             upsample_slots: [
@@ -279,6 +297,24 @@ impl Postprocess {
         encoder.set_render_pipeline_state(&self.upsample);
         encoder.set_fragment_texture(self.upsample_slots[0], Some(&self.input));
         encoder.set_fragment_sampler_state(self.upsample_slots[1], Some(&self.sampler));
+        encoder.draw_primitives(MTLPrimitiveType::Triangle, 0, 3);
+        encoder.end_encoding();
+    }
+    pub(crate) fn present_diagnostic(
+        &self,
+        command: &CommandBufferRef,
+        output: &TextureRef,
+        source: &TextureRef,
+    ) {
+        let pass = RenderPassDescriptor::new();
+        let a = pass.color_attachments().object_at(0).unwrap();
+        a.set_texture(Some(output));
+        a.set_load_action(MTLLoadAction::DontCare);
+        a.set_store_action(MTLStoreAction::Store);
+        let encoder = command.new_render_command_encoder(pass);
+        encoder.set_render_pipeline_state(&self.diagnostic_present);
+        encoder.set_fragment_texture(self.diagnostic_slots[0], Some(source));
+        encoder.set_fragment_sampler_state(self.diagnostic_slots[1], Some(&self.sampler));
         encoder.draw_primitives(MTLPrimitiveType::Triangle, 0, 3);
         encoder.end_encoding();
     }

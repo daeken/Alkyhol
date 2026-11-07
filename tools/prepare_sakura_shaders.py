@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Extract exact pinned Sakura function bodies for bounded SER-off specialization."""
+"""Extract exact pinned Sakura/MiniEngine function bodies for source adapters."""
 import argparse
 import hashlib
 import json
@@ -76,19 +76,13 @@ def functions(source, name):
     return found
 
 
-def prepare(check=False):
-    manifest = json.loads((PACKAGE / "upstream.json").read_text())
+def prepare_package(package, filename, groups, check=False):
+    manifest = json.loads((package / "upstream.json").read_text())
     for name, record in manifest["files"].items():
-        data = (PACKAGE / "original" / name).read_bytes()
+        data = (package / "original" / name).read_bytes()
         if len(data) != record["bytes"] or hashlib.sha256(data).hexdigest() != record["sha256"]:
             raise ValueError(f"pinned Sakura source differs: {name}")
-    source = (PACKAGE / "original/Raytracing.hlsl").read_bytes().decode()
-    groups = {
-        "helpers": ["HitWorldPosition", "HitAttribute", "GenerateCameraRay", "FresnelReflectanceSchlick"],
-        "radiance": ["TraceRadianceRay"],
-        "hits": ["FloorClosestHitShader", "TrunkClosestHitShader", "LeavesClosestHitShader", "BushClosestHitShader", "TCubeClosestHitShader"],
-        "miss": ["MyMissShader"],
-    }
+    source = (package / "original" / filename).read_bytes().decode()
     for group, names in groups.items():
         chunks = []
         for name in names:
@@ -98,12 +92,25 @@ def prepare(check=False):
             chunks.extend(bodies)
         data = ("// Generated extraction of unchanged Microsoft function bodies; see upstream.json.\n"
                 + "\n\n".join(chunks) + "\n").encode()
-        path = PACKAGE / f"{group}.generated.hlsli"
+        path = package / f"{group}.generated.hlsli"
         if check:
             if path.read_bytes() != data:
                 raise ValueError(f"generated source differs: {path.name}")
         else:
             path.write_bytes(data)
+
+
+def prepare(check=False):
+    prepare_package(PACKAGE, "Raytracing.hlsl", {
+        "helpers": ["HitWorldPosition", "HitAttribute", "GenerateCameraRay", "FresnelReflectanceSchlick"],
+        "radiance": ["TraceRadianceRay"],
+        "hits": ["FloorClosestHitShader", "TrunkClosestHitShader", "LeavesClosestHitShader", "BushClosestHitShader", "TCubeClosestHitShader"],
+        "miss": ["MyMissShader"],
+    }, check)
+    prepare_package(ROOT / "shader/samples/miniengine", "DiffuseHitShaderLib.hlsl", {
+        "material_helpers": ["Load3x16BitIndices", "GetShadow", "GetUVAttribute", "AntiAliasSpecular", "FSchlick", "ApplyLightCommon", "RayPlaneIntersection", "BarycentricCoordinates"],
+        "material_hit": ["Hit"],
+    }, check)
 
 
 if __name__ == "__main__":

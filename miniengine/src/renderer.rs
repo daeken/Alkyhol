@@ -79,6 +79,11 @@ pub struct Renderer {
     original_camera: crate::original::CameraPipeline,
     camera_rays: Buffer,
     postprocess: crate::postprocess::Postprocess,
+    packets: Buffer,
+    depth: Texture,
+    normal_map: Texture,
+    deferred: crate::deferred::Deferred,
+    original_shading_enabled: bool,
 }
 impl Renderer {
     pub fn new(assets: &Path, width: u32, height: u32) -> Result<Self, String> {
@@ -212,6 +217,19 @@ impl Renderer {
             MTLResourceOptions::StorageModePrivate,
         );
         let postprocess = crate::postprocess::Postprocess::new(native, width, height)?;
+        let packets = native.new_buffer(
+            width as u64 * height as u64 * 128,
+            MTLResourceOptions::StorageModePrivate,
+        );
+        let depth = frame_texture(native, width, height, MTLPixelFormat::R32Float);
+        let normal_map = frame_texture(native, width, height, MTLPixelFormat::RGBA32Float);
+        let deferred = crate::deferred::Deferred::new(
+            native,
+            device.metal_queue(),
+            &model.meshes,
+            width,
+            height,
+        )?;
         Ok(Self {
             textures,
             texture_arguments,
@@ -231,6 +249,11 @@ impl Renderer {
             original_camera,
             camera_rays,
             postprocess,
+            packets,
+            depth,
+            normal_map,
+            deferred,
+            original_shading_enabled: true,
         })
     }
     pub fn set_mode(&mut self, mode: RenderMode) {
@@ -243,6 +266,31 @@ impl Renderer {
     /// A compilation failure never silently switches to the manual reference.
     pub fn set_original_bary_enabled(&mut self, enabled: bool) {
         self.original_bary_enabled = enabled;
+    }
+    /// Explicit legacy-reference toggle. Original HLSL shading is the default;
+    /// failed translation/execution never silently selects the reference.
+    pub fn set_original_shading_enabled(&mut self, enabled: bool) {
+        self.original_shading_enabled = enabled;
+    }
+    fn deferred_frame<'a>(
+        &'a self,
+        camera: &'a Camera,
+        pass: u32,
+        output: &'a TextureRef,
+    ) -> crate::deferred::Frame<'a> {
+        crate::deferred::Frame {
+            scene: &self.scene,
+            camera,
+            attributes: &self.vertices,
+            textures: &self.textures,
+            counts: &self.counts,
+            packets: &self.packets,
+            depth: &self.depth,
+            normals: &self.normal_map,
+            output,
+            mode: self.mode as u32,
+            pass,
+        }
     }
     pub fn extent(&self) -> (u32, u32) {
         (self.width, self.height)
@@ -257,6 +305,14 @@ impl Renderer {
             .resize(self.device.metal_device(), width, height);
         self.width = width;
         self.height = height;
+        let native = self.device.metal_device();
+        self.packets = native.new_buffer(
+            width as u64 * height as u64 * 128,
+            MTLResourceOptions::StorageModePrivate,
+        );
+        self.depth = frame_texture(native, width, height, MTLPixelFormat::R32Float);
+        self.normal_map = frame_texture(native, width, height, MTLPixelFormat::RGBA32Float);
+        self.deferred.resize(native, width, height);
         Ok(())
     }
     /// Waits for actual GPU completion so callers can safely reuse parameters/readback/resize.
@@ -281,14 +337,64 @@ impl Renderer {
                 std::ptr::write_bytes(self.counts.contents(), 0, 168);
             }
             let command = self.device.metal_queue().new_command_buffer();
-            if self.mode == RenderMode::Bary && self.original_bary_enabled {
+            let use_original = self.original_shading_enabled
+                && (self.mode != RenderMode::Bary || self.original_bary_enabled);
+            let mut post_done = false;
+            if use_original {
                 self.original_bary.encode(
                     command,
-                    &self.scene,
-                    camera,
-                    &self.postprocess.input,
-                    &self.counts,
+                    crate::original::BaryFrame {
+                        scene: &self.scene,
+                        camera,
+                        output: &self.postprocess.input,
+                        counts: &self.counts,
+                        packets: &self.packets,
+                        depth: &self.depth,
+                        normals: &self.normal_map,
+                    },
                 );
+                match self.mode {
+                    RenderMode::Bary => {}
+                    RenderMode::Geometry | RenderMode::Normals | RenderMode::Depth => {
+                        self.deferred.encode(
+                            command,
+                            "diagnostic",
+                            self.deferred_frame(camera, 0, &self.postprocess.input),
+                        )
+                    }
+                    _ => self.deferred.encode(
+                        command,
+                        "material",
+                        self.deferred_frame(camera, 0, &self.postprocess.input),
+                    ),
+                }
+                if matches!(
+                    self.mode,
+                    RenderMode::Reflections | RenderMode::ReflectionBary
+                ) {
+                    if self.mode == RenderMode::ReflectionBary {
+                        self.postprocess.encode(command, &self.output, true);
+                        post_done = true;
+                    }
+                    self.deferred.encode(
+                        command,
+                        "reflection",
+                        self.deferred_frame(camera, 1, &self.postprocess.input),
+                    );
+                    if self.mode == RenderMode::Reflections {
+                        self.deferred.encode(
+                            command,
+                            "material",
+                            self.deferred_frame(camera, 1, &self.postprocess.input),
+                        );
+                    } else {
+                        self.deferred.encode(
+                            command,
+                            "reflection_bary",
+                            self.deferred_frame(camera, 1, &self.output),
+                        );
+                    }
+                }
             } else {
                 self.original_camera.encode(
                     command,
@@ -328,10 +434,15 @@ impl Renderer {
                     | RenderMode::LitShadowRays
                     | RenderMode::Reflections
             );
-            self.postprocess.encode(command, &self.output, shaded);
+            if !post_done {
+                self.postprocess.encode(command, &self.output, shaded);
+            }
             if let Some(drawable) = drawable {
                 if shaded {
                     self.postprocess.present_shaded(command, drawable.texture());
+                } else if use_original {
+                    self.postprocess
+                        .present_diagnostic(command, drawable.texture(), &self.output);
                 } else {
                     let pass = RenderPassDescriptor::new();
                     let a = pass.color_attachments().object_at(0).unwrap();
@@ -424,4 +535,15 @@ fn output_texture(device: &DeviceRef, width: u32, height: u32) -> Result<Texture
         MTLTextureUsage::ShaderRead | MTLTextureUsage::ShaderWrite | MTLTextureUsage::RenderTarget,
     );
     Ok(device.new_texture(&d))
+}
+
+fn frame_texture(device: &DeviceRef, width: u32, height: u32, format: MTLPixelFormat) -> Texture {
+    let d = TextureDescriptor::new();
+    d.set_texture_type(MTLTextureType::D2);
+    d.set_width(width as u64);
+    d.set_height(height as u64);
+    d.set_pixel_format(format);
+    d.set_storage_mode(MTLStorageMode::Private);
+    d.set_usage(MTLTextureUsage::ShaderRead | MTLTextureUsage::ShaderWrite);
+    device.new_texture(&d)
 }

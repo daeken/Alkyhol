@@ -16,6 +16,36 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     for (input, entry, stage, output) in [
         (
+            "samples/miniengine/reflection.hlsl",
+            "AlkyholMain",
+            Stage::Compute,
+            "samples/miniengine/reflection.generated.json",
+        ),
+        (
+            "samples/miniengine/reflection_bary.hlsl",
+            "AlkyholMain",
+            Stage::Compute,
+            "samples/miniengine/reflection_bary.generated.json",
+        ),
+        (
+            "samples/miniengine/diagnostic.hlsl",
+            "AlkyholMain",
+            Stage::Compute,
+            "samples/miniengine/diagnostic.generated.json",
+        ),
+        (
+            "samples/miniengine/diagnostic_present.hlsl",
+            "main",
+            Stage::Pixel,
+            "samples/miniengine/diagnostic_present.generated.json",
+        ),
+        (
+            "samples/miniengine/material.hlsl",
+            "AlkyholMain",
+            Stage::Compute,
+            "samples/miniengine/material.generated.json",
+        ),
+        (
             "samples/sakura/units.hlsl",
             "AlkyholMain",
             Stage::Compute,

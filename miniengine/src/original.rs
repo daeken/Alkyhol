@@ -8,7 +8,7 @@ use metal::*;
 
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
-struct DynamicCB {
+pub(crate) struct DynamicCB {
     camera_to_world: [f32; 16],
     eye: [f32; 4],
     resolution: [f32; 2],
@@ -16,7 +16,16 @@ struct DynamicCB {
 }
 pub(crate) struct BaryPipeline {
     pipeline: ComputePipelineState,
-    slots: [u64; 5],
+    slots: [u64; 10],
+}
+pub(crate) struct BaryFrame<'a> {
+    pub scene: &'a TriangleScene,
+    pub camera: &'a Camera,
+    pub output: &'a TextureRef,
+    pub counts: &'a BufferRef,
+    pub packets: &'a BufferRef,
+    pub depth: &'a TextureRef,
+    pub normals: &'a TextureRef,
 }
 pub(crate) struct CameraPipeline {
     pipeline: ComputePipelineState,
@@ -99,23 +108,38 @@ impl CameraPipeline {
         encoder.end_encoding();
     }
 }
-fn dynamic_constants(camera: &Camera, width: u64, height: u64) -> DynamicCB {
+pub(crate) fn view_projection(camera: &Camera, width: u64, height: u64) -> Mat4 {
     let [right, up, forward] = camera.basis();
-    let tan = (std::f32::consts::PI / 8.).tan();
+    let y = 1. / (std::f32::consts::PI / 8.).tan();
+    let x = y * height as f32 / width as f32;
+    // Pinned MiniEngine Camera.cpp: reverse Z, finite range 1..10000.
+    let q1 = 1. / (10000. - 1.);
+    let q2 = q1 * 10000.;
+    let projection = Mat4::from_cols(
+        glam::Vec4::new(x, 0., 0., 0.),
+        glam::Vec4::new(0., y, 0., 0.),
+        glam::Vec4::new(0., 0., q1, -1.),
+        glam::Vec4::new(0., 0., q2, 0.),
+    );
+    let camera_world = Mat4::from_cols(
+        right.extend(0.),
+        up.extend(0.),
+        (-forward).extend(0.),
+        camera.eye.extend(1.),
+    );
+    projection * camera_world.inverse()
+}
+pub(crate) fn dynamic_constants(camera: &Camera, width: u64, height: u64) -> DynamicCB {
     DynamicCB {
-        camera_to_world: Mat4::from_cols(
-            (right * (width as f32 / height as f32) * tan).extend(0.),
-            (up * tan).extend(0.),
-            forward.extend(0.),
-            (camera.eye + forward).extend(1.),
-        )
-        .to_cols_array(),
+        camera_to_world: view_projection(camera, width, height)
+            .inverse()
+            .to_cols_array(),
         eye: camera.eye.extend(0.).to_array(),
         resolution: [width as f32, height as f32],
         padding: [0.; 2],
     }
 }
-fn metadata(source: &str) -> Result<(String, String, [u64; 5]), String> {
+fn metadata(source: &str) -> Result<(String, String, [u64; 10]), String> {
     let data: serde_json::Value = serde_json::from_str(source).map_err(|e| e.to_string())?;
     if data["stage"] != "Compute"
         || data["threads_per_group"] != serde_json::json!([8, 8, 1])
@@ -126,16 +150,21 @@ fn metadata(source: &str) -> Result<(String, String, [u64; 5]), String> {
     let resources = data["resources"]
         .as_array()
         .ok_or("missing reflected resources")?;
-    if resources.len() != 5 {
+    if resources.len() != 10 {
         return Err("unexpected original bary resources".into());
     }
-    let mut slots = [0; 5];
+    let mut slots = [0; 10];
     for (i, (class, register, namespace, kind)) in [
         ("Cbv", 0, "Buffer", "ConstantBuffer"),
         ("Cbv", 1, "Buffer", "ConstantBuffer"),
+        ("Cbv", 20, "Buffer", "ConstantBuffer"),
+        ("Cbv", 21, "Buffer", "ConstantBuffer"),
         ("Srv", 0, "Buffer", "RtAccelerationStructure"),
         ("Uav", 2, "Texture", "Texture2D"),
         ("Uav", 20, "Buffer", "StructuredBuffer"),
+        ("Uav", 21, "Buffer", "StructuredBuffer"),
+        ("Uav", 22, "Texture", "Texture2D"),
+        ("Uav", 23, "Texture", "Texture2D"),
     ]
     .into_iter()
     .enumerate()
@@ -160,8 +189,8 @@ fn metadata(source: &str) -> Result<(String, String, [u64; 5]), String> {
             return Err("Metal slot exceeds the binding contract".into());
         }
     }
-    for a in [0, 1, 2, 4] {
-        for b in [0, 1, 2, 4] {
+    for a in [0, 1, 2, 3, 4, 6, 7] {
+        for b in [0, 1, 2, 3, 4, 6, 7] {
             if a != b && slots[a] == slots[b] {
                 return Err("aliased original bary buffer bindings".into());
             }
@@ -189,14 +218,16 @@ impl BaryPipeline {
         let pipeline = device.new_compute_pipeline_state_with_function(&function)?;
         Ok(Self { pipeline, slots })
     }
-    pub(crate) fn encode(
-        &self,
-        command: &CommandBufferRef,
-        scene: &TriangleScene,
-        camera: &Camera,
-        output: &TextureRef,
-        counts: &BufferRef,
-    ) {
+    pub(crate) fn encode(&self, command: &CommandBufferRef, frame: BaryFrame<'_>) {
+        let BaryFrame {
+            scene,
+            camera,
+            output,
+            counts,
+            packets,
+            depth,
+            normals,
+        } = frame;
         let width = output.width();
         let height = output.height();
         let dynamic = dynamic_constants(camera, width, height);
@@ -209,9 +240,16 @@ impl BaryPipeline {
             std::mem::size_of::<DynamicCB>() as u64,
             (&dynamic as *const DynamicCB).cast(),
         );
-        encoder.set_acceleration_structure(self.slots[2], Some(&scene.acceleration));
-        encoder.set_texture(self.slots[3], Some(output));
-        encoder.set_buffer(self.slots[4], Some(counts), 0);
+        let settings = [width as u32, height as u32, 0, 0];
+        let projection = view_projection(camera, width, height).to_cols_array();
+        encoder.set_bytes(self.slots[2], 16, settings.as_ptr().cast());
+        encoder.set_bytes(self.slots[3], 64, projection.as_ptr().cast());
+        encoder.set_acceleration_structure(self.slots[4], Some(&scene.acceleration));
+        encoder.set_texture(self.slots[5], Some(output));
+        encoder.set_buffer(self.slots[6], Some(counts), 0);
+        encoder.set_buffer(self.slots[7], Some(packets), 0);
+        encoder.set_texture(self.slots[8], Some(depth));
+        encoder.set_texture(self.slots[9], Some(normals));
         scene.use_resources(encoder);
         encoder.dispatch_thread_groups(
             MTLSize::new(width.div_ceil(8), height.div_ceil(8), 1),
@@ -224,6 +262,25 @@ impl BaryPipeline {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn reverse_z_projection_endpoints_and_world_round_trip() {
+        for preset in 0..5 {
+            let camera = Camera::preset(preset).unwrap();
+            let [right, up, forward] = camera.basis();
+            let matrix = view_projection(&camera, 129, 73);
+            for (distance, expected) in [(1., 1.), (10000., 0.)] {
+                let clip = matrix * (camera.eye + distance * forward).extend(1.);
+                assert!((clip.z / clip.w - expected).abs() < 0.0003);
+            }
+            let near = matrix.project_point3(camera.eye + 10. * forward).z;
+            let far = matrix.project_point3(camera.eye + 100. * forward).z;
+            assert!(near > far && far > 0.);
+            let world = camera.eye + 150. * forward + 12. * right - 7. * up;
+            let ndc = matrix.project_point3(world);
+            let restored = matrix.inverse().project_point3(ndc);
+            assert!((restored - world).length() < 0.02, "preset {preset}");
+        }
+    }
     #[test]
     fn original_hlsl_ray_generation_uses_the_matrix_and_guards_padded_dispatch() {
         objc::rc::autoreleasepool(|| {
@@ -257,8 +314,9 @@ mod tests {
                     let sy = -(((y as f32 + 0.5) / height as f32) * 2. - 1.);
                     let mut direction = [0f32; 3];
                     for c in 0..3 {
-                        direction[c] =
-                            (m[4 + c].mul_add(sy, m[c] * sx) + m[12 + c]) - constants.eye[c];
+                        direction[c] = (m[4 + c].mul_add(sy, m[c] * sx) + m[12 + c])
+                            / (m[7].mul_add(sy, m[3] * sx) + m[15])
+                            - constants.eye[c];
                     }
                     let length = direction.iter().map(|v| v * v).sum::<f32>().sqrt();
                     for c in 0..3 {

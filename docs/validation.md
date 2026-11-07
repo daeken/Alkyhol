@@ -4,6 +4,41 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## Original Sponza material/shadow/reflection HLSL: local evidence
+
+Physical Apple M4 passed all 18 MiniEngine tests, all 18 shader tests and all
+34 Python tests. Shader/MiniEngine formatting and Clippy passed. The default
+Sponza path executes original material helpers/Hit and SSR RayGen bodies through
+explicit queued-hit source adapters, with native shadow/reflection queries and
+three reflected arrays containing all 81 material textures. Actual fixed-array
+nonuniform texture selection and the full material pipeline interface passed
+separate physical Metal tests. Reverse-Z endpoint/unprojection, uint16 attribute
+chunk routing and malformed/overflow/aliasing binding metadata have unit checks.
+Source hashes and generated artifact equality are checked separately.
+
+At 129×73, the original material frame observed 9,769 shadow queries/8,721 hits,
+352 reflection queries/hits, five repaired tangent frames and zero short
+self-reflections. Reflections changed 324 eligible floor pixels. All five source
+camera presets passed the existing geometry/effect/finite-output checks. Turning
+the explicit manual-MSL reference on and then off restored exact original-path
+pixels and counters. This does not assert shaded original/manual pixel equality.
+The source adapter's tangent repair and primary specular/view extensions remain
+explicit; SSAO is neutral and bloom/adaptive exposure remain absent.
+
+A 960×540 camera-3 release capture completed in 0.032s cold, observing 617,850
+shadow queries/519,675 hits, 99,450 reflection queries/hits, 108 tangent repairs
+and no short self-reflections. The rebuilt live app visibly displayed original
+material shading/reflections around 59.7 FPS, and keys 2, 1 and 7 switched views
+successfully. These loaded-machine UI/cold observations are not controlled
+steady-state benchmarks. Geometry, texture mips and render quality were retained.
+
+[Run 42344311350](https://github.com/daeken/Alkyhol/actions/runs/42344311350)
+passed all ten jobs on Sakura source migration revision `581845c`. Native MSVC
+Sponza attributes, Sakura placements, portable Windows SDK observations and the
+native WARP checker comparisons continue to agree. Hosted Metal lacks RT; this
+CI evidence precedes the current material migration. Native full shaded DXR
+frame parity and general DXR library translation remain unmeasured/unimplemented.
+
 ## Original Sakura HLSL bodies: local evidence
 
 The physical M4 passed all ten Sakura tests and all sixteen shader tests; all
@@ -55,8 +90,8 @@ passed all ten jobs on the initial shader revision `b1d643b`.
 passed all ten jobs on original ray-generation/barycentric revision `d3cf021`.
 The hosted shader/Metal results are distinct from physical RT tests above.
 These runs precede the local tone/display milestone and do not validate it by
-implication. Original shaded-hit/Sakura migration and native full DXR pixel
-comparison remain outstanding.
+implication. At that revision, original shaded-hit/Sakura migration and native full DXR pixel
+comparison remained outstanding; subsequent source migrations are recorded above.
 
 ## Original Sponza HLSL migration: local evidence
 
@@ -75,8 +110,9 @@ and switched back to shaded/reflections; its observed title was around 59 FPS at
 The compiler path is entirely open source (DXC, dxil-spirv, SPIRV-Cross and Rust
 adapters); the user explicitly excluded Apple's account-gated converter. The
 adapters' fixed source contracts are described in [shader intake](../shader/samples/miniengine/README.md).
-Full DXR library translation, original shaded-hit migration, Sakura migration
-and native Windows full-frame DXR comparison are still outstanding.
+At that revision, original shaded-hit and Sakura migration remained outstanding;
+the later records above supersede that status. Full DXR library translation and
+native Windows full-frame DXR comparison remain outstanding.
 
 ## First complete milestone
 

@@ -257,7 +257,7 @@ fn unsupported_descriptor_arrays_counters_and_geometry_stage_fail() {
     let temp = tempfile::tempdir().unwrap();
     let file = temp.path().join("unsupported.hlsl");
     for source in [
-        "Texture2D<float4> t[2] : register(t0); RWStructuredBuffer<float4> o : register(u0); [numthreads(1,1,1)] void main(uint3 id:SV_DispatchThreadID) { o[id.x] = t[id.x&1].Load(int3(0,0,0)); }",
+        "StructuredBuffer<uint> t[2] : register(t0); RWStructuredBuffer<uint> o : register(u0); [numthreads(1,1,1)] void main(uint3 id:SV_DispatchThreadID) { o[id.x] = t[id.x&1][0]; }",
         "AppendStructuredBuffer<uint> o : register(u0); [numthreads(1,1,1)] void main() { o.Append(42); }",
     ] {
         std::fs::write(&file, source).unwrap();

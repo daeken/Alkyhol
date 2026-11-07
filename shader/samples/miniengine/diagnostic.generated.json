@@ -1,0 +1,104 @@
+{
+  "msl": "#include <metal_stdlib>\n#include <simd/simd.h>\n\nusing namespace metal;\n\nstruct SSBO\n{\n    uint _m0[1];\n};\n\nstruct SSBO_1\n{\n    uint _m0[1];\n};\n\nstruct SSBO_2\n{\n    uint _m0[1];\n};\n\nstruct SSBO_3\n{\n    uint _m0[1];\n};\n\nstruct SSBO_4\n{\n    uint2 _m0[1];\n};\n\nstruct SSBO_5\n{\n    uint _m0[1];\n};\n\nstruct _38\n{\n    float4 _m0[1];\n};\n\nkernel void main0(constant _38& _40 [[buffer(0)]], const device SSBO& __restrict _9 [[buffer(1)]], const device SSBO_1& __restrict _13 [[buffer(2)]], const device SSBO_2& __restrict _17 [[buffer(3)]], const device void* spvBufferAliasSet1Binding21 [[buffer(4)]], const device SSBO_5& __restrict _30 [[buffer(5)]], texture2d<float, access::write> _34 [[texture(0)]], uint3 gl_GlobalInvocationID [[thread_position_in_grid]])\n{\n    const device auto& __restrict _21 = *(const device SSBO_3*)spvBufferAliasSet1Binding21;\n    const device auto& __restrict _26 = *(const device SSBO_4*)spvBufferAliasSet1Binding21;\n    uint4 _55 = as_type<uint4>(_40._m0[0u]);\n    uint _56 = _55.x;\n    if ((gl_GlobalInvocationID.x < _56) && (gl_GlobalInvocationID.y < _55.y))\n    {\n        uint _63 = (_56 * gl_GlobalInvocationID.y) + gl_GlobalInvocationID.x;\n        float2 _70 = as_type<float2>(_26._m0[_63 * 8u]);\n        float _71 = _70.x;\n        float _72 = _70.y;\n        uint _83 = (_63 * 16u) + 3u;\n        uint _88 = (_63 * 16u) + 4u;\n        uint _93 = (_63 * 16u) + 12u;\n        float3 _104 = as_type<float3>(uint3(_21._m0[_93], _21._m0[_93 + 1u], _21._m0[_93 + 2u]));\n        if (!(_21._m0[_83] == 4294967295u))\n        {\n            uint _114 = _30._m0[_21._m0[_83]] + (_21._m0[_88] / 21845u);\n            uint _119 = (_114 * 8u) + 2u;\n            uint _125 = ((_21._m0[_88] % 21845u) * 6u) + _9._m0[_114 * 8u];\n            uint _126 = _125 & 4294967292u;\n            uint _128 = _126 >> 2u;\n            uint2 _134 = uint2(_13._m0[_128], _13._m0[_128 + 1u]);\n            uint _135 = _134.x;\n            uint _136 = _134.y;\n            bool _137 = _126 == _125;\n            uint _138 = _135 >> 16u;\n            uint _139 = _136 & 65535u;\n            uint _149 = (((_137 ? (_135 & 65535u) : _138) * 56u) + _9._m0[_119]) >> 2u;\n            uint3 _158 = uint3(_17._m0[_149], _17._m0[_149 + 1u], _17._m0[_149 + 2u]);\n            float _162 = as_type<float>(_158.x);\n            float _163 = as_type<float>(_158.y);\n            float _164 = as_type<float>(_158.z);\n            uint _167 = (((_137 ? _138 : _139) * 56u) + _9._m0[_119]) >> 2u;\n            uint3 _176 = uint3(_17._m0[_167], _17._m0[_167 + 1u], _17._m0[_167 + 2u]);\n            uint _185 = (((_137 ? _139 : (_136 >> 16u)) * 56u) + _9._m0[_119]) >> 2u;\n            uint3 _194 = uint3(_17._m0[_185], _17._m0[_185 + 1u], _17._m0[_185 + 2u]);\n            float _216 = (((as_type<float>(_176.x) - _162) * _71) + _162) + ((as_type<float>(_194.x) - _162) * _72);\n            float _217 = (((as_type<float>(_176.y) - _163) * _71) + _163) + ((as_type<float>(_194.y) - _163) * _72);\n            float _218 = (((as_type<float>(_176.z) - _164) * _71) + _164) + ((as_type<float>(_194.z) - _164) * _72);\n            float _223 = rsqrt(dot(float3(_216, _217, _218), float3(_216, _217, _218)));\n            float _224 = _216 * _223;\n            float _225 = _217 * _223;\n            float _226 = _218 * _223;\n            uint _227 = _55.z;\n            float _238;\n            float _241;\n            float _242;\n            if (_227 == 8u)\n            {\n                _238 = (_224 * 0.5) + 0.5;\n                _241 = (_225 * 0.5) + 0.5;\n                _242 = (_226 * 0.5) + 0.5;\n            }\n            else\n            {\n                float frontier_phi_6_5_ladder;\n                float frontier_phi_6_5_ladder_1;\n                float frontier_phi_6_5_ladder_2;\n                if (_227 == 9u)\n                {\n                    float _239 = 1.0 / ((as_type<float>(_21._m0[(_63 * 16u) + 2u]) * 0.001000000047497451305389404296875) + 1.0);\n                    frontier_phi_6_5_ladder = _239;\n                    frontier_phi_6_5_ladder_1 = _239;\n                    frontier_phi_6_5_ladder_2 = _239;\n                }\n                else\n                {\n                    float _240 = (precise::clamp(dot(float3(_224, _225, _226), float3((-0.0) - _104.x, (-0.0) - _104.y, (-0.0) - _104.z)), 0.0, 1.0) * 0.43200004100799560546875) + 0.2880000174045562744140625;\n                    frontier_phi_6_5_ladder = _240;\n                    frontier_phi_6_5_ladder_1 = _240;\n                    frontier_phi_6_5_ladder_2 = _240;\n                }\n                _238 = frontier_phi_6_5_ladder;\n                _241 = frontier_phi_6_5_ladder_1;\n                _242 = frontier_phi_6_5_ladder_2;\n            }\n            _34.write(float4(_238, _241, _242, 1.0), uint2(uint2(gl_GlobalInvocationID.x, gl_GlobalInvocationID.y)));\n        }\n    }\n}\n\n",
+  "entry_point": "main0",
+  "stage": "Compute",
+  "threads_per_group": [
+    8,
+    8,
+    1
+  ],
+  "resources": [
+    {
+      "class": "Cbv",
+      "space": 0,
+      "register": 20,
+      "kind": "ConstantBuffer",
+      "alignment": 0,
+      "count": 1,
+      "namespace": "Buffer",
+      "metal_index": 0,
+      "spirv_set": 0,
+      "spirv_binding": 20
+    },
+    {
+      "class": "Srv",
+      "space": 0,
+      "register": 1,
+      "kind": "StructuredBuffer",
+      "alignment": 32,
+      "count": 1,
+      "namespace": "Buffer",
+      "metal_index": 1,
+      "spirv_set": 1,
+      "spirv_binding": 1
+    },
+    {
+      "class": "Srv",
+      "space": 0,
+      "register": 2,
+      "kind": "RawBuffer",
+      "alignment": 16,
+      "count": 1,
+      "namespace": "Buffer",
+      "metal_index": 2,
+      "spirv_set": 1,
+      "spirv_binding": 2
+    },
+    {
+      "class": "Srv",
+      "space": 0,
+      "register": 3,
+      "kind": "RawBuffer",
+      "alignment": 16,
+      "count": 1,
+      "namespace": "Buffer",
+      "metal_index": 3,
+      "spirv_set": 1,
+      "spirv_binding": 3
+    },
+    {
+      "class": "Srv",
+      "space": 0,
+      "register": 21,
+      "kind": "StructuredBuffer",
+      "alignment": 64,
+      "count": 1,
+      "namespace": "Buffer",
+      "metal_index": 4,
+      "spirv_set": 1,
+      "spirv_binding": 21
+    },
+    {
+      "class": "Srv",
+      "space": 0,
+      "register": 25,
+      "kind": "StructuredBuffer",
+      "alignment": 4,
+      "count": 1,
+      "namespace": "Buffer",
+      "metal_index": 5,
+      "spirv_set": 1,
+      "spirv_binding": 25
+    },
+    {
+      "class": "Uav",
+      "space": 0,
+      "register": 2,
+      "kind": "Texture2D",
+      "alignment": 0,
+      "count": 1,
+      "namespace": "Texture",
+      "metal_index": 0,
+      "spirv_set": 2,
+      "spirv_binding": 2
+    }
+  ],
+  "vertex_inputs": [],
+  "dxil_spirv_version": [
+    2,
+    72,
+    1
+  ],
+  "requires_ray_query": false,
+  "fragment_output_components": []
+}

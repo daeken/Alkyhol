@@ -144,6 +144,83 @@ fn translated_texture_sampler_and_uav_use_reflected_independent_namespaces() {
 }
 
 #[test]
+fn fixed_texture_descriptor_arrays_select_nonuniform_per_lane_images() {
+    let host = pollster::block_on(D3D12CreateDevice(false)).unwrap();
+    let device = host.metal_device();
+    let shader = translate("texture_array.hlsl", "CSMain", Stage::Compute);
+    let pipeline = pipeline(device, &shader);
+    let array = shader
+        .resources
+        .iter()
+        .find(|r| r.class == RegisterClass::Srv)
+        .unwrap();
+    assert_eq!(array.count, 2);
+    assert_eq!(array.space, 2);
+    let descriptor = TextureDescriptor::new();
+    descriptor.set_texture_type(MTLTextureType::D2);
+    descriptor.set_width(1);
+    descriptor.set_height(1);
+    descriptor.set_pixel_format(MTLPixelFormat::RGBA8Unorm);
+    descriptor.set_storage_mode(MTLStorageMode::Shared);
+    descriptor.set_usage(MTLTextureUsage::ShaderRead);
+    let textures = [
+        device.new_texture(&descriptor),
+        device.new_texture(&descriptor),
+    ];
+    for (texture, pixels) in textures.iter().zip([[255u8, 0, 0, 255], [0, 255, 0, 255]]) {
+        texture.replace_region(MTLRegion::new_2d(0, 0, 1, 1), 0, pixels.as_ptr().cast(), 4);
+    }
+    let output = buffer(device, &[0xdeadbeef; 16]);
+    let command = host.metal_queue().new_command_buffer();
+    let encoder = command.new_compute_command_encoder();
+    encoder.set_compute_pipeline_state(&pipeline);
+    for (i, texture) in textures.iter().enumerate() {
+        encoder.set_texture(array.metal_index as u64 + i as u64, Some(texture));
+    }
+    encoder.set_buffer(slot(&shader, RegisterClass::Uav, 0), Some(&output), 0);
+    encoder.dispatch_thread_groups(MTLSize::new(1, 1, 1), MTLSize::new(4, 1, 1));
+    encoder.end_encoding();
+    complete(command).unwrap();
+    let data = unsafe { std::slice::from_raw_parts(output.contents().cast::<[f32; 4]>(), 4) };
+    assert_eq!(
+        data,
+        &[
+            [1., 0., 0., 1.],
+            [0., 1., 0., 1.],
+            [1., 0., 0., 1.],
+            [0., 1., 0., 1.]
+        ]
+    );
+}
+
+#[test]
+#[ignore = "requires physical Metal RT; compiles the original material's 81-texture interface"]
+fn original_material_interface_compiles_all_three_texture_arrays_on_physical_metal() {
+    let dxc = std::env::var_os("DXC")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| "dxc".into());
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("samples/miniengine/material.hlsl");
+    let bytes = compile_hlsl_with_options(
+        &dxc,
+        &path,
+        "AlkyholMain",
+        Stage::Compute,
+        &HlslOptions {
+            shader_model_6_5: true,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let shader = translate_dxil(&bytes, "AlkyholMain").unwrap();
+    let arrays: Vec<_> = shader.resources.iter().filter(|r| r.count == 27).collect();
+    assert_eq!(arrays.len(), 3);
+    let host = pollster::block_on(D3D12CreateDevice(false)).unwrap();
+    assert!(host.adapter_info().ray_tracing);
+    let pipeline = pipeline(host.metal_device(), &shader);
+    assert!(pipeline.thread_execution_width() > 0);
+}
+
+#[test]
 fn translated_vertex_pixel_pair_matches_unchanged_checker_oracle() {
     let pixels = render_pair("checker.hlsl", false);
     for y in 0..4usize {

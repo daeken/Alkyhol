@@ -1,0 +1,56 @@
+{
+  "msl": "#include <metal_stdlib>\n#include <simd/simd.h>\n\nusing namespace metal;\n\nstruct SSBO\n{\n    uint _m0[1];\n};\n\nstruct SSBO_1\n{\n    uint2 _m0[1];\n};\n\nstruct _22\n{\n    float4 _m0[1];\n};\n\nkernel void main0(constant _22& _24 [[buffer(0)]], const device void* spvBufferAliasSet1Binding21 [[buffer(1)]], texture2d<float, access::write> _18 [[texture(0)]], uint3 gl_GlobalInvocationID [[thread_position_in_grid]])\n{\n    const device auto& __restrict _9 = *(const device SSBO*)spvBufferAliasSet1Binding21;\n    const device auto& __restrict _14 = *(const device SSBO_1*)spvBufferAliasSet1Binding21;\n    uint4 _39 = as_type<uint4>(_24._m0[0u]);\n    uint _40 = _39.x;\n    if (gl_GlobalInvocationID.x < _40)\n    {\n        uint _43 = _39.y;\n        if (gl_GlobalInvocationID.y < _43)\n        {\n            uint _47 = ((_43 + gl_GlobalInvocationID.y) * _40) + gl_GlobalInvocationID.x;\n            if (!(_9._m0[(_47 * 16u) + 3u] == 4294967295u))\n            {\n                _18.write(float4(as_type<float2>(_14._m0[_47 * 8u]), 1.0, 1.0), uint2(uint2(gl_GlobalInvocationID.x, gl_GlobalInvocationID.y)));\n            }\n        }\n    }\n}\n\n",
+  "entry_point": "main0",
+  "stage": "Compute",
+  "threads_per_group": [
+    8,
+    8,
+    1
+  ],
+  "resources": [
+    {
+      "class": "Cbv",
+      "space": 0,
+      "register": 20,
+      "kind": "ConstantBuffer",
+      "alignment": 0,
+      "count": 1,
+      "namespace": "Buffer",
+      "metal_index": 0,
+      "spirv_set": 0,
+      "spirv_binding": 20
+    },
+    {
+      "class": "Srv",
+      "space": 0,
+      "register": 21,
+      "kind": "StructuredBuffer",
+      "alignment": 64,
+      "count": 1,
+      "namespace": "Buffer",
+      "metal_index": 1,
+      "spirv_set": 1,
+      "spirv_binding": 21
+    },
+    {
+      "class": "Uav",
+      "space": 0,
+      "register": 2,
+      "kind": "Texture2D",
+      "alignment": 0,
+      "count": 1,
+      "namespace": "Texture",
+      "metal_index": 0,
+      "spirv_set": 2,
+      "spirv_binding": 2
+    }
+  ],
+  "vertex_inputs": [],
+  "dxil_spirv_version": [
+    2,
+    72,
+    1
+  ],
+  "requires_ray_query": false,
+  "fragment_output_components": []
+}

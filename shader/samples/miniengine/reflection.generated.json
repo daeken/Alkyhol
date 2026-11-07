@@ -1,0 +1,116 @@
+{
+  "msl": "#pragma clang diagnostic ignored \"-Wunused-variable\"\n#pragma clang diagnostic ignored \"-Wmissing-prototypes\"\n\n#include <metal_stdlib>\n#include <simd/simd.h>\n#include <metal_atomic>\n#if __METAL_VERSION__ >= 230\n#include <metal_raytracing>\nusing namespace metal::raytracing;\n#endif\n\nusing namespace metal;\n\nintersection_params spvMakeIntersectionParams(uint flags)\n{\n    intersection_params ip;\n    if ((flags & 1) != 0)\n        ip.force_opacity(forced_opacity::opaque);\n    if ((flags & 2) != 0)\n        ip.force_opacity(forced_opacity::non_opaque);\n    if ((flags & 4) != 0)\n        ip.accept_any_intersection(true);\n    if ((flags & 16) != 0)\n        ip.set_triangle_cull_mode(triangle_cull_mode::back);\n    if ((flags & 32) != 0)\n        ip.set_triangle_cull_mode(triangle_cull_mode::front);\n    if ((flags & 64) != 0)\n        ip.set_opacity_cull_mode(opacity_cull_mode::opaque);\n    if ((flags & 128) != 0)\n        ip.set_opacity_cull_mode(opacity_cull_mode::non_opaque);\n    if ((flags & 256) != 0)\n        ip.set_geometry_cull_mode(geometry_cull_mode::triangle);\n    if ((flags & 512) != 0)\n        ip.set_geometry_cull_mode(geometry_cull_mode::bounding_box);\n    return ip;\n}\n\nstruct SSBO\n{\n    uint _m0[1];\n};\n\nstruct SSBO_1\n{\n    uint _m0[1];\n};\n\nstruct SSBO_2\n{\n    uint2 _m0[1];\n};\n\nstruct SSBO_3\n{\n    uint4 _m0[1];\n};\n\nstruct SSBO_4\n{\n    uint _m0[1];\n};\n\nstruct _40\n{\n    float4 _m0[6];\n};\n\nstruct _45\n{\n    float4 _m0[1];\n};\n\nkernel void main0(constant _40& _42 [[buffer(0)]], constant _45& _47 [[buffer(1)]], device SSBO& __restrict _13 [[buffer(3)]], device SSBO_4& _36 [[buffer(4)]], device void* spvBufferAliasSet2Binding21 [[buffer(5)]], texture2d<float> _17 [[texture(0)]], texture2d<float> _18 [[texture(1)]], raytracing::instance_acceleration_structure _8 [[buffer(2)]], uint3 gl_GlobalInvocationID [[thread_position_in_grid]])\n{\n    device auto& _22 = *(device SSBO_1*)spvBufferAliasSet2Binding21;\n    device auto& _27 = *(device SSBO_2*)spvBufferAliasSet2Binding21;\n    device auto& _32 = *(device SSBO_3*)spvBufferAliasSet2Binding21;\n    raytracing::intersection_query<raytracing::instancing, raytracing::triangle_data> _247;\n    uint4 _63 = as_type<uint4>(_47._m0[0u]);\n    uint _64 = _63.x;\n    if ((gl_GlobalInvocationID.x < _64) && (gl_GlobalInvocationID.y < _63.y))\n    {\n        uint _71 = (_64 * gl_GlobalInvocationID.y) + gl_GlobalInvocationID.x;\n        _27._m0[_71 * 8u] = uint2(as_type<uint>(0.0), as_type<uint>(0.0));\n        _22._m0[(_71 * 16u) + 2u] = as_type<uint>(0.0);\n        _22._m0[(_71 * 16u) + 3u] = 4294967295u;\n        _22._m0[(_71 * 16u) + 4u] = 0u;\n        _22._m0[(_71 * 16u) + 5u] = as_type<uint>(0.0);\n        _27._m0[(_71 * 8u) + 3u] = uint2(0u);\n        _32._m0[(_71 * 4u) + 2u] = uint4(as_type<uint>(0.0), as_type<uint>(0.0), as_type<uint>(0.0), as_type<uint>(0.0));\n        _32._m0[(_71 * 4u) + 3u] = uint4(as_type<uint>(0.0), as_type<uint>(0.0), as_type<uint>(0.0), as_type<uint>(0.0));\n        float _124 = float(gl_GlobalInvocationID.x) + 0.5;\n        float _126 = float(gl_GlobalInvocationID.y) + 0.5;\n        float _136 = ((_124 / _42._m0[5u].x) * 2.0) + (-1.0);\n        float _139 = (-0.0) - (((_126 / _42._m0[5u].y) * 2.0) + (-1.0));\n        uint _141 = uint(int(_124));\n        uint _142 = uint(int(_126));\n        float4 _143 = _17.read(uint2(uint2(_141, _142)), 0u);\n        float _145 = _143.x;\n        float4 _146 = _18.read(uint2(uint2(_141, _142)), 0u);\n        float _148 = _146.x;\n        if (!(_146.w == 0.0))\n        {\n            float _193 = fma(_42._m0[2u].w, _145, fma(_42._m0[1u].w, _139, _42._m0[0u].w * _136)) + _42._m0[3u].w;\n            float _194 = (fma(_42._m0[2u].x, _145, fma(_42._m0[1u].x, _139, _42._m0[0u].x * _136)) + _42._m0[3u].x) / _193;\n            float _195 = (fma(_42._m0[2u].y, _145, fma(_42._m0[1u].y, _139, _42._m0[0u].y * _136)) + _42._m0[3u].y) / _193;\n            float _196 = (fma(_42._m0[2u].z, _145, fma(_42._m0[1u].z, _139, _42._m0[0u].z * _136)) + _42._m0[3u].z) / _193;\n            float _202 = _42._m0[4u].x - _194;\n            float _203 = _42._m0[4u].y - _195;\n            float _204 = _42._m0[4u].z - _196;\n            float _209 = rsqrt(dot(float3(_202, _203, _204), float3(_202, _203, _204)));\n            float _210 = _202 * _209;\n            float _211 = _203 * _209;\n            float _212 = _204 * _209;\n            float _213 = (-0.0) - _210;\n            float _214 = (-0.0) - _211;\n            float _215 = (-0.0) - _212;\n            float _219 = dot(float3(_213, _214, _215), float3(_148, _146.yz)) * 2.0;\n            float _223 = _213 - (_219 * _148);\n            float _224 = _214 - (_219 * _146.y);\n            float _225 = _215 - (_219 * _146.z);\n            float _229 = rsqrt(dot(float3(_223, _224, _225), float3(_223, _224, _225)));\n            float _230 = _223 * _229;\n            float _231 = _224 * _229;\n            float _232 = _225 * _229;\n            float _237 = _194 - (_210 * 0.100000001490116119384765625);\n            float _238 = _195 - (_211 * 0.100000001490116119384765625);\n            float _239 = _196 - (_212 * 0.100000001490116119384765625);\n            _247.reset(ray(float3(_237, _238, _239), float3(_230, _231, _232), 0.0, 3.4028234663852885981170418348452e+38), _8, 4294967295u, spvMakeIntersectionParams(17u));\n            for (;;)\n            {\n                bool _252 = _247.next();\n                if (_252)\n                {\n                }\n                else\n                {\n                    break;\n                }\n            }\n            uint _253 = (as_type<uint4>(_47._m0[0u]).x * gl_GlobalInvocationID.y) + gl_GlobalInvocationID.x;\n            uint _256 = atomic_fetch_add_explicit((device atomic_uint*)&_36._m0[37u], 1u, memory_order_relaxed);\n            uint _257 = uint(_247.get_committed_intersection_type());\n            float _278;\n            float _279;\n            float _280;\n            uint _281;\n            uint _282;\n            if (_257 == 1u)\n            {\n                uint _261 = atomic_fetch_add_explicit((device atomic_uint*)&_36._m0[38u], 1u, memory_order_relaxed);\n                uint _262 = _247.get_committed_instance_id();\n                uint _263 = _247.get_committed_primitive_id();\n                float2 _265 = _247.get_committed_triangle_barycentric_coord();\n                float2 _267 = _247.get_committed_triangle_barycentric_coord();\n                float _269 = _247.get_committed_distance();\n                float frontier_phi_7_6_ladder;\n                float frontier_phi_7_6_ladder_1;\n                float frontier_phi_7_6_ladder_2;\n                uint frontier_phi_7_6_ladder_3;\n                uint frontier_phi_7_6_ladder_4;\n                if ((_269 < 0.20000000298023223876953125) && (_262 == _13._m0[(_253 * 16u) + 3u]))\n                {\n                    uint _324 = atomic_fetch_add_explicit((device atomic_uint*)&_36._m0[40u], 1u, memory_order_relaxed);\n                    frontier_phi_7_6_ladder = _265.x;\n                    frontier_phi_7_6_ladder_1 = _267.y;\n                    frontier_phi_7_6_ladder_2 = _269;\n                    frontier_phi_7_6_ladder_3 = _262;\n                    frontier_phi_7_6_ladder_4 = _263;\n                }\n                else\n                {\n                    frontier_phi_7_6_ladder = _265.x;\n                    frontier_phi_7_6_ladder_1 = _267.y;\n                    frontier_phi_7_6_ladder_2 = _269;\n                    frontier_phi_7_6_ladder_3 = _262;\n                    frontier_phi_7_6_ladder_4 = _263;\n                }\n                _278 = frontier_phi_7_6_ladder;\n                _279 = frontier_phi_7_6_ladder_1;\n                _280 = frontier_phi_7_6_ladder_2;\n                _281 = frontier_phi_7_6_ladder_3;\n                _282 = frontier_phi_7_6_ladder_4;\n            }\n            else\n            {\n                _278 = 0.0;\n                _279 = 0.0;\n                _280 = 0.0;\n                _281 = 4294967295u;\n                _282 = 0u;\n            }\n            _27._m0[_253 * 8u] = uint2(as_type<uint>(_278), as_type<uint>(_279));\n            _22._m0[(_253 * 16u) + 2u] = as_type<uint>(_280);\n            _22._m0[(_253 * 16u) + 3u] = _281;\n            _22._m0[(_253 * 16u) + 4u] = _282;\n            _22._m0[(_253 * 16u) + 5u] = as_type<uint>(0.0);\n            _27._m0[(_253 * 8u) + 3u] = uint2(0u);\n            _32._m0[(_253 * 4u) + 2u] = uint4(as_type<uint>(_237), as_type<uint>(_238), as_type<uint>(_239), as_type<uint>(0.0));\n            _32._m0[(_253 * 4u) + 3u] = uint4(as_type<uint>(_230), as_type<uint>(_231), as_type<uint>(_232), as_type<uint>(3.4028234663852885981170418348452e+38));\n        }\n    }\n}\n\n",
+  "entry_point": "main0",
+  "stage": "Compute",
+  "threads_per_group": [
+    8,
+    8,
+    1
+  ],
+  "resources": [
+    {
+      "class": "Cbv",
+      "space": 0,
+      "register": 1,
+      "kind": "ConstantBuffer",
+      "alignment": 0,
+      "count": 1,
+      "namespace": "Buffer",
+      "metal_index": 0,
+      "spirv_set": 0,
+      "spirv_binding": 1
+    },
+    {
+      "class": "Cbv",
+      "space": 0,
+      "register": 20,
+      "kind": "ConstantBuffer",
+      "alignment": 0,
+      "count": 1,
+      "namespace": "Buffer",
+      "metal_index": 1,
+      "spirv_set": 0,
+      "spirv_binding": 20
+    },
+    {
+      "class": "Srv",
+      "space": 0,
+      "register": 0,
+      "kind": "RtAccelerationStructure",
+      "alignment": 0,
+      "count": 1,
+      "namespace": "Buffer",
+      "metal_index": 2,
+      "spirv_set": 1,
+      "spirv_binding": 0
+    },
+    {
+      "class": "Srv",
+      "space": 0,
+      "register": 12,
+      "kind": "Texture2D",
+      "alignment": 0,
+      "count": 1,
+      "namespace": "Texture",
+      "metal_index": 0,
+      "spirv_set": 1,
+      "spirv_binding": 12
+    },
+    {
+      "class": "Srv",
+      "space": 0,
+      "register": 13,
+      "kind": "Texture2D",
+      "alignment": 0,
+      "count": 1,
+      "namespace": "Texture",
+      "metal_index": 1,
+      "spirv_set": 1,
+      "spirv_binding": 13
+    },
+    {
+      "class": "Srv",
+      "space": 0,
+      "register": 21,
+      "kind": "StructuredBuffer",
+      "alignment": 64,
+      "count": 1,
+      "namespace": "Buffer",
+      "metal_index": 3,
+      "spirv_set": 1,
+      "spirv_binding": 21
+    },
+    {
+      "class": "Uav",
+      "space": 0,
+      "register": 20,
+      "kind": "StructuredBuffer",
+      "alignment": 4,
+      "count": 1,
+      "namespace": "Buffer",
+      "metal_index": 4,
+      "spirv_set": 2,
+      "spirv_binding": 20
+    },
+    {
+      "class": "Uav",
+      "space": 0,
+      "register": 21,
+      "kind": "StructuredBuffer",
+      "alignment": 64,
+      "count": 1,
+      "namespace": "Buffer",
+      "metal_index": 5,
+      "spirv_set": 2,
+      "spirv_binding": 21
+    }
+  ],
+  "vertex_inputs": [],
+  "dxil_spirv_version": [
+    2,
+    72,
+    1
+  ],
+  "requires_ray_query": true,
+  "fragment_output_components": []
+}

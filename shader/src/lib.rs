@@ -65,6 +65,7 @@ pub struct ResourceBinding {
     pub register: u32,
     pub kind: String,
     pub alignment: u32,
+    pub count: u32,
     pub namespace: MetalNamespace,
     pub metal_index: u32,
     pub spirv_set: u32,
@@ -273,14 +274,31 @@ impl Bindings {
                 return None;
             }
         };
-        if b.range_size != 1 || counter || b.register_space > u32::MAX / 4 {
+        if b.range_size == 0
+            || b.range_size > 128
+            || (b.range_size != 1 && namespace != MetalNamespace::Texture)
+            || counter
+            || b.register_space > u32::MAX / 4
+            || b.register_index.checked_add(b.range_size - 1).is_none()
+        {
             self.error = Some(
-                "descriptor arrays, UAV counters or excessive register spaces are unsupported"
+                "unbounded/non-texture descriptor arrays, UAV counters or excessive register ranges are unsupported"
                     .into(),
             );
             return None;
         }
         let set = b.register_space * 4 + class as u32;
+        for (&(other_class, space, register), other) in &self.resources {
+            if other_class == class
+                && space == b.register_space
+                && register != b.register_index
+                && (register as u64) < b.register_index as u64 + b.range_size as u64
+                && (b.register_index as u64) < register as u64 + other.count as u64
+            {
+                self.error = Some("overlapping D3D descriptor ranges".into());
+                return None;
+            }
+        }
         self.resources
             .entry((class, b.register_space, b.register_index))
             .or_insert(ResourceBinding {
@@ -289,6 +307,7 @@ impl Bindings {
                 register: b.register_index,
                 kind: format!("{:?}", b.kind),
                 alignment: b.alignment,
+                count: b.range_size,
                 namespace,
                 metal_index: 0,
                 spirv_set: set,
@@ -461,11 +480,11 @@ pub fn translate_dxil_with_options(
     for resource in state.resources.values_mut() {
         let ns = resource.namespace as usize;
         let limit = [24, 128, 16][ns];
-        if next[ns] >= limit {
+        if resource.count > limit - next[ns] {
             return Err(format!("too many {:?} resources", resource.namespace));
         }
         resource.metal_index = next[ns];
-        next[ns] += 1;
+        next[ns] += resource.count;
         compiler
             .add_resource_binding(
                 stage.model(),
@@ -474,7 +493,7 @@ pub fn translate_dxil_with_options(
                     buffer: resource.metal_index,
                     texture: resource.metal_index,
                     sampler: resource.metal_index,
-                    count: None,
+                    count: std::num::NonZeroU32::new(resource.count),
                 },
             )
             .map_err(|e| e.to_string())?;

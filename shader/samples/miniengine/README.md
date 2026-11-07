@@ -1,50 +1,69 @@
-# Original MiniEngine HLSL: first runtime migration
+# Original MiniEngine HLSL runtime
 
 The `original/` files are byte-for-byte Microsoft sources at revision
-`68a2b1e97f71642924e74c7757ca21756ad221b5`; `upstream.json` binds each upstream
+`68a2b1e97f71642924e74c7757ca21756ad221b5`; `upstream.json` binds every upstream
 path, length and SHA-256. Microsoft MIT notice: `../../licenses/Microsoft-MIT.txt`.
 The header filename is cased `ModelViewerRaytracing.h` to match the original
 HLSL includes on case-sensitive hosts; its bytes are unchanged.
 
-`bary.hlsl` is an explicit Alkyhol **source compatibility adapter**, compiling
-unchanged `RayGen`, `Hit` and `Miss` bodies into a compute shader. Dispatch ID and
-hit-distance builtins are supplied as per-invocation state; actual native Metal
-triangle traversal comes from HLSL RayQuery → DXIL → SPIR-V → MSL. The fixed scene
-uses opaque triangles, one hit group and miss shader. This adapter does not
-implement arbitrary shader tables, recursion or full DXR library translation.
+These are explicit Alkyhol **source compatibility adapters**, compiled through
+open DXC → DXIL → dxil-spirv → SPIRV-Cross → MSL. They specialize the pinned
+sample's opaque triangles, fixed materials and primary/single-reflection passes;
+they do not implement arbitrary shader tables, recursion or DXR library binaries.
 
-`camera.hlsl` calls unchanged `RayGen` to enqueue its primary ray. This is a
-specialized split of that particular entry (which does not read the returned
-payload); the next pass performs actual traversal. All Sponza modes consume the
-original HLSL-generated primary rays. The shaded modes still use manual MSL for
-materials and shadow/reflection hit logic, while view 2 uses original hit/miss.
+- `bary.hlsl` calls unchanged primary `RayGen` and Bary `Hit`/`Miss` bodies,
+  supplies actual native triangle queries, and queues hit records, reverse-Z depth
+  and material normal output. `camera.hlsl` is the ray-only reference variant.
+- `material.hlsl` includes exact extracted `DiffuseHitShaderLib.hlsl` helper and
+  `Hit` bodies. An explicit adapter supplies builtins and actual nested shadow
+  queries, routes expanded attributes in uint16-addressable chunks, and binds
+  diffuse/normal/specular arrays of 27 original textures each. No geometry is
+  dropped. `tools/prepare_sakura_shaders.py` verifies/extracts both sample packages.
+- Existing port extensions remain explicit: invalid interpolated tangent frames
+  are repaired from triangle positions/UVs; primary specular modes supply the
+  specular texture mask and raster-style view direction. The adapter intercepts
+  the six pinned `normalize` calls in `Hit`; a changed sequence fails a counted
+  contract check. Diffuse-only and secondary hit shading retain the source view
+  and direct specular mask. This is not a claim of full original raster parity.
+- `reflection.hlsl` includes original SSR ray generation unchanged. It consumes
+  actual projected depth and normal/reflectivity output, executes a native query
+  and queues the secondary hit. The original entry does not consume its returned
+  payload; original material or Bary shading executes in the following pass.
+- `diagnostic.hlsl` and `diagnostic_present.hlsl` are Alkyhol-owned HLSL for the
+  additional geometry/normal/depth views and diagnostic live scaling.
 
-Tone mapping, SDR display conversion, fullscreen vertices, diagnostic copies and
-shaded live upsampling now compile the unmodified `ToneMapCS.hlsl`,
-`PresentSDRPS.hlsl`, `ScreenQuadPresentVS.hlsl`, `BufferCopyPS.hlsl` and
-`BilinearUpsamplePS.hlsl`, together with their full original include closure.
-The runtime explicitly replaces their root signatures with reflected bindings,
-supplies the original linear-clamp sampler, exposure 2 and zero bloom strength,
-and selects the typed-UAV-load path. Adaptive exposure and bloom remain absent.
-Linear HDR/SDR uses RGBA32Float instead of the original packed RGB framebuffer;
-RGB fragment outputs are explicitly widened for Metal RGBA attachments and the
-host preserves an opaque alpha. No edits to source or generated MSL implement this.
+The source SSAO input is explicitly neutral (1), not an SSAO implementation.
+The no-shadows mode supplies a real cleared reverse-Z depth comparison input;
+there is no original shadow-map rendering path. The floor mask remains material
+10 with original specular strength. Nonfinite output, unsupported nested payloads
+and adapter-contract faults reject the frame. Prior manual MSL is an explicit
+reference toggle only; it is never an automatic successful fallback.
 
-The generated JSON files contain compiler-emitted MSL and authoritative binding
-metadata. They are checked in so running an app does not need a compiler download.
-No edits to generated MSL are allowed. Rebuild or verify with the pinned compiler:
+Tone mapping, SDR display conversion, fullscreen vertices, copies and shaded live
+upsampling compile unmodified `ToneMapCS.hlsl`, `PresentSDRPS.hlsl`,
+`ScreenQuadPresentVS.hlsl`, `BufferCopyPS.hlsl`, `BilinearUpsamplePS.hlsl` and their
+full include closure. The runtime replaces root signatures with reflected
+bindings, supplies the original linear-clamp sampler, exposure 2 and zero bloom
+strength, and selects typed UAV loads. Adaptive exposure and bloom remain absent.
+Linear HDR/SDR uses RGBA32Float instead of packed RGB; RGB fragment outputs are
+explicitly padded for Metal RGBA attachments and capture alpha remains opaque.
+
+Generated JSON contains compiler-emitted MSL and authoritative binding metadata.
+It is checked in so running an app needs no compiler download. Never edit generated
+MSL. Rebuild or verify using the pinned compiler:
 
 ```sh
+python3 tools/prepare_sakura_shaders.py --check
 cargo run --manifest-path shader/Cargo.toml --locked --example translate_samples -- "$DXC"
 cargo run --manifest-path shader/Cargo.toml --locked --example translate_samples -- "$DXC" --check
 ```
 
-CI checks regeneration, and Python verifies all original source hashes. The
-physical M4 additionally ran a full-scene A/B comparison at 129×73 for each of
-five camera presets: exact RGBA8 pixels, per-mesh nearest-hit counts and misses
-agree with the manual intersector reference using the same original camera rays.
-This is internal Metal agreement, not a native Windows DXR frame comparison.
-An additional 13×7 real-GPU compute/raster test compares tone-mapped/display RGB
-to an independent scalar curve (one UNORM8 code for quantization) and the original
-log-luminance output (absolute tolerance 2e-6). The physical M4 passed all 15
-MiniEngine and 14 shader tests. Hosted Metal does not supply RT evidence.
+CI checks regeneration and every original source hash. On physical M4, full-scene
+tests cover all five camera presets, geometry counts, shadow/reflection pixel
+changes, finite output, repeat captures, resize and exact restoration after the
+explicit reference toggle. Bary original/manual pixels and hit counts agree
+exactly across all five presets. A separate 13×7 GPU test checks original
+Stanard/sRGB output against independent scalar math (one UNORM8 code) and original
+log-luminance (absolute tolerance 2e-6). Fixed texture-array selection has a real
+nonuniform per-lane GPU test; the complete 81-texture material interface compiles
+on physical RT Metal. These are Metal assertions, not native Windows DXR frames.
