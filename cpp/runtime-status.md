@@ -7,6 +7,7 @@ COM device is implemented. This is a build milestone, not a functioning renderer
 | Area | Executed implementation / limit |
 |---|---|
 | IUnknown / ID3DBlob | Rust vtable, canonical identity, QueryInterface, owned allocation; synchronized C++/WRL probes agree with native Windows. Rust atomic stress passes separately; native uncoordinated stress crashed and is not parity evidence |
+| ID3D12Object metadata base | Real Rust CPU vtable/private bytes/retained interfaces/UTF-32 names; 34 frozen native records match locally. Explicit diagnostic constructor only; no device/fence/resource capability |
 | RoInitialize / RoUninitialize | Per-thread model/nesting, changed-mode failure; no WinRT activation or marshaling |
 | CreateFile2 | UTF-32 host path conversion to existing real kernel files; synchronous regular files, share mask **7 only**, normal attributes, optional sequential hint; security/templates/other flags fail |
 | FileStandardInfo | Actual open-file size, host allocated blocks and link count; no delete-on-close mode; unsupported info classes fail |
@@ -31,8 +32,8 @@ command lists, descriptors, swap chain and DXR shader tables. Those are the next
 runtime milestones. Full original shader library lowering is also still separate
 from compiling the original libraries to DXIL.
 
-The next inherited COM unit has a separately frozen native reference:
-[ID3D12Object metadata](reference/README.md). Implement its real ownership,
-private-data and naming behavior before using the common object prefix in
-Metal-backed device/resource interfaces. The reference observer itself does not
-implement that object in Rust or advance the original application's startup.
+The inherited metadata unit now has a real CPU Rust implementation and an explicit
+ABI-test constructor. [ID3D12Object metadata](reference/README.md) preserves its
+independent native contract. The next runtime steps are derived object identity,
+real Metal device/queue/resource ownership and actual GPU operations; the CPU
+metadata constructor must not substitute for those interfaces or device creation.

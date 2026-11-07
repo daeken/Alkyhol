@@ -4,6 +4,40 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## Rust ID3D12Object metadata base: local CPU execution
+
+The new seven-slot Rust vtable implements IUnknown identity/reference ownership
+and ID3D12Object private bytes, stored-interface ownership and names. An explicit
+`AlkyholCreateMetadataObject32` diagnostic constructor creates a real CPU metadata
+object, with UTF-32 source-ABI name input and UTF-16 LE debug-name storage. It
+represents no device, fence, resource or GPU capability; its C export is Unix-only.
+The original application's D3D12CreateDevice boundary continues to fail honestly.
+
+On the physical M4 through x86-64/Rosetta, actual C++ virtual calls reuse the frozen
+native observer's method sequence without changing its source or acceptance data.
+Every one of the 34 records agrees with the independent WARP reference, including
+buffer sentinel tails, HRESULTs, sizes and foreign IUnknown AddRef/Release/destruction
+events. The native constructor is replaced explicitly in a separate host wrapper;
+no native fence or backend rendering is inferred from the Rust metadata object.
+The new CI comparator requires a fresh native report and a Rust host report from
+the same clean revision; its first run remains pending.
+
+Seven new Rust units cover vtable identity/lifetimes, defensive null outputs,
+copy ownership/empty entries, unaligned interface outputs, UTF-32/UTF-16 names and
+invalid input without partial changes, foreign callback reentrancy, concurrent
+byte entries and atomic ownership. Foreign AddRef/Release callbacks run outside
+the store mutex; immutable snapshots keep retained interfaces alive during reads.
+Foreign interfaces still require valid thread/apartment use; no marshaling or
+agility is synthesized. These extra concurrency/reentrancy/defensive cases are
+host assertions, not new native observations. Null-pointer HRESULTs and empty-name
+contents outside the frozen sequence remain local contracts.
+
+All 67 root Rust tests, Clippy and 55 Python tests pass locally, as do existing
+C++/WRL, CRT/platform and compiler fixtures. The complete original application
+relinks against the updated library and still exits 78 at the same honest device
+capability check. The pinned original checkout stays clean; working sample apps,
+shaders, geometry, native reference and frozen records are unchanged.
+
 ## Native ID3D12Object metadata reference: COM runtime preparation
 
 [CI 42356150734](https://github.com/daeken/Alkyhol/actions/runs/42356150734)

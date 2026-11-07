@@ -34,6 +34,12 @@ from identical actual probe source bytes. All twelve jobs passed on `42fff60` in
 The Rust-only atomic extension and compiler-extension fixtures pass locally;
 that does not turn the failed native uncoordinated stress into positive evidence.
 
+The Rust ID3D12Object CPU metadata base also matches the separately frozen 34-record
+native WARP metadata contract through actual C++ virtual calls. Its explicit
+UTF-32 diagnostic constructor is not D3D12CreateDevice and represents no GPU/fence.
+Private-data snapshots preserve foreign COM lifetimes and release outside locks.
+The native reference and its acceptance data remain unchanged.
+
 ```sh
 python3 tools/fetch_cpp_deps.py
 python3 tools/build_cpp_clang.py

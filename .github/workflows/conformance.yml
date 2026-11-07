@@ -30,6 +30,14 @@ jobs:
       - name: Execute C++ ABI probes against Rust or the independent Windows SDK
         if: runner.os != 'Linux'
         run: python tools/run_cpp_probes.py --output cpp-observation.json
+      - name: Execute inherited D3D12 object metadata calls through Rust COM
+        if: runner.os == 'macOS'
+        run: python tools/run_cpp_object_host.py --output cpp-object-host.json
+      - uses: actions/upload-artifact@v4
+        if: runner.os == 'macOS'
+        with:
+          name: cpp-object-host-macOS
+          path: cpp-object-host.json
       - uses: actions/upload-artifact@v4
         if: runner.os != 'Linux'
         with:
@@ -334,4 +342,25 @@ jobs:
               assert reports[0][key]==reports[1][key],key
           assert reports[0]['expanded_bytes']==46858664
           print('Native MSVC and Rust agree on every expanded Sponza geometry/attribute byte:',reports[0]['expanded_sha256'])
+          PY
+
+  compare-cpp-object:
+    needs: [kernel, graphics-reference]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: cpp-object-*
+          path: cpp-object-observations
+      - name: Compare real Rust COM calls against native WARP object metadata
+        run: |
+          python3 - <<'PY'
+          import json, subprocess
+          from pathlib import Path
+          from tools.run_cpp_object_host import compare_reports
+          reports=[json.loads(p.read_text()) for p in Path('cpp-object-observations').glob('*/*.json')]
+          revision=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
+          compare_reports(reports,revision)
+          print('All 34 object-metadata records, byte sentinels and foreign reference events agree; no GPU/device claim')
           PY
