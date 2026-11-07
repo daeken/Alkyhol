@@ -256,6 +256,12 @@ jobs:
         with:
           name: cpp-queue-fence-Windows
           path: cpp-queue-fence.json
+      - name: Execute COM command-list copies and verify every destination byte
+        run: python tools/run_cpp_command_copy.py --output cpp-command-copy.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cpp-command-copy-Windows
+          path: cpp-command-copy.json
       - name: Observe native D3D12 COM private-data and interface ownership
         run: python tools/run_cpp_object_reference.py --output cpp-object-reference.json
       - uses: actions/upload-artifact@v4
@@ -405,6 +411,12 @@ jobs:
         with:
           name: cpp-queue-fence-Metal
           path: cpp-queue-fence.json
+      - name: Execute COM command-list copies and verify every destination byte
+        run: python tools/run_cpp_command_copy.py --output cpp-command-copy.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cpp-command-copy-Metal
+          path: cpp-command-copy.json
       - uses: actions/upload-artifact@v4
         with:
           name: cpp-metal-factory
@@ -450,4 +462,25 @@ jobs:
           revision=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
           compare_reports(reports,revision)
           print('Finite CPU signals/rewinds, event waits, queue completion order and lifetimes agree; no COM command-list execution or original rendering claim')
+          PY
+
+  compare-cpp-command-copy:
+    needs: [cpp-metal-factory, graphics-reference]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: cpp-command-copy-*
+          path: cpp-copy-observations
+      - name: Compare native WARP and restricted Metal COM GPU buffer copies
+        run: |
+          python3 - <<'PY'
+          import json, subprocess
+          from pathlib import Path
+          from tools.run_cpp_command_copy import compare_reports
+          reports=[json.loads(p.read_text()) for p in Path('cpp-copy-observations').glob('*/*.json')]
+          revision=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
+          compare_reports(reports,revision)
+          print('All 2048 copied/sentinel bytes and command-list state results agree; no shader, feature-level or original-rendering claim')
           PY

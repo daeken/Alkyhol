@@ -122,10 +122,10 @@ rather than reporting the requested value as completed. Fault handling is a host
 assertion, not a native device-removal comparison. Queue objects and pending
 completion state own their respective native/runtime lifetimes.
 
-This milestone does not execute COM command lists or shaders. GPU queue Wait and
-timestamps/clock calibration return E_NOTIMPL; command-list submission, tiled
-mappings and marker/event void methods abort with explicit diagnostics. Those
-unsupported paths are exercised separately from successful observations. The
+The queue/fence-only probe contains no command lists or shaders. GPU queue Wait
+and timestamps/clock calibration return E_NOTIMPL; tiled mappings and marker/event
+void methods abort with explicit diagnostics. Supported buffer-copy submissions
+are described below; invalid/unsupported submissions abort separately. The
 production D3D12CreateDevice and original application startup remain gated.
 
 ```sh
@@ -156,3 +156,41 @@ high-bit fence routing, repeated increments/event waits, idle and shutdown.
 This runs those original queue-management functions on physical Metal; it does
 not invoke allocator creation, command lists or the original application's entry
 point. Source/object/header changes require rebuilding before this caller runs.
+
+## Restricted command allocator/list copies
+
+The subset now supports ID3D12CommandAllocator and GraphicsCommandList0 (9/60
+typed SDK slots). List creation/reset accepts DIRECT, COMPUTE or COPY, node 0/1,
+a matching same-device allocator and a null initial pipeline. It implements
+inherited identity/metadata/parent ownership, GetType, Close/Reset,
+CopyBufferRegion and CopyResource. Queue execution accepts matching closed lists
+and encodes real native Metal blits. Signals share that submission order and
+cannot report completion before prior workload callbacks retire.
+
+The initial copy path is explicitly limited to UPLOAD sources and READBACK
+destinations, with four-byte-aligned offsets/lengths. Full-resource copies require
+matching buffer widths. It neither rounds nor drops byte-granular requests;
+unsupported copies fail at Close and remain failed on Reset. No rendering state,
+draw, dispatch, barrier, texture copy, bundle or indirect command is supported.
+Their void methods abort with a named diagnostic. Zero-list execution remains
+explicit unsupported. Invalid/open/stale/duplicate submissions also abort,
+rather than silently dropping work or claiming native device-removal behavior.
+
+The allocator owns the recording/epoch reservation; closed list snapshots retain
+actual native buffers until GPU completion. Reset installs a fresh recording,
+while old submissions keep their prior operations. Pending reservations retire
+before subsequent fence notifications. Reusing an allocator before its workload
+finishes is defensively rejected; native D3D12 calls that case undefined behavior.
+These restrictions follow the documented [allocator reset](https://learn.microsoft.com/windows/win32/api/d3d12/nf-d3d12-id3d12commandallocator-reset),
+[list reset](https://learn.microsoft.com/windows/win32/api/d3d12/nf-d3d12-id3d12graphicscommandlist-reset)
+and [submission](https://learn.microsoft.com/windows/win32/api/d3d12/nf-d3d12-id3d12commandqueue-executecommandlists)
+contracts within the explicit subset; host assertions are not native observations.
+
+```sh
+python3 tools/run_cpp_command_copy.py --output local/cpp-command-copy.json
+```
+
+The original queue-manager caller now runs actual allocator creation/reuse and
+COM GPU copies on all three original queues (v2 observation). Its original C++
+implementation objects remain verbatim. This does not enable production device
+creation, full original initialization or rendering.

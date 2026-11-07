@@ -4,6 +4,51 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## COM command-list buffer copies: physical GPU execution
+
+The restricted Metal constructor now creates actual 9-slot command allocators
+and 60-slot GraphicsCommandList0 interfaces. DIRECT, COMPUTE and COPY lists
+record immutable buffer-copy operations; ExecuteCommandLists encodes native
+Metal blits, rather than copying bytes on the CPU or returning a successful stub.
+Closed/recording state, allocator epochs and pending execution reservations are
+tracked. Reset can replace a list's recording while its prior snapshot executes;
+allocator reset cannot discard active recording/pending storage. Known recording
+errors surface at Close and remain failures on Reset. Unsupported rendering,
+barriers, byte-granular copies and other void operations still fail explicitly.
+
+On physical M4/x86-64, the new shared C++ probe checks that recording leaves the
+destination unchanged, changes upload data before submission, submits a partial
+copy, immediately resets that list with another allocator, then submits two lists
+containing another region copy and a full-resource copy. A queued fence completes
+after the actual GPU work. All 2048 destination bytes, including untouched a5
+sentinels, match the finite expected workload. Eleven HRESULT observations cover
+recording/reset/close and completed allocator reuse. Six unsupported void paths
+separately abort with specific diagnostics. No shader, raster, DXR, original-frame
+or feature-level result is inferred from these copies.
+
+Nine new runtime units pass (27 total), covering typed slots/handle ABI, range
+overflow/alignment, state transitions, metadata/parent ownership, foreign/busy/
+wrong-kind allocators, sticky errors, stale/duplicate submissions, immutable
+snapshot/reset ownership and actual native Metal full-buffer copying. Defensive
+pending-reset rejection, invalid submission aborts, retained released resource
+shells and injected/internal lifecycle cases are local assertions, not measured
+Windows edge semantics. Runtime Clippy and all 79 Python tests pass locally.
+
+The original subsystem caller now additionally executes unchanged
+CommandListManager::CreateNewCommandList and CommandAllocatorPool allocation /
+deferred reuse / Reset logic. It validates a real 256-byte COM GPU copy on each
+original queue type, with original fence routing/waits. Its v2 observation records
+three copied queues and allocator reuse, separately from the earlier v1 record.
+This is physical original-subsystem execution, not the original app initialization
+or original rendering. The complete unchanged app relinks and still exits 78 at
+the production D3D12CreateDevice gate. Existing shader/asset quality is unchanged.
+
+CI now executes the exact same C++ copy probe through native SDK/WARP and hosted
+Metal constructors and compares all bytes/state results at a clean identical
+revision. That new native workload comparison remains pending. Earlier queue,
+buffer, metadata, Windows SDK, shader and geometry comparisons all passed in
+[42363716768](https://github.com/daeken/Alkyhol/actions/runs/42363716768) on `357f72f`.
+
 ## Original MiniEngine queue manager: physical subsystem execution
 
 A separate caller now links the exact unchanged `CommandListManager.cpp` and

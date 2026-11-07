@@ -374,25 +374,6 @@ unsafe extern "C" fn desc_object(
 ) -> i32 {
     unsafe { unsupported_out("D3D12 object creation", out) }
 }
-unsafe extern "C" fn allocator(
-    _: *mut Device,
-    _: i32,
-    _: *const Guid,
-    out: *mut *mut c_void,
-) -> i32 {
-    unsafe { unsupported_out("command allocator", out) }
-}
-unsafe extern "C" fn list(
-    _: *mut Device,
-    _: u32,
-    _: i32,
-    _: usize,
-    _: usize,
-    _: *const Guid,
-    out: *mut *mut c_void,
-) -> i32 {
-    unsafe { unsupported_out("command list", out) }
-}
 unsafe extern "C" fn descriptor_increment(_: *mut Device, _: i32) -> u32 {
     unsupported_void("descriptor increment size")
 }
@@ -634,10 +615,10 @@ static DEVICE_VTABLE: DeviceVtable = DeviceVtable {
     name: device_name,
     nodes,
     queue: queue::create_queue,
-    allocator,
+    allocator: commands::create_allocator,
     graphics: desc_object,
     compute: desc_object,
-    list,
+    list: commands::create_list,
     feature,
     heap: desc_object,
     increment: descriptor_increment,
@@ -1004,3 +985,6 @@ mod tests {
 
 #[path = "queue.rs"]
 mod queue;
+
+#[path = "commands.rs"]
+mod commands;

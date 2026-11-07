@@ -106,7 +106,7 @@ struct Queue {
     parent: Parent,
 }
 struct Action {
-    timeline: Arc<Timeline>,
+    timeline: Option<Arc<Timeline>>,
     value: u64,
     done: bool,
     failed: bool,
@@ -127,11 +127,13 @@ impl Order {
         }
         while self.actions.front().is_some_and(|a| a.done) {
             let a = self.actions.pop_front().unwrap();
-            a.timeline.signal(if a.failed || self.failed {
-                u64::MAX
-            } else {
-                a.value
-            });
+            if let Some(timeline) = a.timeline {
+                timeline.signal(if a.failed || self.failed {
+                    u64::MAX
+                } else {
+                    a.value
+                });
+            }
         }
     }
 }
@@ -217,10 +219,30 @@ unsafe extern "C" fn gpu_signal(this: *mut Queue, fence: *mut Fence, value: u64)
     {
         return E_INVALIDARG;
     }
+    unsafe { submit(this, Some(Arc::clone(&(*fence).timeline)), value, None) }
+}
+// A single submission mutex covers validation/encoding/commit for both work and
+// signals. CPU completion callbacks may arrive in any order; Order retires them
+// in submission order, propagating workload errors to subsequent fence signals.
+unsafe fn submit(
+    this: *mut Queue,
+    timeline: Option<Arc<Timeline>>,
+    value: u64,
+    lists: Option<(u32, usize)>,
+) -> i32 {
     autoreleasepool(|| {
         let _submission = unsafe { (*this).submit.lock().unwrap() };
+        let batches = if let Some((count, lists)) = lists {
+            match unsafe {
+                super::commands::prepare((*this).parent.0, (*this).desc.kind, count, lists)
+            } {
+                Ok(batches) => batches,
+                Err(e) => return e,
+            }
+        } else {
+            Vec::new()
+        };
         let order = unsafe { Arc::clone(&(*this).order) };
-        let timeline = unsafe { Arc::clone(&(*fence).timeline) };
         let mut state = order.lock().unwrap();
         if state.failed {
             return 0x887a0005u32 as i32;
@@ -234,6 +256,13 @@ unsafe extern "C" fn gpu_signal(this: *mut Queue, fence: *mut Fence, value: u64)
         let id = state.next;
         state.next = next;
         let command = unsafe { (*this).native.new_command_buffer() };
+        if !batches.is_empty() {
+            let encoder = command.new_blit_command_encoder();
+            for batch in &batches {
+                batch.encode(encoder);
+            }
+            encoder.end_encoding();
+        }
         let callback_order = Arc::clone(&order);
         let handler = block::ConcreteBlock::new(move |buffer: &metal::CommandBufferRef| {
             let failed = buffer.status() != metal::MTLCommandBufferStatus::Completed;
@@ -242,6 +271,9 @@ unsafe extern "C" fn gpu_signal(this: *mut Queue, fence: *mut Fence, value: u64)
                     "Alkyhol Metal queue completion failed: {:?}",
                     buffer.status()
                 );
+            }
+            for batch in &batches {
+                batch.complete();
             }
             callback_order.lock().unwrap().complete(id, failed);
         })
@@ -259,6 +291,7 @@ unsafe extern "C" fn gpu_signal(this: *mut Queue, fence: *mut Fence, value: u64)
         S_OK
     })
 }
+
 unsafe extern "C" fn queue_wait(_: *mut Queue, _: *mut Fence, _: u64) -> i32 {
     unavailable("GPU queue wait")
 }
@@ -310,8 +343,15 @@ unsafe extern "C" fn copy_tiles(
 ) {
     unsupported_void("queue tile copy")
 }
-unsafe extern "C" fn execute(_: *mut Queue, _: u32, _: usize) {
-    unsupported_void("command list execution")
+unsafe extern "C" fn execute(this: *mut Queue, count: u32, lists: usize) {
+    let result = unsafe { submit(this, None, 0, Some((count, lists))) };
+    if result != S_OK {
+        eprintln!(
+            "Alkyhol ExecuteCommandLists rejected: 0x{:08x}",
+            result as u32
+        );
+        unsupported_void("invalid or unsupported command list execution");
+    }
 }
 unsafe extern "C" fn marker(_: *mut Queue, _: u32, _: usize, _: u32) {
     unsupported_void("queue marker/event")
@@ -554,7 +594,7 @@ mod tests {
         let mut order = Order::default();
         for (id, value) in [(0, 10), (1, 3)] {
             order.actions.push_back(Action {
-                timeline: Arc::clone(&timeline),
+                timeline: Some(Arc::clone(&timeline)),
                 value,
                 done: false,
                 failed: false,
@@ -567,7 +607,7 @@ mod tests {
         assert_eq!(timeline.value(), 3);
         assert!(order.actions.is_empty());
         order.actions.push_back(Action {
-            timeline: Arc::clone(&timeline),
+            timeline: Some(Arc::clone(&timeline)),
             value: 99,
             done: false,
             failed: false,

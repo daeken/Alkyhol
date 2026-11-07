@@ -20,8 +20,9 @@ renderer or a feature-level claim.
 | DirectInput public tables | 256 keyboard and 11 mouse object descriptors with public GUIDs; metadata only |
 | DXGI discovery | Real Metal factory through IDXGIFactory6 and adapter through IDXGIAdapter1; retained devices, parent ownership, descriptors, metadata and LUID lookup; no swap chains/outputs/device capability |
 | Restricted device/resource constructor | Explicit non-feature-level Metal-backed subset; real shared UPLOAD/READBACK buffers, Map/Unmap/descriptors/parent ownership/GPU addresses; not used by D3D12CreateDevice |
-| Restricted queues/fences | Real DIRECT/COMPUTE/COPY Metal queues, CPU fence signals/rewinds, event/null-event waits and ordered native completion callbacks. Finite native WARP comparison passes. No COM command lists, GPU queue waits or timestamps |
-| Original queue-management subsystem | Unchanged CommandListManager and CommandAllocatorPool objects execute three-queue creation, high-bit fence routing, increments/waits, idle and shutdown on physical Metal through a separate caller. No allocator creation or command-list execution |
+| Restricted queues/fences | Real DIRECT/COMPUTE/COPY Metal queues, CPU fence signals/rewinds, event/null-event waits and ordered native completion callbacks. Finite native WARP fence comparison passes. GPU queue waits/timestamps remain unavailable |
+| Restricted allocators/command lists | Real state/epoch/snapshot ownership and COM submission of aligned UPLOAD→READBACK Metal blits. Physical C++ checks all bytes. Drawing, dispatch, barriers, textures and byte-granular copies remain unsupported; native copy comparison pending |
+| Original queue-management subsystem | Unchanged CommandListManager and CommandAllocatorPool objects execute creation, allocator allocation/deferred reuse/reset, three-queue COM copies, high-bit fences/waits, idle and shutdown on physical Metal through a separate caller |
 | D3D12 creation | Explicit E_NOTIMPL and cleared interface outputs; no device, resource or command capability success |
 | D3D12 root serialization/debug/experiments | Explicit failures; no serialized blob or debug interface |
 | Window/message/input services | Explicit unavailable diagnostics/failure returns; no simulated window, silent event loop or successful input device |
@@ -41,7 +42,7 @@ from compiling the original libraries to DXIL.
 The inherited metadata unit now has a real CPU Rust implementation and an explicit
 ABI-test constructor. [ID3D12Object metadata](reference/README.md) preserves its
 independent native contract. Restricted derived device/resource/queue/fence
-interfaces now compose that implementation. The next runtime steps are command
-allocators/lists, actual COM workload submission, descriptor/root-signature and
-pipeline support. Neither restricted nor metadata constructors substitute for
+interfaces now compose that implementation. Restricted command-list GPU copies
+also work. The next runtime steps include default-buffer/state transitions,
+descriptor/root-signature and pipeline support. Neither restricted nor metadata constructors substitute for
 production device creation or original application initialization.

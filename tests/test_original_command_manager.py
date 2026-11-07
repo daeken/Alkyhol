@@ -29,10 +29,10 @@ class OriginalQueueTests(unittest.TestCase):
                 with self.assertRaises(ValueError):current_objects(upstream,build,report,{'header':'digest'})
                 path.write_bytes(saved)
     def test_original_queue_sequence_requires_high_bit_values_and_all_shutdown_checks(self):
-        expected={'scenario':'original-command-manager-v1','next_values':[9,(2<<56)|9,(3<<56)|9],
-                  'queues':3,'increments_per_queue':8,'idle':True,'shutdown':True}
+        expected={'scenario':'original-command-manager-v2','next_values':[9,(2<<56)|9,(3<<56)|9],
+                  'queues':3,'copy_queues':3,'allocator_pool_reused':True,'increments_per_queue':8,'idle':True,'shutdown':True}
         self.assertEqual(validate_observation(json.dumps(expected)),expected)
-        for key,value in [('scenario','other'),('next_values',[9,9,9]),('queues',2),('increments_per_queue',7),('idle',1),('shutdown',False)]:
+        for key,value in [('scenario','other'),('next_values',[9,9,9]),('queues',2),('copy_queues',2),('allocator_pool_reused',False),('increments_per_queue',7),('idle',1),('shutdown',False)]:
             invalid=copy.deepcopy(expected);invalid[key]=value
             with self.assertRaises(ValueError):validate_observation(json.dumps(invalid))
         with self.assertRaises(ValueError):validate_observation(json.dumps({**expected,'extra':True}))
