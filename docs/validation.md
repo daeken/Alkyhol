@@ -49,9 +49,22 @@ denied passed. The [test map](testing.md) records what each function/unit exerci
 The new [Microsoft ports](../samples/msdn/README.md) cover synchronous file writing
 with a readback check and event-gated readers. They include pinned provenance and
 MIT attribution. Deliberate API substitutions are documented; the separate upstream
-asynchronous file read example is not ported. Native Windows comparison of these
-ports must come from the new workflow's executed results, not the historical run
-above or this local Metal execution.
+asynchronous file read example is not ported.
+
+[Conformance run 42329817238](https://github.com/daeken/Alkyhol/actions/runs/42329817238)
+on revision `20f8785587b05e8330634fdf3d87f2657729b6d8` completed with all six jobs
+passing. Downloaded sample reports bind that revision and clean tracked trees.
+
+| Executed check | Host/backend | Result |
+| --- | --- | --- |
+| 32 root Rust and 18 Python tests; style/static checks | macOS 26.6.2 ARM64; Linux x86_64/glibc 2.43; Windows Server 2025 AMD64, build 26100 | Passed on each host |
+| Three portable C/C++ samples | Windows SDK/kernel32; Alkyhol native C ABI on macOS and Linux | Each executed; full `samples` mapping agreed exactly in the comparison job |
+| Four GPU integration tests plus clear/triangle/readback sample | Hosted Metal, `Apple Paravirtual device`, IntegratedGpu | Passed |
+| Same four GPU integration tests and drawing sample | Explicit software Vulkan, llvmpipe LLVM 21.1.8, Mesa 26.0.8, Cpu | Passed |
+
+The physical Apple M4 result above is separate local evidence. Hosted Metal and
+software Vulkan results are labeled as such. No native D3D12 graphics comparison
+or additional game compatibility is established by this run.
 
 ## Reproduce
 
