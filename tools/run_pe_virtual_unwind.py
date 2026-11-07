@@ -55,11 +55,9 @@ def main():
     for name, digest in manifest['sources'].items():
         if hashlib.sha256((ROOT/name).read_bytes()).hexdigest() != digest:
             raise ValueError('virtual-unwind source identity changed')
-    # New fixture only: the first independent native run establishes its record.
-    if REFERENCE.exists():
-        reference = json.loads(REFERENCE.read_text(encoding='utf-8'))
-        for field in ['pe_sha256', 'sources']:
-            if manifest[field] != reference[field]: raise ValueError('changed frozen virtual-unwind fixture')
+    reference = json.loads(REFERENCE.read_text(encoding='utf-8'))
+    for field in ['pe_sha256', 'sources']:
+        if manifest[field] != reference[field]: raise ValueError('changed frozen virtual-unwind fixture')
     windows = platform.system() == 'Windows'
     if windows:
         executable, executed, backend = pe, hashlib.sha256(pe.read_bytes()).hexdigest(), NATIVE

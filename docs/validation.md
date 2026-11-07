@@ -4,7 +4,7 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
-## Manual AMD64 body unwinding: initial physical evidence
+## Manual AMD64 body unwinding: native Windows, hosted Mac and physical M4
 
 The new owned MIT PE SHA-256 is
 `01526ce4bd95eac7b9c868459b5ebe7177849e4f1c6688e9b0bf2ad7e3bd182e`.
@@ -13,8 +13,13 @@ and forced-rebase runs. Three real active assembly frames supply captured fields
 and real saved stack values: small allocation/RBX/R12, scaled large allocation/RBP,
 and leaf. The test verifies restored caller RIP/RSP/registers, establisher frame,
 exact context flags and every other seeded CONTEXT byte. Actual execution returns
-normally; no exception is thrown, dispatched or resumed. Native Windows execution
-and SDK/MSVC layout checks are newly defined and still pending at this revision.
+normally; no exception is thrown, dispatched or resumed. Native Windows executes the identical PE and passes all 34 words; its real SDK
+CONTEXT/RUNTIME_FUNCTION layout assertions also pass under MSVC. All three
+[PE jobs](https://github.com/daeken/Alkyhol/actions/runs/42415039999) pass on
+`5d92635`. Downloaded clean native/hosted records and clean physical execution
+at that same revision agree on every word and PE/source identity. The complete
+actual native record is frozen at `pe/reference/virtual-unwind-windows-v1.json`;
+drivers/comparisons now require its exact inputs and results by default.
 
 The bounded RtlVirtualUnwind implementation supports v1 flags-zero/frame-zero
 recipes at NOP body control points, with PUSH_NONVOL, ALLOC_SMALL and both large
@@ -25,8 +30,10 @@ context-pointer outputs and unregistered entries fail explicitly. General unwind
 RtlUnwindEx, static `.pdata` startup and exception dispatch remain unimplemented.
 No full CPU-context capture or game compatibility is claimed.
 
-All 68 PE host tests plus eight lifetime compiler checks pass under Rosetta;
-Clippy passes. The portable 19 tests and 202 Python tests pass. New host assertions
+Initial `5d92635` passes 68 PE host tests plus eight lifetime compiler checks
+under Rosetta, Clippy, 19 portable tests and 202 Python tests. Strict-reference
+hardening adds original-entry identity/base/half-open-range selection coverage
+and a required-reference/joint-drift guard (69 PE host and 203 Python tests). New host assertions
 cover opcode operands/bounds/overflow, preserved context bytes, real eight-argument
 Win64 calling convention and child-process failure status 78. The older function-
 table protocol's synthetic positive host header was corrected from seven to its

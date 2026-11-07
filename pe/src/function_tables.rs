@@ -274,6 +274,42 @@ mod tests {
         }
     }
     #[test]
+    fn unwind_selection_requires_original_record_identity_full_base_and_matching_half_open_range() {
+        let mut registry = Registry::default();
+        let rows = [entry(16, 24), entry(32, 48)];
+        let original = rows.as_ptr();
+        let base = 0x123456780000u64;
+        assert_eq!(unsafe { registry.add(original, 2, base) }, 1);
+        for (index, pc) in [(0, 16), (0, 23), (1, 32), (1, 47)] {
+            let record = original.wrapping_add(index);
+            let selected = registry.selected(record, base, base + pc).unwrap();
+            assert_eq!(selected.begin, rows[index].begin);
+            assert_eq!(selected.end, rows[index].end);
+            assert_eq!(selected.unwind, rows[index].unwind);
+        }
+        let copy = rows;
+        for pointer in [
+            ptr::null(),
+            original.wrapping_sub(1),
+            original.wrapping_add(2),
+            original.cast::<u8>().wrapping_add(4).cast(),
+            copy.as_ptr(),
+        ] {
+            assert!(registry.selected(pointer, base, base + 16).is_none());
+        }
+        for pc in [base - 1, base + 15, base + 24, base + 32, base + 48] {
+            assert!(registry.selected(original, base, pc).is_none());
+        }
+        assert!(
+            registry
+                .selected(original, base as u32 as u64, base + 16)
+                .is_none()
+        );
+        assert!(registry.selected(original, base + 1, base + 16).is_none());
+        assert_eq!(registry.delete(original), 1);
+        assert!(registry.selected(original, base, base + 16).is_none());
+    }
+    #[test]
     fn metadata_bounds_and_rejected_shapes_do_not_corrupt_registered_entries() {
         let mut registry = Registry::default();
         let rows = [entry(16, 32)];

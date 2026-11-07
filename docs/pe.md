@@ -812,7 +812,9 @@ of unrelated seeded bytes, then returns normally through the original stack.
 This is not a full RtlCaptureContext implementation. The unscaled ALLOC_LARGE form
 has host tests only. Native Windows SDK layout assertions compile separately;
 Windows executes the identical PE rather than rebuilding it. Native results and
-frozen input identities are recorded in [validation](validation.md).
+frozen input identities are recorded in [validation](validation.md). All 34 raw
+words agree on native Windows, hosted Mac and physical M4 at `5d92635`; the native
+record at `pe/reference/virtual-unwind-windows-v1.json` is required by default.
 
 Primary contracts: [RtlVirtualUnwind](https://learn.microsoft.com/en-us/windows/win32/api/winnt/nf-winnt-rtlvirtualunwind),
 [AMD64 CONTEXT](https://learn.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-context)
