@@ -44,13 +44,15 @@ input snapshot, and writes an adjacent identity report. Packaging alone is not v
 `--inspect` checks startup/import support and creates/destroys a checked mapping
 without entering guest code. Missing support exits 78. Guest arguments follow
 `--`; command line, environment and inherited streams now have a bounded process
-view. No Windows PEB/TEB is installed. The released [u-config](u-config.md) and [make2compdb](make2compdb.md) programs
-run unchanged with real package queries and make-to-JSON work.
+view. No Windows PEB/TEB is installed. The released [u-config](u-config.md), [make2compdb](make2compdb.md) and
+[peports](peports.md) programs run unchanged with package queries, make-to-JSON
+work and PE import/export inspection.
 
 ## Image and ABI contract
 
 The parser accepts bounded conventional page-aligned PE32+ AMD64 GUI/console EXEs.
-It checks raw and virtual extents, disjoint section pages, initialized code entry,
+It bounds SizeOfImage to one GiB of sparse virtual address space and checks raw
+and virtual extents, disjoint section pages, initialized code entry,
 file-backed directories, bounded import descriptor/name/thunk termination and
 unique DIR64 relocation intervals. Headers are read-only; final section pages use
 their declared read/write/execute permissions; writable executable sections fail.
@@ -99,7 +101,9 @@ Explicit dynamic function-table registration/lookup/removal adds three Rtl names
 (42 kernel32 names total). Bounded manual RtlVirtualUnwind adds the 43rd name;
 its supported frame/context contract is described below. The released
 [make2compdb](make2compdb.md) adds GetCurrentDirectoryW/LocalFree (45 kernel32
-names total) and a separate bounded shell32!CommandLineToArgvW bridge.
+names total) and a separate bounded shell32!CommandLineToArgvW bridge. The
+released [peports](peports.md) adds CP_UTF8-only 16-bit MultiByteToWideChar/
+WideCharToMultiByte adapters (47 kernel32 names total).
 
 The existing [restricted kernel contracts](contracts.md) still apply: for example,
 file sharing must be FILE_SHARE_READ|WRITE|DELETE, security/template/named objects

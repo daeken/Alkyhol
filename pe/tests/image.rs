@@ -274,3 +274,23 @@ fn mapping_rebases_and_executes_initialized_code() {
     );
     assert!(alkyhol_pe::LoadedImage::load(&fixture(), true).is_err());
 }
+
+#[test]
+fn sparse_bss_extent_accepts_one_gib_but_preserves_bounds_and_overflow_rejection() {
+    let mut bytes = fixture();
+    let bound = 1024 * 1024 * 1024u32;
+    put32(&mut bytes, OPT + 56, bound);
+    put32(&mut bytes, TABLE + 40 + 8, bound - 0x2000);
+    let image = Image::parse(&bytes).unwrap();
+    assert_eq!(image.size, bound as usize);
+    assert_eq!(bytes.len(), 0x800);
+    assert_eq!(image.sections[1].size, (bound - 0x2000) as usize);
+    put32(&mut bytes, OPT + 56, bound + 4096);
+    assert!(Image::parse(&bytes).is_err());
+    put32(&mut bytes, OPT + 56, bound);
+    put32(&mut bytes, TABLE + 40 + 8, bound - 0x1000);
+    assert!(Image::parse(&bytes).is_err());
+    put32(&mut bytes, TABLE + 40 + 8, bound - 0x2000);
+    put64(&mut bytes, OPT + 24, 0xffffffffc0000000);
+    assert!(Image::parse(&bytes).is_err());
+}

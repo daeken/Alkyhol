@@ -4,6 +4,35 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## Third released PE64 application: peports, initial physical evidence
+
+The unchanged released w64devkit 2.11.0 x64 peports PE SHA-256 is
+`1a57a02c27cbdd69e1c49ee59a2e84e46684163750700b56d03fad4108c71c3d`.
+Its original bundled source agrees byte-for-byte with tagged upstream. Physical
+M4/Rosetta passes all 16 owned cases in normal and forced-rebase execution, with
+exact raw status/stdout/stderr. The original program parses the unchanged frozen
+owned EXE/DLL, reads named/ordinal/forwarded export text and imports, handles
+Unicode/spaced paths and stdin, and recovers from a missing file to process the
+next valid PE. Malformed/truncated inputs execute its actual GCC builtin longjmp
+error paths; this is not Windows SEH support. Native Windows execution is newly
+defined and pending. No binary/source patch, replacement parser or output/path
+normalization is used.
+
+Two real 16-bit UTF-16 Win64 conversion imports support valid CP_UTF8 input,
+explicit NUL/positive lengths and unit/byte sizing. Strict malformed Unicode,
+unsupported code pages/flags, unbounded scans and buffer/default-pointer forms
+fail honestly. Native application cases exercise valid flag-zero inputs; remaining
+boundaries have host assertions. The kernel32 whitelist is now 47 names.
+
+The original 512-MiB static arena makes SizeOfImage `0x20008000`, beyond the old
+512-MiB bound. The image policy is explicitly expanded to one GiB of sparse
+address space. A portable exact-boundary/extent/overflow test and a physical
+sparse mapping test check zero-filled/writable end pages and real RX execution;
+VirtualAlloc remains capped at 512 MiB. Startup/section/W^X gates stay enforced.
+All 80 PE host tests/eight compiler checks, 22 portable tests, Clippy and 221 Python
+tests pass. Older frozen PE/source fixtures and graphics are untouched. See
+[peports](peports.md) for exact provenance, bounded conversions and coverage.
+
 ## Second released PE64 application: make2compdb native Windows and physical M4
 
 All 27 CI jobs pass at strict-reference revision `3899551`: three

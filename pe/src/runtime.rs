@@ -567,6 +567,26 @@ mod tests {
     }
 
     #[test]
+    fn large_sparse_image_has_real_zeroed_writable_end_pages() {
+        let mut bytes = permission_fixture();
+        let size = 0x20008000u32;
+        bytes[0x98 + 56..0x98 + 60].copy_from_slice(&size.to_le_bytes());
+        let section = 0x98 + 240 + 2 * 40;
+        bytes[section + 8..section + 12].copy_from_slice(&(size - 0x3000).to_le_bytes());
+        let mapped = LoadedImage::load(&bytes, true).unwrap();
+        assert_eq!(mapped.size, size as usize);
+        assert!(mapped.relocated());
+        unsafe {
+            assert_eq!(mapped.enter(), 42);
+            let last = mapped.base.add(size as usize - 1);
+            assert_eq!(last.read_volatile(), 0);
+            last.write_volatile(0x5a);
+            assert_eq!(last.read_volatile(), 0x5a);
+            assert_eq!(mapped.base.add(0x300000).read_volatile(), 0);
+        }
+        drop(mapped);
+    }
+    #[test]
     fn image_permissions_are_enforced_by_the_host() {
         const CHILD: &str = "ALKYHOL_PE_PERMISSION_CHILD";
         if let Ok(mode) = std::env::var(CHILD) {

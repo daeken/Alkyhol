@@ -47,6 +47,22 @@ jobs:
         run: |
           python tools/build_pe_export_fixture.py
           python tools/run_pe_exports.py --dll local/pe/export-fixture/alkyhol_exports.dll --output local/pe/exports-metadata.json
+      - name: Execute unchanged released peports over the frozen owned EXE and DLL
+        run: |
+          python tools/fetch_peports_binary.py
+          python tools/run_peports_binary.py --binary local/pe/peports/peports.exe --output local/pe/peports-alkyhol.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe-peports-release
+          path: |
+            local/pe/peports/peports.exe
+            local/pe/peports/peports.c
+            local/pe/peports/UNLICENSE
+            local/pe/peports/provenance.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe-peports-alkyhol
+          path: local/pe/peports-alkyhol.json
       - name: Execute the frozen owned DLL through Alkyhol, including DllMain and exports
         run: python tools/run_pe_library.py --dll local/pe/export-fixture/alkyhol_exports.dll --output local/pe/library-runtime.json
       - name: Execute a genuine failed DLL initializer and its ordered cleanup with imported APIs
@@ -434,6 +450,16 @@ jobs:
         with:
           name: pe-exports-windows
           path: local/pe/exports-windows.json
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe-peports-release
+          path: local/pe/peports
+      - name: Execute the identical released peports with native Windows UTF conversion and file APIs
+        run: python tools/run_peports_binary.py --binary local/pe/peports/peports.exe --output local/pe/peports-windows.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe-peports-windows
+          path: local/pe/peports-windows.json
   compare-pe:
     needs: [alkyhol-pe, native-windows-pe]
     runs-on: ubuntu-latest
@@ -594,3 +620,12 @@ jobs:
           name: pe-make2compdb-windows
           path: local/pe/observations
       - run: python tools/compare_make2compdb_binary.py local/pe/observations/make2compdb-windows.json local/pe/observations/make2compdb-alkyhol.json
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe-peports-alkyhol
+          path: local/pe/observations
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe-peports-windows
+          path: local/pe/observations
+      - run: python tools/compare_peports_binary.py local/pe/observations/peports-windows.json local/pe/observations/peports-alkyhol.json

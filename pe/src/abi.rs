@@ -149,6 +149,7 @@ pub(crate) fn resolve(module: &str, name: &str) -> Option<usize> {
     if module.eq_ignore_ascii_case("kernel32.dll") {
         return shims::address(name)
             .or_else(|| crate::process::address(name))
+            .or_else(|| crate::unicode::address(name))
             .or_else(|| crate::function_tables::address(name))
             .or_else(|| crate::virtual_unwind::address(name))
             .or_else(|| crate::module_context::address(name));

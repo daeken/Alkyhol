@@ -1,0 +1,171 @@
+{
+  "schema_version": 1,
+  "cases": [
+    {
+      "id": "help",
+      "args": [
+        "-h"
+      ],
+      "stdin_fixture": null,
+      "status": 0,
+      "stdout": "usage: peports [-ehim] [files...]\n  -e    print the export table\n  -h    print this message\n  -i    print the import table\n  -m    print the machine type\nPrints export and import tables of EXEs and DLLs.\nGiven no arguments, reads data from standard input.\n",
+      "stderr": ""
+    },
+    {
+      "id": "imports",
+      "args": [
+        "-i",
+        "probe.exe"
+      ],
+      "stdin_fixture": null,
+      "status": 0,
+      "stdout": "KERNEL32.dll\n\t0\tCloseHandle\n\t0\tCreateEventW\n\t0\tCreateFileW\n\t0\tCreateSemaphoreW\n\t0\tExitProcess\n\t0\tFlushFileBuffers\n\t0\tGetFileSizeEx\n\t0\tGetLastError\n\t0\tQueryPerformanceCounter\n\t0\tQueryPerformanceFrequency\n\t0\tReadFile\n\t0\tReleaseSemaphore\n\t0\tResetEvent\n\t0\tSetEndOfFile\n\t0\tSetEvent\n\t0\tSetFilePointerEx\n\t0\tSetLastError\n\t0\tSleep\n\t0\tTlsAlloc\n\t0\tTlsFree\n\t0\tTlsGetValue\n\t0\tTlsSetValue\n\t0\tWaitForSingleObject\n\t0\tWriteFile\n",
+      "stderr": ""
+    },
+    {
+      "id": "exports",
+      "args": [
+        "-e",
+        "exports.dll"
+      ],
+      "stdin_fixture": null,
+      "status": 0,
+      "stdout": ">exports\n\t18\tAlias\n\t22\tBss\n\t21\tData\n\t17\tDirect\n\t20\tForwarded <KERNEL32.GetLastError>\n\t19\t<NONAME>\n\t23\t<NONAME>\n",
+      "stderr": ""
+    },
+    {
+      "id": "machine",
+      "args": [
+        "-m",
+        "probe.exe"
+      ],
+      "stdin_fixture": null,
+      "status": 0,
+      "stdout": ">machine\n\t0x8664 AMD64\n",
+      "stderr": ""
+    },
+    {
+      "id": "full",
+      "args": [
+        "-eim",
+        "exports.dll"
+      ],
+      "stdin_fixture": null,
+      "status": 0,
+      "stdout": ">machine\n\t0x8664 AMD64\n>exports\n\t18\tAlias\n\t22\tBss\n\t21\tData\n\t17\tDirect\n\t20\tForwarded <KERNEL32.GetLastError>\n\t19\t<NONAME>\n\t23\t<NONAME>\n",
+      "stderr": ""
+    },
+    {
+      "id": "unicode-path",
+      "args": [
+        "-ei",
+        "tree λ🌸/exports space.dll"
+      ],
+      "stdin_fixture": null,
+      "status": 0,
+      "stdout": ">exports\n\t18\tAlias\n\t22\tBss\n\t21\tData\n\t17\tDirect\n\t20\tForwarded <KERNEL32.GetLastError>\n\t19\t<NONAME>\n\t23\t<NONAME>\n",
+      "stderr": ""
+    },
+    {
+      "id": "multiple-files",
+      "args": [
+        "-i",
+        "probe.exe",
+        "exports.dll"
+      ],
+      "stdin_fixture": null,
+      "status": 0,
+      "stdout": "KERNEL32.dll\n\t0\tCloseHandle\n\t0\tCreateEventW\n\t0\tCreateFileW\n\t0\tCreateSemaphoreW\n\t0\tExitProcess\n\t0\tFlushFileBuffers\n\t0\tGetFileSizeEx\n\t0\tGetLastError\n\t0\tQueryPerformanceCounter\n\t0\tQueryPerformanceFrequency\n\t0\tReadFile\n\t0\tReleaseSemaphore\n\t0\tResetEvent\n\t0\tSetEndOfFile\n\t0\tSetEvent\n\t0\tSetFilePointerEx\n\t0\tSetLastError\n\t0\tSleep\n\t0\tTlsAlloc\n\t0\tTlsFree\n\t0\tTlsGetValue\n\t0\tTlsSetValue\n\t0\tWaitForSingleObject\n\t0\tWriteFile\n",
+      "stderr": ""
+    },
+    {
+      "id": "stdin-imports",
+      "args": [],
+      "stdin_fixture": "probe.exe",
+      "status": 0,
+      "stdout": "KERNEL32.dll\n\t0\tCloseHandle\n\t0\tCreateEventW\n\t0\tCreateFileW\n\t0\tCreateSemaphoreW\n\t0\tExitProcess\n\t0\tFlushFileBuffers\n\t0\tGetFileSizeEx\n\t0\tGetLastError\n\t0\tQueryPerformanceCounter\n\t0\tQueryPerformanceFrequency\n\t0\tReadFile\n\t0\tReleaseSemaphore\n\t0\tResetEvent\n\t0\tSetEndOfFile\n\t0\tSetEvent\n\t0\tSetFilePointerEx\n\t0\tSetLastError\n\t0\tSleep\n\t0\tTlsAlloc\n\t0\tTlsFree\n\t0\tTlsGetValue\n\t0\tTlsSetValue\n\t0\tWaitForSingleObject\n\t0\tWriteFile\n",
+      "stderr": ""
+    },
+    {
+      "id": "stdin-exports",
+      "args": [
+        "-e",
+        "-"
+      ],
+      "stdin_fixture": "exports.dll",
+      "status": 0,
+      "stdout": ">exports\n\t18\tAlias\n\t22\tBss\n\t21\tData\n\t17\tDirect\n\t20\tForwarded <KERNEL32.GetLastError>\n\t19\t<NONAME>\n\t23\t<NONAME>\n",
+      "stderr": ""
+    },
+    {
+      "id": "truncated-stdin",
+      "args": [],
+      "stdin_fixture": "truncated",
+      "status": 1,
+      "stdout": "",
+      "stderr": "peports: unexpected end of input (uint32): -\n"
+    },
+    {
+      "id": "malformed-file",
+      "args": [
+        "bad.bin"
+      ],
+      "stdin_fixture": null,
+      "status": 1,
+      "stdout": "",
+      "stderr": "peports: unexpected end of input (uint32): bad.bin\n"
+    },
+    {
+      "id": "missing-unicode",
+      "args": [
+        "missing λ🌸.dll"
+      ],
+      "stdin_fixture": null,
+      "status": 1,
+      "stdout": "",
+      "stderr": "peports: could not load file: missing λ🌸.dll\n"
+    },
+    {
+      "id": "unknown-option",
+      "args": [
+        "-x"
+      ],
+      "stdin_fixture": null,
+      "status": 1,
+      "stdout": "",
+      "stderr": "peports: unknown option: -x\nusage: peports [-ehim] [files...]\n  -e    print the export table\n  -h    print this message\n  -i    print the import table\n  -m    print the machine type\nPrints export and import tables of EXEs and DLLs.\nGiven no arguments, reads data from standard input.\n"
+    },
+    {
+      "id": "option-delimiter",
+      "args": [
+        "--",
+        "-name.dll"
+      ],
+      "stdin_fixture": null,
+      "status": 0,
+      "stdout": ">exports\n\t18\tAlias\n\t22\tBss\n\t21\tData\n\t17\tDirect\n\t20\tForwarded <KERNEL32.GetLastError>\n\t19\t<NONAME>\n\t23\t<NONAME>\n",
+      "stderr": ""
+    },
+    {
+      "id": "recover-next-file",
+      "args": [
+        "missing.dll",
+        "probe.exe"
+      ],
+      "stdin_fixture": null,
+      "status": 1,
+      "stdout": "KERNEL32.dll\n\t0\tCloseHandle\n\t0\tCreateEventW\n\t0\tCreateFileW\n\t0\tCreateSemaphoreW\n\t0\tExitProcess\n\t0\tFlushFileBuffers\n\t0\tGetFileSizeEx\n\t0\tGetLastError\n\t0\tQueryPerformanceCounter\n\t0\tQueryPerformanceFrequency\n\t0\tReadFile\n\t0\tReleaseSemaphore\n\t0\tResetEvent\n\t0\tSetEndOfFile\n\t0\tSetEvent\n\t0\tSetFilePointerEx\n\t0\tSetLastError\n\t0\tSleep\n\t0\tTlsAlloc\n\t0\tTlsFree\n\t0\tTlsGetValue\n\t0\tTlsSetValue\n\t0\tWaitForSingleObject\n\t0\tWriteFile\n",
+      "stderr": "peports: could not load file: missing.dll\n"
+    },
+    {
+      "id": "empty-path",
+      "args": [
+        ""
+      ],
+      "stdin_fixture": null,
+      "status": 1,
+      "stdout": "",
+      "stderr": "peports: could not load file: \n"
+    }
+  ]
+}

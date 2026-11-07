@@ -2,7 +2,8 @@ use crate::Result;
 use std::collections::BTreeSet;
 
 const PAGE: usize = 4096;
-const MAX_IMAGE: usize = 512 * 1024 * 1024;
+// Bounded virtual address extent; sparse BSS is demand-zero, not a Vec allocation.
+const MAX_IMAGE: usize = 1024 * 1024 * 1024;
 
 #[derive(Clone, Debug)]
 pub struct Section {
