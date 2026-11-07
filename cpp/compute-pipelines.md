@@ -60,9 +60,18 @@ Two translator units exercise automatic entry selection (CSMain rather than
 main) and graphics/corrupt-container rejection. All 114 Python tests, runtime and
 shader Clippy/formatting pass. A shared C++ source executes construction,
 null-output capability probes, two real PSO objects, canonical/Pageable identity,
-metadata, input-bytecode independence and retained parent lifetime on physical
+metadata after discarding input bytecode and retained parent lifetime on physical
 M4/x86-64. It compares those common construction/COM assertions against native
-Windows SDK/WARP in new CI; native results remain pending. GetCachedBlob is tested
+Windows SDK/WARP. All twenty-three jobs passed on `ded5bbd` in
+[42375900712](https://github.com/daeken/Alkyhol/actions/runs/42375900712). Clean
+downloaded native/hosted records and physical M4 agree on every common observation
+and shared source/fixture identity. The report is frozen at
+`cpp/reference/compute-pipelines-windows-v1.json`; future pairs also match it.
+The first run failed MSVC compilation on an int-to-byte fill in the observer; the
+fix types the fill value and leaves all assertions/runtime semantics intact.
+The freeze adds an immutable native/source fixture test (115 Python tests pass);
+a fresh complete strict-reference CI result remains pending. This C++ probe does
+not execute shader results after discarding inputs. GetCachedBlob is tested
 as unavailable only on Rust; this is not full native pipeline API parity.
 
 The original subsystem caller now links five verified unchanged original objects,

@@ -33,6 +33,15 @@ class ComputePipelineReportTests(unittest.TestCase):
         self.assertEqual(hashlib.sha256(binary).hexdigest(),DXIL_SHA256)
         header=(ROOT/'cpp/tests/compute_probe_dxil.h').read_text()
         self.assertEqual(bytes(int(v,16) for v in re.findall(r'0x([0-9a-f]{2})',header)),binary)
+    def test_frozen_native_execution_and_complete_shared_source_fixture_identity(self):
+        report=json.loads((ROOT/'cpp/reference/compute-pipelines-windows-v1.json').read_text())
+        self.assertEqual(report['backend'],'native Windows SDK WARP compute pipelines')
+        self.assertIs(report['tracked_tree_clean'],True)
+        self.assertEqual(report['source_revision'],'ded5bbda89b924eac05ea2740a840c1c2f4403be')
+        self.assertEqual(report['shader_dxil_sha256'],DXIL_SHA256)
+        for name in INPUTS:self.assertEqual(report['artifacts'][name],hashlib.sha256((ROOT/name).read_bytes()).hexdigest())
+        canonical=json.dumps(report['observation'],sort_keys=True,separators=(',',':')).encode()
+        self.assertEqual(hashlib.sha256(canonical).hexdigest(),'b8eefd69ed8e0166548fa8765e1b38467a4a52fee408ffc9f6c943351e8c6348')
     def test_generator_calls_open_dxc_and_checks_both_outputs_exactly(self):
         with tempfile.TemporaryDirectory() as scratch:
             root=Path(scratch);(root/'cpp/tests').mkdir(parents=True);(root/'shader/tests/fixtures').mkdir(parents=True)

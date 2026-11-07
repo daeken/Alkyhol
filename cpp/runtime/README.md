@@ -394,6 +394,9 @@ COM slots. Six new units include actual physical Metal execution of that object
 and all 96 data/guard words. The unchanged original PipelineState.cpp helper
 creates/caches it using a separately supplied established compute test fixture.
 See [exact limits and evidence](../compute-pipelines.md). A new native Windows
-probe compares common construction/COM assertions; results are pending. Original
+probe matches common construction/COM assertions on native WARP, hosted Metal
+and physical M4 at `ded5bbd` (all twenty-three jobs passed in CI 42375900712).
+The native report is frozen at `cpp/reference/compute-pipelines-windows-v1.json`;
+a fresh strict-reference run is pending. Original
 sample embedded-root DXIL, cache blobs, graphics PSOs, shader binding and D3D12
 Dispatch remain unavailable. The original application preflight stays gated.

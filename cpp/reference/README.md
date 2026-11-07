@@ -224,3 +224,31 @@ revision. The original subsystem v5 caller also passes cleanly there. See
 [contract/open source provenance](../root-signatures.md) for all subset limits,
 pinned DXC derivation and retained NCSA license. GPU binding/PSOs/Dispatch and
 original C++ application rendering remain unavailable.
+
+
+## Compute pipeline construction and COM assertions
+
+`compute-pipelines-windows-v1.json` preserves actual Windows SDK/WARP execution
+from CI 42375900712 on `ded5bbd` (all twenty-three jobs passed). The shared C++
+source uses the same 4932-byte DXIL container with SHA-256
+`e3084e25dfa23ef53e98eb1dd6eac386c3695718ac03d6631904b6711cc11d4e`.
+It creates two real PSOs, observes S_FALSE capability checks and exercises
+canonical/Pageable identity, metadata after discarding inputs and retained parent
+lifetime. Its complete canonical observation SHA-256 is
+`b8eefd69ed8e0166548fa8765e1b38467a4a52fee408ffc9f6c943351e8c6348`.
+The full report retains compiler, SDK, executable/source/fixture hashes and
+commands. Clean hosted Rust/Metal and physical M4 records agree at the same
+revision on every common observation and shared fixture identity. Future live
+pairs must also match the frozen native payload.
+
+This probe measures construction/COM, not dispatch or GPU shader results after
+input disposal. Rust's cached-blob method remains explicitly unavailable and is
+not a native parity field. The separate physical/hosted Metal runtime unit
+executes the COM-created pipeline through direct Metal, checking 76 data words
+and 20 guards; that is separate from the earlier native same-DXIL compute
+comparison and from D3D12 command-list execution. The original C++ ComputePSO
+helper also runs locally with this owned fixture; original sample embedded-root
+DXIL and production rendering remain outside this bounded API contract.
+The first run 42375717669 failed strict MSVC compilation on an int-to-byte fill
+in the new observer. `ded5bbd` changes only that fill value's exact type; no
+runtime semantics or independent native acceptance check is weakened.

@@ -23,9 +23,19 @@ comparison and from D3D12 command-list execution. Two new translator units pass;
 runtime/shader Clippy/formatting, all 114 Python tests and exact open-DXC fixture
 regeneration pass locally.
 
-The shared C++ construction/COM probe passes on physical M4/x86-64. Native WARP
-and hosted Rust/Metal comparisons for that same workload are newly wired into CI
-and remain pending. Cache-blob support is deliberately not a common parity claim.
+The shared C++ construction/COM probe agrees on native WARP, hosted Rust/Metal
+and clean physical M4/x86-64 at `ded5bbd`. All twenty-three jobs passed in
+[42375900712](https://github.com/daeken/Alkyhol/actions/runs/42375900712), retaining
+all previous SDK/shader/graphics/resource/descriptor/root comparisons. The first
+run failed strict MSVC compilation on an int-to-byte fill in the new observer;
+`ded5bbd` fixes that exact type without relaxing assertions or runtime semantics.
+The native report is frozen at `cpp/reference/compute-pipelines-windows-v1.json`,
+canonical observation SHA-256
+`b8eefd69ed8e0166548fa8765e1b38467a4a52fee408ffc9f6c943351e8c6348`.
+Future live pairs must match the frozen construction/COM payload. Local strict
+checks of downloaded native/hosted and native/physical pairs pass; all 115 Python
+tests pass. Fresh full CI for the freeze is pending. Cache blobs and shader
+execution after input disposal are not native parity claims from this probe.
 The original subsystem v6 caller now runs unchanged PipelineState.cpp's compute
 finalization/cache path alongside the four previous verified original objects.
 It supplies the owned compute test shader; original sample embedded-root DXIL

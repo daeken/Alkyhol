@@ -25,6 +25,8 @@ def compare_reports(reports,revision):
     for name in INPUTS:
         if not reports[0]['artifacts'].get(name) or reports[0]['artifacts'][name]!=reports[1]['artifacts'].get(name):raise ValueError('compute PSO observer/fixture identity differs')
     if reports[0]['observation']!=reports[1]['observation']:raise ValueError('native and Rust compute PSO observations differ')
+    frozen=json.loads((ROOT/'cpp/reference/compute-pipelines-windows-v1.json').read_text())
+    if reports[0]['observation']!=frozen['observation']:raise ValueError('live compute PSO assertions differ from frozen native contract')
 def run(output):
     report=run_probe(output,'compute_pipelines','compute pipelines',validate_observation)
     report['shader_dxil_sha256']=hashlib.sha256((ROOT/'cpp/tests/compute_probe.dxil').read_bytes()).hexdigest()

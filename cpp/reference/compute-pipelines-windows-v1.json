@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "backend": "native Windows SDK WARP compute pipelines",
+  "observation": {
+    "scenario": "compute-pso-v1",
+    "created": 2,
+    "capability_checked": true,
+    "canonical_identity": true,
+    "pageable": true,
+    "metadata": true,
+    "parent_lifetime": true
+  },
+  "diagnostics": "",
+  "source_revision": "ded5bbda89b924eac05ea2740a840c1c2f4403be",
+  "tracked_tree_clean": true,
+  "host": "Windows-2025Server-10.0.26100-SP0",
+  "machine": "AMD64",
+  "compiler": "usage: cl [ option... ] filename... [ /link linkoption... ]\nMicrosoft (R) C/C++ Optimizing Compiler Version 19.51.36260 for x64\nCopyright (C) Microsoft Corporation.  All rights reserved.\n\n",
+  "windows_sdk": "10.0.26100.0\\",
+  "build_command": [
+    "cl",
+    "/nologo",
+    "/W4",
+    "/WX",
+    "/EHsc",
+    "/std:c++17",
+    "D:\\a\\Alkyhol\\Alkyhol\\cpp\\tests\\compute_pipelines.cpp",
+    "/Fe:C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\alkyhol-device-buffers-3s_i2_3f\\compute_pipelines.exe",
+    "/link",
+    "d3d12.lib",
+    "dxgi.lib",
+    "dxguid.lib"
+  ],
+  "artifacts": {
+    "cpp/tests/compute_pipelines.cpp": "ae2886e2ff1b31c030e9d78f7462b93cb1b0db2840258b302b37c066b41899f1",
+    "tools/run_cpp_device_buffers.py": "083f43aa9c9e2779b2226ac060d4d07d789e2cc9268c84d0fe5f5459f7588b80",
+    "tools/run_cpp_compute_pipelines.py": "0d544697da2ecbff58ad446b7e985cf4d8400a63b9140eb63d5114d7690fc8b9",
+    "cpp/tests/compute_probe.dxil": "e3084e25dfa23ef53e98eb1dd6eac386c3695718ac03d6631904b6711cc11d4e",
+    "cpp/tests/compute_probe_dxil.h": "1cf8fc3381c4e6daada391817b6ae93d5f70df7e4c3b206b6384bd3b6666c075",
+    "tools/build_cpp_compute_probe.py": "61be544974dd449aed21d8ce964318309442c00c534c4fcbd5e5f32bdb250518",
+    "shader/tests/fixtures/compute.hlsl": "c8916dc03fc3b0d699530557003cd8ad7dcb2d3d359305f240e4ebebfa2953ae"
+  },
+  "executable_sha256": "26e448eb3d4a7912ce82539bbf31b3a09c77d26bb1057b5b45c9333c3fa45b16",
+  "shader_dxil_sha256": "e3084e25dfa23ef53e98eb1dd6eac386c3695718ac03d6631904b6711cc11d4e"
+}
