@@ -82,6 +82,13 @@ pub(super) fn reserve(
                     resources.extend(c.destination_usage.iter().cloned());
                 }
                 Command::Transition(t) => resources.push(Arc::clone(&t.usage)),
+                Command::UavBarrier(usage) => resources.push(Arc::clone(usage)),
+                Command::Dispatch(d) => {
+                    resources
+                        .try_reserve(d.buffers.len())
+                        .map_err(|_| E_OUTOFMEMORY)?;
+                    resources.extend(d.buffers.iter().filter_map(|b| b.usage().cloned()));
+                }
             }
         }
     }
@@ -135,6 +142,14 @@ pub(super) fn reserve(
                 }
                 Command::Transition(t) => {
                     simulated[index(&t.usage)].transition(t.before, t.after)?
+                }
+                Command::UavBarrier(_) => {}
+                Command::Dispatch(d) => {
+                    for b in &d.buffers {
+                        if let Some(usage) = b.usage() {
+                            simulated[index(usage)].access(b.required)?;
+                        }
+                    }
                 }
             }
         }

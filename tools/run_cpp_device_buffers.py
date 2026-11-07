@@ -56,7 +56,7 @@ def run_probe(output,name,label,validate,traps=()):
     source=ROOT/f'cpp/tests/{name}.cpp';inputs=[source,Path(__file__).resolve()]
     if name!='device_buffers':inputs.append(ROOT/f'tools/run_cpp_{name}.py')
     if name=='cbv_copies':inputs += [ROOT/'cpp/tests/cbv_probe.hlsl',ROOT/'cpp/tests/cbv_probe_dxil.h',ROOT/'tools/build_cpp_cbv_probe.py']
-    if name=='compute_pipelines':inputs += [ROOT/'cpp/tests/compute_probe.dxil',ROOT/'cpp/tests/compute_probe_dxil.h',ROOT/'tools/build_cpp_compute_probe.py',ROOT/'shader/tests/fixtures/compute.hlsl']
+    if name in ('compute_pipelines','compute_dispatch'):inputs += [ROOT/'cpp/tests/compute_probe.dxil',ROOT/'cpp/tests/compute_probe_dxil.h',ROOT/'tools/build_cpp_compute_probe.py',ROOT/'shader/tests/fixtures/compute.hlsl']
     with tempfile.TemporaryDirectory(prefix='alkyhol-device-buffers-') as scratch:
         executable=Path(scratch)/(name+'.exe' if native else name)
         if native:
@@ -73,7 +73,7 @@ def run_probe(output,name,label,validate,traps=()):
             command=['clang++','-arch','x86_64','-std=c++14','-fms-extensions','-I'+str(ROOT/'cpp/include'),'-I'+str(headers/'include'),'-I'+str(headers/'include/directx'),'-I'+str(overlay),str(source),str(library),'-framework','Metal','-framework','Foundation','-framework','CoreGraphics','-framework','Security','-framework','CoreFoundation','-lobjc','-lresolv','-o',str(executable)]
             compiler=subprocess.check_output(['clang++','--version'],text=True);backend='Rust restricted Metal COM '+label
             inputs += [ROOT/'Cargo.toml',ROOT/'Cargo.lock',ROOT/'cpp/runtime/Cargo.toml',ROOT/'cpp/runtime/Cargo.lock',library,*sorted((ROOT/'src').glob('*.rs')),*sorted((ROOT/'cpp/runtime/src').glob('*.rs')),*sorted((ROOT/'cpp/runtime/src').glob('*.metal')),*sorted(p for p in (ROOT/'cpp/include').rglob('*') if p.is_file())]
-        if name=='compute_pipelines' and not native:inputs += [ROOT/'shader/Cargo.toml',ROOT/'shader/Cargo.lock',*sorted((ROOT/'shader/src').glob('*.rs'))]
+        if name in ('compute_pipelines','compute_dispatch') and not native:inputs += [ROOT/'shader/Cargo.toml',ROOT/'shader/Cargo.lock',*sorted((ROOT/'shader/src').glob('*.rs'))]
         hashes=lambda:{p.relative_to(ROOT).as_posix():hashlib.sha256(p.read_bytes()).hexdigest() for p in inputs}
         before=hashes();compiled=subprocess.run(command,cwd=scratch,capture_output=True,text=True,timeout=120)
         if compiled.returncode:raise RuntimeError('buffer probe compilation failed:\n'+compiled.stdout+compiled.stderr)

@@ -10,6 +10,7 @@ struct Root {
     refs: AtomicU32,
     metadata: Metadata,
     _layout: Layout,
+    identity: Arc<()>,
     parent: Parent,
 }
 unsafe extern "C" fn query(this: *mut Root, iid: *const Guid, out: *mut *mut c_void) -> i32 {
@@ -82,6 +83,14 @@ pub(super) unsafe fn snapshot(parent: *mut Device, object: usize) -> Result<Layo
     }
     Ok(unsafe { (*root)._layout.clone() })
 }
+pub(super) unsafe fn binding_snapshot(
+    parent: *mut Device,
+    object: usize,
+) -> Result<(Layout, Arc<()>), i32> {
+    let layout = unsafe { snapshot(parent, object) }?;
+    let root = object as *mut Root;
+    Ok((layout, unsafe { Arc::clone(&(*root).identity) }))
+}
 pub(super) unsafe extern "C" fn create(
     this: *mut Device,
     node: u32,
@@ -122,6 +131,7 @@ pub(super) unsafe extern "C" fn create(
             refs: AtomicU32::new(1),
             metadata: Metadata::new(),
             _layout: layout,
+            identity: Arc::new(()),
             parent: Parent(this),
         }))
         .cast();

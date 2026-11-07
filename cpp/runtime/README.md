@@ -403,3 +403,16 @@ downloaded native/hosted reports match clean physical M4 observations and the
 frozen common payload; the original helper caller passes at that same revision. Original
 sample embedded-root DXIL, cache blobs, graphics PSOs, shader binding and D3D12
 Dispatch remain unavailable. The original application preflight stays gated.
+
+
+## COM compute dispatch
+
+The restricted DIRECT/COMPUTE command lists now bind supported root buffer
+descriptors and compute PSOs and submit real dispatch/readback with Private UAV
+buffers and per-resource barriers. Initial/reset PSOs and immutable snapshots are
+implemented; unsupported tables/constants/textures/embedded roots and graphics
+remain explicit failures. The shared C++ workload checks all 624 output/guard
+words on physical M4; native SDK comparison is pending. See
+[the exact contract/evidence](../compute-dispatch.md). The complete original app
+remains compiled/linked and gated before initialization; this test shader is not
+an original Sponza frame.

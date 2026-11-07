@@ -46,6 +46,8 @@ struct Transition {
 enum Command {
     Copy(Copy),
     Transition(Transition),
+    Dispatch(compute::Dispatch),
+    UavBarrier(Arc<Mutex<BufferUsage>>),
 }
 struct Recording {
     allocation: Arc<Mutex<Allocation>>,
@@ -53,6 +55,7 @@ struct Recording {
     open: bool,
     error: Option<i32>,
     commands: Vec<Command>,
+    compute: compute::State,
     executing: Arc<AtomicBool>,
 }
 impl Drop for Recording {
@@ -103,14 +106,31 @@ impl Submission {
     }
     pub(super) fn encode(&self, encoder: &mut byte_copy::Encoder<'_>) {
         for command in &self.commands {
-            if let Command::Copy(c) = command {
-                encoder.copy(
+            match command {
+                Command::Copy(c) => encoder.copy(
                     &c.source,
                     c.source_offset,
                     &c.destination,
                     c.destination_offset,
                     c.length,
-                );
+                ),
+                Command::Dispatch(d) => encoder.dispatch(
+                    &d.pipeline._native,
+                    d.buffers.iter().map(|b| {
+                        (
+                            u64::from(b.metal_index),
+                            b.memory.buffer.as_ref(),
+                            b.memory.offset + b.offset,
+                        )
+                    }),
+                    d.groups,
+                    d.pipeline
+                        ._translation
+                        .threads_per_group
+                        .expect("validated compute group"),
+                ),
+                Command::UavBarrier(_) => encoder.boundary(),
+                Command::Transition(_) => {}
             }
         }
     }
@@ -216,6 +236,7 @@ unsafe fn begin(
         open: true,
         error: None,
         commands: Vec::new(),
+        compute: compute::State::default(),
         executing: Arc::new(AtomicBool::new(false)),
     })
 }
@@ -227,11 +248,13 @@ unsafe extern "C" fn reset(this: *mut List, allocator: *mut Allocator, pipeline:
     if r.open {
         return E_FAIL;
     }
-    if pipeline != 0 {
-        return E_NOTIMPL;
-    }
+    let state = match unsafe { compute::initial((*this).parent.0, (*this).kind, pipeline) } {
+        Ok(v) => v,
+        Err(e) => return e,
+    };
     match unsafe { begin(allocator, (*this).parent.0, (*this).kind) } {
-        Ok(recording) => {
+        Ok(mut recording) => {
+            recording.compute = state;
             *r = recording;
             S_OK
         }
@@ -350,7 +373,7 @@ struct Barrier {
     after: u32,
 }
 unsafe fn transition(device: *mut Device, kind: i32, b: Barrier) -> Result<Transition, i32> {
-    if kind != 0 || b.kind != 0 || b.flags != 0 {
+    if ![0, 2].contains(&kind) || b.kind != 0 || b.flags != 0 {
         return Err(E_NOTIMPL);
     }
     if b.resource.is_null() {
@@ -367,6 +390,16 @@ unsafe fn transition(device: *mut Device, kind: i32, b: Barrier) -> Result<Trans
         return Err(E_INVALIDARG);
     }
     if !valid_default_state(b.before) || !valid_default_state(b.after) {
+        return Err(E_NOTIMPL);
+    }
+    if (b.before == 8 || b.after == 8) && resource.desc.flags & 4 == 0 {
+        return Err(E_INVALIDARG);
+    }
+    if kind == 2
+        && [b.before, b.after]
+            .into_iter()
+            .any(|state| state != 8 && state != 0x400 && state & !0xa41 != 0)
+    {
         return Err(E_NOTIMPL);
     }
     if b.before == b.after {
@@ -398,9 +431,41 @@ unsafe extern "C" fn barriers(this: *mut List, count: u32, data: usize) {
         r.error = Some(E_OUTOFMEMORY);
         return;
     }
-    for &b in unsafe { std::slice::from_raw_parts(data as *const Barrier, count as usize) } {
-        match unsafe { transition((*this).parent.0, (*this).kind, b) } {
-            Ok(t) => r.commands.push(Command::Transition(t)),
+    for i in 0..count as usize {
+        // Only read the active SDK union member. UAV's unused tail is not
+        // initialized by a caller merely setting its header and resource.
+        let raw = unsafe { (data as *const u8).add(i * std::mem::size_of::<Barrier>()) };
+        let tag = unsafe { ptr::read_unaligned(raw.cast::<i32>()) };
+        let flags = unsafe { ptr::read_unaligned(raw.add(4).cast::<i32>()) };
+        let command = if tag == 0 {
+            unsafe {
+                transition(
+                    (*this).parent.0,
+                    (*this).kind,
+                    ptr::read_unaligned(raw.cast::<Barrier>()),
+                )
+            }
+            .map(Command::Transition)
+        } else if tag == 2 && flags == 0 && unsafe { (*this).kind } != 3 {
+            let resource = unsafe { ptr::read_unaligned(raw.add(8).cast::<*mut Resource>()) };
+            if resource.is_null() {
+                Err(E_NOTIMPL)
+            } else if unsafe { (*resource).vtable } != &RESOURCE_VTABLE
+                || unsafe { (*resource).parent.0 } != unsafe { (*this).parent.0 }
+                || unsafe { (*resource).heap.kind } != 1
+                || unsafe { (*resource).desc.flags } & 4 == 0
+            {
+                Err(E_INVALIDARG)
+            } else {
+                Ok(Command::UavBarrier(unsafe {
+                    Arc::clone(&(*resource).usage)
+                }))
+            }
+        } else {
+            Err(E_NOTIMPL)
+        };
+        match command {
+            Ok(command) => r.commands.push(command),
             Err(e) => {
                 r.error = Some(e);
                 return;
@@ -541,16 +606,21 @@ pub(super) unsafe extern "C" fn create_list(
     if iid.is_null() {
         return E_POINTER;
     }
-    if node > 1 || pipeline != 0 || ![0, 2, 3].contains(&kind) {
+    if node > 1 || (kind == 3 && pipeline != 0) || ![0, 2, 3].contains(&kind) {
         return E_NOTIMPL;
     }
     if ![IID_IUNKNOWN, IID_ID3D12OBJECT, CHILD, LIST, GRAPHICS].contains(unsafe { &*iid }) {
         return E_NOINTERFACE;
     }
-    let recording = match unsafe { begin(allocator as *mut Allocator, device, kind) } {
+    let initial = match unsafe { compute::initial(device, kind, pipeline) } {
+        Ok(v) => v,
+        Err(e) => return e,
+    };
+    let mut recording = match unsafe { begin(allocator as *mut Allocator, device, kind) } {
         Ok(r) => r,
         Err(e) => return e,
     };
+    recording.compute = initial;
     unsafe {
         device_add(device);
         *out = Box::into_raw(Box::new(List {
@@ -588,7 +658,6 @@ unsupported_methods! {
 ClearState(usize);
 DrawInstanced(u32,u32,u32,u32);
 DrawIndexedInstanced(u32,u32,u32,i32,u32);
-Dispatch(u32,u32,u32);
 CopyTextureRegion(usize,u32,u32,u32,usize,usize);
 CopyTiles(usize,usize,usize,usize,u64,i32);
 ResolveSubresource(usize,u32,usize,u32,i32);
@@ -597,11 +666,9 @@ RSSetViewports(u32,usize);
 RSSetScissorRects(u32,usize);
 OMSetBlendFactor(usize);
 OMSetStencilRef(u32);
-SetPipelineState(usize);
 
 ExecuteBundle(usize);
 SetDescriptorHeaps(u32,usize);
-SetComputeRootSignature(usize);
 SetGraphicsRootSignature(usize);
 SetComputeRootDescriptorTable(u32,GpuHandle);
 SetGraphicsRootDescriptorTable(u32,GpuHandle);
@@ -609,11 +676,8 @@ SetComputeRoot32BitConstant(u32,u32,u32);
 SetGraphicsRoot32BitConstant(u32,u32,u32);
 SetComputeRoot32BitConstants(u32,u32,usize,u32);
 SetGraphicsRoot32BitConstants(u32,u32,usize,u32);
-SetComputeRootConstantBufferView(u32,u64);
 SetGraphicsRootConstantBufferView(u32,u64);
-SetComputeRootShaderResourceView(u32,u64);
 SetGraphicsRootShaderResourceView(u32,u64);
-SetComputeRootUnorderedAccessView(u32,u64);
 SetGraphicsRootUnorderedAccessView(u32,u64);
 IASetIndexBuffer(usize);
 IASetVertexBuffers(u32,u32,usize);
@@ -713,7 +777,7 @@ static LIST_VTABLE: ListVtable = ListVtable {
     ClearState,
     DrawInstanced,
     DrawIndexedInstanced,
-    Dispatch,
+    Dispatch: compute::dispatch,
     CopyBufferRegion: copy_buffer,
     CopyTextureRegion,
     CopyResource: copy_resource,
@@ -724,11 +788,11 @@ static LIST_VTABLE: ListVtable = ListVtable {
     RSSetScissorRects,
     OMSetBlendFactor,
     OMSetStencilRef,
-    SetPipelineState,
+    SetPipelineState: compute::set_pipeline,
     ResourceBarrier: barriers,
     ExecuteBundle,
     SetDescriptorHeaps,
-    SetComputeRootSignature,
+    SetComputeRootSignature: compute::set_root,
     SetGraphicsRootSignature,
     SetComputeRootDescriptorTable,
     SetGraphicsRootDescriptorTable,
@@ -736,11 +800,11 @@ static LIST_VTABLE: ListVtable = ListVtable {
     SetGraphicsRoot32BitConstant,
     SetComputeRoot32BitConstants,
     SetGraphicsRoot32BitConstants,
-    SetComputeRootConstantBufferView,
+    SetComputeRootConstantBufferView: compute::cbv,
     SetGraphicsRootConstantBufferView,
-    SetComputeRootShaderResourceView,
+    SetComputeRootShaderResourceView: compute::srv,
     SetGraphicsRootShaderResourceView,
-    SetComputeRootUnorderedAccessView,
+    SetComputeRootUnorderedAccessView: compute::uav,
     SetGraphicsRootUnorderedAccessView,
     IASetIndexBuffer,
     IASetVertexBuffers,
@@ -764,3 +828,6 @@ static LIST_VTABLE: ListVtable = ListVtable {
 #[cfg(test)]
 #[path = "commands_tests.rs"]
 mod tests;
+
+#[path = "compute_dispatch.rs"]
+mod compute;

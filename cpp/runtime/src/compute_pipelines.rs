@@ -22,10 +22,10 @@ struct Description {
     cache: Bytes,
     flags: u32,
 }
-struct Data {
-    _native: metal::ComputePipelineState,
-    _translation: Translation,
-    _layout: Layout,
+pub(super) struct Data {
+    pub(super) _native: metal::ComputePipelineState,
+    pub(super) _translation: Translation,
+    pub(super) _layout: Layout,
     _dxil: Box<[u8]>,
 }
 #[repr(C)]
@@ -204,6 +204,16 @@ fn compile(native: &metal::DeviceRef, layout: Layout, dxil: &[u8]) -> Result<Arc
         _layout: layout,
         _dxil: dxil.into(),
     }))
+}
+pub(super) unsafe fn snapshot(parent: *mut Device, object: usize) -> Result<Arc<Data>, i32> {
+    if object == 0 {
+        return Err(E_NOTIMPL);
+    }
+    let pipeline = object as *mut Pipeline;
+    if unsafe { (*pipeline).vtable } != &VTABLE || unsafe { (*pipeline).parent.0 } != parent {
+        return Err(E_INVALIDARG);
+    }
+    Ok(unsafe { Arc::clone(&(*pipeline).data) })
 }
 pub(super) unsafe extern "C" fn create(
     this: *mut Device,

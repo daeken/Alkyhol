@@ -10,6 +10,8 @@ pub(super) struct BufferMemory {
     pub(super) offset: u64,
     pub(super) width: u64,
     pub(super) heap: i32,
+    pub(super) flags: u32,
+    pub(super) usage: Arc<Mutex<BufferUsage>>,
 }
 #[derive(Clone)]
 struct Cbv {
@@ -92,6 +94,19 @@ impl Registry {
             data.buffer.gpu_address() + data.offset,
             Arc::downgrade(data),
         );
+    }
+    pub(super) fn resolve(&self, address: u64) -> Result<(Arc<BufferMemory>, u64), i32> {
+        let (&base, weak) = self
+            .buffers
+            .range(..=address)
+            .next_back()
+            .ok_or(E_INVALIDARG)?;
+        let memory = weak.upgrade().ok_or(E_INVALIDARG)?;
+        let offset = address.checked_sub(base).ok_or(E_INVALIDARG)?;
+        if offset >= memory.width {
+            return Err(E_INVALIDARG);
+        }
+        Ok((memory, offset))
     }
     fn span(
         &self,

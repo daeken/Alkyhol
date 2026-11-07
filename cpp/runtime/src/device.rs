@@ -77,7 +77,7 @@ struct BufferUsage {
     failed: bool,
 }
 fn valid_default_state(state: u32) -> bool {
-    state == 0x400 || state & !0xac3 == 0
+    state == 8 || state == 0x400 || state & !0xac3 == 0
 }
 #[repr(C)]
 pub struct Resource {
@@ -212,7 +212,7 @@ fn valid_buffer(
     if flags != 0
         || !clear_value.is_null()
         || desc.dimension != 1
-        || desc.flags != 0
+        || (desc.flags != 0 && !(heap.kind == 1 && desc.flags == 4))
         || desc.alignment != 0
     {
         return Err(E_NOTIMPL);
@@ -232,6 +232,9 @@ fn valid_buffer(
         || desc.quality != 0
         || desc.layout != 1
     {
+        return Err(E_INVALIDARG);
+    }
+    if state == 8 && desc.flags & 4 == 0 {
         return Err(E_INVALIDARG);
     }
     if heap.kind == 1 && !valid_default_state(state) {
@@ -303,11 +306,19 @@ unsafe extern "C" fn committed(
         unsafe {
             device_add(this);
         }
+        let usage = Arc::new(Mutex::new(BufferUsage {
+            current: state,
+            pending: 0,
+            owner: None,
+            failed: false,
+        }));
         let descriptor_memory = Arc::new(cbv_descriptors::BufferMemory {
             buffer: buffer.to_owned(),
             offset: offset as u64,
             width: desc.width,
             heap: heap.kind,
+            flags: desc.flags,
+            usage: Arc::clone(&usage),
         });
         unsafe {
             (*this)
@@ -324,12 +335,7 @@ unsafe extern "C" fn committed(
             offset,
             desc,
             heap,
-            usage: Arc::new(Mutex::new(BufferUsage {
-                current: state,
-                pending: 0,
-                owner: None,
-                failed: false,
-            })),
+            usage,
             _descriptor_memory: descriptor_memory,
             parent: Parent(this),
         });
@@ -841,7 +847,16 @@ mod tests {
         other.kind = 1;
         assert_eq!(valid_buffer(&other, 0, &d, 0, ptr::null()), Ok(()));
         assert_eq!(valid_buffer(&other, 0, &d, 0x400, ptr::null()), Ok(()));
-        assert_eq!(valid_buffer(&other, 0, &d, 8, ptr::null()), Err(E_NOTIMPL));
+        assert_eq!(
+            valid_buffer(&other, 0, &d, 8, ptr::null()),
+            Err(E_INVALIDARG)
+        );
+        let uav = ResourceDesc { flags: 4, ..d };
+        assert_eq!(valid_buffer(&other, 0, &uav, 8, ptr::null()), Ok(()));
+        assert_eq!(
+            valid_buffer(&h, 0, &uav, 0xac3, ptr::null()),
+            Err(E_NOTIMPL)
+        );
         assert_eq!(
             valid_buffer(&h, 0, &d, 0x400, ptr::null()),
             Err(E_INVALIDARG)

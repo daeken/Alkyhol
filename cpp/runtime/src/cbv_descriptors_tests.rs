@@ -41,6 +41,13 @@ impl Fixture {
                 offset,
                 width: 1024,
                 heap: 2,
+                flags: 0,
+                usage: Arc::new(Mutex::new(BufferUsage {
+                    current: 0xac3,
+                    pending: 0,
+                    owner: None,
+                    failed: false,
+                })),
             });
             let mut registry = (*device).descriptors.lock().unwrap();
             registry.heap(&source);
@@ -160,6 +167,13 @@ fn record_layout_and_cbv_alignment_size_heap_and_live_address_boundaries() {
             offset: f.memory.offset,
             width: 1024,
             heap: 1,
+            flags: 0,
+            usage: Arc::new(Mutex::new(BufferUsage {
+                current: 0x400,
+                pending: 0,
+                owner: None,
+                failed: false,
+            })),
         });
         other.buffer(&private);
         assert_eq!(other.cbv(desc).err(), Some(E_NOTIMPL));

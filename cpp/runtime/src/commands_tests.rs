@@ -10,10 +10,10 @@ unsafe fn prepare(
 fn copy_length(command: &Command) -> u64 {
     match command {
         Command::Copy(c) => c.length,
-        Command::Transition(_) => panic!("expected copy"),
+        _ => panic!("expected copy"),
     }
 }
-unsafe fn device() -> *mut Device {
+pub(super) unsafe fn device() -> *mut Device {
     let mut raw = ptr::null_mut();
     assert_eq!(
         unsafe { AlkyholCreateMetalDeviceSubset(ptr::null_mut(), &DEVICE, &mut raw) },
@@ -21,7 +21,7 @@ unsafe fn device() -> *mut Device {
     );
     raw.cast()
 }
-unsafe fn allocator(device: *mut Device, kind: i32) -> *mut Allocator {
+pub(super) unsafe fn allocator(device: *mut Device, kind: i32) -> *mut Allocator {
     let mut raw = ptr::null_mut();
     assert_eq!(
         unsafe { create_allocator(device, kind, &ALLOCATOR, &mut raw) },
@@ -29,7 +29,7 @@ unsafe fn allocator(device: *mut Device, kind: i32) -> *mut Allocator {
     );
     raw.cast()
 }
-unsafe fn list(device: *mut Device, allocator: *mut Allocator, kind: i32) -> *mut List {
+pub(super) unsafe fn list(device: *mut Device, allocator: *mut Allocator, kind: i32) -> *mut List {
     let mut raw = ptr::null_mut();
     assert_eq!(
         unsafe { create_list(device, 1, kind, allocator as usize, 0, &GRAPHICS, &mut raw) },
@@ -37,7 +37,7 @@ unsafe fn list(device: *mut Device, allocator: *mut Allocator, kind: i32) -> *mu
     );
     raw.cast()
 }
-unsafe fn buffer(device: *mut Device, kind: i32, width: u64) -> *mut Resource {
+pub(super) unsafe fn buffer(device: *mut Device, kind: i32, width: u64) -> *mut Resource {
     let heap = HeapProperties {
         kind,
         page: 0,
@@ -451,7 +451,7 @@ fn transition_layouts_and_unsupported_barriers_never_succeed() {
                 },
                 E_INVALIDARG,
             ),
-            (Barrier { after: 8, ..valid }, E_NOTIMPL),
+            (Barrier { after: 8, ..valid }, E_INVALIDARG),
             (
                 Barrier {
                     resource: ptr::null_mut(),

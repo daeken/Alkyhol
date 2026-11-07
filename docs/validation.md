@@ -4,6 +4,30 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## COM compute dispatch: physical Metal command-list evidence
+
+The restricted device now records/submits real compute dispatch through D3D12
+command lists and queues, with compute PSOs, root buffer descriptors, writable
+Private buffers, per-resource UAV barriers and state-aware readback. This is
+actual COM submission, beyond the prior direct-Metal PSO unit. The shared C++
+probe passes on physical M4/x86-64 with Metal API validation: all 624 words across
+six outputs match its independent scalar data/guard checks. It covers DIRECT and
+COMPUTE queues, root offsets 256/16/8/16, binding snapshots, repeated root identity,
+initial/reset PSOs, zero dispatch and interleaved aligned/unaligned GPU copies.
+The unchanged established compute DXIL is used; this is not original MiniEngine
+HLSL or an original frame. Native SDK/WARP and hosted comparisons remain pending.
+
+Seven new host/runtime units pass (65 total), including private shader-state
+batch validation/rollback and negative binding/identity/reset/flag cases. Runtime
+Clippy/formatting and all 118 Python tests pass. Existing frozen Shared/DEFAULT/
+byte-copy and CBV-copy probes still match their native payloads locally. The
+unchanged original subsystem v6 caller still passes; the complete original app
+relinks and still exits 78 at production device creation. The exact bounded
+contract, intended synchronization references and evidence distinctions are in
+[compute-dispatch.md](../cpp/compute-dispatch.md). Tables/constants, embedded roots,
+graphics and original application rendering remain unavailable. No source,
+shader quality, asset or working Rust sample is replaced.
+
 ## Compute PSO creation: real Metal executable / original helper milestone
 
 The restricted COM device now creates real nine-slot compute PSO objects through

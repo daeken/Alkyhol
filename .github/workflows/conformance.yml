@@ -302,6 +302,12 @@ jobs:
         with:
           name: cpp-compute-pipelines-Windows
           path: cpp-compute-pipelines.json
+      - name: Execute compute dispatch, root bindings, barriers and readback through COM
+        run: python tools/run_cpp_compute_dispatch.py --output cpp-compute-dispatch.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cpp-compute-dispatch-Windows
+          path: cpp-compute-dispatch.json
       - name: Observe native D3D12 COM private-data and interface ownership
         run: python tools/run_cpp_object_reference.py --output cpp-object-reference.json
       - uses: actions/upload-artifact@v4
@@ -493,6 +499,12 @@ jobs:
         with:
           name: cpp-compute-pipelines-Metal
           path: cpp-compute-pipelines.json
+      - name: Execute compute dispatch, root bindings, barriers and readback through COM
+        run: python tools/run_cpp_compute_dispatch.py --output cpp-compute-dispatch.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cpp-compute-dispatch-Metal
+          path: cpp-compute-dispatch.json
       - uses: actions/upload-artifact@v4
         with:
           name: cpp-metal-factory
@@ -685,4 +697,25 @@ jobs:
           revision=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
           compare_reports(reports,revision)
           print('Compute PSO construction and common COM assertions agree on identical DXIL; no command-list Dispatch or original rendering claim')
+          PY
+
+  compare-cpp-compute-dispatch:
+    needs: [cpp-metal-factory, graphics-reference]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: cpp-compute-dispatch-*
+          path: cpp-dispatch-observations
+      - name: Compare all COM-dispatched data and guard words from identical DXIL
+        run: |
+          python3 - <<'PY'
+          import json, subprocess
+          from pathlib import Path
+          from tools.run_cpp_compute_dispatch import compare_reports
+          reports=[json.loads(p.read_text()) for p in Path('cpp-dispatch-observations').glob('*/*.json')]
+          revision=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
+          compare_reports(reports,revision)
+          print('All 624 COM-dispatched data/guard words agree across direct/compute queues, offsets, reset, rebinding and zero dispatch. No original rendering or game claim')
           PY

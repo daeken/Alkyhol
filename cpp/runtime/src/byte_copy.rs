@@ -89,6 +89,35 @@ impl<'a> Encoder<'a> {
             compute: None,
         }
     }
+    pub(super) fn boundary(&mut self) {
+        if let Some(e) = self.blit.take() {
+            e.end_encoding();
+        }
+        if let Some(e) = self.compute.take() {
+            e.end_encoding();
+        }
+    }
+    pub(super) fn dispatch<'b>(
+        &mut self,
+        pipeline: &metal::ComputePipelineStateRef,
+        buffers: impl IntoIterator<Item = (u64, &'b metal::BufferRef, u64)>,
+        groups: [u32; 3],
+        threads: [u32; 3],
+    ) {
+        self.boundary();
+        let encoder = self.command.new_compute_command_encoder();
+        encoder.set_compute_pipeline_state(pipeline);
+        for (index, buffer, offset) in buffers {
+            encoder.set_buffer(index, Some(buffer), offset);
+        }
+        let [x, y, z] = groups;
+        let [tx, ty, tz] = threads;
+        encoder.dispatch_thread_groups(
+            metal::MTLSize::new(u64::from(x), u64::from(y), u64::from(z)),
+            metal::MTLSize::new(u64::from(tx), u64::from(ty), u64::from(tz)),
+        );
+        encoder.end_encoding();
+    }
     pub(super) fn copy(
         &mut self,
         source: &metal::BufferRef,
