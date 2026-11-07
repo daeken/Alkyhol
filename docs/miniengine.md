@@ -6,7 +6,7 @@ pinned to the same upstream commit as Sakura. The user selected it as a less
 cluttered debugging scene, then requested textured shading, shadows and reflections.
 The first running milestone is complete Sponza geometry with the original primary
 Bary Rays path and additional explicitly labeled geometry/normal/depth diagnostics.
-The other original rendering modes and lit textures are not yet implemented.
+Textured material lighting, native shadow rays and floor reflections are now implemented; the original raster/shadow-map and temporal postprocessing paths remain separate.
 
 ```sh
 python3 tools/fetch_miniengine.py
@@ -16,8 +16,12 @@ python3 tools/build_miniengine_app.py
 
 The bundle is `local/miniengine/MiniEngine Sponza.app`. Controls:
 
-- **1/G**: neutral geometry (added diagnostic headlight, not original raster mode).
+- **1**: textured lighting and shadow rays; **G**: neutral geometry diagnostic.
 - **2**: original primary Bary Rays shading `(barycentric.x,barycentric.y,1,1)`.
+- **3**: reflected hit barycentrics on reflective floor pixels.
+- **4**: binary shadow visibility; **5**: textured lighting without shadows.
+- **6**: diffuse with shadow rays (upstream ray-hit lighting model).
+- **7**: textured lighting and real floor reflection rays (default).
 - **N/Z**: added interpolated normal and depth diagnostics.
 - WASD move; Q/E down/up; arrows or left-drag look; PageUp/PageDown cycle the five
   original camera presets; R reset; Escape close. The title names the active view
@@ -41,8 +45,11 @@ preserved under `miniengine/licenses/`. No game data is used.
 
 Some original tangent/bitangent attributes contain NaNs. Those raw bits are
 preserved, not silently replaced; the current geometry/Bary paths do not read them.
-The lit path must deliberately address invalid tangent frames before claiming
-normal-map support. Position, UV and vertex-normal nonfinite values are rejected.
+The lit path repairs invalid/zero tangent frames from the original triangle's
+position/UV derivatives. Degenerate UVs use a defined orthonormal frame instead.
+Valid source frames remain intact; repairs are counted. This is an explicit port
+policy, not a measured native Windows repair. Position, UV and vertex-normal
+nonfinite values are rejected.
 
 The reusable Metal scene builder now allows each instance to disable culling or
 honor ray culling. Sakura retains disabled culling. MiniEngine enables ray-controlled
@@ -60,6 +67,45 @@ native MSVC ABI/geometry reader and Rust reader export every expanded indexed
 vertex attribute byte for hash comparison. This checks model intake and ABI,
 not original native DXR rendering or full MiniEngine behavior.
 
-Next: the actual material and normal textures, directional lighting, native shadow
-rays, reflection rays and the sample's postprocessing paths. Keep diagnostic views
-available and distinguish original sample modes from added debugging views.
+## Textured lighting, shadows and reflections
+
+The asset manifest now includes 50 original diffuse/normal/specular DDS files.
+BC1 blocks and every source mip level upload unchanged. Diffuse/specular BC1 sRGB
+and normal-map linear formats are retained. The exact ModelH3D missing-slot
+choices are recorded: white diffuse, flat normal, black specular. A manifest-listed
+missing/corrupt texture fails intake; it never silently becomes a placeholder.
+Tier 2 Metal argument buffers bind all 81 material slots without a texture atlas
+or texture resampling. GPU residency is declared for their referenced resources.
+
+Lighting ports the directional sun, ambient intensity, normal mapping, derivative
+texture sampling, Schlick modulation and specular model. Mode 6 retains the source
+ray-hit diffuse model, including zero direct specular mask; the shaded material
+and reflection-base modes also use original specular textures. Primary rays use
+closest hit/backface culling; shadow rays use native any-hit, no culling and TMin
+0.1. Floor reflection rays use the actual normal-mapped normal, the source's 0.1
+ray-origin offset and a single secondary hit. The floor mask is explicitly material
+10 with its specular texture strength. This replaces dependence on the source
+hybrid pass's G-buffer alpha; it does not assert that unmeasured alpha semantics
+were reproduced. Misses retain the base color, and nested mirror recursion is not
+silently added. Each secondary reflected surface receives a real shadow query.
+
+The source Stanard tone curve and sRGB output transfer are used at fixed exposure
+2. Adaptive exposure, bloom, SSAO, temporal antialiasing, motion blur, local light
+grids, the raster path and shadow maps are not implemented. These are not silently
+approximated or claimed as supported. Mode 4 is a clean visibility diagnostic,
+not a reproduction of the source README's known buggy shadow-ray-generation pass.
+The original derivative heuristic is retained for secondary surfaces too; it is
+not a claim that the sample's known mip/LOD limitation has been corrected.
+
+Every primary ray is counted by mesh/miss; shadow/reflection queries and hits,
+tangent repairs and short self-reflections are separate counters. Nonfinite
+shaded surfaces/colors fail the frame rather than count as a successful render.
+Tests verify all source mips with actual GPU samples, analytic tangent-frame repair
+including mirrored/degenerate UVs, source lighting endpoints and tone mapping.
+Image tests prove shadows change pixels, reflection changes stay within eligible
+floor pixels, diagnostic modes preserve geometry and all five original camera
+presets render without nonfinite output or immediate self-reflection hits.
+
+Continue the remaining MiniEngine postprocessing paths through tested milestones;
+keep all diagnostic modes accessible and native DXR parity separate from Metal
+host assertions.

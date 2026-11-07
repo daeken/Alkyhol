@@ -34,6 +34,58 @@ fn full_sponza_debug_views_preserve_hit_geometry_and_capture_repeatably() {
             assert_ne!(image, a);
             assert!(image.pixels().all(|p| p[3] == 255));
         }
+        renderer.set_mode(RenderMode::LitNoShadows);
+        let unshadowed = renderer.render(&camera, None).unwrap();
+        assert_eq!(unshadowed.per_mesh, first.per_mesh);
+        assert_eq!(unshadowed.shadow_rays, 0);
+        renderer.capture(&temp.join("unshadowed.png")).unwrap();
+        let unshadowed_pixels = image::open(temp.join("unshadowed.png")).unwrap().to_rgba8();
+        renderer.set_mode(RenderMode::Lit);
+        let lit = renderer.render(&camera, None).unwrap();
+        assert_eq!(lit.per_mesh, first.per_mesh);
+        assert!(lit.shadow_rays > 0 && lit.shadow_hits > 0 && lit.shadow_hits < lit.shadow_rays);
+        renderer.capture(&temp.join("lit.png")).unwrap();
+        let lit_pixels = image::open(temp.join("lit.png")).unwrap().to_rgba8();
+        assert_ne!(lit_pixels, unshadowed_pixels);
+        renderer.set_mode(RenderMode::LitShadowRays);
+        let diffuse = renderer.render(&camera, None).unwrap();
+        assert_eq!(diffuse.per_mesh, lit.per_mesh);
+        assert_eq!(diffuse.shadow_rays, lit.shadow_rays);
+        renderer.set_mode(RenderMode::Reflections);
+        let reflections = renderer.render(&camera, None).unwrap();
+        assert_eq!(reflections.per_mesh, first.per_mesh);
+        assert!(reflections.reflection_rays > 0 && reflections.reflection_hits > 0);
+        assert_eq!(reflections.short_self_reflections, 0);
+        renderer.capture(&temp.join("reflections.png")).unwrap();
+        let reflected_pixels = image::open(temp.join("reflections.png"))
+            .unwrap()
+            .to_rgba8();
+        let changed = reflected_pixels
+            .pixels()
+            .zip(lit_pixels.pixels())
+            .filter(|(a, b)| a != b)
+            .count();
+        assert!(
+            changed > 0 && changed <= reflections.reflection_rays as usize,
+            "reflections must change only eligible floor pixels"
+        );
+        eprintln!(
+            "Sponza shaded frame: {reflections:?}; {changed} floor pixels changed by reflections"
+        );
+        renderer.set_mode(RenderMode::ReflectionBary);
+        let reflection_bary = renderer.render(&camera, None).unwrap();
+        assert_eq!(reflection_bary.reflection_rays, reflections.reflection_rays);
+        assert_eq!(reflection_bary.short_self_reflections, 0);
+        renderer.set_mode(RenderMode::Shadows);
+        renderer.render(&camera, None).unwrap();
+        renderer.capture(&temp.join("shadow-mask.png")).unwrap();
+        let mask = image::open(temp.join("shadow-mask.png"))
+            .unwrap()
+            .to_rgba8();
+        assert!(
+            mask.pixels()
+                .all(|p| (p[0] == 0 || p[0] == 255) && p[0] == p[1] && p[1] == p[2] && p[3] == 255)
+        );
         renderer.resize(257, 145).unwrap();
         let changed = renderer.render(&Camera::preset(1).unwrap(), None).unwrap();
         assert_eq!(
@@ -41,6 +93,14 @@ fn full_sponza_debug_views_preserve_hit_geometry_and_capture_repeatably() {
             257 * 145
         );
         assert_ne!(first.per_mesh, changed.per_mesh);
+        renderer.set_mode(RenderMode::Reflections);
+        for preset in 0..5 {
+            let stats = renderer
+                .render(&Camera::preset(preset).unwrap(), None)
+                .unwrap();
+            assert_eq!(stats.per_mesh.iter().sum::<u32>() + stats.misses, 257 * 145);
+            assert_eq!(stats.short_self_reflections, 0, "preset {preset}");
+        }
         assert!(renderer.capture(&temp).is_err());
         std::fs::remove_dir_all(temp).unwrap();
     });

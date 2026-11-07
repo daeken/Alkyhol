@@ -23,11 +23,23 @@ struct Params {
 pub struct FrameStats {
     pub per_mesh: [u32; 34],
     pub misses: u32,
+    pub shadow_rays: u32,
+    pub shadow_hits: u32,
+    pub reflection_rays: u32,
+    pub reflection_hits: u32,
+    pub repaired_frames: u32,
+    pub short_self_reflections: u32,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u32)]
 pub enum RenderMode {
     Geometry = 0,
+    Lit = 1,
+    ReflectionBary = 3,
+    Shadows = 4,
+    LitNoShadows = 5,
+    LitShadowRays = 6,
+    Reflections = 7,
     Bary = 2,
     Normals = 8,
     Depth = 9,
@@ -35,6 +47,12 @@ pub enum RenderMode {
 impl RenderMode {
     pub fn label(self) -> &'static str {
         match self {
+            Self::Lit => "Textured + shadow rays",
+            Self::ReflectionBary => "Reflection barycentrics",
+            Self::Shadows => "Shadow visibility",
+            Self::LitNoShadows => "Textured (no shadows)",
+            Self::LitShadowRays => "Diffuse + shadow rays",
+            Self::Reflections => "Textured + reflections",
             Self::Geometry => "Geometry diagnostic",
             Self::Bary => "Bary Rays",
             Self::Normals => "Normal diagnostic",
@@ -43,6 +61,8 @@ impl RenderMode {
     }
 }
 pub struct Renderer {
+    textures: Vec<Texture>,
+    texture_arguments: Buffer,
     vertices: Buffer,
     offsets: Buffer,
     mode: RenderMode,
@@ -59,7 +79,7 @@ impl Renderer {
     pub fn new(assets: &Path, width: u32, height: u32) -> Result<Self, String> {
         let device = pollster::block_on(D3D12CreateDevice(false)).map_err(|e| e.to_string())?;
         eprintln!(
-            "MiniEngine adapter: {:?}; Sponza geometry diagnostics",
+            "MiniEngine adapter: {:?}; native Metal rays and material effects",
             device.adapter_info()
         );
         if !device.adapter_info().ray_tracing {
@@ -67,8 +87,8 @@ impl Renderer {
         }
         let bytes = std::fs::read(assets.join("Sponza/sponza.h3d")).map_err(|e| e.to_string())?;
         let model = h3d::parse(&bytes)?;
-        if model.meshes.len() != 34 {
-            return Err("this pinned scene expects exactly 34 meshes".into());
+        if model.meshes.len() != 34 || model.materials.len() != 27 {
+            return Err("this pinned scene expects exactly 34 meshes and 27 materials".into());
         }
         eprintln!(
             "Sponza: {} meshes, {} materials, {} triangles",
@@ -100,7 +120,7 @@ impl Renderer {
         let mut flat = Vec::new();
         let mut offsets = Vec::new();
         for mesh in &model.meshes {
-            offsets.push(flat.len() as u32);
+            offsets.push([flat.len() as u32, mesh.material as u32]);
             flat.extend_from_slice(&mesh.vertices);
         }
         let vertices = native.new_buffer_with_data(
@@ -115,9 +135,58 @@ impl Renderer {
         );
         let options = CompileOptions::new();
         options.set_fast_math_enabled(false);
-        let library = native.new_library_with_source(include_str!("render.metal"), &options)?;
+        let library = native.new_library_with_source(
+            concat!(
+                include_str!("render.metal"),
+                "\n",
+                include_str!("shading.metal"),
+                "\n",
+                include_str!("kernel.metal")
+            ),
+            &options,
+        )?;
         let kernel = library.get_function("render_scene", None)?;
         let pipeline = native.new_compute_pipeline_state_with_function(&kernel)?;
+        if native.argument_buffers_support() != MTLArgumentBuffersTier::Tier2 {
+            return Err("Metal Tier 2 argument buffers are required for material textures".into());
+        }
+        let encoder = kernel.new_argument_encoder(5);
+        let texture_arguments = native.new_buffer(
+            encoder.encoded_length(),
+            MTLResourceOptions::StorageModeShared,
+        );
+        encoder.set_argument_buffer(&texture_arguments, 0);
+        let defaults = [
+            crate::dds::solid(native, [255; 4]),
+            crate::dds::solid(native, [128, 128, 255, 0]),
+            crate::dds::solid(native, [0, 0, 0, 255]),
+        ];
+        let mut cache = std::collections::HashMap::new();
+        let mut textures = Vec::new();
+        for role in 0..3 {
+            for (material, paths) in crate::material_paths::MATERIAL_PATHS.iter().enumerate() {
+                let texture = if let Some(path) = paths[role] {
+                    if !cache.contains_key(path) {
+                        let bytes = std::fs::read(assets.join("Sponza").join(path))
+                            .map_err(|e| format!("missing material {path}: {e}"))?;
+                        cache.insert(
+                            path,
+                            crate::dds::upload(native, &bytes)
+                                .map_err(|e| format!("{path}: {e}"))?,
+                        );
+                    }
+                    cache[path].clone()
+                } else {
+                    defaults[role].clone()
+                };
+                encoder.set_texture((role * 27 + material) as u64, &texture);
+                textures.push(texture);
+            }
+        }
+        eprintln!(
+            "Loaded {} original DDS textures, including original BC1 mip chains; documented engine defaults for absent slots",
+            cache.len()
+        );
         let vertex = library.get_function("screen_vertex", None)?;
         let fragment = library.get_function("screen_fragment", None)?;
         let descriptor = RenderPipelineDescriptor::new();
@@ -130,8 +199,10 @@ impl Renderer {
             .set_pixel_format(MTLPixelFormat::BGRA8Unorm);
         let presentation = native.new_render_pipeline_state(&descriptor)?;
         let output = output_texture(native, width, height)?;
-        let counts = native.new_buffer(140, MTLResourceOptions::StorageModeShared);
+        let counts = native.new_buffer(168, MTLResourceOptions::StorageModeShared);
         Ok(Self {
+            textures,
+            texture_arguments,
             vertices,
             offsets,
             mode: RenderMode::Geometry,
@@ -179,7 +250,7 @@ impl Renderer {
                 padding: 0,
             };
             unsafe {
-                std::ptr::write_bytes(self.counts.contents(), 0, 140);
+                std::ptr::write_bytes(self.counts.contents(), 0, 168);
             }
             let command = self.device.metal_queue().new_command_buffer();
             let encoder = command.new_compute_command_encoder();
@@ -193,6 +264,10 @@ impl Renderer {
             encoder.set_buffer(2, Some(&self.counts), 0);
             encoder.set_buffer(3, Some(&self.vertices), 0);
             encoder.set_buffer(4, Some(&self.offsets), 0);
+            encoder.set_buffer(5, Some(&self.texture_arguments), 0);
+            for texture in &self.textures {
+                encoder.use_resource(texture, MTLResourceUsage::Read);
+            }
             encoder.set_texture(0, Some(&self.output));
             self.scene.use_resources(encoder);
             encoder.dispatch_threads(
@@ -214,10 +289,22 @@ impl Renderer {
                 command.present_drawable(drawable);
             }
             complete(command).map_err(|e| e.to_string())?;
-            let counts = unsafe { *(self.counts.contents().cast::<[u32; 35]>()) };
+            let counts = unsafe { *(self.counts.contents().cast::<[u32; 42]>()) };
+            if counts[41] != 0 {
+                return Err(format!(
+                    "{} nonfinite shaded surfaces; frame rejected",
+                    counts[41]
+                ));
+            }
             Ok(FrameStats {
                 per_mesh: counts[..34].try_into().unwrap(),
                 misses: counts[34],
+                shadow_rays: counts[35],
+                shadow_hits: counts[36],
+                reflection_rays: counts[37],
+                reflection_hits: counts[38],
+                repaired_frames: counts[39],
+                short_self_reflections: counts[40],
             })
         })
     }

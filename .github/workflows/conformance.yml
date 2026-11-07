@@ -83,11 +83,12 @@ jobs:
           path: sakura-layout.txt
       - run: cargo fmt --manifest-path miniengine/Cargo.toml --check
       - run: cargo clippy --manifest-path miniengine/Cargo.toml --locked --all-targets -- -D warnings
-      - name: Test MiniEngine H3D parser and CLI (hosted GPU lacks RT)
+      - name: Test MiniEngine intake, CLI and Metal compute units (no hosted RT)
         run: |
           python tools/fetch_miniengine.py
-          cargo test --manifest-path miniengine/Cargo.toml --locked
-          cargo test --manifest-path miniengine/Cargo.toml --locked --test model -- --include-ignored
+          cargo test --manifest-path miniengine/Cargo.toml --locked -- --nocapture
+          cargo test --manifest-path miniengine/Cargo.toml --locked --test model -- --ignored
+          cargo test --manifest-path miniengine/Cargo.toml --locked --test dds -- --ignored
           python tools/run_miniengine_geometry.py
       - uses: actions/upload-artifact@v4
         with:

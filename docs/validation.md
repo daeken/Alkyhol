@@ -379,3 +379,32 @@ newly defined; no native result is claimed until that job actually completes.
 There is no full MiniEngine native DXR pixel comparison yet. Textured lighting,
 shadow/reflection modes and postprocessing remain subsequent work requested by
 the user; diagnostic rendering does not count as those effects being implemented.
+
+## MiniEngine native intake comparison and shaded Metal effects, 2026-11-07
+
+Revision `2ec2207` passed all nine CI jobs in
+[42338140310](https://github.com/daeken/Alkyhol/actions/runs/42338140310).
+Native MSVC and Rust agreed on all 46,858,664 expanded Sponza geometry/attribute
+bytes, SHA-256 `0d937fea9ee97a5f38a8dcec326ae0ce48b154d36613a70358cf1c136478f51e`.
+This upgrades the earlier pending native ABI comparison to observed agreement;
+it is not native DXR image evidence. The first run's strict MSVC warning about
+implicit trailing alignment padding was fixed by declaring the serialized padding
+explicitly, without changing the record size or decoded bytes.
+
+The physical M4 now renders textured lighting, normal/specular maps, native shadow
+rays and floor reflection rays. All 50 original DDS mip chains pass parsing; GPU
+fixtures sample three distinct uploaded BC1 mips and the original flat-normal
+default. Additional actual Metal compute tests cover valid, NaN, mirrored-UV and
+degenerate-UV tangent frames, ambient/shadow endpoints and the source tone curve.
+The H3D data remains unchanged; renderer-only invalid-frame repair is explicit.
+
+At 129×73, the full-scene effect test observed 9,769 shadow queries, 8,721 shadow
+hits, 352 reflection queries/hits, five tangent-frame repairs and zero short
+self-reflection hits. Reflections changed 324 floor pixels relative to the otherwise
+identical lit frame; primary mesh/miss counts agreed across all views. Shadows
+changed the unshadowed image, and their diagnostic mask contained binary visibility.
+All five original camera presets also rendered the reflected scene successfully.
+Nonfinite output fails rendering; it is not accepted as a black-pixel fallback.
+These are local physical Metal assertions, not native Windows effect comparisons.
+Source/raster-derived differences and remaining postprocessing are documented in
+[miniengine.md](miniengine.md#textured-lighting-shadows-and-reflections).

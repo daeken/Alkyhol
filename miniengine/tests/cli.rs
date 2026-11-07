@@ -3,7 +3,7 @@ use std::process::Command;
 fn cli_rejects_unimplemented_modes_and_bad_inputs_and_names_debug_controls() {
     let executable = env!("CARGO_BIN_EXE_alkyhol-miniengine");
     for args in [
-        vec!["--mode", "shadow"],
+        vec!["--mode", "shadow-maps"],
         vec!["--camera", "5"],
         vec!["--width", "0"],
         vec!["--height", "4097"],

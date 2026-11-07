@@ -6,6 +6,206 @@
     "Sponza/sponza.h3d": {
       "bytes": 17535860,
       "sha256": "c52e851f67a37892acf229df7cce8e2b8aff997a087bc41fa8c48beb73b45747"
+    },
+    "Sponza/background.DDS": {
+      "bytes": 699212,
+      "sha256": "fb4282e87a4b5367156164e1c8c67d949843de2d82c173078e20eacca0251580"
+    },
+    "Sponza/background_normal.DDS": {
+      "bytes": 699192,
+      "sha256": "38415edf21ccf7935619bfdc697efa17120acba22c6d5a9d9f21727e694a4014"
+    },
+    "Sponza/chain_texture.DDS": {
+      "bytes": 174940,
+      "sha256": "17d0467155e82d67b874322396ae8f5a364c0206603008c855dbcc8791e9397e"
+    },
+    "Sponza/chain_texture_normal.DDS": {
+      "bytes": 174920,
+      "sha256": "6a621da45cdfb177ad5ecce86fcdff942dfa90d35cc04c89dcc4a3146f5075bd"
+    },
+    "Sponza/gi_flag.DDS": {
+      "bytes": 2892,
+      "sha256": "519cafb3fe4bef51041df7e548645f9c14b80f7f2fa9c6180e9e0b6cf24ca400"
+    },
+    "Sponza/lion.DDS": {
+      "bytes": 699212,
+      "sha256": "b5b352f965c7b09f912f94b48bc87ee6fb7b0c5de8e2a21819b50dca2b4460ce"
+    },
+    "Sponza/lion_normal.DDS": {
+      "bytes": 699192,
+      "sha256": "dd30aa412d6dd5ad5e213c1a0f7cce54a34e4a5df3abff5fd60da1844b5b7acd"
+    },
+    "Sponza/spnza_bricks_a.DDS": {
+      "bytes": 699212,
+      "sha256": "73128b749dc3d673f7c827c17ac27831c534da654362d049bfbf581cc266a466"
+    },
+    "Sponza/spnza_bricks_a_normal.DDS": {
+      "bytes": 699192,
+      "sha256": "3131939a4a358ca278976c4281478e01669e55d44c82c075cea2ce06d67663a9"
+    },
+    "Sponza/spnza_bricks_a_specular.DDS": {
+      "bytes": 699212,
+      "sha256": "756743094de728838c92d661831471fbd730b1e2f3f02b36b6d6814715a98400"
+    },
+    "Sponza/sponza_arch.DDS": {
+      "bytes": 699212,
+      "sha256": "39c1092bdc6a36625d52a0b51231b4a9f0b0b48cdd392dec50766fc245f0ab0f"
+    },
+    "Sponza/sponza_arch_normal.DDS": {
+      "bytes": 699192,
+      "sha256": "a2d33b202a1a28b5aec6c38a785b01aea8b7aba4dc21f1a1ec3eaff627da8a4a"
+    },
+    "Sponza/sponza_arch_specular.DDS": {
+      "bytes": 699212,
+      "sha256": "9a8da6c87fe155ce02f2ff6cac65ceb3b95d22505e7f10193584d8e3ecc5fe8a"
+    },
+    "Sponza/sponza_ceiling_a.DDS": {
+      "bytes": 699212,
+      "sha256": "30646288f5d79b2f0ce2f923e2abd76c0b3119ffc4bf729f6925e29d9f71f685"
+    },
+    "Sponza/sponza_ceiling_a_specular.DDS": {
+      "bytes": 699212,
+      "sha256": "0ebbce39f8e440f5b63670ec542e2107e92d6c005f74154b16e7ab47d484c3d1"
+    },
+    "Sponza/sponza_column_a.DDS": {
+      "bytes": 699212,
+      "sha256": "c7ed45697b14eea11fe19a6e7029770d61ca7c6d11157eb8a8a9c6166e3b0546"
+    },
+    "Sponza/sponza_column_a_normal.DDS": {
+      "bytes": 699192,
+      "sha256": "6cb60601469e1391140b6558521ae32471f9953aff40b3ca2191fa64736f05e7"
+    },
+    "Sponza/sponza_column_a_specular.DDS": {
+      "bytes": 699212,
+      "sha256": "807e440c73f526eff6427f9f06e805f16ce06d8538d4dbf6730a95c0c264dc5f"
+    },
+    "Sponza/sponza_column_b.DDS": {
+      "bytes": 699212,
+      "sha256": "64e8f1b801af7542fdbbeb1080c48473fe1a4183ca328412c222f2d5e47b3371"
+    },
+    "Sponza/sponza_column_b_normal.DDS": {
+      "bytes": 699192,
+      "sha256": "c1a3b294c65f8d83d134c8c847d2cb1a9c2477c65a9b64a0a7b7ceb73f7067fc"
+    },
+    "Sponza/sponza_column_b_specular.DDS": {
+      "bytes": 699212,
+      "sha256": "5332589a86a27fc98ed7b332e7b1f1f2f430168f785ca9de72b57c39e901b3c6"
+    },
+    "Sponza/sponza_column_c.DDS": {
+      "bytes": 699212,
+      "sha256": "8e784e1d8c68a0aaf925231b0da08f5527368733c9357c71dd5e5d0120af34b8"
+    },
+    "Sponza/sponza_column_c_normal.DDS": {
+      "bytes": 699192,
+      "sha256": "6666baebe8f07ad9aed78a7bd65bc948ba8819bdd3265c1575b0042db6f2a10c"
+    },
+    "Sponza/sponza_column_c_specular.DDS": {
+      "bytes": 699212,
+      "sha256": "f6eb071c6a6c768b4c607e9d8ea20e441431e7b9673aa52afdbeba6982f4a2c8"
+    },
+    "Sponza/sponza_curtain.DDS": {
+      "bytes": 2796364,
+      "sha256": "669e81ed3faa752a969968f7a21238811bece16a91787a91cf8aff6389496704"
+    },
+    "Sponza/sponza_curtain_blue.DDS": {
+      "bytes": 2796364,
+      "sha256": "4690d87fd44ad33e5a007a11205a6f2b701db26dde7ee89b73280c562a25bcf9"
+    },
+    "Sponza/sponza_curtain_green.DDS": {
+      "bytes": 2796364,
+      "sha256": "ba6f2c9cc1a2db425a11e259c33936221c5dc9f7fa0053e25ae19e17a7b1ee6d"
+    },
+    "Sponza/sponza_details.DDS": {
+      "bytes": 699212,
+      "sha256": "68256c40e3c4479c33f97ca114b4648b41572476db21238087d52b19f2c2ca57"
+    },
+    "Sponza/sponza_details_specular.DDS": {
+      "bytes": 699212,
+      "sha256": "4581f375680751db20a2063dc6e3ec6a6295789e1425f55d1e5cd4fb5fde1e92"
+    },
+    "Sponza/sponza_fabric.DDS": {
+      "bytes": 699212,
+      "sha256": "6ed3e715ce6b23884224b261b0e80a32771e27a33a2c9c9e49e3418ed1b078b0"
+    },
+    "Sponza/sponza_fabric_blue.DDS": {
+      "bytes": 699212,
+      "sha256": "ca0ce8673a8d993c886733a5b637993b8169193a9b19b4f8c3e0705ec3c01404"
+    },
+    "Sponza/sponza_fabric_green.DDS": {
+      "bytes": 699212,
+      "sha256": "c6e013b71bd15fb1301ccb266b4669f13ec3d9d8040be27e6e9cd7a644b39296"
+    },
+    "Sponza/sponza_fabric_specular.DDS": {
+      "bytes": 699212,
+      "sha256": "3b062c31665fe292e55b86a4321195c9e7306ce1b8510fb7301172a675b2efda"
+    },
+    "Sponza/sponza_flagpole.DDS": {
+      "bytes": 699212,
+      "sha256": "c1519fc1f0b17355ea458cccbe8bb58b4645c08e36d172d98a6f6fe69048c748"
+    },
+    "Sponza/sponza_flagpole_specular.DDS": {
+      "bytes": 699212,
+      "sha256": "a7e4a70ca3ee2bd2bd4f53e01414dccf108c509022d42d563499b93ca2d10f46"
+    },
+    "Sponza/sponza_floor_a.DDS": {
+      "bytes": 699212,
+      "sha256": "ecf3a5d79e23b58824223fb4d63b34756348f59b6f9427664fae025868138a72"
+    },
+    "Sponza/sponza_floor_a_specular.DDS": {
+      "bytes": 699212,
+      "sha256": "6d31238378a968fa1feba8f15923ff589c46c16720591fa056c96655d64e9212"
+    },
+    "Sponza/sponza_roof.DDS": {
+      "bytes": 699212,
+      "sha256": "4694c28cc8185b1468c1e5b2c2358bb03ef475eccb76374487686a5e74a90efe"
+    },
+    "Sponza/sponza_thorn.DDS": {
+      "bytes": 174924,
+      "sha256": "643e5d3f65eafaaf1ccf61ddb0fadb32cfe795f1484cb06a8bafc711c7e3a985"
+    },
+    "Sponza/sponza_thorn_normal.DDS": {
+      "bytes": 43832,
+      "sha256": "b0681faf4d944b8a01d68cca8be8fdb10d34a0cd73c1eea9ae358ba49f4837cf"
+    },
+    "Sponza/sponza_thorn_specular.DDS": {
+      "bytes": 174924,
+      "sha256": "6867d9ac616c259c7f24c132dc2f6a19b4c85ece9e2ccf51088d75d235ef60b4"
+    },
+    "Sponza/vase.DDS": {
+      "bytes": 699212,
+      "sha256": "3d9e167d0cfa84e941caadc75e1d02c71650025bfe2ae094d35771de47e9db4a"
+    },
+    "Sponza/vase_hanging.DDS": {
+      "bytes": 699212,
+      "sha256": "6c141db3ea23e521087867d54fa216253b1b39a07cf445e8cf85b825128e7333"
+    },
+    "Sponza/vase_normal.DDS": {
+      "bytes": 699192,
+      "sha256": "2e32c3898549a2f2f23138ceacacfbea6846109e7e6c965c9dc49804d3128bc6"
+    },
+    "Sponza/vase_plant.DDS": {
+      "bytes": 699212,
+      "sha256": "64d120d8a2611553231a8ee68a240661890ff107bb937389b75ba37e9674e81a"
+    },
+    "Sponza/vase_plant_specular.DDS": {
+      "bytes": 699212,
+      "sha256": "3904cc2885dd6d0e8434be0cbc2041cf40b7d451fb70b70f1bb7a6004c89b08d"
+    },
+    "Sponza/vase_round.DDS": {
+      "bytes": 699212,
+      "sha256": "5413213902f643529bbcef945b6f615f9255cfe559dc8065f4cf8532d793baef"
+    },
+    "Sponza/vase_round_normal.DDS": {
+      "bytes": 699192,
+      "sha256": "49d67d63a6f8c399fbeb2756f6c89b86aa2e099e6cc8d76102230c7ad735a7a4"
+    },
+    "Sponza/vase_round_specular.DDS": {
+      "bytes": 699212,
+      "sha256": "0783b57bca04895c9b2cc73586058afceafa90ea531dd1ec044528447d6aec07"
+    },
+    "Sponza/white.DDS": {
+      "bytes": 2892,
+      "sha256": "519cafb3fe4bef51041df7e548645f9c14b80f7f2fa9c6180e9e0b6cf24ca400"
     }
   },
   "sources": {
@@ -44,6 +244,159 @@
     "MiniEngine/Core/CameraController.cpp": {
       "bytes": 8012,
       "sha256": "8e8bbe4308fe40f3e06044e41ec27f71e224d45d96b81eca0ab04a5ad301fef5"
+    },
+    "MiniEngine/Core/Shaders/ToneMappingUtility.hlsli": {
+      "bytes": 3698,
+      "sha256": "bd826f488cfd8f4563af5e5f03163368c036853e473561e5983f5cfb3468d956"
+    },
+    "MiniEngine/Core/GraphicsCommon.cpp": {
+      "bytes": 13571,
+      "sha256": "67cd2e4168bbe2e3ebc1a4be5032e3a345345a194256b89f17501b17c092aaf5"
+    },
+    "Samples/Desktop/D3D12Raytracing/src/D3D12RaytracingMiniEngineSample/DiffuseHitShaderLib.hlsl": {
+      "bytes": 12483,
+      "sha256": "593aa627d5f4cfb8933b9acc62a701bfb382e973b8c43f3580a9b29e68e1a000"
+    },
+    "Samples/Desktop/D3D12Raytracing/src/D3D12RaytracingMiniEngineSample/RayGenerationShaderSSRLib.hlsl": {
+      "bytes": 2197,
+      "sha256": "2ca5b9a134363c45f7bf4be606c27cac48b6de57d7de62b0692ec752e64a9a26"
     }
-  }
+  },
+  "material_textures": [
+    {
+      "diffuse": null,
+      "normal": null,
+      "specular": null
+    },
+    {
+      "diffuse": "sponza_thorn.DDS",
+      "normal": "sponza_thorn_normal.DDS",
+      "specular": "sponza_thorn_specular.DDS"
+    },
+    {
+      "diffuse": "vase_round.DDS",
+      "normal": "vase_round_normal.DDS",
+      "specular": "vase_round_specular.DDS"
+    },
+    {
+      "diffuse": "vase_plant.DDS",
+      "normal": null,
+      "specular": "vase_plant_specular.DDS"
+    },
+    {
+      "diffuse": "background.DDS",
+      "normal": "background_normal.DDS",
+      "specular": null
+    },
+    {
+      "diffuse": "gi_flag.DDS",
+      "normal": null,
+      "specular": null
+    },
+    {
+      "diffuse": "spnza_bricks_a.DDS",
+      "normal": "spnza_bricks_a_normal.DDS",
+      "specular": "spnza_bricks_a_specular.DDS"
+    },
+    {
+      "diffuse": "sponza_arch.DDS",
+      "normal": "sponza_arch_normal.DDS",
+      "specular": "sponza_arch_specular.DDS"
+    },
+    {
+      "diffuse": "sponza_ceiling_a.DDS",
+      "normal": null,
+      "specular": "sponza_ceiling_a_specular.DDS"
+    },
+    {
+      "diffuse": "sponza_column_a.DDS",
+      "normal": "sponza_column_a_normal.DDS",
+      "specular": "sponza_column_a_specular.DDS"
+    },
+    {
+      "diffuse": "sponza_floor_a.DDS",
+      "normal": null,
+      "specular": "sponza_floor_a_specular.DDS"
+    },
+    {
+      "diffuse": "sponza_column_c.DDS",
+      "normal": "sponza_column_c_normal.DDS",
+      "specular": "sponza_column_c_specular.DDS"
+    },
+    {
+      "diffuse": "sponza_details.DDS",
+      "normal": null,
+      "specular": "sponza_details_specular.DDS"
+    },
+    {
+      "diffuse": "sponza_column_b.DDS",
+      "normal": "sponza_column_b_normal.DDS",
+      "specular": "sponza_column_b_specular.DDS"
+    },
+    {
+      "diffuse": "white.DDS",
+      "normal": null,
+      "specular": null
+    },
+    {
+      "diffuse": "sponza_flagpole.DDS",
+      "normal": null,
+      "specular": "sponza_flagpole_specular.DDS"
+    },
+    {
+      "diffuse": "sponza_fabric_green.DDS",
+      "normal": null,
+      "specular": null
+    },
+    {
+      "diffuse": "sponza_fabric_blue.DDS",
+      "normal": null,
+      "specular": null
+    },
+    {
+      "diffuse": "sponza_fabric.DDS",
+      "normal": null,
+      "specular": "sponza_fabric_specular.DDS"
+    },
+    {
+      "diffuse": "sponza_curtain_blue.DDS",
+      "normal": null,
+      "specular": null
+    },
+    {
+      "diffuse": "sponza_curtain.DDS",
+      "normal": null,
+      "specular": null
+    },
+    {
+      "diffuse": "sponza_curtain_green.DDS",
+      "normal": null,
+      "specular": null
+    },
+    {
+      "diffuse": "chain_texture.DDS",
+      "normal": "chain_texture_normal.DDS",
+      "specular": null
+    },
+    {
+      "diffuse": "vase_hanging.DDS",
+      "normal": null,
+      "specular": null
+    },
+    {
+      "diffuse": "vase.DDS",
+      "normal": "vase_normal.DDS",
+      "specular": null
+    },
+    {
+      "diffuse": "lion.DDS",
+      "normal": "lion_normal.DDS",
+      "specular": null
+    },
+    {
+      "diffuse": "sponza_roof.DDS",
+      "normal": null,
+      "specular": null
+    }
+  ]
 }

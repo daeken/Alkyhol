@@ -54,6 +54,22 @@ fn h3d_parses_simd_padding_local_indices_attributes_materials_and_preserves_unus
     let mut b = fixture();
     let base = 64 + 336 + 992;
     put(&mut b, base + 32, 0x7fc12345);
+    let material = 64 + 336;
+    for (i, path) in [
+        "diffuse.tga",
+        "specular.tga",
+        "emissive.tga",
+        "normal.tga",
+        "light.tga",
+        "reflect.tga",
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let at = material + 92 + i * 128;
+        b[at..at + path.len()].copy_from_slice(path.as_bytes());
+    }
+    b[material + 860..material + 864].copy_from_slice(b"mat0");
     let model = h3d::parse(&b).unwrap();
     assert_eq!(model.meshes.len(), 1);
     assert_eq!(model.materials.len(), 1);
@@ -64,6 +80,9 @@ fn h3d_parses_simd_padding_local_indices_attributes_materials_and_preserves_unus
     assert_eq!(v[1].tangent[0].to_bits(), 0x7fc12345);
     assert_eq!(v[0].normal, [0., 0., 1.]);
     assert_eq!(model.materials[0].diffuse, [1.; 4]);
+    assert_eq!(model.materials[0].name, "mat0");
+    assert_eq!(model.materials[0].texture_paths[0], "diffuse.tga");
+    assert_eq!(model.materials[0].texture_paths[3], "normal.tga");
     assert_eq!(model.bounds, [[-2.; 3], [2.; 3]]);
 }
 #[test]

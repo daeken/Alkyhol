@@ -33,7 +33,7 @@ fn options() -> Result<Options, String> {
         headless: false,
         frames: None,
         camera: 2,
-        mode: RenderMode::Geometry,
+        mode: RenderMode::Reflections,
     };
     let mut args = std::env::args().skip(1);
     while let Some(a) = args.next() {
@@ -73,10 +73,16 @@ fn options() -> Result<Options, String> {
             "--mode" => {
                 o.mode = match args
                     .next()
-                    .ok_or("--mode requires geometry, bary, normals or depth")?
+                    .ok_or("--mode requires a name; see --help")?
                     .as_str()
                 {
                     "geometry" => RenderMode::Geometry,
+                    "lit" => RenderMode::Lit,
+                    "lit-no-shadows" => RenderMode::LitNoShadows,
+                    "lit-shadow-rays" => RenderMode::LitShadowRays,
+                    "reflections" => RenderMode::Reflections,
+                    "reflection-bary" => RenderMode::ReflectionBary,
+                    "shadows" => RenderMode::Shadows,
                     "bary" => RenderMode::Bary,
                     "normals" => RenderMode::Normals,
                     "depth" => RenderMode::Depth,
@@ -85,7 +91,7 @@ fn options() -> Result<Options, String> {
             }
             "--help" => {
                 println!(
-                    "MiniEngine Sponza — native Metal ray tracing; geometry diagnostics\n--headless --capture path.png --width 960 --height 540 --mode geometry --camera 2\n--assets directory --frames N\nWASD move; Q/E down/up; arrows or left-drag look; PageUp/PageDown cycle camera presets; R reset. 1/G geometry; 2 Bary Rays; N normals; Z depth; Escape quit. Other upstream modes remain unimplemented."
+                    "MiniEngine Sponza — native Metal ray tracing; geometry diagnostics\n--headless --capture path.png --width 960 --height 540 --mode geometry --camera 2\n--assets directory --frames N\nWASD move; Q/E down/up; arrows or left-drag look; PageUp/PageDown cycle camera presets; R reset. 1 lit; 2 Bary Rays; 3 reflection bary; 4 shadows; 5 no shadows; 6 shadow rays; 7 reflections; G geometry; N normals; Z depth; Escape quit. Raster, shadow maps, SSAO and temporal postprocessing remain unimplemented."
                 );
                 std::process::exit(0);
             }
@@ -124,7 +130,7 @@ impl ApplicationHandler for App {
             return;
         }
         let attributes = Window::default_attributes()
-            .with_title("MiniEngine Sponza — Metal ray tracing · Geometry diagnostic")
+            .with_title("MiniEngine Sponza — Metal ray tracing")
             .with_inner_size(winit::dpi::LogicalSize::new(
                 self.options.width,
                 self.options.height,
@@ -214,10 +220,18 @@ impl ApplicationHandler for App {
                         if !event.repeat {
                             match key {
                                 KeyCode::Escape => event_loop.exit(),
-                                KeyCode::Digit1 | KeyCode::KeyG => {
-                                    self.renderer.set_mode(RenderMode::Geometry)
-                                }
+                                KeyCode::KeyG => self.renderer.set_mode(RenderMode::Geometry),
+                                KeyCode::Digit1 => self.renderer.set_mode(RenderMode::Lit),
                                 KeyCode::Digit2 => self.renderer.set_mode(RenderMode::Bary),
+                                KeyCode::Digit3 => {
+                                    self.renderer.set_mode(RenderMode::ReflectionBary)
+                                }
+                                KeyCode::Digit4 => self.renderer.set_mode(RenderMode::Shadows),
+                                KeyCode::Digit5 => self.renderer.set_mode(RenderMode::LitNoShadows),
+                                KeyCode::Digit6 => {
+                                    self.renderer.set_mode(RenderMode::LitShadowRays)
+                                }
+                                KeyCode::Digit7 => self.renderer.set_mode(RenderMode::Reflections),
                                 KeyCode::KeyN => self.renderer.set_mode(RenderMode::Normals),
                                 KeyCode::KeyZ => self.renderer.set_mode(RenderMode::Depth),
                                 KeyCode::PageUp => {
@@ -289,7 +303,7 @@ impl ApplicationHandler for App {
                         }
                         if let Some(w) = &self.window {
                             w.set_title(&format!(
-                                "Sponza · {} · {:.1} FPS · {}×{} · 1:Geometry 2:Bary N:Normals Z:Depth",
+                                "Sponza · {} · {:.1} FPS · {}×{} · 1:Lit 2:Bary 7:Reflections G:Geometry",
                                 self.renderer.mode().label(),
                                 self.frame as f64 / self.start.elapsed().as_secs_f64(),
                                 self.renderer.extent().0,
