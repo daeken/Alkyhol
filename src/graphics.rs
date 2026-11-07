@@ -6,6 +6,7 @@ use std::collections::HashMap;
 pub enum ResourceState {
     RenderTarget,
     CopySource,
+    CopyDest,
 }
 #[derive(Debug, Clone, PartialEq)]
 pub enum Command {
@@ -23,6 +24,11 @@ pub enum Command {
         pipeline: u64,
         vertices: u32,
         instances: u32,
+    },
+    /// Whole-resource copy. This subset supports matching RGBA8 2D textures only.
+    CopyResource {
+        source: u64,
+        destination: u64,
     },
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -143,14 +149,31 @@ pub fn validate_submission(
                     return Err(GraphicsError::Unsupported);
                 }
             }
+            Command::CopyResource {
+                source,
+                destination,
+            } => {
+                if source == destination {
+                    return Err(GraphicsError::InvalidArgument);
+                }
+                require_state(&states, *source, ResourceState::CopySource)?;
+                require_state(&states, *destination, ResourceState::CopyDest)?;
+            }
         }
     }
     Ok(states)
 }
 fn require_target(states: &HashMap<u64, ResourceState>, id: u64) -> Result<()> {
+    require_state(states, id, ResourceState::RenderTarget)
+}
+fn require_state(
+    states: &HashMap<u64, ResourceState>,
+    id: u64,
+    expected: ResourceState,
+) -> Result<()> {
     match states.get(&id) {
         None => Err(GraphicsError::InvalidArgument),
-        Some(ResourceState::RenderTarget) => Ok(()),
+        Some(state) if *state == expected => Ok(()),
         _ => Err(GraphicsError::WrongState),
     }
 }

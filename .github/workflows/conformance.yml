@@ -83,6 +83,14 @@ jobs:
           ALKYHOL_PPM: triangle.ppm
           XDG_RUNTIME_DIR: /tmp
         run: cargo run --manifest-path graphics/Cargo.toml --locked --example hello_triangle -- --allow-software
+      - name: Copy a patterned resource on Metal
+        if: runner.os == 'macOS'
+        run: cargo run --manifest-path graphics/Cargo.toml --locked --example copy_resource
+      - name: Copy a patterned resource on explicit software Vulkan
+        if: runner.os == 'Linux'
+        env:
+          XDG_RUNTIME_DIR: /tmp
+        run: cargo run --manifest-path graphics/Cargo.toml --locked --example copy_resource -- --allow-software
       - uses: actions/upload-artifact@v4
         with:
           name: graphics-${{ runner.os }}

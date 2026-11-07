@@ -56,6 +56,7 @@ D3D12-shaped Rust API over wgpu with a clear/triangle/readback sample:
 ```sh
 cargo run --manifest-path graphics/Cargo.toml --locked --example hello_triangle
 cargo test --manifest-path graphics/Cargo.toml --locked -- --nocapture
+cargo run --manifest-path graphics/Cargo.toml --locked --example copy_resource
 ```
 
 The dependency-free root tests validate command lifecycles, state transitions,

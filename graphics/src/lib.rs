@@ -111,7 +111,9 @@ impl Device {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: FORMAT,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                | wgpu::TextureUsages::COPY_SRC
+                | wgpu::TextureUsages::COPY_DST,
             view_formats: &[],
         });
         let view = texture.create_view(&Default::default());
@@ -182,6 +184,21 @@ impl Device {
         let mut objects = self.objects.lock().unwrap();
         let pipelines: Vec<_> = objects.pipelines.keys().copied().collect();
         let states = validate_submission(self.id, list, &objects.states, &pipelines)?;
+        // Check every backend-specific copy constraint before encoding any command.
+        // The root validator owns state/identity checks but has no texture extents.
+        for command in list.commands()? {
+            if let Command::CopyResource {
+                source,
+                destination,
+            } = command
+            {
+                let source = &objects.textures[source];
+                let destination = &objects.textures[destination];
+                if (source.width, source.height) != (destination.width, destination.height) {
+                    return Err(GraphicsError::InvalidArgument);
+                }
+            }
+        }
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -237,6 +254,32 @@ impl Device {
                     });
                     pass.set_pipeline(&objects.pipelines[pipeline]);
                     pass.draw(0..*vertices, 0..*instances);
+                }
+                Command::CopyResource {
+                    source,
+                    destination,
+                } => {
+                    let source = &objects.textures[source];
+                    let destination = &objects.textures[destination];
+                    encoder.copy_texture_to_texture(
+                        wgpu::TexelCopyTextureInfo {
+                            texture: &source.texture,
+                            mip_level: 0,
+                            origin: wgpu::Origin3d::ZERO,
+                            aspect: wgpu::TextureAspect::All,
+                        },
+                        wgpu::TexelCopyTextureInfo {
+                            texture: &destination.texture,
+                            mip_level: 0,
+                            origin: wgpu::Origin3d::ZERO,
+                            aspect: wgpu::TextureAspect::All,
+                        },
+                        wgpu::Extent3d {
+                            width: source.width,
+                            height: source.height,
+                            depth_or_array_layers: 1,
+                        },
+                    );
                 }
             }
         }

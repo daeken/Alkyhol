@@ -236,3 +236,94 @@ fn footprint_alignment_boundaries_and_large_products() {
     );
     assert_eq!(GraphicsError::WrongState.to_string(), "WrongState");
 }
+
+#[test]
+fn whole_resource_copy_chain_requires_explicit_destination_transitions() {
+    let original = HashMap::from([
+        (1, ResourceState::CopySource),
+        (2, ResourceState::CopyDest),
+        (3, ResourceState::CopyDest),
+    ]);
+    let mut list = GraphicsCommandList::new(7);
+    list.record(Command::CopyResource {
+        source: 1,
+        destination: 2,
+    })
+    .unwrap();
+    list.record(Command::Transition {
+        resource: 2,
+        before: ResourceState::CopyDest,
+        after: ResourceState::CopySource,
+    })
+    .unwrap();
+    list.record(Command::CopyResource {
+        source: 2,
+        destination: 3,
+    })
+    .unwrap();
+    list.close().unwrap();
+    let states = validate_submission(7, &list, &original, &[]).unwrap();
+    assert_eq!(states[&1], ResourceState::CopySource);
+    assert_eq!(states[&2], ResourceState::CopySource);
+    assert_eq!(states[&3], ResourceState::CopyDest);
+    assert_eq!(original[&2], ResourceState::CopyDest);
+}
+
+#[test]
+fn copies_reject_self_unknown_and_incorrect_source_destination_states() {
+    let original = HashMap::from([
+        (1, ResourceState::CopySource),
+        (2, ResourceState::CopyDest),
+        (3, ResourceState::RenderTarget),
+    ]);
+    for (source, destination, error) in [
+        (1, 1, GraphicsError::InvalidArgument),
+        (99, 2, GraphicsError::InvalidArgument),
+        (1, 99, GraphicsError::InvalidArgument),
+        (2, 1, GraphicsError::WrongState),
+        (3, 2, GraphicsError::WrongState),
+        (1, 3, GraphicsError::WrongState),
+    ] {
+        let mut list = GraphicsCommandList::new(7);
+        list.record(Command::CopyResource {
+            source,
+            destination,
+        })
+        .unwrap();
+        list.close().unwrap();
+        assert_eq!(validate_submission(7, &list, &original, &[]), Err(error));
+    }
+}
+
+#[test]
+fn late_copy_failure_does_not_commit_earlier_transition_states() {
+    let original = HashMap::from([
+        (1, ResourceState::RenderTarget),
+        (2, ResourceState::CopyDest),
+    ]);
+    let mut list = GraphicsCommandList::new(7);
+    list.record(Command::Transition {
+        resource: 1,
+        before: ResourceState::RenderTarget,
+        after: ResourceState::CopySource,
+    })
+    .unwrap();
+    list.record(Command::CopyResource {
+        source: 1,
+        destination: 2,
+    })
+    .unwrap();
+    // Destination remains CopyDest; it cannot be used as a copy source yet.
+    list.record(Command::CopyResource {
+        source: 2,
+        destination: 1,
+    })
+    .unwrap();
+    list.close().unwrap();
+    assert_eq!(
+        validate_submission(7, &list, &original, &[]),
+        Err(GraphicsError::WrongState)
+    );
+    assert_eq!(original[&1], ResourceState::RenderTarget);
+    assert_eq!(original[&2], ResourceState::CopyDest);
+}
