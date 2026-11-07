@@ -6,7 +6,7 @@ COM device is implemented. This is a build milestone, not a functioning renderer
 
 | Area | Executed implementation / limit |
 |---|---|
-| IUnknown / ID3DBlob | Rust vtable, canonical identity, QueryInterface, atomic references, owned writable allocation; C++/WRL exercised |
+| IUnknown / ID3DBlob | Rust vtable, canonical identity, QueryInterface, owned allocation; synchronized C++/WRL probes agree with native Windows. Rust atomic stress passes separately; native uncoordinated stress crashed and is not parity evidence |
 | RoInitialize / RoUninitialize | Per-thread model/nesting, changed-mode failure; no WinRT activation or marshaling |
 | CreateFile2 | UTF-32 host path conversion to existing real kernel files; synchronous regular files, share mask **7 only**, normal attributes, optional sequential hint; security/templates/other flags fail |
 | FileStandardInfo | Actual open-file size, host allocated blocks and link count; no delete-on-close mode; unsupported info classes fail |

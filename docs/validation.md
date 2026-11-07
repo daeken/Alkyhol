@@ -31,7 +31,7 @@ runtime ABI fixture separately checks explicit unsupported APIs clear output
 interfaces and fail; those checks are not positive API implementation evidence.
 Three compiler executables cover record storage/destruction, reference/base
 adjustment and actual cross-TU template linkage. Standard-mode diagnostics remain;
-omitting the real template provider fails to link. Root Rust tests/Clippy and all
+omitting the real template provider fails to link. All 60 root Rust tests, Clippy and all
 44 Python tests pass locally. These new CPU probes use x86-64 via Rosetta, not a
 Metal graphics execution path.
 
@@ -48,9 +48,18 @@ as CI diagnostics. COM apartment rules are documented by
 [Microsoft](https://learn.microsoft.com/windows/win32/com/single-threaded-and-multithreaded-communication);
 they do not by themselves promise this object's reference implementation is atomic.
 
-The existing CI now also runs the same COM/DirectInput probe sources against
-independent native Windows SDK libraries and compares their outputs/normalized descriptor
-fields with Rust. Native results for that addition remain pending. Prior intake
+[CI 42355345904](https://github.com/daeken/Alkyhol/actions/runs/42355345904) passed
+all twelve jobs on `42fff60`. Independent native Windows SDK/MSVC executables
+and hosted macOS Rust executions agree on the synchronized blob probe output and
+all 267 normalized DirectInput object records plus format headers. Downloaded
+reports also match the physical M4 x86-64/Rosetta probe: exact actual source
+SHA-256 values, clean tracked trees and revision `42fff60` agree on all three.
+The input-format observation serialization (270 lines including headers/summary)
+has SHA-256 `15ad1974f9c0c7eef1283edef8447e506b1102663c3c8f5612d3c9163107ddde`.
+This measures public metadata and synchronized COM ownership, not native atomic
+references, graphics COM behavior or original C++ rendering. Source line endings
+are fixed by Git attributes and report paths use POSIX separators; the comparator
+still requires identical actual source hashes rather than normalizing hash inputs. Prior intake
 `0c72f0a` passed all twelve earlier jobs in
 [42351798268](https://github.com/daeken/Alkyhol/actions/runs/42351798268); this predates
 the complete build and cannot validate it by implication. The preceding shader

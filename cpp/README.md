@@ -27,8 +27,12 @@ atomic reference stress is a separate Rust extension: the native SDK experiment
 crashed during that phase even with common-MTA initialization. Additional executed
 probes cover apartment nesting, header/task contracts, actual file I/O/metadata,
 UTF-32 text bridges, wide CRT conventions, compiler extensions and failure outputs.
-Native Windows comparison is now configured for the shared COM/DirectInput probes;
-its results must be recorded separately after execution.
+Native Windows SDK/MSVC, hosted macOS and the physical M4 agree on the shared
+synchronized COM probe output and every normalized DirectInput descriptor field,
+from identical actual probe source bytes. All twelve jobs passed on `42fff60` in
+[CI 42355345904](https://github.com/daeken/Alkyhol/actions/runs/42355345904).
+The Rust-only atomic extension and compiler-extension fixtures pass locally;
+that does not turn the failed native uncoordinated stress into positive evidence.
 
 ```sh
 python3 tools/fetch_cpp_deps.py
