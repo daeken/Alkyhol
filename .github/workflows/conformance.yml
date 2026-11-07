@@ -45,7 +45,7 @@ jobs:
           reports = [json.loads(p.read_text()) for p in Path('observations').glob('*/kernel-observation.json')]
           assert len(reports) == 3, reports
           assert sum(r['backend'] == 'Windows SDK' for r in reports) == 1, reports
-          expected = {'kernel_contract', 'msdn_file_write', 'msdn_event_readers', 'msdn_semaphore_workers'}
+          expected = {'kernel_contract', 'msdn_file_write', 'msdn_event_readers', 'msdn_semaphore_workers', 'msdn_thread_local_storage'}
           assert all(r['schema_version'] == 2 and set(r['samples']) == expected for r in reports), reports
           baseline = next(r['samples'] for r in reports if r['backend'] == 'Windows SDK')
           assert all(r['samples'] == baseline for r in reports), reports

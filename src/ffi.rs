@@ -245,3 +245,35 @@ pub unsafe extern "C" fn QueryPerformanceFrequency(out: *mut i64) -> i32 {
 pub extern "C" fn Sleep(ms: u32) {
     sleep(ms);
 }
+#[cfg_attr(not(target_os = "windows"), unsafe(no_mangle))]
+pub extern "C" fn TlsAlloc() -> u32 {
+    match crate::tls::alloc() {
+        Ok(index) => index,
+        Err(error) => {
+            set_last_error(error.0);
+            crate::tls::TLS_OUT_OF_INDEXES
+        }
+    }
+}
+#[cfg_attr(not(target_os = "windows"), unsafe(no_mangle))]
+pub extern "C" fn TlsFree(index: u32) -> i32 {
+    boolean(crate::tls::free(index))
+}
+#[cfg_attr(not(target_os = "windows"), unsafe(no_mangle))]
+pub extern "C" fn TlsGetValue(index: u32) -> *mut c_void {
+    match crate::tls::get(index) {
+        Ok(value) => {
+            // Unlike most Win32 APIs, successful TlsGetValue always clears last-error.
+            set_last_error(0);
+            value as *mut c_void
+        }
+        Err(error) => {
+            set_last_error(error.0);
+            std::ptr::null_mut()
+        }
+    }
+}
+#[cfg_attr(not(target_os = "windows"), unsafe(no_mangle))]
+pub extern "C" fn TlsSetValue(index: u32, value: *mut c_void) -> i32 {
+    boolean(crate::tls::set(index, value as usize))
+}

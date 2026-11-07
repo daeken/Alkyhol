@@ -14,6 +14,7 @@ Private helpers are exercised through their public callers.
 | CloseHandle; Kernel insert/lookup; global token allocation | Facade close/stale token and last-error; core stale/cross-kernel handles, wrong object types, all file methods rejecting events |
 | CreateEventW, SetEvent, ResetEvent, WaitForSingleObject | Facade creation/unsupported options/nonzero BOOLs, initial state, finite/zero/infinite waits on signaled events, stale handles; core saturation, manual persistence/reset, concurrent single/multiple readers |
 | CreateSemaphoreW, ReleaseSemaphore, semaphore waits | `tests/semaphore.rs`: invalid signed count boundaries, exact permit consumption, zero/finite/infinite waits, maximum overflow without mutation, previous counts/optional output, stale/cross-kernel/wrong-type handles, unsupported names/security, concurrent batch release and serialized previous counts; Microsoft worker sample compares deterministic checks against Windows |
+| TlsAlloc/TlsFree/TlsGetValue/TlsSetValue; allocation table/generation tags | `tests/tls.rs`: opaque/null pointer roundtrip, last-error behavior, slot/thread isolation, full-pool exhaustion and forced reuse with zero initialization in an already-existing thread, invalid/unallocated indices. Exhaustion/forced-reuse tests own this test binary's pool. Microsoft sample separately compares four workers' actual pointer/content/null observations against Windows. |
 | QueryPerformanceCounter, QueryPerformanceFrequency, Sleep | Facade nonnegative monotonic counters, frequency, null outputs, zero/positive sleep and last-error preservation; no scheduler-precision assertion |
 | WinError I/O mapping | `tests/kernel.rs`: common error kinds and unknown-error failure |
 | GraphicsCommandList new/device/record/close/reset/commands | `tests/graphics.rs`: lifecycle errors, reset discards commands, channel-by-channel invalid colors rejected without appending |
@@ -24,7 +25,7 @@ Private helpers are exercised through their public callers.
 | CreateGraphicsPipelineState, backend error conversion | Invalid WGSL produces a backend error; valid pipeline can subsequently be created; foreign pipeline rejected |
 | ReadbackRGBA8 | GPU wrong-state rejection, padded 65-pixel rows match every expected pixel; triangle sample checks draw pixels and replay |
 | PE construction/take/unpack/offset/string/thunks/imports/inventory/CLI | `tests/test_pe_imports.py`: 32/64-bit and normal/delay/legacy import fixtures, ordinal/named imports, fallback lookup, bounds, malformed data, hash identity and CLI success/failure |
-| Sample compile/run/observation/reporting | `tests/test_run_samples.py`: strict booleans/key sets, duplicate/malformed/multiple JSON rejection, actual process failure and timeout, path arguments; actual four-sample runs check compiler/link/library/report integration |
+| Sample compile/run/observation/reporting | `tests/test_run_samples.py`: strict booleans/key sets, duplicate/malformed/multiple JSON rejection, actual process failure and timeout, path arguments; actual five-sample runs check compiler/link/library/report integration |
 
 Run root tests with `cargo test --offline`, Python tests with
 `python3 -m unittest discover -s tests -v`, and sample integration with
@@ -35,7 +36,7 @@ Linux software Vulkan requires `ALKYHOL_ALLOW_SOFTWARE=1` for tests and
 `-- --allow-software` for the sample, plus a usable Vulkan adapter.
 
 Sample reports use schema 2, retain the original kernel `observation` field and
-add all four results under `samples`. CI compares the full `samples` mapping.
+add all five results under `samples`. CI compares the full `samples` mapping.
 Reports bind source, runner, build inputs, executed library and executable hashes,
 plus compiler/host/revision identities. These describe the files that actually ran;
 they do not prove universal correctness or that a library was freshly rebuilt.

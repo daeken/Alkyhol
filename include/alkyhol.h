@@ -40,6 +40,8 @@ typedef union { int64_t QuadPart; } LARGE_INTEGER;
 #define ERROR_NEGATIVE_SEEK 131
 #define ERROR_INVALID_PARAMETER 87
 #define ERROR_TOO_MANY_POSTS 298
+#define ERROR_SUCCESS 0
+#define TLS_OUT_OF_INDEXES UINT32_MAX
 DWORD GetLastError(void);
 void SetLastError(DWORD);
 BOOL CloseHandle(HANDLE);
@@ -59,6 +61,10 @@ DWORD WaitForSingleObject(HANDLE, DWORD);
 BOOL QueryPerformanceCounter(LARGE_INTEGER*);
 BOOL QueryPerformanceFrequency(LARGE_INTEGER*);
 void Sleep(DWORD);
+DWORD TlsAlloc(void);
+BOOL TlsFree(DWORD);
+void* TlsGetValue(DWORD);
+BOOL TlsSetValue(DWORD, void*);
 #ifdef __cplusplus
 }
 #endif

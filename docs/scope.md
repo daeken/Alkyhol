@@ -12,7 +12,7 @@ assuming that exported D3D12/DXGI symbols represent the complete graphics surfac
 
 1. Dependency-free kernel subset: opaque lifetime-checked handles, thread-local
    last-error, synchronous file I/O, unnamed manual/auto-reset events and counting
-   semaphores, monotonic
+   semaphores, dynamic TLS slots, monotonic
    performance counters and Sleep. Portable C samples use the same source with
    Windows headers on Windows and Alkyhol's native header on macOS/Linux.
 2. D3D12-shaped device, resources, command recording, submission and readback on

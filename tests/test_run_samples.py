@@ -38,7 +38,7 @@ class SampleObservationTests(unittest.TestCase):
             samples.run_observation([sys.executable, '-c', 'import time; time.sleep(30)'], {'ok': True}, directory, timeout=0.1)
 
     def test_all_sample_sources_exist_and_have_nonempty_expectations(self):
-        self.assertEqual(set(samples.SAMPLES), {'kernel_contract', 'msdn_file_write', 'msdn_event_readers', 'msdn_semaphore_workers'})
+        self.assertEqual(set(samples.SAMPLES), {'kernel_contract', 'msdn_file_write', 'msdn_event_readers', 'msdn_semaphore_workers', 'msdn_thread_local_storage'})
         for source, expected in samples.SAMPLES.values():
             self.assertTrue((samples.ROOT / source).is_file())
             self.assertTrue(expected)

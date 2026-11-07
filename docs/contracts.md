@@ -22,6 +22,8 @@ made safe by null checks. Output parameters must not alias input buffers.
 | WaitForSingleObject | Event/semaphore waits, zero/finite/infinite timeout; each successful semaphore wait consumes one permit | Other waitable object types unsupported; closing a handle during a wait is not supported |
 | QueryPerformanceCounter/Frequency | Monotonic nanosecond counter, fixed 1GHz frequency | Epoch unrelated to Windows boot time; no exact scheduling guarantee |
 | Sleep | Host sleep/yield | No Windows scheduler/alertable behavior emulation |
+| TlsAlloc / TlsFree | Process-local dynamic slots; allocation initializes all threads' values to null, slots reusable | 1,088 slots; indexes opaque; exhaustion returns TLS_OUT_OF_INDEXES with ERROR_NOT_ENOUGH_MEMORY in this host implementation |
+| TlsGetValue / TlsSetValue | Per-host-thread opaque pointer-sized values; null is valid; successful get clears last-error | Live allocated indices only; no pointer dereference/ownership, PE static TLS, FLS or DLL attach callbacks |
 
 Unsupported flags/options return `ERROR_NOT_SUPPORTED`; unknown handles fail.
 The safe Rust methods return `WinError`; the C facade sets last-error on failure.
@@ -65,3 +67,17 @@ Windows comparison does not assume that undocumented output behavior. Success
 preserves last-error. These semantics are guided by
 [CreateSemaphoreW](https://learn.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-createsemaphorew)
 and [ReleaseSemaphore](https://learn.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-releasesemaphore).
+
+Dynamic TLS uses a process-wide allocation table and separate per-thread values.
+Generation tags prevent a reallocated slot from exposing an old value in an
+already-existing thread. Slot metadata and get/set/free operations are serialized;
+callers must coordinate slot lifetimes and must not keep using an index after free.
+TlsFree never frees the objects whose addresses were stored. TlsSetValue, TlsAlloc
+and TlsFree preserve last-error on success; TlsGetValue explicitly sets it to zero.
+Invalid/unallocated slots fail with ERROR_INVALID_PARAMETER here. Windows performs
+minimal checks on some unallocated in-range indices; that behavior is outside this
+live-allocation contract and is not claimed to match. Exhaustion capacity/error,
+allocation order and reuse timing are host assertions, not measured Windows results.
+See Microsoft's [TLS allocation](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-tlsalloc),
+[get](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-tlsgetvalue)
+and [free](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-tlsfree) contracts.
