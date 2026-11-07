@@ -6,6 +6,16 @@ See the latest direct-Metal record for current implementation evidence.
 
 ## Mixed ordinal DLL imports/forwarders: native Windows, hosted Mac and physical M4
 
+All 27 jobs pass at the strict-reference revision `b083926`: three
+[PE jobs](https://github.com/daeken/Alkyhol/actions/runs/42397548501) and all 24
+[conformance jobs](https://github.com/daeken/Alkyhol/actions/runs/42397548540).
+Downloaded clean native Windows/hosted Mac records and a fresh clean physical M4
+run at that same revision match the frozen DLL/source/import identities and all
+seven execution observations. Both host DLLs actually relocate in the forced run.
+The earlier `150ca60` milestone also passes all 27 jobs (PE 42397230715;
+conformance 42397230794). Existing frozen binary, SDK/source/COM/Metal/shader
+comparisons remain intact; the native record and old fixture bytes are unchanged.
+
 The PE parser now retains named and ordinal imports in distinct ImportSymbol
 variants. Two new portable units check mixed order, 0/65535 metadata boundaries,
 literal named `#23`, ILT fallback, reserved bits and backed named hints. Two

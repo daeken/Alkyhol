@@ -387,6 +387,8 @@ The full native report is frozen at `pe/reference/ordinal-windows-v1.json`;
 drivers require the exact frozen DLL/source/import identities before entry and
 comparisons require its native execution results, rejecting joint drift too.
 See [validation](validation.md) for exact executed revisions.
+The strict `b083926` revision passes all 27 CI jobs, with a clean physical M4
+record matching the same-revision native Windows/hosted records and frozen input.
 
 ```sh
 python3 tools/build_pe_ordinal.py
