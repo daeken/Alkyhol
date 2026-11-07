@@ -4,6 +4,29 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## Original MiniEngine queue manager: physical subsystem execution
+
+A separate caller now links the exact unchanged `CommandListManager.cpp` and
+`CommandAllocatorPool.cpp` objects from the verified complete 70-unit build. On
+physical M4/x86-64, original CommandListManager::Create initializes all three
+actual Rust/Metal COM queues and fences, preserving the original high-bit queue
+encoding. Eight original IncrementFence/WaitForFence/IsFenceComplete sequences
+per queue complete, with next values `[9,144115188075855881,216172782113783817]`.
+Original per-queue idle, manager IdleGPU, Shutdown and repeated destructor shutdown
+also complete. The harness supplies the matching original global and a caller;
+it changes no original implementation or header.
+
+`tools/run_original_command_manager.py` rejects stale compatibility headers,
+source/object changes, incomplete compilation and altered source revision, then
+records exact original object/source hashes and commands alongside the Rust
+library, caller and executable hashes. Three new Python provenance/observation
+tests pass (75 Python total); they are synthetic gates, separate from the actual
+physical subsystem run. The raw report is ignored at
+`local/original-command-manager.json`. This is local original-C++ queue-management
+execution; it has not received a native Windows subsystem comparison. Allocator
+creation, command lists, shaders, original app initialization and rendering remain
+unsupported or unexecuted. The complete original app still exits 78 at preflight.
+
 ## Restricted COM queues/fences: local completion evidence
 
 On physical M4, real x86-64 C++ virtual calls now create COPY queues and fences
@@ -40,9 +63,13 @@ native GetDesc normalizes input NodeMask 0 to returned 1, while Metal echoed 0.
 That independent native report/source identity is frozen as
 `cpp/reference/queue-fence-windows-v1.json`; Rust now normalizes its single-node
 queue descriptor to the measured result. The comparator also requires the live
-pair to equal this unchanged native snapshot. Native remeasurement of the fix
-remains pending; no comparison tolerance or expected native output was changed.
-The Python suite now has 72 passing tests.
+pair to equal this unchanged native snapshot. No comparison tolerance or expected
+native output was changed. [CI 42363319667](https://github.com/daeken/Alkyhol/actions/runs/42363319667)
+passed all sixteen jobs on `30e7613`, including fresh native WARP and hosted Metal
+queue/fence execution and their exact comparison. Downloaded clean-revision
+reports also match the frozen observation. The corrected physical M4 probe
+separately matches it; no full native shaded frame or original C++ rendering is
+claimed. The Python suite at that revision has 72 passing tests.
 
 ## Restricted Metal COM device and committed buffers: local evidence
 

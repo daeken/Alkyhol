@@ -138,3 +138,21 @@ submission lifetimes. Native WARP and Metal execute the same source through
 different device constructors; CI compares exact outputs from a clean identical
 revision. Local Metal execution alone is not native synchronization evidence or
 original C++ rendering.
+
+Native WARP and hosted Metal observations match the unchanged frozen queue/fence
+contract on `30e7613`; [CI 42363319667](https://github.com/daeken/Alkyhol/actions/runs/42363319667)
+passed all sixteen jobs. That run also preserves all prior buffer, metadata,
+Windows SDK, shader and geometry comparisons.
+
+After a full original C++ build, a separate original-subsystem caller also runs:
+
+```sh
+python3 tools/run_original_command_manager.py --output local/original-command-manager.json
+```
+
+It links the verified, unchanged original CommandListManager and
+CommandAllocatorPool objects and exercises original creation of three queues,
+high-bit fence routing, repeated increments/event waits, idle and shutdown.
+This runs those original queue-management functions on physical Metal; it does
+not invoke allocator creation, command lists or the original application's entry
+point. Source/object/header changes require rebuilding before this caller runs.

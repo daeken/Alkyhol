@@ -1,8 +1,10 @@
 # Original C++ runtime boundary
 
 The complete original MiniEngine Sponza application compiles and links. Its
-startup bridge currently exits 78 before original initialization because no D3D12
-COM device is implemented. This is a build milestone, not a functioning renderer.
+startup bridge currently exits 78 before original initialization because the
+production D3D12CreateDevice contract is unavailable. A separately named restricted
+Metal COM subset is implemented and tested; this is not a functioning original
+renderer or a feature-level claim.
 
 | Area | Executed implementation / limit |
 |---|---|
@@ -18,6 +20,8 @@ COM device is implemented. This is a build milestone, not a functioning renderer
 | DirectInput public tables | 256 keyboard and 11 mouse object descriptors with public GUIDs; metadata only |
 | DXGI discovery | Real Metal factory through IDXGIFactory6 and adapter through IDXGIAdapter1; retained devices, parent ownership, descriptors, metadata and LUID lookup; no swap chains/outputs/device capability |
 | Restricted device/resource constructor | Explicit non-feature-level Metal-backed subset; real shared UPLOAD/READBACK buffers, Map/Unmap/descriptors/parent ownership/GPU addresses; not used by D3D12CreateDevice |
+| Restricted queues/fences | Real DIRECT/COMPUTE/COPY Metal queues, CPU fence signals/rewinds, event/null-event waits and ordered native completion callbacks. Finite native WARP comparison passes. No COM command lists, GPU queue waits or timestamps |
+| Original queue-management subsystem | Unchanged CommandListManager and CommandAllocatorPool objects execute three-queue creation, high-bit fence routing, increments/waits, idle and shutdown on physical Metal through a separate caller. No allocator creation or command-list execution |
 | D3D12 creation | Explicit E_NOTIMPL and cleared interface outputs; no device, resource or command capability success |
 | D3D12 root serialization/debug/experiments | Explicit failures; no serialized blob or debug interface |
 | Window/message/input services | Explicit unavailable diagnostics/failure returns; no simulated window, silent event loop or successful input device |
@@ -36,6 +40,8 @@ from compiling the original libraries to DXIL.
 
 The inherited metadata unit now has a real CPU Rust implementation and an explicit
 ABI-test constructor. [ID3D12Object metadata](reference/README.md) preserves its
-independent native contract. The next runtime steps are derived object identity,
-real D3D12 device/queue/resource ownership over Metal and actual GPU operations; the CPU
-metadata constructor must not substitute for those interfaces or device creation.
+independent native contract. Restricted derived device/resource/queue/fence
+interfaces now compose that implementation. The next runtime steps are command
+allocators/lists, actual COM workload submission, descriptor/root-signature and
+pipeline support. Neither restricted nor metadata constructors substitute for
+production device creation or original application initialization.

@@ -50,6 +50,7 @@ python3 tools/build_cpp_clang.py
 python3 tools/build_original_miniengine.py --shaders-only
 python3 tools/build_original_miniengine.py --cpp-only
 python3 tools/build_original_miniengine.py --link-only
+python3 tools/run_original_command_manager.py --output local/original-command-manager.json
 python3 tools/run_cpp_probes.py --compiler-tests --output local/cpp-observation.json
 ```
 
