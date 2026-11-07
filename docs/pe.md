@@ -123,7 +123,7 @@ explicitly reviewed native evidence milestone, not silently updating expected
 output. See [validation](validation.md) for executed revisions and CI results.
 
 Static TLS/callbacks, unwind/SEH, CFG/load config, delay/bound imports, system-DLL ordinal resolution,
-Automatic dependent-DLL loading, CLR, dynamic lookup, guest threads/callbacks, COM vtable ABI
+Filesystem DLL discovery, process-global module loading, CLR, dynamic lookup, guest threads/callbacks, COM vtable ABI
 bridges, general Windows process structures and Windows CRT startup are not implemented in this
 binary path. Unsupported metadata or imports fail before entry; unrecognized
 instructions are **not** statically detected. Trusted code must not issue Windows
@@ -398,3 +398,44 @@ python3 tools/run_pe_ordinal.py --directory local/pe/ordinal --output local/pe/o
 No general module manager, TEB/static TLS, unwind/SEH, binary COM or game
 compatibility follows from these finite owned-DLL observations. The previous
 frozen native executable, DLL and released-program comparisons remain intact.
+
+## Closed DLL bundles
+
+`unsafe LibrarySet::load(inputs, rebase)` accepts 1..64 explicitly supplied DLL
+byte snapshots in any order. It checks the complete import/forwarder graph,
+symbol existence, startup metadata, relocations and IAT/fixup separation before
+the first initializer. Acyclic dependencies load first, shared DLLs load once per
+normalized supplied basename, and consumers detach before their dependencies.
+`get(name)` borrows an attached DLL without allowing individual unload. Mapping
+or ATTACH failure rolls back attached DLLs in reverse order; external initializer
+side effects are not undone. Invalid/cyclic/self graphs, missing modules/symbols,
+unsupported builtins and known metadata failures never enter any initializer.
+
+All supplied modules participate, including otherwise unreferenced DLLs. The
+existing restricted filename, named/ordinal resolution and trusted-code/context
+contracts apply. No filesystem search, process-global cache/refcounts, guest
+LoadLibrary/GetProcAddress, static TLS, SEH, threads or reentrant loader callbacks
+are added. This is an automatic closed-bundle lifecycle API, not a general Windows
+module manager or executable-process startup implementation.
+
+The new observer supplies the two **unchanged frozen** named/ordinal consumer DLLs
+before their shared, unchanged export DLL. The loader orders them and owns their
+lifetimes. Physical M4 normal/forced-rebase runs preserve both earlier call/data/
+forwarder records, observe actual equality of both consumers' leaf targets and
+retain the exact original 48-byte C ATTACH/DETACH trace. All three DLLs relocate
+in the forced run. Four independent synthetic runtime units additionally check
+a shared-leaf diamond, pre-entry errors, failed-attach rollback and a real mapping
+collision that rolls back an attached dependency without replacing its mapping.
+Paired compiler checks retain consumer borrows of DLLs owned by a set.
+
+```sh
+python3 tools/build_pe_library_set.py
+python3 tools/run_pe_library_set.py --directory local/pe/library-set --output local/pe/library-set-alkyhol.json
+```
+
+The expanded PE workflow transfers the identical three DLLs to Windows. Its
+observer keeps two real LoadLibraryEx handles, reuses the frozen native call
+observers against those cached instances, compares shared targets, then frees
+consumers in reverse order. That new native comparison is pending until recorded
+in [validation](validation.md). Native shared-leaf notification counts are not
+measured by these DLLs; the once-only diamond count is host-unit evidence.

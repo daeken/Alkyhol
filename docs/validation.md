@@ -4,6 +4,38 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## Closed DLL bundle lifecycle: physical M4, native comparison pending
+
+LibrarySet now owns an explicitly supplied acyclic DLL graph, preflights all
+imports/forwarders/metadata before any initializer, orders dependencies before
+consumers, shares instances within the set and detaches in reverse order. It
+rolls back attached DLLs on mapping/ATTACH failure. There is no filesystem search,
+global module cache/refcount, guest module API, static TLS or SEH support.
+
+The fixture uses the **unchanged three already frozen DLLs**: exports `423d6e1…`,
+named consumer `915abbc…` and ordinal consumer `49ce61a…`. No C/.def fixture bytes
+change. Physical M4/Rosetta accepts consumers before their dependency in the input
+list, preserves all earlier named/ordinal call/data/forwarder observations, checks
+that both consumers target the same actual leaf code address, and retains the
+exact 48-byte original C notification trace. Normal and forced-rebase results
+agree; all three DLLs actually rebase in the forced run. The new native Windows
+LoadLibraryEx shared-instance comparison is wired into existing PE CI and is
+pending. [Contract/reproduction](pe.md#closed-dll-bundles).
+
+Four new host runtime units check once-only shared-leaf diamond initialization,
+lookup/IAT targets, complete pre-entry graph/symbol/startup rejection, failed-
+attach rollback, and placement-failure rollback after a real dependency ATTACH.
+Two new paired compiler checks accept correct teardown and reject dropping a set
+while an implicitly dropped consumer still borrows its DLL (E0505). These host
+counts/lifetime assertions are separate from native observations; the frozen
+DLLs do not directly measure the native shared leaf's notification count.
+All 47 PE host tests, four lifetime compiler checks, 19 portable arm64 tests,
+161 Python tests and PE formatting/Clippy pass. Every prior frozen executable,
+released u-config case and successful/failed/dependent/ordinal DLL observer passes
+again locally, including forced rebase. No original sample, shader, asset or game
+data is changed, and existing native comparison fixtures remain intact.
+Prior docs-only `6af2878` passes all 27 jobs (PE 42398043239; conformance 42398043244).
+
 ## Mixed ordinal DLL imports/forwarders: native Windows, hosted Mac and physical M4
 
 All 27 jobs pass at the strict-reference revision `b083926`: three

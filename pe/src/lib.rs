@@ -15,5 +15,9 @@ pub use process::ProcessContext;
 mod runtime;
 #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
 pub use runtime::{LinkedLibrary, LoadedImage, LoadedLibrary};
+#[cfg(all(target_os = "macos", target_arch = "x86_64"))]
+mod library_set;
+#[cfg(all(target_os = "macos", target_arch = "x86_64"))]
+pub use library_set::LibrarySet;
 
 pub type Result<T> = std::result::Result<T, String>;

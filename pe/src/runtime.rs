@@ -19,7 +19,7 @@ const WRITE: i32 = 2;
 const EXEC: i32 = 4;
 const PRIVATE_ANON: i32 = 2 | 0x1000; // Darwin MAP_PRIVATE | MAP_ANON; never MAP_FIXED.
 
-fn resolve_builtin(module: &str, symbol: &ImportSymbol) -> Option<usize> {
+pub(crate) fn resolve_builtin(module: &str, symbol: &ImportSymbol) -> Option<usize> {
     match symbol {
         ImportSymbol::Name(name) => abi::resolve(module, name),
         // Only named system imports have a validated bridge contract.
@@ -211,7 +211,7 @@ impl LoadedLibrary {
     pub unsafe fn load(bytes: &[u8], rebase: bool) -> Result<Self> {
         unsafe { Self::load_resolved(bytes, rebase, &resolve_builtin) }
     }
-    unsafe fn load_resolved(
+    pub(crate) unsafe fn load_resolved(
         bytes: &[u8],
         rebase: bool,
         resolve: &impl Fn(&str, &ImportSymbol) -> Option<usize>,
@@ -346,20 +346,7 @@ impl<'a> LinkedLibrary<'a> {
         }
         let mut modules = BTreeMap::new();
         for &(name, library) in dependencies {
-            let name = name.to_ascii_lowercase();
-            if name.len() > 255
-                || !name.ends_with(".dll")
-                || !name
-                    .as_bytes()
-                    .first()
-                    .is_some_and(u8::is_ascii_alphanumeric)
-                || !name
-                    .bytes()
-                    .all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b))
-                || name == "kernel32.dll"
-            {
-                return Err("invalid or reserved explicit DLL basename".into());
-            }
+            let name = dll_basename(name)?;
             if modules.insert(name, library).is_some() {
                 return Err("duplicate case-insensitive DLL dependency".into());
             }
@@ -404,6 +391,27 @@ fn resolve_forwarder(
     value: &str,
     resolve: &impl Fn(&str, &ImportSymbol) -> Option<usize>,
 ) -> Result<usize> {
+    let (module, symbol) = forwarder_symbol(value)?;
+    resolve(&module, &symbol).ok_or_else(|| format!("unsupported export forwarder {value}"))
+}
+pub(crate) fn dll_basename(name: &str) -> Result<String> {
+    let name = name.to_ascii_lowercase();
+    if name.len() > 255
+        || !name.ends_with(".dll")
+        || !name
+            .as_bytes()
+            .first()
+            .is_some_and(u8::is_ascii_alphanumeric)
+        || !name
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b))
+        || name == "kernel32.dll"
+    {
+        return Err("invalid or reserved explicit DLL basename".into());
+    }
+    Ok(name)
+}
+pub(crate) fn forwarder_symbol(value: &str) -> Result<(String, ImportSymbol)> {
     let (module, name) = value.rsplit_once('.').ok_or("invalid export forwarder")?;
     let module = if module.to_ascii_lowercase().ends_with(".dll") {
         module.to_owned()
@@ -424,7 +432,7 @@ fn resolve_forwarder(
     } else {
         ImportSymbol::Name(name.to_owned())
     };
-    resolve(&module, &symbol).ok_or_else(|| format!("unsupported export forwarder {value}"))
+    Ok((module, symbol))
 }
 
 #[cfg(test)]
@@ -848,6 +856,186 @@ mod tests {
         system[0x7a0..0x7a8].copy_from_slice(&0x8000000000000011u64.to_le_bytes());
         assert!(unsafe { LinkedLibrary::load(&system, true, &[("custom.dll", &child)]) }.is_err());
         assert_eq!(unsafe { (*log.get()).calls }, 0);
+    }
+    fn graph_fixture(
+        log: *mut LifecycleLog,
+        accept: bool,
+        import: &str,
+        forwarder: &str,
+    ) -> Vec<u8> {
+        let mut bytes = dependent_fixture(log, accept);
+        bytes[0x7c0..0x7d0].fill(0);
+        bytes[0x7c0..0x7c0 + import.len()].copy_from_slice(import.as_bytes());
+        bytes[0x6f0..0x730].fill(0);
+        bytes[0x6f0..0x6f0 + forwarder.len()].copy_from_slice(forwarder.as_bytes());
+        bytes
+    }
+    #[test]
+    fn closed_bundle_orders_a_diamond_and_loads_its_shared_leaf_once() {
+        let logs: Vec<_> = (0..4).map(|_| lifecycle_log()).collect();
+        let root = graph_fixture(logs[0].get(), true, "left.dll", "right.Entry");
+        let right = graph_fixture(logs[1].get(), true, "leaf.dll", "leaf.Entry");
+        let leaf = lifecycle_fixture(logs[2].get(), true, None);
+        let left = graph_fixture(logs[3].get(), true, "leaf.dll", "leaf.Entry");
+        let set = unsafe {
+            crate::LibrarySet::load(
+                &[
+                    ("ROOT.dll", &root),
+                    ("right.dll", &right),
+                    ("leaf.dll", &leaf),
+                    ("left.dll", &left),
+                ],
+                true,
+            )
+        }
+        .unwrap();
+        assert!(set.get("unknown.dll").is_none());
+        let address = set.get("LEAF.DLL").unwrap().get_name("Entry").unwrap();
+        for name in ["root.dll", "left.dll", "right.dll"] {
+            let library = set.get(name).unwrap();
+            assert_eq!(library.get_name("Entry"), Some(address));
+            assert_eq!(
+                unsafe { library.mapping.base.add(0x3020).cast::<usize>().read() },
+                address as usize
+            );
+        }
+        for log in &logs {
+            assert_eq!(unsafe { ((*log.get()).reason, (*log.get()).calls) }, (1, 1));
+        }
+        drop(set);
+        for log in &logs {
+            assert_eq!(unsafe { ((*log.get()).reason, (*log.get()).calls) }, (0, 2));
+        }
+    }
+    #[test]
+    fn closed_bundle_rejects_graph_and_symbol_errors_before_any_initializer() {
+        let root_log = lifecycle_log();
+        let leaf_log = lifecycle_log();
+        let root = graph_fixture(root_log.get(), true, "leaf.dll", "leaf.Entry");
+        let leaf = lifecycle_fixture(leaf_log.get(), true, None);
+        assert!(unsafe { crate::LibrarySet::load(&[], true) }.is_err());
+        let excessive = vec![("leaf.dll", leaf.as_slice()); 65];
+        assert!(unsafe { crate::LibrarySet::load(&excessive, true) }.is_err());
+        assert!(
+            unsafe { crate::LibrarySet::load(&[("ROOT.dll", &root), ("root.DLL", &leaf)], true) }
+                .is_err()
+        );
+        for name in ["../root.dll", "kernel32.dll", "", "root"] {
+            assert!(unsafe { crate::LibrarySet::load(&[(name, &root)], true) }.is_err());
+        }
+        assert!(unsafe { crate::LibrarySet::load(&[("root.dll", &root)], true) }.is_err());
+        for mode in [
+            "cycle",
+            "self-cycle",
+            "missing-forward",
+            "missing-import",
+            "zero-ordinal",
+            "malformed-forward",
+            "unsupported-builtin",
+            "static-tls",
+            "relocation-overlap",
+            "missing-fixups",
+        ] {
+            let mut bad_leaf = leaf.clone();
+            let mut bad_root = root.clone();
+            match mode {
+                "cycle" => bad_leaf = graph_fixture(leaf_log.get(), true, "root.dll", "root.Entry"),
+                "self-cycle" => {
+                    bad_root = graph_fixture(root_log.get(), true, "root.dll", "leaf.Entry")
+                }
+                "missing-forward" => {
+                    bad_root = graph_fixture(root_log.get(), true, "leaf.dll", "leaf.Missing")
+                }
+                "missing-import" => bad_root[0x7d2] = b'e',
+                "zero-ordinal" => {
+                    bad_root[0x7a0..0x7a8].copy_from_slice(&0x8000000000000000u64.to_le_bytes())
+                }
+                "malformed-forward" => {
+                    bad_root = graph_fixture(root_log.get(), true, "leaf.dll", "leaf.#+17")
+                }
+                "unsupported-builtin" => {
+                    bad_root[0x7c0..0x7d0].fill(0);
+                    bad_root[0x7c0..0x7cd].copy_from_slice(b"kernel32.dll\0");
+                }
+                "static-tls" => bad_leaf[0x98 + 112 + 9 * 8..0x98 + 120 + 9 * 8]
+                    .copy_from_slice(&[0, 0x20, 0, 0, 16, 0, 0, 0]),
+                "relocation-overlap" => {
+                    bad_root[0x608..0x60a].copy_from_slice(&0xa020u16.to_le_bytes())
+                }
+                "missing-fixups" => bad_leaf[0x98 + 112 + 5 * 8..0x98 + 120 + 5 * 8].fill(0),
+                _ => unreachable!(),
+            }
+            assert!(
+                unsafe {
+                    crate::LibrarySet::load(
+                        &[("root.dll", &bad_root), ("leaf.dll", &bad_leaf)],
+                        true,
+                    )
+                }
+                .is_err(),
+                "{mode}"
+            );
+        }
+        assert_eq!(
+            unsafe { ((*root_log.get()).calls, (*leaf_log.get()).calls) },
+            (0, 0)
+        );
+    }
+    #[test]
+    fn closed_bundle_failed_attach_rolls_back_dependencies_and_never_enters_later_modules() {
+        let logs: Vec<_> = (0..3).map(|_| lifecycle_log()).collect();
+        let root = graph_fixture(logs[0].get(), false, "leaf.dll", "leaf.Entry");
+        let leaf = lifecycle_fixture(logs[1].get(), true, None);
+        let later = lifecycle_fixture(logs[2].get(), true, None);
+        let error = unsafe {
+            crate::LibrarySet::load(
+                &[
+                    ("root.dll", &root),
+                    ("leaf.dll", &leaf),
+                    ("later.dll", &later),
+                ],
+                true,
+            )
+        }
+        .err()
+        .unwrap();
+        assert!(error.contains("ATTACH returned FALSE"));
+        for log in &logs[..2] {
+            assert_eq!(unsafe { ((*log.get()).reason, (*log.get()).calls) }, (0, 2));
+        }
+        assert_eq!(unsafe { (*logs[2].get()).calls }, 0);
+    }
+    #[test]
+    fn closed_bundle_mapping_failure_rolls_back_already_attached_dependencies() {
+        let root_log = lifecycle_log();
+        let leaf_log = lifecycle_log();
+        let mut root = graph_fixture(root_log.get(), true, "leaf.dll", "leaf.Entry");
+        let mut leaf = lifecycle_fixture(leaf_log.get(), true, None);
+        const BASE: u64 = 0x1_8000_0000;
+        for bytes in [&mut root, &mut leaf] {
+            bytes[0xb0..0xb8].copy_from_slice(&BASE.to_le_bytes());
+            bytes[0x800..0x808].copy_from_slice(&(BASE + 0x1000).to_le_bytes());
+        }
+        // A preferred-base-only parent cannot occupy its leaf's live mapping.
+        // Placement fails after leaf ATTACH, before parent ATTACH. MAP_FIXED
+        // replacement is never allowed, and rollback must detach the leaf.
+        root[0x98 + 112 + 5 * 8..0x98 + 120 + 5 * 8].fill(0);
+        let error =
+            unsafe { crate::LibrarySet::load(&[("root.dll", &root), ("leaf.dll", &leaf)], false) }
+                .err()
+                .unwrap();
+        assert!(error.contains("no DIR64 relocation targets"), "{error}");
+        assert_eq!(unsafe { (*leaf_log.get()).module as u64 }, BASE);
+        assert_eq!(
+            unsafe {
+                (
+                    (*leaf_log.get()).calls,
+                    (*leaf_log.get()).reason,
+                    (*root_log.get()).calls,
+                )
+            },
+            (2, 0, 0)
+        );
     }
     #[test]
     fn unsupported_library_features_fail_before_any_guest_initializer() {

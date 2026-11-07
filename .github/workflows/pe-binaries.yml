@@ -45,6 +45,22 @@ jobs:
         run: |
           python tools/build_pe_ordinal.py
           python tools/run_pe_ordinal.py --directory local/pe/ordinal --output local/pe/ordinal-alkyhol.json
+      - name: Load an unsorted closed DLL graph with shared dependencies from unchanged frozen binaries
+        run: |
+          python tools/build_pe_library_set.py
+          python tools/run_pe_library_set.py --directory local/pe/library-set --output local/pe/library-set-alkyhol.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe-library-set-fixture
+          path: |
+            local/pe/library-set/alkyhol_exports.dll
+            local/pe/library-set/alkyhol_dependent.dll
+            local/pe/library-set/alkyhol_ordinal.dll
+            local/pe/library-set/library-set-fixture.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe-library-set-alkyhol
+          path: local/pe/library-set-alkyhol.json
       - uses: actions/upload-artifact@v4
         with:
           name: pe-ordinal-fixture
@@ -165,6 +181,16 @@ jobs:
           path: local/pe/ordinal
       - name: Let Windows resolve identical mixed ordinal code/data thunks and forwarders
         run: python tools/run_pe_ordinal.py --directory local/pe/ordinal --output local/pe/ordinal-windows.json
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe-library-set-fixture
+          path: local/pe/library-set
+      - name: Observe Windows sharing a real dependency between the identical two consumer DLLs
+        run: python tools/run_pe_library_set.py --directory local/pe/library-set --output local/pe/library-set-windows.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe-library-set-windows
+          path: local/pe/library-set-windows.json
       - uses: actions/upload-artifact@v4
         with:
           name: pe-ordinal-windows
@@ -250,3 +276,12 @@ jobs:
           name: pe-ordinal-windows
           path: local/pe/observations
       - run: python tools/compare_pe_ordinal.py local/pe/observations/ordinal-windows.json local/pe/observations/ordinal-alkyhol.json
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe-library-set-alkyhol
+          path: local/pe/observations
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe-library-set-windows
+          path: local/pe/observations
+      - run: python tools/compare_pe_library_set.py local/pe/observations/library-set-windows.json local/pe/observations/library-set-alkyhol.json
