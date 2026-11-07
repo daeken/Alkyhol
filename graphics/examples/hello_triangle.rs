@@ -22,7 +22,11 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     let clear = device.ReadbackRGBA8(target)?;
     assert_eq!(clear.len(), width as usize * height as usize * 4);
     assert!(
-        clear.chunks_exact(4).all(|p| p == [0, 0, 255, 255]),
+        clear
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .all(|p| *p == [0, 0, 255, 255]),
         "clear/copy pixels differ"
     );
     list.reset()?;
@@ -54,8 +58,10 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     }
     assert!(
         pixels
-            .chunks_exact(4)
-            .all(|p| p == [255, 0, 0, 255] || p == [0, 0, 255, 255])
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .all(|p| *p == [255, 0, 0, 255] || *p == [0, 0, 255, 255])
     );
     // A closed list can be replayed when its declared initial states still match.
     device.ExecuteCommandLists(&list)?;
@@ -92,7 +98,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         use std::io::Write;
         let mut file = std::fs::File::create(path)?;
         write!(file, "P6\n{width} {height}\n255\n")?;
-        for p in pixels.chunks_exact(4) {
+        for p in pixels.as_chunks::<4>().0.iter() {
             file.write_all(&p[..3])?;
         }
     }
