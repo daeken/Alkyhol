@@ -535,7 +535,9 @@ to native Windows and compares actual observations. All three PE jobs pass on
 Windows/hosted records and clean physical M4 execution agree on the supported
 prefix and each distinct restriction profile. The complete native record is
 frozen at `pe/reference/root-signatures-windows-v1.json` and required by default,
-including its exact PE/source identities. See [validation](validation.md)
+including its exact PE/source identities. Strict-reference revision `16c8d50`
+passes all 27 CI jobs; clean native/hosted records and fresh physical M4 execution
+agree at that same revision, including both restriction profiles. See [validation](validation.md)
 for exact native execution evidence and the known restriction; source-ABI SDK
 bytes alone do not establish native execution of this PE. This CPU milestone does not
 add binary D3D12 device execution or game compatibility.

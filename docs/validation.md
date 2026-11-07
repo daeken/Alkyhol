@@ -6,6 +6,16 @@ See the latest direct-Metal record for current implementation evidence.
 
 ## Binary D3D12 serializers: supported layouts and a measured native difference
 
+All 27 jobs pass at strict-reference revision `16c8d50`: three
+[PE jobs](https://github.com/daeken/Alkyhol/actions/runs/42405296187) and all 24
+[conformance jobs](https://github.com/daeken/Alkyhol/actions/runs/42405296216).
+Downloaded clean Windows/hosted records and a fresh clean physical M4 execution
+at that same revision match the frozen PE/source identity, full supported prefix
+and each distinct restriction profile. Normal and forced-rebase host results
+agree. Every earlier frozen binary, SDK/source/COM, shader and Metal comparison
+still passes. This is CPU serialization/COM evidence, not binary device or game
+compatibility.
+
 All three [PE jobs](https://github.com/daeken/Alkyhol/actions/runs/42405009703)
 pass on `b882623`. Downloaded clean native Windows/hosted Mac records and a clean
 physical M4 record at that same revision have the identical PE/source identities.
@@ -15,9 +25,11 @@ confirm the known 65-constant difference below; neither is called equivalent.
 The complete native record is frozen at `pe/reference/root-signatures-windows-v1.json`.
 Drivers/comparisons now require that exact PE/source/native record by default;
 missing-reference and joint-drift negatives bring the Python suite to 173 tests.
-All 24 conformance jobs passed on original implementation revision `bad2ead`
-([42404379585](https://github.com/daeken/Alkyhol/actions/runs/42404379585)); inspect
-the later strict revision separately for its full CI result.
+All 24 conformance jobs also pass at `b882623`
+([42405009639](https://github.com/daeken/Alkyhol/actions/runs/42405009639)), so that
+pre-freeze revision passes all 27 jobs too. Original implementation `bad2ead`
+passes all 24 conformance jobs ([42404379585](https://github.com/daeken/Alkyhol/actions/runs/42404379585));
+its new PE comparison initially failed as described below.
 
 The new binary d3d12 provider bridges both root serializers to the existing open
 Rust version-1.0 implementation and wraps both success/error COM blobs in Win64
@@ -32,7 +44,7 @@ native Windows d3d12 execution. This final fixture now passes the native and
 hosted comparisons above; it preserves the observed restriction separately.
 
 All 52 PE host tests, four lifetime compiler checks, 19 portable arm64 tests,
-171 Python tests and PE Clippy pass locally. New host units cover both actual
+173 Python tests and PE Clippy pass locally. New host units cover both actual
 Win64 exports, ABI layout/deep ownership, returned diagnostic virtual calls,
 optional outputs and unsupported versions; closed bundles bind all three COM
 builtin exports and reject replacement of the d3d12 namespace. Native failure
