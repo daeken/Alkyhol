@@ -35,6 +35,19 @@ omitting the real template provider fails to link. Root Rust tests/Clippy and al
 44 Python tests pass locally. These new CPU probes use x86-64 via Rosetta, not a
 Metal graphics execution path.
 
+Native COM qualification: Windows run
+[42354745967](https://github.com/daeken/Alkyhol/actions/runs/42354745967) passed the
+serial blob identity/ownership phase, then terminated with heap-corruption status
+`c0000374` in the uncoordinated shared-MTA reference stress. Initializing all threads
+into the same MTA did not resolve that failure. This does **not** establish its
+precise cause or a native guarantee of atomic blob ownership. Shared comparison
+now measures explicitly synchronized client reference calls; the original
+uncoordinated stress remains a separate Rust-only extension test. Neither native
+failure is counted as successful parity or silently discarded. Logs are retained
+as CI diagnostics. COM apartment rules are documented by
+[Microsoft](https://learn.microsoft.com/windows/win32/com/single-threaded-and-multithreaded-communication);
+they do not by themselves promise this object's reference implementation is atomic.
+
 The existing CI now also runs the same COM/DirectInput probe sources against
 independent native Windows SDK libraries and compares their outputs/descriptor
 bytes with Rust. Native results for that addition remain pending. Prior intake

@@ -22,7 +22,9 @@ launch the Rust reference port or claim an original frame. See
 
 C++ virtual-call/WRL probes execute the real Rust ID3DBlob implementation,
 including canonical IUnknown identity, failed QueryInterface output clearing,
-copy/move/attach/detach lifetimes and concurrent references. Additional executed
+copy/move/attach/detach lifetimes and synchronized shared-MTA references. Uncoordinated
+atomic reference stress is a separate Rust extension: the native SDK experiment
+crashed during that phase even with common-MTA initialization. Additional executed
 probes cover apartment nesting, header/task contracts, actual file I/O/metadata,
 UTF-32 text bridges, wide CRT conventions, compiler extensions and failure outputs.
 Native Windows comparison is now configured for the shared COM/DirectInput probes;

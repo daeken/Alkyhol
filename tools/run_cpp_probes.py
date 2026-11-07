@@ -40,6 +40,10 @@ def run(output,compiler_tests=False):
         if result.returncode:raise RuntimeError(f'{name} execution failed: {result.returncode}\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}')
         records.append({'source':str(source.relative_to(ROOT)),'source_sha256':hashlib.sha256(source.read_bytes()).hexdigest(),'command':command,'executable_sha256':hashlib.sha256(executable.read_bytes()).hexdigest()})
         if name in shared:observations[name]=result.stdout
+        if name=='com_blob' and not windows:
+            stress=subprocess.run([str(executable),'--unsynchronized-stress'],cwd=build,capture_output=True,text=True)
+            (build/'com_blob.atomic-extension.log').write_text(stress.stdout+stress.stderr)
+            if stress.returncode:raise RuntimeError('Rust atomic COM extension failed: '+stress.stderr)
         print(f'{name}: passed')
     if compiler_tests:
         if windows:raise ValueError('patched Clang tests run separately on macOS')
