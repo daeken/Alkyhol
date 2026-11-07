@@ -530,7 +530,12 @@ python3 tools/run_pe_root_signatures.py --fixture local/pe/root-signatures/root-
 
 Physical M4/Rosetta normal/forced-rebase execution passes, including the exact
 input/extracted PE SHA-256 check. The PE workflow transfers that identical file
-to native Windows and compares actual observations. See [validation](validation.md)
+to native Windows and compares actual observations. All three PE jobs pass on
+`b882623` ([run](https://github.com/daeken/Alkyhol/actions/runs/42405009703)); clean
+Windows/hosted records and clean physical M4 execution agree on the supported
+prefix and each distinct restriction profile. The complete native record is
+frozen at `pe/reference/root-signatures-windows-v1.json` and required by default,
+including its exact PE/source identities. See [validation](validation.md)
 for exact native execution evidence and the known restriction; source-ABI SDK
 bytes alone do not establish native execution of this PE. This CPU milestone does not
 add binary D3D12 device execution or game compatibility.

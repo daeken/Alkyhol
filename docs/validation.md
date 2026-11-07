@@ -6,6 +6,19 @@ See the latest direct-Metal record for current implementation evidence.
 
 ## Binary D3D12 serializers: supported layouts and a measured native difference
 
+All three [PE jobs](https://github.com/daeken/Alkyhol/actions/runs/42405009703)
+pass on `b882623`. Downloaded clean native Windows/hosted Mac records and a clean
+physical M4 record at that same revision have the identical PE/source identities.
+All 1180 supported-prefix bytes agree, including the full 980 serialized bytes
+and actual Win64 COM observations. The separate 36-byte native/host profiles
+confirm the known 65-constant difference below; neither is called equivalent.
+The complete native record is frozen at `pe/reference/root-signatures-windows-v1.json`.
+Drivers/comparisons now require that exact PE/source/native record by default;
+missing-reference and joint-drift negatives bring the Python suite to 173 tests.
+All 24 conformance jobs passed on original implementation revision `bad2ead`
+([42404379585](https://github.com/daeken/Alkyhol/actions/runs/42404379585)); inspect
+the later strict revision separately for its full CI result.
+
 The new binary d3d12 provider bridges both root serializers to the existing open
 Rust version-1.0 implementation and wraps both success/error COM blobs in Win64
 vtables. The owned unchanged PE SHA-256 is
@@ -15,7 +28,8 @@ bytes. The common 1180-byte prefix contains all 980 bytes of the six previously
 frozen SDK root containers plus actual legacy/versioned success, canonical COM
 identity and virtual reference releases. The extracted Mach-O payload equals the input.
 The fixture uses no CRT/SDK headers or device and is transferred unchanged for
-native Windows d3d12 execution. Full execution of this final fixture is pending.
+native Windows d3d12 execution. This final fixture now passes the native and
+hosted comparisons above; it preserves the observed restriction separately.
 
 All 52 PE host tests, four lifetime compiler checks, 19 portable arm64 tests,
 171 Python tests and PE Clippy pass locally. New host units cover both actual

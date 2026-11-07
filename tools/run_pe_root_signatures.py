@@ -75,13 +75,10 @@ def main():
     for name, value in manifest['sources'].items():
         if hashlib.sha256((ROOT/name).read_bytes()).hexdigest() != value:
             raise ValueError('serializer source identity changed')
-    # The first native observation establishes the new PE reference. The older
-    # source-ABI SDK bytes above are already mandatory on that first execution.
-    if REFERENCE.exists():
-        reference = json.loads(REFERENCE.read_text(encoding='utf-8'))
-        for field in ['pe_sha256', 'sources']:
-            if manifest[field] != reference[field]:
-                raise ValueError('changed frozen serializer PE fixture')
+    reference = json.loads(REFERENCE.read_text(encoding='utf-8'))
+    for field in ['pe_sha256', 'sources']:
+        if manifest[field] != reference[field]:
+            raise ValueError('changed frozen serializer PE fixture')
     windows = platform.system() == 'Windows'
     if windows:
         executable, executed, backend = pe, hashlib.sha256(pe.read_bytes()).hexdigest(), NATIVE

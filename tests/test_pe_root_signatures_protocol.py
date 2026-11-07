@@ -1,14 +1,17 @@
 """Synthetic serializer protocol negatives; actual native evidence is separate."""
 import copy
+import json
 import subprocess
 import sys
 from pathlib import Path
 import unittest
+import tempfile
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'tools'))
 from build_pe_root_signatures import SOURCES
-from run_pe_root_signatures import NATIVE, HOST, decode, expected_bytes
+from run_pe_root_signatures import REFERENCE, NATIVE, HOST, decode, expected_bytes
 from compare_pe_root_signatures import compare
 
 
@@ -76,6 +79,21 @@ class RootSignaturePeProtocolTests(unittest.TestCase):
                 reports[1]['forced_rebase_observation'] = copy.deepcopy(reports[1]['observation'])
             with self.assertRaises(ValueError):
                 compare(reports, reference=self.reports()[0])
+
+    def test_frozen_native_identity_and_default_reference_are_required(self):
+        native = json.loads(REFERENCE.read_text(encoding='utf-8'))
+        host = copy.deepcopy(native)
+        host.update(backend=HOST, observation=decode(self.execution()))
+        host['forced_rebase_observation'] = copy.deepcopy(host['observation'])
+        self.assertEqual(compare([native, host]), 1180)
+        with tempfile.TemporaryDirectory() as directory:
+            with mock.patch('compare_pe_root_signatures.REFERENCE', Path(directory)/'missing.json'):
+                with self.assertRaises(FileNotFoundError):
+                    compare([native, host])
+        for r in [native, host]:
+            r.update(pe_sha256='e'*64, executed_pe_sha256='e'*64)
+        with self.assertRaises(ValueError):
+            compare([native, host])
 
     def test_identity_raw_results_backends_and_joint_frozen_drift_fail(self):
         for field, value in [('tracked_tree_clean', False), ('schema_version', 2),

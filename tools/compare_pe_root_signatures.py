@@ -29,14 +29,13 @@ def compare(reports, reference=None):
             raise ValueError(f'serializer PE evidence mismatch: {field}')
     if native['forced_rebase_observation'] is not None or host['forced_rebase_observation'] != expected_host:
         raise ValueError('missing exact forced-rebase serializer execution')
-    if reference is None and REFERENCE.exists():
+    if reference is None:
         reference = json.loads(REFERENCE.read_text(encoding='utf-8'))
-    if reference is not None:
-        if reference['backend'] != NATIVE or reference['tracked_tree_clean'] is not True:
-            raise ValueError('invalid frozen native serializer reference')
-        for field in ['pe_sha256', 'sources', 'observation']:
-            if native[field] != reference[field]:
-                raise ValueError(f'changed frozen native serializer evidence: {field}')
+    if reference['backend'] != NATIVE or reference['tracked_tree_clean'] is not True:
+        raise ValueError('invalid frozen native serializer reference')
+    for field in ['pe_sha256', 'sources', 'observation']:
+        if native[field] != reference[field]:
+            raise ValueError(f'changed frozen native serializer evidence: {field}')
     common = len(expected_bytes())-9*4
     if bytes.fromhex(native['observation']['stdout_hex'])[:common] != bytes.fromhex(host['observation']['stdout_hex'])[:common]:
         raise ValueError('supported six-layout observations differ')
