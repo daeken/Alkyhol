@@ -1,0 +1,6 @@
+/target/
+/graphics/target/
+/local/
+__pycache__/
+*.pyc
+*.ppm
