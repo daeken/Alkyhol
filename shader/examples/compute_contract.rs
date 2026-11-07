@@ -13,6 +13,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         || shader.threads_per_group != Some([8, 1, 1])
         || shader.resources.len() != 4
         || shader.requires_ray_query
+        || shader.buffer_sizes.is_some()
     {
         return Err("unexpected compute contract interface".into());
     }

@@ -84,6 +84,48 @@ pub struct Translation {
     pub dxil_spirv_version: (u32, u32, u32),
     pub requires_ray_query: bool,
     pub fragment_output_components: Vec<(u32, u32)>,
+    /// Present only when generated MSL needs byte lengths for GetDimensions.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub buffer_sizes: Option<BufferSizeBinding>,
+}
+
+/// Explicit auxiliary binding for raw/structured buffer length queries. Slots
+/// 0..24 belong to ordinary resources; slot 25 holds 24 u32 byte lengths.
+#[derive(Debug, Serialize)]
+pub struct BufferSizeBinding {
+    pub metal_index: u32,
+    pub word_count: u32,
+    pub resource_indices: Vec<u32>,
+}
+impl BufferSizeBinding {
+    /// Encode explicitly supplied lengths for every listed resource. Missing,
+    /// duplicate, unrelated or unrepresentable measurements fail; unused slots
+    /// are zero. These lengths describe the bound zero-offset buffer extent.
+    pub fn encode(&self, byte_lengths: &[(u32, u64)]) -> Result<Vec<u32>> {
+        let expected: std::collections::BTreeSet<_> =
+            self.resource_indices.iter().copied().collect();
+        if self.metal_index != 25
+            || self.word_count != 24
+            || expected.is_empty()
+            || expected.len() != self.resource_indices.len()
+            || expected.iter().any(|&i| i >= 24)
+        {
+            return Err("invalid buffer size binding metadata".into());
+        }
+        let mut remaining = expected;
+        let mut words = vec![0; self.word_count as usize];
+        for &(index, bytes) in byte_lengths {
+            if !remaining.remove(&index) {
+                return Err("duplicate or unrelated buffer byte length".into());
+            }
+            words[index as usize] =
+                u32::try_from(bytes).map_err(|_| "buffer byte length exceeds u32")?;
+        }
+        if !remaining.is_empty() {
+            return Err("missing buffer byte length".into());
+        }
+        Ok(words)
+    }
 }
 
 /// Original D3D vertex semantics mapped to Metal attribute locations.
@@ -518,19 +560,31 @@ pub fn translate_dxil_with_options(
     let pad_fragment_outputs = !fragment_output_components.is_empty();
     let mut options = msl::CompilerOptions::default();
     options.pad_fragment_output_components = pad_fragment_outputs;
+    options.buffer_size_buffer_index = 25;
     options.version = msl::MslVersion::new(2, 3, 0);
     let artifact = compiler
         .compile(&options)
         .map_err(|e| format!("SPIR-V to MSL: {e}"))?;
     let requirements = artifact.buffer_requirements();
     if requirements.needs_swizzle_buffer
-        || requirements.needs_buffer_size_buffer
         || requirements.needs_output_buffer
         || requirements.needs_patch_output_buffer
         || requirements.needs_input_threadgroup_buffer
     {
         return Err("unsupported auxiliary Metal buffer requirement".into());
     }
+    let buffer_sizes = requirements
+        .needs_buffer_size_buffer
+        .then(|| BufferSizeBinding {
+            metal_index: 25,
+            word_count: 24,
+            resource_indices: state
+                .resources
+                .values()
+                .filter(|r| r.kind == "RawBuffer" || r.kind == "StructuredBuffer")
+                .map(|r| r.metal_index)
+                .collect(),
+        });
     let entry_point = artifact
         .cleansed_entry_point_name(spirv_entry.as_str(), stage.model())
         .map_err(|e| e.to_string())?
@@ -546,6 +600,7 @@ pub fn translate_dxil_with_options(
         dxil_spirv_version: dxil_spirv::version(),
         requires_ray_query,
         fragment_output_components,
+        buffer_sizes,
     })
 }
 
@@ -726,5 +781,59 @@ mod binding_tests {
             assert!(bindings.resources.is_empty());
             assert!(bindings.error.is_some());
         }
+    }
+}
+
+#[cfg(test)]
+mod buffer_size_tests {
+    use super::*;
+    #[test]
+    fn lengths_encode_by_metal_index_with_explicit_zero_and_u32_maximum() {
+        let binding = BufferSizeBinding {
+            metal_index: 25,
+            word_count: 24,
+            resource_indices: vec![0, 23],
+        };
+        let words = binding.encode(&[(23, u32::MAX as u64), (0, 0)]).unwrap();
+        assert_eq!(words.len(), 24);
+        assert!(words[..23].iter().all(|&w| w == 0));
+        assert_eq!(words[23], u32::MAX);
+        assert_eq!(
+            words,
+            binding.encode(&[(0, 0), (23, u32::MAX as u64)]).unwrap()
+        );
+    }
+    #[test]
+    fn missing_duplicate_unrelated_oversized_lengths_and_bad_metadata_fail() {
+        let binding = BufferSizeBinding {
+            metal_index: 25,
+            word_count: 24,
+            resource_indices: vec![2],
+        };
+        for lengths in [
+            vec![],
+            vec![(2, 4), (2, 8)],
+            vec![(1, 4)],
+            vec![(2, u32::MAX as u64 + 1)],
+            vec![(2, 4), (23, 4)],
+        ] {
+            assert!(binding.encode(&lengths).is_err());
+        }
+        for (index, count, indices) in [
+            (0, 24, vec![2]),
+            (25, 0, vec![2]),
+            (25, u32::MAX, vec![2]),
+            (25, 24, vec![]),
+            (25, 24, vec![2, 2]),
+            (25, 24, vec![24]),
+        ] {
+            let invalid = BufferSizeBinding {
+                metal_index: index,
+                word_count: count,
+                resource_indices: indices,
+            };
+            assert!(invalid.encode(&[(2, 4)]).is_err());
+        }
+        assert_eq!(binding.encode(&[(2, 4)]).unwrap()[2], 4);
     }
 }

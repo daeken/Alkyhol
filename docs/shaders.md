@@ -152,3 +152,20 @@ texture slots with a separate buffer UAV, then rejects the same 128 SRVs plus a
 texture UAV because both consume Metal's shared texture namespace. This checks
 the translator's allocation contract; the 128-texture boundary is not a new
 native GPU execution observation.
+
+## Buffer length queries
+
+Raw/structured SRV and UAV `GetDimensions` now exposes an optional `buffer_sizes`
+binding at reserved Metal buffer slot 25. `BufferSizeBinding::encode` requires
+explicit byte lengths for every listed Metal buffer index and produces 24 u32
+words; missing/duplicate/unrelated lengths, values over u32 and malformed metadata
+fail. Callers must bind this table alongside ordinary resources. Other auxiliary
+buffer requirements remain unsupported. Existing shaders without length queries
+omit this metadata and regenerate unchanged.
+
+Physical M4 tests query four actual buffer extents across two allocations, verify
+24-byte structured stride and indexed tag loads, raw loads/stores, and untouched
+tails. All 28 shader tests pass (seven host units, 21 integration tests), plus
+Clippy and exact sample regeneration. This is Metal/host evidence; native Windows
+GetDimensions comparison has not yet been measured. Existing native compute
+fixtures and comparators are unchanged.

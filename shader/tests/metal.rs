@@ -338,3 +338,83 @@ fn render_pair(file: &str, with_vertices: bool) -> Vec<u8> {
     );
     pixels
 }
+
+#[test]
+fn buffer_dimensions_use_explicit_measured_lengths_and_original_struct_stride() {
+    let host = pollster::block_on(D3D12CreateDevice(false)).unwrap();
+    eprintln!("buffer dimension adapter: {:?}", host.adapter_info());
+    let device = host.metal_device();
+    let shader = translate("buffer_dimensions.hlsl", "CSMain", Stage::Compute);
+    let sizes = shader
+        .buffer_sizes
+        .as_ref()
+        .expect("explicit size-table binding");
+    assert_eq!((sizes.metal_index, sizes.word_count), (25, 24));
+    assert_eq!(sizes.resource_indices.len(), 4);
+    let pipeline = pipeline(device, &shader);
+    for (raw_count, vertex_count, output_count, writable_count) in [(13, 7, 12, 5), (3, 1, 16, 9)] {
+        let mut vertices = vec![0u32; vertex_count * 6];
+        for i in 0..vertex_count {
+            vertices[i * 6 + 3] = 0xabc00000 + i as u32;
+        }
+        let raw: Vec<u32> = (0..raw_count).map(|i| 0x76540000 + i as u32).collect();
+        let buffers = [
+            buffer(device, &vertices),
+            buffer(device, &raw),
+            buffer(device, &vec![0xdeadbeef; output_count]),
+            buffer(device, &vec![0xdeadbeef; writable_count]),
+        ];
+        let mut lengths = Vec::new();
+        let command = host.metal_queue().new_command_buffer();
+        let encoder = command.new_compute_command_encoder();
+        encoder.set_compute_pipeline_state(&pipeline);
+        for ((class, space, register), buffer) in [
+            (RegisterClass::Srv, 0, 7),
+            (RegisterClass::Srv, 1, 3),
+            (RegisterClass::Uav, 0, 5),
+            (RegisterClass::Uav, 0, 9),
+        ]
+        .into_iter()
+        .zip(&buffers)
+        {
+            let resource = shader
+                .resources
+                .iter()
+                .find(|r| (r.class, r.space, r.register) == (class, space, register))
+                .unwrap();
+            encoder.set_buffer(resource.metal_index as u64, Some(buffer), 0);
+            lengths.push((resource.metal_index, buffer.length()));
+        }
+        let words = sizes.encode(&lengths).unwrap();
+        encoder.set_bytes(
+            sizes.metal_index as u64,
+            std::mem::size_of_val(words.as_slice()) as u64,
+            words.as_ptr().cast(),
+        );
+        encoder.dispatch_thread_groups(MTLSize::new(1, 1, 1), MTLSize::new(1, 1, 1));
+        encoder.end_encoding();
+        complete(command).unwrap();
+        let actual = unsafe {
+            std::slice::from_raw_parts(buffers[2].contents().cast::<u32>(), output_count)
+        };
+        assert_eq!(
+            &actual[..8],
+            &[
+                (raw_count * 4) as u32,
+                vertex_count as u32,
+                24,
+                output_count as u32,
+                4,
+                (writable_count * 4) as u32,
+                0xabc00000 + vertex_count as u32 - 1,
+                *raw.last().unwrap()
+            ]
+        );
+        assert!(actual[8..].iter().all(|&v| v == 0xdeadbeef));
+        let writable = unsafe {
+            std::slice::from_raw_parts(buffers[3].contents().cast::<u32>(), writable_count)
+        };
+        assert_eq!(writable[0], 0x13579bdf);
+        assert!(writable[1..].iter().all(|&v| v == 0xdeadbeef));
+    }
+}

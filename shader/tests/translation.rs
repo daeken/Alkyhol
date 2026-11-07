@@ -330,3 +330,28 @@ fn texture_slot_budget_counts_entire_arrays_and_both_srv_uav_namespaces() {
         }
     }
 }
+
+#[test]
+fn buffer_dimension_translation_reports_a_separate_reserved_binding() {
+    let shader = translate_dxil(
+        &compile("buffer_dimensions.hlsl", "CSMain", Stage::Compute),
+        "CSMain",
+    )
+    .unwrap();
+    let sizes = shader.buffer_sizes.as_ref().unwrap();
+    assert_eq!((sizes.metal_index, sizes.word_count), (25, 24));
+    assert_eq!(sizes.resource_indices, vec![0, 1, 2, 3]);
+    assert!(
+        shader
+            .resources
+            .iter()
+            .filter(|r| r.namespace == MetalNamespace::Buffer)
+            .all(|r| r.metal_index < 24)
+    );
+    assert!(
+        translate_dxil(&compile("compute.hlsl", "CSMain", Stage::Compute), "CSMain")
+            .unwrap()
+            .buffer_sizes
+            .is_none()
+    );
+}
