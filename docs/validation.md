@@ -4,6 +4,36 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## Dynamic AMD64 function-table metadata: physical M4, native run pending
+
+RtlAddFunctionTable/RtlLookupFunctionEntry/RtlDeleteFunctionTable now maintain a
+bounded explicit dynamic metadata list inside ProcessContext. Real Win64 wrappers
+use one-byte BOOLEAN and original 12-byte record pointers with full-width bases.
+Lookup, half-open boundaries, gaps, independent table deletion and re-registration
+are implemented. This does not interpret recipes, register Mach-O unwind frames,
+restore registers or dispatch exceptions; RtlVirtualUnwind/RtlUnwindEx/callback
+tables remain unresolved and `.pdata` startup is still rejected. Unsupported
+lookup history/context/output shapes fail loudly rather than returning a leaf miss.
+
+The owned unchanged PE SHA-256 is
+`f0a287c6795475eb1d33e86badd9813239f21ad1e57b2180c9a34e677f6f5d49`.
+Physical M4/Rosetta normal and forced-rebase executions agree on all 37 raw words:
+original record/base/field identities, exact entry/end/gap lookups, two independent
+table lifecycles and actual calls to three emitted functions through resolved
+base/RVA addresses. A minimal valid leaf unwind header is supplied; no exception
+or unwind is executed. The extracted Mach-O PE payload equals the input. Native
+Windows receives the identical PE; that independent comparison is pending.
+
+All 64 PE host tests, eight lifetime compiler checks, 19 portable arm64 tests,
+196 Python tests and PE Clippy pass locally. Four host units cover real Win64
+lookup/delete/base identity, metadata caps/shapes/overflow, scoped teardown and
+host-thread isolation, plus child-process status-78 rejection of unsupported
+lookup forms. Abstract metadata bound tests and host invalid-input/miss-output
+contracts are separate from native observations and do not establish live unwind
+support. The older generated-code fixture still passes locally. No earlier frozen
+fixture/reference, sample/shader/asset or game data changes. No game compatibility
+claim; this is a metadata milestone toward future exception support.
+
 ## Guest-generated code and memory permissions: native Windows, hosted Mac and physical M4
 
 All 27 jobs pass at strict-reference revision `7c6bf36`: three

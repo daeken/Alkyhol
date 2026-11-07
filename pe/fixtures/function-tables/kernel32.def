@@ -1,0 +1,12 @@
+LIBRARY KERNEL32.dll
+EXPORTS
+    RtlAddFunctionTable
+    RtlDeleteFunctionTable
+    RtlLookupFunctionEntry
+    VirtualAlloc
+    VirtualProtect
+    VirtualFree
+    FlushInstructionCache
+    GetStdHandle
+    WriteFile
+    ExitProcess

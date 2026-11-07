@@ -80,6 +80,7 @@ struct State {
     environment: BTreeMap<String, Vec<u16>>,
     standard: [usize; 3],
     objects: BTreeMap<usize, Object>,
+    functions: crate::function_tables::Registry,
     mappings: Vec<Mapping>,
 }
 /// Installs a single-thread process view until drop. Guest code may not outlive
@@ -107,6 +108,7 @@ impl ProcessContext {
             environment: env,
             standard: [0; 3],
             objects: BTreeMap::new(),
+            functions: Default::default(),
             mappings: Vec::new(),
         };
         for i in 0..3 {
@@ -146,6 +148,11 @@ impl Drop for ProcessContext {
             p.borrow_mut().take();
         });
     }
+}
+pub(crate) fn with_function_tables<T>(
+    f: impl FnOnce(Option<&mut crate::function_tables::Registry>) -> T,
+) -> T {
+    PROCESS.with(|slot| f(slot.borrow_mut().as_mut().map(|state| &mut state.functions)))
 }
 fn fail(error: u32) -> i32 {
     ffi::SetLastError(error);

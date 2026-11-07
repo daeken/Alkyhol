@@ -10,6 +10,8 @@ mod abi;
 #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
 mod binary_com;
 #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
+mod function_tables;
+#[cfg(all(target_os = "macos", target_arch = "x86_64"))]
 mod module_context;
 #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
 pub use module_context::ModuleContext;

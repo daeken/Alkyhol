@@ -95,6 +95,8 @@ kernel32 names total); these require an explicit ModuleContext for supported
 DLL lookups and do not create fake builtin/main-image module handles.
 VirtualProtect, VirtualFree and FlushInstructionCache add bounded owned-allocation
 protection, release and generated-code execution (39 kernel32 names total).
+Explicit dynamic function-table registration/lookup/removal adds three Rtl names
+(42 kernel32 names total); this is metadata support, with unwinding still separate.
 
 The existing [restricted kernel contracts](contracts.md) still apply: for example,
 file sharing must be FILE_SHARE_READ|WRITE|DELETE, security/template/named objects
@@ -712,3 +714,50 @@ code/memory API evidence, not general JIT, SEH or game compatibility.
 Primary contracts: [VirtualProtect](https://learn.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-virtualprotect),
 [VirtualFree](https://learn.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-virtualfree)
 and [FlushInstructionCache](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-flushinstructioncache).
+
+## Explicit dynamic function-table metadata
+
+RtlAddFunctionTable, RtlLookupFunctionEntry and RtlDeleteFunctionTable now maintain
+an explicit dynamic AMD64 table list in the current ProcessContext. The ABI uses
+the real one-byte BOOLEAN returns and 12-byte, DWORD-aligned RUNTIME_FUNCTION
+records. Lookup returns pointers to the **original caller-owned records** and the
+full 64-bit base. Functions use half-open address ranges; gaps/end boundaries miss.
+Deletion removes only the exact registered array, leaves other tables available
+and permits re-registration. Context teardown clears snapshots before its owned
+code allocations are unmapped; it never frees a caller's record array.
+
+The finite subset accepts 1..65536 sorted nonoverlapping direct entries per call,
+at most 65536 entries/64 tables in total and disjoint table address envelopes.
+Unwind RVAs must be nonzero/DWORD-aligned; indirect entries and overlapping table
+envelopes fail explicitly. Records and code/unwind storage must stay valid and
+immutable until deletion. Registration snapshots metadata; it does not interpret
+or validate unwind recipe bytes, register Mach-O stack frames, unwind registers
+or dispatch Windows exceptions. RtlVirtualUnwind, RtlUnwindEx, callback/growable
+tables and static `.pdata` startup remain unavailable. Existing loader startup
+gates are preserved. Guest threads/reentrant callbacks remain unsupported.
+
+Lookup currently requires a nonnull image-base output and NULL history pointer.
+Unsupported lookup context/history/output forms terminate with an explicit status
+78 diagnostic rather than being reported as a successful leaf miss. BOOLEAN APIs
+fail honestly for unsupported registration contexts/shapes. Host invalid-input
+errors and image-base output on misses are separate from native evidence.
+
+The owned unchanged PE emits three actual Win64 leaf functions in RX memory,
+provides a minimal version-1 unwind header, registers two arrays and queries their
+exact entries, base, code/end/gap boundaries and independent lifetimes. It calls
+all three functions through their lookup-resolved base/RVA targets, then deletes,
+re-registers and releases code. No exception is raised and no frame is unwound.
+
+```sh
+python3 tools/build_pe_function_tables.py
+python3 tools/run_pe_function_tables.py --fixture local/pe/function-tables/function-tables.exe --output local/pe/function-tables-alkyhol.json
+```
+
+Physical M4/Rosetta normal/forced-rebase execution agrees on all 37 raw words.
+Native evidence and executed revisions are recorded in [validation](validation.md).
+This is finite function-table API evidence, not exception or game compatibility.
+
+Primary contracts: [RtlAddFunctionTable](https://learn.microsoft.com/en-us/windows/win32/api/winnt/nf-winnt-rtladdfunctiontable),
+[RtlLookupFunctionEntry](https://learn.microsoft.com/en-us/windows/win32/api/winnt/nf-winnt-rtllookupfunctionentry),
+[RtlDeleteFunctionTable](https://learn.microsoft.com/en-us/windows/win32/api/winnt/nf-winnt-rtldeletefunctiontable)
+and [AMD64 function/unwind record layout](https://learn.microsoft.com/en-us/cpp/build/exception-handling-x64).

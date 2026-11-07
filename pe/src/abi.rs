@@ -149,6 +149,7 @@ pub(crate) fn resolve(module: &str, name: &str) -> Option<usize> {
     if module.eq_ignore_ascii_case("kernel32.dll") {
         return shims::address(name)
             .or_else(|| crate::process::address(name))
+            .or_else(|| crate::function_tables::address(name))
             .or_else(|| crate::module_context::address(name));
     }
     if module.eq_ignore_ascii_case("d3dcompiler_47.dll") {
@@ -201,6 +202,17 @@ mod tests {
         assert!(resolve("kernel32.dll", "GetModuleHandleA").is_none());
         assert!(resolve("kernel32.dll", "LoadLibraryW").is_none());
         assert!(resolve("kernel32.dll", "FreeLibrary").is_none());
+        for name in [
+            "RtlAddFunctionTable",
+            "RtlDeleteFunctionTable",
+            "RtlLookupFunctionEntry",
+        ] {
+            assert!(resolve("kernel32.dll", name).is_some());
+            assert!(resolve("vendor.dll", name).is_none());
+        }
+        assert!(resolve("kernel32.dll", "RtlVirtualUnwind").is_none());
+        assert!(resolve("kernel32.dll", "RtlUnwindEx").is_none());
+        assert!(resolve("kernel32.dll", "RtlInstallFunctionTableCallback").is_none());
         assert!(resolve("D3DCOMPILER_47.dll", "D3DCreateBlob").is_some());
         assert!(resolve("D3D12.DLL", "D3D12SerializeRootSignature").is_some());
         assert!(resolve("d3d12.dll", "D3D12SerializeVersionedRootSignature").is_some());

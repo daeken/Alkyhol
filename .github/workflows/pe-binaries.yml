@@ -69,6 +69,20 @@ jobs:
         run: |
           python tools/build_pe_generated_code.py
           python tools/run_pe_generated_code.py --fixture local/pe/generated-code/generated-code.exe --output local/pe/generated-code-alkyhol.json
+      - name: Register look up and remove dynamic function metadata for real emitted Win64 code
+        run: |
+          python tools/build_pe_function_tables.py
+          python tools/run_pe_function_tables.py --fixture local/pe/function-tables/function-tables.exe --output local/pe/function-tables-alkyhol.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe-function-tables-fixture
+          path: |
+            local/pe/function-tables/function-tables.exe
+            local/pe/function-tables/function-tables-fixture.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe-function-tables-alkyhol
+          path: local/pe/function-tables-alkyhol.json
       - uses: actions/upload-artifact@v4
         with:
           name: pe-generated-code-fixture
@@ -289,6 +303,16 @@ jobs:
           path: local/pe/generated-code
       - name: Execute the identical PE emitting and rewriting code using native Windows APIs
         run: python tools/run_pe_generated_code.py --fixture local/pe/generated-code/generated-code.exe --output local/pe/generated-code-windows.json
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe-function-tables-fixture
+          path: local/pe/function-tables
+      - name: Observe actual Windows dynamic function metadata APIs using the identical PE
+        run: python tools/run_pe_function_tables.py --fixture local/pe/function-tables/function-tables.exe --output local/pe/function-tables-windows.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe-function-tables-windows
+          path: local/pe/function-tables-windows.json
       - uses: actions/upload-artifact@v4
         with:
           name: pe-generated-code-windows
@@ -452,3 +476,12 @@ jobs:
           name: pe-generated-code-windows
           path: local/pe/observations
       - run: python tools/compare_pe_generated_code.py local/pe/observations/generated-code-windows.json local/pe/observations/generated-code-alkyhol.json
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe-function-tables-alkyhol
+          path: local/pe/observations
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe-function-tables-windows
+          path: local/pe/observations
+      - run: python tools/compare_pe_function_tables.py local/pe/observations/function-tables-windows.json local/pe/observations/function-tables-alkyhol.json
