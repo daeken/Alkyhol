@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "backend": "native Windows LoadLibrary/GetProcAddress",
+  "dll_sha256": "423d6e191a3ebb4f4f5ce11710591edc9ebe163ece79bd35cc6fe5146d13399d",
+  "sources": {
+    "pe/fixtures/exports/library.c": "b2b9fcf9581d59e982b7754354eb8798616e0d0903b1816f786d4331ec263b96",
+    "pe/fixtures/exports/library.def": "a011d8748d774d3f147a0352277adfddc574416aa9a4610f152766a1db874493"
+  },
+  "common": {
+    "dll_name": "alkyhol_exports.dll",
+    "ordinal_base": 17,
+    "entries": [
+      {
+        "ordinal": 17,
+        "names": [
+          "Direct"
+        ],
+        "target": {
+          "rva": 4128
+        }
+      },
+      {
+        "ordinal": 18,
+        "names": [
+          "Alias"
+        ],
+        "target": {
+          "rva": 4128
+        }
+      },
+      {
+        "ordinal": 20,
+        "names": [
+          "Forwarded"
+        ],
+        "target": {
+          "forwarder": "KERNEL32.GetLastError"
+        }
+      },
+      {
+        "ordinal": 21,
+        "names": [
+          "Data"
+        ],
+        "target": {
+          "rva": 12288
+        }
+      },
+      {
+        "ordinal": 22,
+        "names": [
+          "Bss"
+        ],
+        "target": {
+          "rva": 12304
+        }
+      },
+      {
+        "ordinal": 23,
+        "names": [],
+        "target": {
+          "rva": 4160
+        }
+      }
+    ]
+  },
+  "native_only": {
+    "initialized_data": 826366246,
+    "bss_after_attach": 324508639,
+    "direct_call": 571916821,
+    "ordinal_call": 305419905,
+    "hole19": "NULL"
+  },
+  "revision": "c82d78012370fe6dab8020a111486b634683f2df",
+  "tracked_tree_clean": true
+}

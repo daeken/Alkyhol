@@ -48,6 +48,18 @@ class ExportProtocolTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             compare(reports, reference=self.reports()[0])
 
+    def test_frozen_native_reference_rejects_joint_target_and_hole_drift(self):
+        reports = self.reports()
+        for r in reports:
+            r['common']['entries'][3]['target']['rva'] += 4
+        with self.assertRaises(ValueError):
+            compare(reports, reference=self.reports()[0])
+        reports = self.reports()
+        reports[0]['native_only']['hole19'] = 'image-base'
+        with self.assertRaises(ValueError):
+            compare(reports, reference=self.reports()[0])
+
+
 
 if __name__ == '__main__':
     unittest.main()

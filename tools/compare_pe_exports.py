@@ -30,7 +30,7 @@ def compare(reports, reference=None):
     only = native['native_only']
     if only['initialized_data'] != 0x31415926 or only['bss_after_attach'] != 0x13579bdf or only['direct_call'] != ((7 * 33) ^ 11 ^ 0x31415926 ^ 0x13579bdf) or only['ordinal_call'] != 0x12345681:
         raise ValueError('missing actual native DLL initialization/call observations')
-    if reference is None and REFERENCE.exists():
+    if reference is None:
         reference = json.loads(REFERENCE.read_text(encoding='utf-8'))
     if reference is not None:
         if reference['backend'] != native['backend'] or reference['tracked_tree_clean'] is not True:

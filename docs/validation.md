@@ -4,7 +4,24 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
-## DLL export reference probe: native execution pending
+## DLL export reference probe: native Windows observations
+
+The native Windows and Rust metadata comparison now passes in
+[42388553558](https://github.com/daeken/Alkyhol/actions/runs/42388553558) on `c82d780`;
+all three PE jobs pass, retaining both previous frozen executable comparisons.
+Downloaded clean Windows/hosted reports and a clean physical M4 **metadata-only**
+run agree on all six export entries and DLL SHA-256
+`423d6e191a3ebb4f4f5ce11710591edc9ebe163ece79bd35cc6fe5146d13399d`.
+Native Windows additionally observes initialized data `0x31415926`, BSS after
+DllMain attach `0x13579bdf`, direct-call result `571916821`, ordinal-call result
+`305419905`, and NULL for sparse ordinal 19. It resolves the forwarder to the
+actual kernel32 GetLastError address and successfully frees the DLL. Those call/
+initialization/unload observations remain **Windows-only**, not Rust execution.
+The complete native report is frozen at `pe/reference/exports-windows-v1.json`,
+common/native-only payload SHA-256
+`e4353868555f99335062944073385952865c446ba7a3e55cf79110a54713351d`. Future
+pairs must match its exact DLL/source/common/native-only identities. A new
+joint-target/hole drift test brings Python coverage to 137 passing tests.
 
 An owned no-CRT PE64 DLL is now built once with open Clang/LLVM and transferred
 unchanged to the existing Windows PE workflow. Its source/.def contract contains
@@ -19,9 +36,9 @@ are explicitly separate from common metadata and must not be attributed to Rust.
 
 Local metadata inspection, 31 PE Rust tests on physical M4/x86-64, 17 portable
 arm64 tests, 136 Python tests, PE formatting/Clippy and both existing executable
-observers pass. Native Windows execution/comparison of this new DLL probe remains
-pending CI; the definition is not execution evidence. No Rust DLL lifecycle or
-GetProcAddress bridge is added. Existing native fixtures and original samples are
+observers passed before the native run recorded above. This is DLL metadata
+comparison with actual Windows lookups; no Rust DLL lifecycle or GetProcAddress
+bridge is added. Existing native fixtures and original samples are
 unchanged. See [the probe contract](pe.md#owned-dll-export-reference-probe).
 
 ## DLL export metadata: host-only foundation

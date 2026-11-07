@@ -196,8 +196,12 @@ Windows additionally observes DllMain's BSS initialization, real exported-functi
 returns through Win64 ABI, initialized data, the result of a sparse-ordinal lookup
 (without dereferencing it), and successful FreeLibrary. Those fields are labeled
 `native_only`; Rust must report null there. The sparse ordinal is recorded without
-guessing that Windows necessarily returns NULL. Native execution is pending the
-initial workflow run; local parser/protocol units are not native evidence.
+guessing that Windows necessarily returns NULL. Native CI 42388553558 on
+`c82d780` measured NULL for hole 19, successful attach/calls and forwarding;
+Rust still performs metadata inspection only. Six common entries agree on
+native Windows, hosted Rust and physical M4 metadata inspection. The native
+report is frozen at `pe/reference/exports-windows-v1.json`; local parser/protocol
+units remain separate evidence.
 `tools/compare_pe_exports.py` requires distinct native and metadata-only backends,
 identical DLL/source/revision identities, clean tracked trees and equal common
 records. It also rejects invented host execution or missing native call results.
