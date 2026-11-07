@@ -480,6 +480,8 @@ the identical executable/source and all 23 output words. The complete native
 record is frozen at `pe/reference/binary-com-windows-v1.json`; drivers verify its
 PE/source identities before execution, and comparisons require its actual results.
 See [validation](validation.md) for exact executed revisions.
+Strict revision `1e47b28` passes all 27 CI jobs, with a clean physical M4 record
+matching the same-revision native Windows/hosted reports and frozen reference.
 
 ```sh
 python3 tools/build_pe_binary_com.py

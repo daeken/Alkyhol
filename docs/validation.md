@@ -6,6 +6,16 @@ See the latest direct-Metal record for current implementation evidence.
 
 ## Win64 virtual COM: native Windows, hosted Mac and physical M4
 
+All 27 jobs pass at strict-reference revision `1e47b28`: three
+[PE jobs](https://github.com/daeken/Alkyhol/actions/runs/42403105379) and all 24
+[conformance jobs](https://github.com/daeken/Alkyhol/actions/runs/42403105337).
+Downloaded clean Windows/hosted reports and a fresh clean physical M4 run at
+that same revision agree with the frozen PE/source identities and all 23 raw
+output words, including both client-written buffer checksums and canonical COM
+identity/reference observations. Normal/forced-rebase host executions agree.
+Initial `ab08287` also passes all 27 jobs (PE 42402557855; conformance 42402557869).
+Existing SDK/source/COM/Metal/shader and all older frozen binary comparisons pass.
+
 The binary d3dcompiler_47 provider now exposes D3DCreateBlob through a Win64
 factory and a separate five-slot Win64 ID3DBlob vtable over the existing native
 Rust blob. QueryInterface translates native identity back to the guest wrapper;
