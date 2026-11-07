@@ -6,6 +6,17 @@ See the latest direct-Metal record for current implementation evidence.
 
 ## Partial-prologue manual restoration: native Windows and physical M4
 
+All 27 CI jobs pass at strict-reference revision `b2ab1e3`: three
+[PE jobs](https://github.com/daeken/Alkyhol/actions/runs/42426538166) and all 24
+[conformance jobs](https://github.com/daeken/Alkyhol/actions/runs/42426538129).
+Downloaded clean native Windows/hosted Mac reports and fresh clean physical M4
+execution at that same revision agree on all 68 raw DWORDs, exact executed
+PE/source identities and the frozen native record. Normal and forced-rebase host
+results agree. All 89 PE host tests/nine compiler checks, 27 portable tests,
+240 Python tests and Clippy pass; previous frozen binary and graphics comparisons
+remain green. This is finite manual restoration of six curated contexts, not
+exception dispatch or CPU snapshots of interrupted prologues.
+
 The new owned unchanged PE observer constructs six partial-prologue/body CONTEXT
 inputs from a real fully executed frame's saved stack words. Physical M4/Rosetta
 normal and forced-rebase runs pass all 68 raw DWORDs, including two pushes, a

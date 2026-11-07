@@ -48,3 +48,8 @@ results, preserved unrelated bytes and transactional rejection before an unusabl
 stack pointer can be read. Broader recipe forms remain host assertions. The
 existing frozen active-body/static-table observers remain unchanged. This finite
 manual restoration contract does not establish Windows exception or game support.
+
+Strict-reference revision `b2ab1e3` passes all three PE and 24 conformance CI jobs.
+Downloaded Windows/hosted Mac records and fresh clean physical M4 execution at
+that same revision agree on all 68 words, exact executed PE/source identities
+and the frozen native record. See the linked validation record for exact runs.
