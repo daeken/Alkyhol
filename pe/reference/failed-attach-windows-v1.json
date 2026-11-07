@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "backend": "native Windows DLL attach rejection",
+  "dll_sha256": "207e9f12aec86c44d23f6b0f256cc6c0201c078b0560fd36a5e808f0d151a433",
+  "sources": {
+    "pe/fixtures/failed-attach/library.c": "ca3a156a796bf386e78888de592523a95911c7f676b4f009ec8bee0361072431",
+    "pe/fixtures/failed-attach/kernel32.def": "fa338ea1a725289b674dde0c702c38593704502bc030d3d6095968d68da9fc36"
+  },
+  "common": {
+    "loaded": false,
+    "trace_hex": "010000000100000001000000dec07aa1000000000200000001000000dec07aa1"
+  },
+  "rebased_common": null,
+  "backend_only": {
+    "windows_last_error": 1114
+  },
+  "revision": "2f88f1b5e3b1bb9ff3bdd60a40e8be5f68df18ff",
+  "tracked_tree_clean": true
+}

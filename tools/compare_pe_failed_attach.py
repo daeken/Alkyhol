@@ -4,11 +4,9 @@ import argparse
 import json
 from pathlib import Path
 import re
-from build_pe_fixture import ROOT
 from build_pe_failed_attach import SOURCES
-from run_pe_failed_attach import EXPECTED
+from run_pe_failed_attach import EXPECTED, REFERENCE
 
-REFERENCE = ROOT / 'pe/reference/failed-attach-windows-v1.json'
 NATIVE = 'native Windows DLL attach rejection'
 HOST = 'Alkyhol DLL attach rejection'
 
@@ -30,22 +28,20 @@ def compare(reports, reference=None):
     for field in ['revision', 'dll_sha256', 'sources', 'common']:
         if native[field] != host[field]:
             raise ValueError(f'failed-attach execution mismatch: {field}')
-    if native['rebased_common'] is not None or host['rebased_common'] != host['common']:
+    if native['rebased_common'] is not None or host['rebased_common'] != host['common'] or host['rebased_common']['loaded'] is not False:
         raise ValueError('missing host forced-rebase execution or invented native rebase')
     if host['backend_only'] != {'host_last_error': 0x1234}:
         raise ValueError('host must retain actual guest IAT last-error sentinel')
     only = native['backend_only']
     if set(only) != {'windows_last_error'} or type(only['windows_last_error']) is not int or not 0 <= only['windows_last_error'] <= 0xffffffff:
         raise ValueError('missing actual Windows loader error observation')
-    # First native run establishes the reference; require it once frozen.
-    if reference is None and REFERENCE.exists():
+    if reference is None:
         reference = json.loads(REFERENCE.read_text(encoding='utf-8'))
-    if reference is not None:
-        if reference['backend'] != NATIVE or reference['tracked_tree_clean'] is not True or reference['schema_version'] != 1:
-            raise ValueError('invalid frozen native attach-rejection reference')
-        for field in ['dll_sha256', 'sources', 'common', 'backend_only']:
-            if native[field] != reference[field]:
-                raise ValueError(f'changed frozen failed-attach evidence: {field}')
+    if reference['backend'] != NATIVE or reference['tracked_tree_clean'] is not True or reference['schema_version'] != 1:
+        raise ValueError('invalid frozen native attach-rejection reference')
+    for field in ['dll_sha256', 'sources', 'common', 'backend_only']:
+        if native[field] != reference[field]:
+            raise ValueError(f'changed frozen failed-attach evidence: {field}')
     return len(EXPECTED)
 
 

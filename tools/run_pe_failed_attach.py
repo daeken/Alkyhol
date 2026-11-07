@@ -14,6 +14,7 @@ from build_pe_fixture import ROOT
 from build_pe_failed_attach import SOURCES
 
 EXPECTED = struct.pack('<8I', 1, 1, 1, 0xa17ac0de, 0, 2, 1, 0xa17ac0de)
+REFERENCE = ROOT / 'pe/reference/failed-attach-windows-v1.json'
 
 
 def native_child(dll):
@@ -54,6 +55,10 @@ def main():
     manifest = json.loads((dll.parent / 'failed-attach-fixture.json').read_text(encoding='utf-8'))
     if manifest['schema_version'] != 1 or set(manifest['sources']) != set(SOURCES):
         raise ValueError('missing failed-attach source manifest')
+    reference = json.loads(REFERENCE.read_text(encoding='utf-8'))
+    for field in ['dll_sha256', 'sources']:
+        if manifest[field] != reference[field]:
+            raise ValueError(f'changed frozen failed-attach fixture: {field}')
     if hashlib.sha256(dll.read_bytes()).hexdigest() != manifest['dll_sha256']:
         raise ValueError('failed-attach DLL identity changed')
     for path, digest in manifest['sources'].items():

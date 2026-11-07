@@ -8,7 +8,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'tools'))
-from compare_pe_failed_attach import compare, NATIVE, HOST
+from compare_pe_failed_attach import compare, NATIVE, HOST, REFERENCE
 from build_pe_failed_attach import SOURCES
 from run_pe_failed_attach import check_execution, EXPECTED
 
@@ -89,6 +89,17 @@ class FailedAttachProtocolTests(unittest.TestCase):
         reports[0]['backend_only']['windows_last_error'] = 0
         with self.assertRaises(ValueError):
             compare(reports, reference=self.reports()[0])
+
+    def test_default_frozen_reference_cannot_be_bypassed_by_joint_drift(self):
+        native = json.loads(REFERENCE.read_text(encoding='utf-8'))
+        host = copy.deepcopy(native)
+        host.update(backend=HOST, rebased_common=copy.deepcopy(host['common']),
+                    backend_only={'host_last_error': 0x1234})
+        self.assertEqual(compare([native, host]), 32)
+        for r in (native, host):
+            r['dll_sha256'] = 'e' * 64
+        with self.assertRaises(ValueError):
+            compare([native, host])
 
 
 if __name__ == '__main__':

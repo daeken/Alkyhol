@@ -279,13 +279,16 @@ python3 tools/build_pe_failed_attach.py
 python3 tools/run_pe_failed_attach.py --dll local/pe/failed-attach/alkyhol_failed_attach.dll --output local/pe/failed-attach-alkyhol.json
 ```
 
-Physical M4 observes the exact trace normally and with forced rebase. The existing
-PE workflow now transfers that identical DLL to Windows for actual LoadLibraryW
-rejection and compares its trace separately from metadata/success observations.
-The Windows comparison is pending until an executed run is recorded in
-[validation](validation.md). Last-error fields are deliberately backend-specific:
+Native Windows, hosted Mac and physical M4 observe the identical trace at
+`2f88f1b` ([PE run 42393459700](https://github.com/daeken/Alkyhol/actions/runs/42393459700));
+host normal and forced-rebase executions agree. The actual Windows report is
+frozen at `pe/reference/failed-attach-windows-v1.json`. Future observers verify
+exact DLL/source identity before entry and comparisons require that immutable
+native trace/error reference, including protection against joint drift.
+Last-error fields are deliberately backend-specific:
 the Rust unsafe constructor returns an error string and retains the DLL's actual
-SetLastError sentinel `0x1234`; native Windows LoadLibraryW owns its loader error.
+SetLastError sentinel `0x1234`; native Windows LoadLibraryW returns NULL with
+loader error `1114` (ERROR_DLL_INIT_FAILED).
 Those interfaces have different contracts. No Win32 loader-error parity is
 claimed by comparing the shared lifecycle trace. General module-manager,
 dependencies, threads, TLS and SEH restrictions above still apply.

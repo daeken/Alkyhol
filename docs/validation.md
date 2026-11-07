@@ -4,7 +4,7 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
-## Failed DLL initialization: physical M4 trace, native comparison pending
+## Failed DLL initialization: native Windows, hosted Mac and physical M4
 
 A separate owned no-CRT DLL (SHA-256
 `207e9f12aec86c44d23f6b0f256cc6c0201c078b0560fd36a5e808f0d151a433`)
@@ -14,11 +14,17 @@ normal and forced-rebase runs both emit exactly two 16-byte trace records:
 reasons `[1,0]`, counter `[1,2]`, NULL-reserved flags `[1,1]` and magic
 `0xa17ac0de`. The Rust unsafe constructor rejects attachment and retains actual
 guest last-error `0x1234`. No product runtime change or successful error stub is
-introduced. The existing PE workflow will run the identical DLL with actual
-native Windows LoadLibraryW; that comparison remains pending. Windows loader
-last-error is recorded separately, not equated to the Rust constructor's sentinel.
-All 36 PE Rust tests under Rosetta, 17 portable arm64 tests, 144 Python tests,
-PE formatting and Clippy pass locally. Five new protocol units reject crashed,
+introduced. All three [PE jobs](https://github.com/daeken/Alkyhol/actions/runs/42393459700)
+pass at `2f88f1b`; downloaded clean native/hosted reports and a fresh clean physical
+M4 run at that same revision agree on the identical DLL/source and all 32 ordered
+trace bytes. Windows LoadLibraryW returns NULL with actual last-error `1114`;
+that loader error is recorded separately from the Rust constructor's sentinel.
+The full native report is frozen at `pe/reference/failed-attach-windows-v1.json`.
+Subsequent observers check exact frozen DLL/source identity before entry; the
+comparator requires the frozen native trace and loader-error observations.
+All 36 PE Rust tests under Rosetta, 17 portable arm64 tests, PE formatting and
+Clippy passed locally. Freezing the native reference brings Python tests to 145
+passing tests. Six new protocol units reject crashed,
 missing/duplicate/reordered traces, invented success, identity/rebase drift and
 changed frozen native evidence; these synthetic negatives are host assertions.
 [Probe contract](pe.md#failed-dll-initialization-probe).
