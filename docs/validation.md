@@ -6,6 +6,16 @@ See the latest direct-Metal record for current implementation evidence.
 
 ## Guest module/export lookup: native Windows, hosted Mac and physical M4
 
+All 27 jobs pass at strict-reference revision `1374b0b`: three
+[PE jobs](https://github.com/daeken/Alkyhol/actions/runs/42408581516) and all 24
+[conformance jobs](https://github.com/daeken/Alkyhol/actions/runs/42408581621).
+Downloaded clean Windows/hosted records and fresh clean physical M4 execution at
+that same revision match the frozen EXE/DLL/source/import identities and all 21
+raw DWORDs. Normal/forced host results agree with both images actually rebased.
+All earlier frozen binary, SDK/source/COM, shader and Metal comparisons remain
+intact. This is finite scoped guest lookup evidence, not a general guest module
+loader or game compatibility result.
+
 All three [PE jobs](https://github.com/daeken/Alkyhol/actions/runs/42408269870)
 pass on `99bce97`. Downloaded clean native Windows/hosted Mac records and a clean
 physical M4 record at that same revision agree on the identical EXE/DLL/source/
@@ -13,8 +23,9 @@ import identities and all 21 raw DWORDs. Both host images relocate in the forced
 run. The complete native report is frozen at
 `pe/reference/dynamic-lookup-windows-v1.json`; drivers/comparisons require its
 exact binary/source/import/result record by default. Missing-reference and joint
-identity drift guards bring the Python suite to 185. Full conformance CI remains
-to be recorded for the strict revision.
+identity drift guards bring the Python suite to 185. Initial `99bce97` also
+passes all 27 jobs: that PE run and all 24 conformance jobs
+([42408269823](https://github.com/daeken/Alkyhol/actions/runs/42408269823)).
 
 The new ModuleContext retains explicit attached DLL owner borrows and exposes
 real Win64 GetModuleHandleW/GetProcAddress bridges with actual full-width image

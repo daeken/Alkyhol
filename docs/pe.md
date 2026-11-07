@@ -644,8 +644,10 @@ All three PE jobs pass on `99bce97`
 hosted reports and clean physical M4 execution at that same revision agree on
 the identical EXE/DLL/source/import identities and all raw results. The complete
 native record is frozen at `pe/reference/dynamic-lookup-windows-v1.json` and is
-required by default, including its exact identities. Further CI evidence is
-tracked in [validation](validation.md). These are finite owned
+required by default, including its exact identities. Strict-reference revision
+`1374b0b` passes all 27 CI jobs; downloaded clean native/hosted records and fresh
+physical M4 execution agree at that same revision, including both actual rebases.
+Exact CI evidence is tracked in [validation](validation.md). These are finite owned
 binary tests, not general Windows loader or game compatibility claims.
 
 Primary contracts: [GetModuleHandleW](https://learn.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-getmodulehandlew)
