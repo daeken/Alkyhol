@@ -51,4 +51,5 @@ cargo run --manifest-path graphics/Cargo.toml --example hello_triangle
 
 The dependency-free root tests validate command lifecycles, state transitions,
 rejected submissions and copy footprints. GPU execution is checked separately;
-no device, missing dependencies or a skipped run is never a passing GPU result.
+a missing device, missing dependencies or a skipped run never counts as a passing
+GPU result.

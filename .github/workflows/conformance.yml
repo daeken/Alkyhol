@@ -76,6 +76,8 @@ jobs:
           ALKYHOL_PPM: triangle.ppm
           XDG_RUNTIME_DIR: /tmp
         run: cargo run --manifest-path graphics/Cargo.toml --example hello_triangle -- --allow-software
+      - name: Record resolved dependency lock for reproducibility
+        run: python3 -c "import base64,gzip,pathlib; print('ALKYHOL_LOCKFILE=' + base64.b64encode(gzip.compress(pathlib.Path('graphics/Cargo.lock').read_bytes())).decode())"
       - uses: actions/upload-artifact@v4
         with:
           name: graphics-${{ runner.os }}
