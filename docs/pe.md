@@ -339,7 +339,13 @@ python3 tools/run_pe_linked_image.py --directory local/pe/linked-image --output 
 ```
 
 Physical M4/Rosetta executes all 14 raw words normally and with both images
-actually rebased. Native comparison is recorded in [validation](validation.md).
+actually rebased. All three PE jobs pass on `c24f203`
+([run](https://github.com/daeken/Alkyhol/actions/runs/42406635787)); downloaded clean
+native/hosted reports and clean physical M4 execution at that same revision agree
+on the identical EXE/DLL/sources, actual import thunks and all raw results.
+`pe/reference/linked-image-windows-v1.json` freezes the complete native record;
+drivers/comparisons require its exact identities/results by default.
+Further CI evidence is recorded in [validation](validation.md).
 This finite owned EXE/DLL test does not establish game compatibility.
 
 ## Explicit borrowed DLL dependencies

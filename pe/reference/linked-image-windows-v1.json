@@ -1,0 +1,84 @@
+{
+  "schema_version": 1,
+  "backend": "native Windows linked EXE/DLL",
+  "binaries": {
+    "linked-image.exe": "9d0d6eac3b3f2f79ff07e42845a7174d25218d85a30c9c20dfaa18812585ecb5",
+    "alkyhol_exports.dll": "423d6e191a3ebb4f4f5ce11710591edc9ebe163ece79bd35cc6fe5146d13399d"
+  },
+  "sources": {
+    "pe/fixtures/linked-image/contract.c": "f6bdf68a70b974bb385fbeeef3332f4f6221f27389774ac4f10135bcd3d91635",
+    "pe/fixtures/linked-image/kernel32.def": "c93fc36e729ee45fe0d47194f0911859725083d689c55d8dd0e5e40670f17177",
+    "pe/fixtures/linked-image/imports.def": "09304465c1e4cd8c98134d1350f06f08ec627cce0bf98c2c6b142ee11652909e",
+    "pe/fixtures/exports/library.c": "b2b9fcf9581d59e982b7754354eb8798616e0d0903b1816f786d4331ec263b96",
+    "pe/fixtures/exports/library.def": "a011d8748d774d3f147a0352277adfddc574416aa9a4610f152766a1db874493"
+  },
+  "imports": [
+    {
+      "module": "KERNEL32.dll",
+      "symbols": [
+        {
+          "name": "ExitProcess"
+        },
+        {
+          "name": "GetStdHandle"
+        },
+        {
+          "name": "SetLastError"
+        },
+        {
+          "name": "WriteFile"
+        }
+      ]
+    },
+    {
+      "module": "alkyhol_exports.dll",
+      "symbols": [
+        {
+          "name": "Alias"
+        },
+        {
+          "name": "Bss"
+        },
+        {
+          "name": "Data"
+        },
+        {
+          "ordinal": 21
+        },
+        {
+          "name": "Direct"
+        },
+        {
+          "name": "Forwarded"
+        },
+        {
+          "ordinal": 23
+        }
+      ]
+    }
+  ],
+  "normal": {
+    "status": 0,
+    "words": [
+      1279612997,
+      826366246,
+      324508639,
+      571916821,
+      571916821,
+      305419905,
+      826366246,
+      1,
+      13398,
+      2008848319,
+      270544960,
+      1457389139,
+      571916821,
+      324508639
+    ],
+    "stdout_hex": "4558454c26594131df9b571315c2162215c2162281563412265941310100000056340000bf97bc774030201053fedd5615c21622df9b5713",
+    "relocated": null
+  },
+  "rebased": null,
+  "revision": "c24f20355b23004b4a1da5abac96d1b82abaee5f",
+  "tracked_tree_clean": true
+}

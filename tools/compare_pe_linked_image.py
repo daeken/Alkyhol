@@ -29,7 +29,7 @@ def compare(reports, reference=None):
     host = next(r for r in reports if r['backend'] == HOST)
     dependency = json.loads(DEPENDENCY_REFERENCE.read_text(encoding='utf-8'))
     for r in reports:
-        if r['schema_version'] != 1 or r['tracked_tree_clean'] is not True or not re.fullmatch('[0-9a-f]{40}', r['revision']):
+        if type(r['schema_version']) is not int or r['schema_version'] != 1 or r['tracked_tree_clean'] is not True or not re.fullmatch('[0-9a-f]{40}', r['revision']):
             raise ValueError('unsupported schema, dirty checkout or missing revision')
         if set(r['binaries']) != BINARIES or not all(re.fullmatch('[0-9a-f]{64}', v) for v in r['binaries'].values()):
             raise ValueError('missing exact EXE/DLL binary identities')
@@ -50,14 +50,13 @@ def compare(reports, reference=None):
     for field in ['status', 'words', 'stdout_hex']:
         if host['normal'][field] != native['normal'][field] or host['rebased'][field] != native['normal'][field]:
             raise ValueError('actual linked EXE observations differ')
-    if reference is None and REFERENCE.exists():
+    if reference is None:
         reference = json.loads(REFERENCE.read_text(encoding='utf-8'))
-    if reference is not None:
-        if reference['backend'] != NATIVE or reference['tracked_tree_clean'] is not True:
-            raise ValueError('invalid frozen native linked EXE reference')
-        for field in ['binaries', 'sources', 'imports', 'normal']:
-            if native[field] != reference[field]:
-                raise ValueError(f'changed frozen native linked EXE evidence: {field}')
+    if reference['backend'] != NATIVE or reference['schema_version'] != 1 or reference['tracked_tree_clean'] is not True:
+        raise ValueError('invalid frozen native linked EXE reference')
+    for field in ['binaries', 'sources', 'imports', 'normal']:
+        if native[field] != reference[field]:
+            raise ValueError(f'changed frozen native linked EXE evidence: {field}')
     return len(EXPECTED_WORDS)
 
 

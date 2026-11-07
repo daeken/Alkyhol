@@ -4,7 +4,17 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
-## EXEs linked to borrowed DLLs: physical M4, native comparison pending
+## EXEs linked to borrowed DLLs: native Windows, hosted Mac and physical M4
+
+All three [PE jobs](https://github.com/daeken/Alkyhol/actions/runs/42406635787)
+pass on `c24f203`. Downloaded clean native Windows/hosted Mac records and a clean
+physical M4 record at that same revision agree on the identical EXE/DLL/source
+identities, exact mixed import thunks and all 14 raw DWORDs. Host normal/forced
+results agree, with both images actually relocated in the forced run. The
+complete native report is frozen at `pe/reference/linked-image-windows-v1.json`;
+drivers and comparisons require that exact binary/source/import record by
+default. Missing-reference and joint-drift guards bring the Python suite to 179.
+The full conformance result remains to be recorded for the strict revision.
 
 `LinkedImage` maps a checked EXE against explicitly supplied attached DLLs while
 retaining their borrows through unmapping. It shares the existing named/ordinal
@@ -17,12 +27,12 @@ Physical M4/Rosetta normal and forced-rebase runs agree on all 14 raw words:
 actual initialized BSS, named/ordinal/alias calls, named/ordinal data target
 identity, kernel forwarder calls, shared data writes affecting later DLL code
 and restored values. Both EXE and DLL relocate in the forced run. Native Windows
-execution of these identical two binary snapshots is pending in the PE workflow.
+execution of these identical two binary snapshots agrees in the PE workflow above.
 The Mac observer is a Rust Mach-O host reading unchanged PE snapshots; the old
 single-file packager/launcher is unchanged and does not yet bundle DLL payloads.
 
 All 54 PE host tests, six lifetime compiler checks, 19 portable arm64 tests,
-178 Python tests and PE Clippy pass locally. New host units execute named/ordinal
+179 Python tests and PE Clippy pass locally. New host units execute named/ordinal
 and forwarded IAT targets, verify no DLL reinitialization or early detach, and
 reject missing/duplicate/reserved dependencies, bad symbols/ordinals, static TLS
 and IAT/relocation overlap before EXE entry. A synthetic EXE initially inherited
