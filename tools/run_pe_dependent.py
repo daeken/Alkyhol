@@ -99,11 +99,10 @@ def main():
         raise ValueError('changed frozen dependency DLL')
     if any(manifest['sources'][s] != digest for s, digest in dependency_reference['sources'].items()):
         raise ValueError('changed frozen dependency source')
-    if REFERENCE.exists():
-        reference = json.loads(REFERENCE.read_text(encoding='utf-8'))
-        for field in ['binaries', 'sources']:
-            if manifest[field] != reference[field]:
-                raise ValueError(f'changed frozen dependent fixture: {field}')
+    reference = json.loads(REFERENCE.read_text(encoding='utf-8'))
+    for field in ['binaries', 'sources']:
+        if manifest[field] != reference[field]:
+            raise ValueError(f'changed frozen dependent fixture: {field}')
     for name, digest in manifest['binaries'].items():
         if hashlib.sha256((directory / name).read_bytes()).hexdigest() != digest:
             raise ValueError('dependent DLL binary identity changed')

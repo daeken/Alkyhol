@@ -336,6 +336,18 @@ python3 tools/run_pe_dependent.py --directory local/pe/dependent --output local/
 
 The existing PE workflow now transfers the identical two DLLs to Windows, where
 actual LoadLibraryExW performs its own dependency resolution and initialization.
-That native comparison is pending until an executed result is recorded in
-[validation](validation.md). The driver uses DLL_LOAD_DIR|DEFAULT_DIRS solely for
+All three [PE jobs](https://github.com/daeken/Alkyhol/actions/runs/42395051128) pass
+on `1ab6e23`: native Windows and hosted Mac agree on actual cross-DLL calls,
+forwarded target equality and the exact lifecycle trace. The native report is
+frozen at `pe/reference/dependent-windows-v1.json`; future drivers verify both
+DLL/source identities before entry and comparisons require its immutable results.
+The driver uses DLL_LOAD_DIR|DEFAULT_DIRS solely for
 the explicit native fixture directory; Alkyhol's API adds no Windows search policy.
+
+A subsequent compile-only regression caught that reference-containing container
+fields alone allowed Rust to end a dependency borrow before implicit consumer
+destruction. LinkedLibrary now has an explicit destructor that detaches/unmaps
+its owned DLL before releasing dependencies. Paired compiler checks accept correct
+teardown and reject early dependency destruction with E0505, even when the
+consumer has no further explicit use. These are lifetime checks, separate from
+executed DLL behavior; see [validation](validation.md) for exact revisions.

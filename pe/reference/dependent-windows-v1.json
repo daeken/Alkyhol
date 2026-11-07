@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "backend": "native Windows dependent DLL LoadLibraryEx",
+  "binaries": {
+    "alkyhol_exports.dll": "423d6e191a3ebb4f4f5ce11710591edc9ebe163ece79bd35cc6fe5146d13399d",
+    "alkyhol_dependent.dll": "915abbc81ac8138e0320fb56a0b6f3e735bcd359039fb35d9a03596626e17628"
+  },
+  "sources": {
+    "pe/fixtures/dependent/library.c": "5e28444cf980ea1156b16861d02616ba6949e847de93bfb4c1c79ea346a7c6bd",
+    "pe/fixtures/dependent/library.def": "8ba7ea3730072fce94ff9b81d497a3fa230004c8875a719421dd290eb6590751",
+    "pe/fixtures/dependent/kernel32.def": "5649a849e3c6fd0ee5d54ad08e8f149747b7daf846e91b7b81fa1d63ba44d001",
+    "pe/fixtures/exports/library.c": "b2b9fcf9581d59e982b7754354eb8798616e0d0903b1816f786d4331ec263b96",
+    "pe/fixtures/exports/library.def": "a011d8748d774d3f147a0352277adfddc574416aa9a4610f152766a1db874493"
+  },
+  "common": {
+    "calls": {
+      "evaluation": 826366381,
+      "through_call": 571916821,
+      "read_error": 13398,
+      "double_forward_error": 17767,
+      "through_matches_dependency": true,
+      "error_matches_dependency": true
+    },
+    "trace_hex": "0100000001000000010000009fc2162226594131df9b57130000000002000000010000009fc2162226594131df9b5713"
+  },
+  "relocated": null,
+  "rebased_common": null,
+  "rebased_relocated": null,
+  "revision": "1ab6e239b53e9c2632039d652e172f601d0e4462",
+  "tracked_tree_clean": true
+}

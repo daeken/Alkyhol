@@ -4,7 +4,7 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
-## Explicit DLL-to-DLL linking: physical M4, native comparison pending
+## Explicit DLL-to-DLL linking: native Windows comparison and M4 assertions
 
 The new unsafe LinkedLibrary API binds named code/data IAT imports and named
 forwarders to explicitly supplied, already attached DLLs. Rust borrows retain
@@ -20,16 +20,29 @@ Normal and forced-rebase physical M4/Rosetta runs agree on Evaluate `826366381`,
 forwarded Direct `571916821`, forwarded last-error sentinels `0x3456`/`0x4567`,
 actual resolved target equality and all 48 ordered ATTACH/DETACH trace bytes.
 The trace observes the dependency's initialized data/BSS during both consumer
-notifications. Both DLLs actually relocate in the forced run. The new native
-Windows LoadLibraryEx comparison is wired into the existing PE workflow but has
-not run yet. [Exact contract and reproduction](pe.md#explicit-borrowed-dll-dependencies).
+notifications. Both DLLs actually relocate in the forced run. All three
+[PE jobs](https://github.com/daeken/Alkyhol/actions/runs/42395051128) pass at
+`1ab6e23`. Downloaded clean native Windows/hosted Mac reports agree on both
+identical DLLs, all cross-DLL calls, forwarded target identities and all 48 trace
+bytes. The full native report is frozen at `pe/reference/dependent-windows-v1.json`;
+future drivers require both DLL/source identities before entry and the comparator
+requires its frozen observations. [Exact contract and reproduction](pe.md#explicit-borrowed-dll-dependencies).
 
 All 39 PE Rust tests pass under Rosetta (three new dependency units), all 17
-portable arm64 tests and 150 Python tests pass, and PE formatting/Clippy pass.
+portable arm64 tests and initial 150 Python tests pass, and PE formatting/Clippy pass.
 The unchanged frozen executable, successful/failed DLL observers and all eleven
 released u-config cases pass again on physical M4, including forced rebasing.
-These host/regression assertions are separate from the pending native dependency
-comparison. No original sample, shader, asset, frozen fixture or game data changes.
+These host/regression assertions are separate from the native dependency
+comparison. No original sample, shader, asset, old frozen fixture or game data changes.
+
+A follow-up compiler regression exposed early dependency destruction permitted by
+reference-container fields alone. An explicit LinkedLibrary destructor now
+detaches/unmaps the consumer while its borrowed dependencies remain required by
+Rust's drop checker. Two paired compile checks accept correct destruction order
+and reject an early dependency drop with actual E0505; all 39 execution tests and
+the physical full-DLL observer still pass. Freezing the native baseline adds a
+sixth protocol unit and brings Python coverage to 151 tests. No DLL bytes or
+observed native expectations were changed to make this lifetime fix pass.
 
 ## Failed DLL initialization: native Windows, hosted Mac and physical M4
 

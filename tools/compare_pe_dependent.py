@@ -42,15 +42,13 @@ def compare(reports, reference=None):
     for flags in [host['relocated'], host['rebased_relocated']]:
         if not isinstance(flags, list) or len(flags) != 2 or any(type(v) is not bool for v in flags):
             raise ValueError('invalid actual relocation flags')
-    # Freeze the independently executed native record after the first CI run.
-    if reference is None and REFERENCE.exists():
+    if reference is None:
         reference = json.loads(REFERENCE.read_text(encoding='utf-8'))
-    if reference is not None:
-        if reference['backend'] != NATIVE or reference['schema_version'] != 1 or reference['tracked_tree_clean'] is not True:
-            raise ValueError('invalid frozen native dependent DLL reference')
-        for field in ['binaries', 'sources', 'common']:
-            if native[field] != reference[field]:
-                raise ValueError(f'changed frozen native dependent DLL evidence: {field}')
+    if reference['backend'] != NATIVE or reference['schema_version'] != 1 or reference['tracked_tree_clean'] is not True:
+        raise ValueError('invalid frozen native dependent DLL reference')
+    for field in ['binaries', 'sources', 'common']:
+        if native[field] != reference[field]:
+            raise ValueError(f'changed frozen native dependent DLL evidence: {field}')
     return len(EXPECTED_TRACE)
 
 

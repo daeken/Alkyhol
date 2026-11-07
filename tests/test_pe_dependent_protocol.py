@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'tools'))
 from compare_pe_dependent import compare, NATIVE, HOST
 from build_pe_dependent import SOURCES
-from run_pe_dependent import check_execution, DEPENDENCY_REFERENCE, EXPECTED_CALLS, EXPECTED_TRACE
+from run_pe_dependent import check_execution, REFERENCE, DEPENDENCY_REFERENCE, EXPECTED_CALLS, EXPECTED_TRACE
 
 
 class DependentProtocolTests(unittest.TestCase):
@@ -87,6 +87,16 @@ class DependentProtocolTests(unittest.TestCase):
                 r['sources'][name] = 'e' * 64
             with self.assertRaises(ValueError):
                 compare(reports, reference=self.reports()[0])
+
+    def test_checked_in_native_reference_is_required_by_default(self):
+        native = json.loads(REFERENCE.read_text(encoding='utf-8'))
+        host = copy.deepcopy(native)
+        host.update(backend=HOST, relocated=[False, True], rebased_relocated=[True, True], rebased_common=copy.deepcopy(host['common']))
+        self.assertEqual(compare([native, host]), 48)
+        for r in [native, host]:
+            r['binaries']['alkyhol_dependent.dll'] = 'e' * 64
+        with self.assertRaises(ValueError):
+            compare([native, host])
 
 
 if __name__ == '__main__':

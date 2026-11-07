@@ -291,8 +291,28 @@ impl Drop for LoadedLibrary {
 /// One trusted DLL linked against explicitly supplied, already attached DLLs.
 /// Borrowing retains every dependency until this DLL has detached and unmapped.
 /// There is no filesystem search, automatic graph loading or global module cache.
+///
+/// Correct teardown order is accepted without executing these example bytes:
+/// ```no_run
+/// # use alkyhol_pe::{LinkedLibrary, LoadedLibrary};
+/// # fn example(bytes: &[u8]) -> alkyhol_pe::Result<()> {
+/// let dependency = unsafe { LoadedLibrary::load(bytes, false) }?;
+/// let consumer = unsafe { LinkedLibrary::load(bytes, false, &[("dependency.dll", &dependency)]) }?;
+/// drop(consumer);
+/// drop(dependency);
+/// # Ok(()) }
+/// ```
+/// Dropping a dependency before an implicitly dropped consumer must be rejected:
+/// ```compile_fail,E0505
+/// # use alkyhol_pe::{LinkedLibrary, LoadedLibrary};
+/// # fn example(bytes: &[u8]) -> alkyhol_pe::Result<()> {
+/// let dependency = unsafe { LoadedLibrary::load(bytes, false) }?;
+/// let _consumer = unsafe { LinkedLibrary::load(bytes, false, &[("dependency.dll", &dependency)]) }?;
+/// drop(dependency);
+/// # Ok(()) }
+/// ```
 pub struct LinkedLibrary<'a> {
-    library: LoadedLibrary,
+    library: Option<LoadedLibrary>,
     _dependencies: BTreeMap<String, &'a LoadedLibrary>,
 }
 impl<'a> LinkedLibrary<'a> {
@@ -344,14 +364,23 @@ impl<'a> LinkedLibrary<'a> {
         };
         let library = unsafe { LoadedLibrary::load_resolved(bytes, rebase, &resolve) }?;
         Ok(Self {
-            library,
+            library: Some(library),
             _dependencies: modules,
         })
     }
     /// Borrow the attached DLL for lookup or as another explicit dependency.
     /// Its lifetime cannot escape this owner and its transitive dependency borrows.
     pub fn library(&self) -> &LoadedLibrary {
-        &self.library
+        self.library.as_ref().expect("attached linked DLL")
+    }
+}
+impl Drop for LinkedLibrary<'_> {
+    fn drop(&mut self) {
+        // An explicit destructor also enforces drop-checking of the borrowed
+        // lifetime. Container fields holding references alone may allow NLL to
+        // end a borrow before implicit field destruction. Detach/unmap now,
+        // while dependency owners are still statically required to be alive.
+        drop(self.library.take());
     }
 }
 
@@ -602,7 +631,7 @@ mod tests {
         assert_eq!(
             unsafe {
                 parent
-                    .library
+                    .library()
                     .mapping
                     .base
                     .add(0x3020)
