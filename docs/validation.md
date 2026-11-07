@@ -6,6 +6,16 @@ See the latest direct-Metal record for current implementation evidence.
 
 ## Dynamic AMD64 function-table metadata: native Windows, hosted Mac and physical M4
 
+All 27 jobs pass at strict-reference revision `253685a`: three
+[PE jobs](https://github.com/daeken/Alkyhol/actions/runs/42412746658) and all 24
+[conformance jobs](https://github.com/daeken/Alkyhol/actions/runs/42412746646).
+Downloaded clean Windows/hosted reports and fresh clean physical M4 execution at
+that same revision match the frozen executed PE/source identity and all 37 raw
+DWORDs. Normal/forced host observations agree, including calls to all three
+lookup-resolved generated functions. All prior frozen binary, SDK/source/COM,
+shader and Metal comparisons remain intact. This is metadata/lookup evidence;
+actual unwinding and exception dispatch remain unimplemented.
+
 All three [PE jobs](https://github.com/daeken/Alkyhol/actions/runs/42412363341)
 pass on `d86fd18`. Downloaded clean native Windows/hosted Mac records and clean
 physical M4 execution at that same revision agree on the identical executed
@@ -13,8 +23,10 @@ PE/source identity and all 37 raw DWORDs. Normal and forced-rebase host results
 agree, including all three generated functions reached through lookup results.
 The complete native record is frozen at `pe/reference/function-tables-windows-v1.json`;
 drivers and comparisons require its exact inputs/results by default. A missing-
-reference/joint-drift guard brings the Python suite to 197. Strict full conformance
-CI remains to be recorded separately. This does not establish live unwinding.
+reference/joint-drift guard brings the Python suite to 197. Initial `d86fd18`
+also passes all 27 jobs: that PE run and all 24 conformance jobs
+([42412363277](https://github.com/daeken/Alkyhol/actions/runs/42412363277)).
+This does not establish live unwinding.
 
 RtlAddFunctionTable/RtlLookupFunctionEntry/RtlDeleteFunctionTable now maintain a
 bounded explicit dynamic metadata list inside ProcessContext. Real Win64 wrappers

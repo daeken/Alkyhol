@@ -759,7 +759,10 @@ All three PE jobs pass on `d86fd18`
 native/hosted records and clean physical M4 execution at that same revision agree
 on the identical PE/source identity and all results. The full native record is
 frozen at `pe/reference/function-tables-windows-v1.json` and required by default,
-including its exact input identity. No live unwinding was exercised.
+including its exact input identity. Strict-reference revision `253685a` passes
+all 27 CI jobs; downloaded clean native/hosted reports and fresh physical M4
+execution agree at that same revision on all 37 raw words. No live unwinding
+was exercised.
 Native evidence and executed revisions are recorded in [validation](validation.md).
 This is finite function-table API evidence, not exception or game compatibility.
 
