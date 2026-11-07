@@ -4,6 +4,24 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## DLL export metadata: host-only foundation
+
+The PE crate now inspects DLLs through a separate `Image::parse_dll` API and
+reads bounded export metadata through `Image::exports`. Biased ordinals, sparse
+holes, aliases, ordinal-only entries, mapped code/data addresses and raw bounded
+forwarder text are preserved. Six independent synthetic parser units cover
+truncation, wrong image kind/entry, lexical name order, slot/ordinal bounds,
+counts/overflow and forwarder termination within the declared directory.
+All 30 PE Rust tests pass on physical M4/x86-64, all 16 portable tests pass on
+native arm64, and PE Clippy/formatting pass. Both unchanged executable observers
+also pass locally, including normal/forced-rebase released u-config cases.
+
+This is host metadata evidence, not DLL loading or native Windows export/runtime
+parity. Executable startup gates remain; DLL execution and lifecycle still fail
+explicitly. The [bounded metadata contract](pe.md#dll-export-metadata-foundation)
+records what was implemented; no original source, shader, asset, frozen fixture
+or game-derived data is changed.
+
 ## Off-the-shelf PE64: released Windows u-config on physical M4
 
 A subsequent host unit exercises redirected stdin through actual Win64

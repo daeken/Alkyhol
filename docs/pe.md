@@ -146,3 +146,31 @@ and [x64 calling convention](https://learn.microsoft.com/en-us/cpp/build/x64-cal
 Apple documents the native-host architecture in [Rosetta's translation environment](https://developer.apple.com/documentation/apple-silicon/about-the-rosetta-translation-environment).
 Finite tests above establish only the operations actually exercised; these links
 and the presence of a CI definition are not execution evidence.
+
+## DLL export metadata foundation
+
+`Image::parse_dll` can now inspect conventional AMD64 DLL layouts separately from
+`Image::parse`'s executable contract. DLL entry zero is allowed for inspection;
+a nonzero entry still needs initialized code. `Image::exports` reads the bounded
+export directory, biased ordinals, sparse address holes, multiple public aliases,
+ordinal-only entries, mapped code/data RVAs (including zero-filled data) and raw
+ASCII forwarder strings. It follows Microsoft's
+[export directory/address/name/ordinal tables](https://learn.microsoft.com/en-us/windows/win32/debug/pe-format#the-edata-section-image-only).
+The independent synthetic fixtures are owned test layouts, not native Windows
+observations or Microsoft sample binaries.
+
+At most 65536 address slots/names and 4096-byte strings are accepted. Directory,
+array, ordinal, name order/uniqueness, arithmetic and mapped-target bounds are
+checked. A forwarder's terminating NUL must be inside the directory's declared
+range, not merely somewhere later in the file. Forwarder text remains verbatim;
+no dependency resolution, symbol grammar guessing or callable-function promise
+is implied. Address exports can point to data, not just functions. Named missing
+slots, unsupported absolute/out-of-image targets and malformed metadata fail.
+
+This is metadata support only. `LoadedImage::load` still accepts EXEs only, and
+`check_startup` explicitly rejects DLL lifecycle even for a DLL without exports.
+No DllMain, dependent-library initialization, LoadLibrary/GetProcAddress/FreeLibrary,
+reference-counting, unload or Windows exception behavior is provided yet. The
+existing EXE startup gates and both frozen native binary observers remain intact.
+Six new host parser units exercise these rules, every truncated prefix, aliases,
+ordinal-only/empty tables, zero-entry DLLs and malformed forwarder/table bounds.

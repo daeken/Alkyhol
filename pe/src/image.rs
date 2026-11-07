@@ -18,6 +18,26 @@ pub struct Import {
     pub symbol: String,
     pub iat: usize,
 }
+/// An export can address code or data. Forwarder text is retained verbatim;
+/// metadata parsing does not resolve it or make its target callable.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ExportTarget {
+    Address { rva: usize },
+    Forwarder(String),
+}
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Export {
+    pub ordinal: u32,
+    pub names: Vec<String>,
+    pub target: ExportTarget,
+}
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ExportTable {
+    pub dll_name: String,
+    pub ordinal_base: u32,
+    /// Sparse ordinal holes are omitted; explicit ordinals retain their bias.
+    pub entries: Vec<Export>,
+}
 #[derive(Debug)]
 pub struct Image<'a> {
     pub bytes: &'a [u8],
@@ -27,6 +47,7 @@ pub struct Image<'a> {
     pub entry: usize,
     pub sections: Vec<Section>,
     directories: [(usize, usize); 16],
+    is_dll: bool,
 }
 
 fn range(bytes: &[u8], start: usize, len: usize) -> Result<&[u8]> {
@@ -57,6 +78,15 @@ impl<'a> Image<'a> {
     /// Validate executable headers, disjoint sections and an initialized code entry.
     /// Supports conventional page-aligned AMD64 PE32+ EXEs, not DLLs/drivers.
     pub fn parse(bytes: &'a [u8]) -> Result<Self> {
+        Self::parse_kind(bytes, false)
+    }
+    /// Inspect a bounded AMD64 DLL without mapping or calling its entry. A zero
+    /// DLL entry is allowed; a nonzero entry must still be initialized code.
+    /// DLL runtime initialization remains explicitly unsupported.
+    pub fn parse_dll(bytes: &'a [u8]) -> Result<Self> {
+        Self::parse_kind(bytes, true)
+    }
+    fn parse_kind(bytes: &'a [u8], is_dll: bool) -> Result<Self> {
         if range(bytes, 0, 2)? != b"MZ" {
             return Err("missing MZ signature".into());
         }
@@ -66,8 +96,9 @@ impl<'a> Image<'a> {
         }
         let count = u16_at(bytes, pe + 6)? as usize;
         let flags = u16_at(bytes, pe + 22)?;
-        if count == 0 || count > 96 || flags & 0x2002 != 2 {
-            return Err("expected executable image, not DLL; 1..96 sections".into());
+        let expected = if is_dll { 0x2002 } else { 2 };
+        if count == 0 || count > 96 || flags & 0x2002 != expected {
+            return Err("wrong EXE/DLL image kind or section count outside 1..96".into());
         }
         let opt_size = u16_at(bytes, pe + 20)? as usize;
         let opt = pe + 24;
@@ -177,11 +208,13 @@ impl<'a> Image<'a> {
             entry,
             sections,
             directories,
+            is_dll,
         };
-        if !image
-            .sections
-            .iter()
-            .any(|s| s.rights & 0x20000000 != 0 && entry >= s.rva && entry < s.rva + s.raw_size)
+        if !(is_dll && entry == 0)
+            && !image
+                .sections
+                .iter()
+                .any(|s| s.rights & 0x20000000 != 0 && entry >= s.rva && entry < s.rva + s.raw_size)
         {
             return Err("entry is not initialized executable code".into());
         }
@@ -330,8 +363,121 @@ impl<'a> Image<'a> {
         }
         Ok(result.into_iter().collect())
     }
+    /// Read bounded named/ordinal export metadata without loading dependencies.
+    /// Code and mapped data RVAs are retained; absolute/out-of-image targets,
+    /// unsorted/duplicate names, named holes and more than 65536 slots/names fail.
+    /// A forwarder's entire ASCII string must lie inside the export directory.
+    pub fn exports(&self) -> Result<Option<ExportTable>> {
+        let (rva, length) = self.directories[0];
+        if length == 0 {
+            return Ok(None);
+        }
+        if length < 40 {
+            return Err("truncated export directory".into());
+        }
+        let directory = self.file_range(rva, 40)?;
+        if u32_at(directory, 0)? != 0 {
+            return Err("nonzero reserved export flags".into());
+        }
+        let name_rva = u32_at(directory, 12)? as usize;
+        if name_rva == 0 {
+            return Err("missing DLL export name".into());
+        }
+        let dll_name = self.string(name_rva)?;
+        let ordinal_base = u32_at(directory, 16)?;
+        let count = u32_at(directory, 20)? as usize;
+        let names_count = u32_at(directory, 24)? as usize;
+        if count > 65536 || names_count > 65536 || (count == 0 && names_count != 0) {
+            return Err("unsupported export table counts".into());
+        }
+        if count != 0 && ordinal_base.checked_add((count - 1) as u32).is_none() {
+            return Err("export ordinal overflow".into());
+        }
+        let table = if count == 0 {
+            &[]
+        } else {
+            let address = u32_at(directory, 28)? as usize;
+            if address == 0 {
+                return Err("missing export address table".into());
+            }
+            self.file_range(address, count * 4)?
+        };
+        let mut names: Vec<Vec<String>> = vec![Vec::new(); count];
+        if names_count != 0 {
+            let names_rva = u32_at(directory, 32)? as usize;
+            let ordinals_rva = u32_at(directory, 36)? as usize;
+            if names_rva == 0 || ordinals_rva == 0 {
+                return Err("missing export name/ordinal table".into());
+            }
+            let pointers = self.file_range(names_rva, names_count * 4)?;
+            let ordinals = self.file_range(ordinals_rva, names_count * 2)?;
+            let mut previous: Option<String> = None;
+            for i in 0..names_count {
+                let name = self.string(u32_at(pointers, i * 4)? as usize)?;
+                if previous.as_ref().is_some_and(|p| p >= &name) {
+                    return Err("export names must be unique and lexically sorted".into());
+                }
+                let ordinal_index = u16_at(ordinals, i * 2)? as usize;
+                if ordinal_index >= count || u32_at(table, ordinal_index * 4)? == 0 {
+                    return Err("export name refers to missing address slot".into());
+                }
+                previous = Some(name.clone());
+                names[ordinal_index].push(name);
+            }
+        }
+        let mut entries = Vec::new();
+        for (i, names) in names.into_iter().enumerate() {
+            let address = u32_at(table, i * 4)? as usize;
+            if address == 0 {
+                continue;
+            }
+            let target = if (rva..rva + length).contains(&address) {
+                let max = (rva + length - address).min(4096);
+                let mut text = Vec::new();
+                let mut terminated = false;
+                for offset in 0..max {
+                    let byte = self.file_range(address + offset, 1)?[0];
+                    if byte == 0 {
+                        terminated = true;
+                        break;
+                    }
+                    if !byte.is_ascii() {
+                        return Err("non-ASCII export forwarder".into());
+                    }
+                    text.push(byte);
+                }
+                if !terminated || text.is_empty() {
+                    return Err("unterminated/empty bounded export forwarder".into());
+                }
+                ExportTarget::Forwarder(String::from_utf8(text).unwrap())
+            } else {
+                if !(address < self.headers
+                    || self
+                        .sections
+                        .iter()
+                        .any(|s| address >= s.rva && address < s.rva + s.size))
+                {
+                    return Err("export address is not in mapped image bytes".into());
+                }
+                ExportTarget::Address { rva: address }
+            };
+            entries.push(Export {
+                ordinal: ordinal_base + i as u32,
+                names,
+                target,
+            });
+        }
+        Ok(Some(ExportTable {
+            dll_name,
+            ordinal_base,
+            entries,
+        }))
+    }
     /// Startup gates are deliberately conservative; no silent TLS/CFG/unwind omission.
     pub fn check_startup(&self) -> Result<()> {
+        if self.is_dll {
+            return Err("DLL startup/loading lifecycle is unsupported".into());
+        }
         for (i, name) in [
             (0, "exports"),
             (3, "exception/unwind"),
