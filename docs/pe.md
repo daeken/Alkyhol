@@ -121,7 +121,7 @@ explicitly reviewed native evidence milestone, not silently updating expected
 output. See [validation](validation.md) for executed revisions and CI results.
 
 Static TLS/callbacks, unwind/SEH, CFG/load config, delay/bound/ordinal imports,
-DLL startup/loading, CLR, dynamic lookup, guest threads/callbacks, COM vtable ABI
+General dependent-DLL loading, CLR, dynamic lookup, guest threads/callbacks, COM vtable ABI
 bridges, general Windows process structures and Windows CRT startup are not implemented in this
 binary path. Unsupported metadata or imports fail before entry; unrecognized
 instructions are **not** statically detected. Trusted code must not issue Windows
@@ -167,10 +167,11 @@ no dependency resolution, symbol grammar guessing or callable-function promise
 is implied. Address exports can point to data, not just functions. Named missing
 slots, unsupported absolute/out-of-image targets and malformed metadata fail.
 
-This is metadata support only. `LoadedImage::load` still accepts EXEs only, and
-`check_startup` explicitly rejects DLL lifecycle even for a DLL without exports.
-No DllMain, dependent-library initialization, LoadLibrary/GetProcAddress/FreeLibrary,
-reference-counting, unload or Windows exception behavior is provided yet. The
+This metadata API does not execute code. `LoadedImage::load` still accepts EXEs
+only and normal `check_startup` rejects DLLs. An explicit isolated runtime API is
+now available below; general dependent-library initialization, guest
+LoadLibrary/GetProcAddress/FreeLibrary, module caching/reference counts and
+Windows exceptions remain unavailable. The
 existing EXE startup gates and both frozen native binary observers remain intact.
 Six new host parser units exercise these rules, every truncated prefix, aliases,
 ordinal-only/empty tables, zero-entry DLLs and malformed forwarder/table bounds.
@@ -205,4 +206,52 @@ units remain separate evidence.
 `tools/compare_pe_exports.py` requires distinct native and metadata-only backends,
 identical DLL/source/revision identities, clean tracked trees and equal common
 records. It also rejects invented host execution or missing native call results.
-This prepares a DLL lifecycle reference; Rust DLL execution remains unsupported.
+This establishes the native reference used by the separate isolated DLL runtime
+below. The metadata observer itself continues to report no Rust DLL execution.
+
+## Isolated trusted DLL runtime
+
+On x86-64 macOS, `unsafe LoadedLibrary::load` now maps one trusted PE64 DLL,
+applies DIR64 relocations and supported kernel32 IAT bindings, preflights all
+forwarders, sets final W^X protections and calls the original DLL entry with
+DLL_PROCESS_ATTACH and NULL reserved (dynamic-load semantics). Its case-sensitive
+name and biased-ordinal lookups return raw code/data addresses owned by that
+instance. Drop calls DLL_PROCESS_DETACH before releasing the mapping. Failed
+ATTACH returns an error and receives exactly one DETACH; zero entry calls neither.
+Images now reserve/trim owned VM space to a 64-KiB-aligned base without MAP_FIXED;
+cleanup ownership is updated after each trim so a failure cannot unmap a reused
+gap. The ordinary executable loader retains its startup gates.
+
+This object represents an **isolated library instance**, not Windows' global
+module manager. There is no same-file cache/reference count, DLL dependency graph,
+loader-lock/reentrancy support, guest LoadLibrary/GetProcAddress/FreeLibrary export,
+static TLS, SEH/unwind support or thread notification. Imports and forwarders may
+only target the explicit kernel32 bridge whitelist. Unsupported dependencies,
+ordinal forwarders and startup metadata fail before DllMain. Any required
+ProcessContext must be installed and kept alive by the trusted embedding caller;
+all exported pointer lifetimes end with their library/context. Guest instructions
+remain trusted native code, not sandboxed or statically safety-verified.
+
+The new `probe_library` binary executes the **unchanged frozen DLL** from the
+native export reference, including its original C DllMain, relocated data pointer,
+exported code/data and forwarded Win64 API. `tools/run_pe_library.py` verifies
+exact DLL/source identity against that reference before entering it. Actual
+lookup RVAs, initialized/BSS data and function results match the frozen native
+Windows record on physical M4, normally and after forced rebase. A forwarder also
+returns a real last-error sentinel through the Win64 bridge. The existing
+metadata-only observer remains separate and unchanged.
+
+```sh
+python3 tools/run_pe_library.py --dll local/pe/export-fixture/alkyhol_exports.dll --output local/pe/library-runtime.json
+```
+
+Five independent host units use a tiny owned DLL entry that writes Win64 reason,
+module/reserved arguments and call count into an external UnsafeCell. They check
+ATTACH/DETACH order, failed-attach cleanup, zero entry, lookup/error cases and
+pre-entry rejection. An isolated child uses actual Mach VM region queries before
+and after Drop to verify the mapping is gone after DETACH. Dereferencing freed
+pointers or expecting Linux mincore error semantics is not the cleanup oracle.
+These host lifecycle assertions are distinct from the frozen Windows successful
+load/call/free observations; full Windows unload side-effect parity is unmeasured.
+The expanded PE workflow now compares actual Alkyhol DLL execution separately
+from static metadata. Native Windows comparison of this new runtime is pending CI.

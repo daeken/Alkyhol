@@ -31,6 +31,12 @@ jobs:
         run: |
           python tools/build_pe_export_fixture.py
           python tools/run_pe_exports.py --dll local/pe/export-fixture/alkyhol_exports.dll --output local/pe/exports-metadata.json
+      - name: Execute the frozen owned DLL through Alkyhol, including DllMain and exports
+        run: python tools/run_pe_library.py --dll local/pe/export-fixture/alkyhol_exports.dll --output local/pe/library-runtime.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe-library-runtime
+          path: local/pe/library-runtime.json
       - uses: actions/upload-artifact@v4
         with:
           name: pe-export-fixture
@@ -138,3 +144,8 @@ jobs:
           name: pe-exports-windows
           path: local/pe/observations
       - run: python tools/compare_pe_exports.py local/pe/observations/exports-windows.json local/pe/observations/exports-metadata.json
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe-library-runtime
+          path: local/pe/observations
+      - run: python tools/compare_pe_library.py local/pe/observations/exports-windows.json local/pe/observations/library-runtime.json

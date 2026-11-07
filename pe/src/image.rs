@@ -476,10 +476,22 @@ impl<'a> Image<'a> {
     /// Startup gates are deliberately conservative; no silent TLS/CFG/unwind omission.
     pub fn check_startup(&self) -> Result<()> {
         if self.is_dll {
-            return Err("DLL startup/loading lifecycle is unsupported".into());
+            return Err("DLL image requires the explicit isolated library API".into());
         }
+        if self.directories[0].1 != 0 {
+            return Err("unsupported startup feature: exports".into());
+        }
+        self.check_auxiliary_startup()
+    }
+    #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
+    pub(crate) fn check_library_startup(&self) -> Result<()> {
+        if !self.is_dll {
+            return Err("expected DLL image".into());
+        }
+        self.check_auxiliary_startup()
+    }
+    fn check_auxiliary_startup(&self) -> Result<()> {
         for (i, name) in [
-            (0, "exports"),
             (3, "exception/unwind"),
             (7, "architecture"),
             (8, "global pointer"),

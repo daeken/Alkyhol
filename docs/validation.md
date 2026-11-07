@@ -4,6 +4,35 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## Isolated PE64 DLL execution: physical M4 milestone
+
+The explicit unsafe LoadedLibrary API now executes the unchanged owned DLL
+already measured/frozen on native Windows (SHA-256
+`423d6e191a3ebb4f4f5ce11710591edc9ebe163ece79bd35cc6fe5146d13399d`).
+Physical M4/x86-64 executes original C DllMain, rebases the absolute data pointer,
+resolves name/ordinal/data/forwarded exports and calls original exported code.
+All six actual lookup targets and all five initialization/call/hole observations
+match the frozen Windows record, in normal and forced-rebase runs. Forwarded
+GetLastError additionally returns the actual Rust thread-local sentinel `0x1234`.
+The original DLL bytes, source and frozen native observer are unchanged. This is
+real DLL code execution, separate from the earlier metadata-only observer.
+
+Five new independent host lifecycle units pass (36 PE tests total), including
+actual Win64 DllMain argument capture, ATTACH/DETACH order, failed-attach cleanup,
+zero entry, unsupported-feature rejection before any initializer, lookup cases
+and actual Mach VM region disappearance after Drop. Darwin mincore is a residency
+query and freed-pointer reads are not the unmap oracle. Image mappings now use
+64-KiB alignment with failure-safe trimming. All 17 portable arm64 tests, 139
+Python tests, PE formatting/Clippy and both unchanged executable observers pass.
+
+The new runtime observer is wired into the existing identical-DLL Windows
+workflow, but its live same-revision comparison is pending CI. Frozen Windows
+success observations and physical M4 execution are established; general Windows
+module caching/refcounts, dependent DLLs, guest LoadLibrary/GetProcAddress APIs,
+threads, static TLS, SEH and full unload side-effect parity remain unimplemented
+or unmeasured. [Exact isolated-runtime contract](pe.md#isolated-trusted-dll-runtime).
+No graphics implementation, original sample/shader/asset or game data is changed.
+
 ## DLL export reference probe: native Windows observations
 
 The native Windows and Rust metadata comparison now passes in

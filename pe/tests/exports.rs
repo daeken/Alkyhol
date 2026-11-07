@@ -68,7 +68,7 @@ fn library() -> Vec<u8> {
     b
 }
 #[test]
-fn dll_kind_and_optional_entry_never_enable_runtime_loading() {
+fn dll_kind_and_optional_entry_preserve_normal_exe_startup_gates() {
     let mut b = library();
     assert!(Image::parse(&b).is_err());
     let dll = Image::parse_dll(&b).unwrap();
