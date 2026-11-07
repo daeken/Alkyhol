@@ -397,6 +397,9 @@ See [exact limits and evidence](../compute-pipelines.md). A new native Windows
 probe matches common construction/COM assertions on native WARP, hosted Metal
 and physical M4 at `ded5bbd` (all twenty-three jobs passed in CI 42375900712).
 The native report is frozen at `cpp/reference/compute-pipelines-windows-v1.json`;
-a fresh strict-reference run is pending. Original
+the strict-reference run on `6de9bd1` passed all twenty-three jobs in
+[42376529216](https://github.com/daeken/Alkyhol/actions/runs/42376529216). Fresh
+downloaded native/hosted reports match clean physical M4 observations and the
+frozen common payload; the original helper caller passes at that same revision. Original
 sample embedded-root DXIL, cache blobs, graphics PSOs, shader binding and D3D12
 Dispatch remain unavailable. The original application preflight stays gated.

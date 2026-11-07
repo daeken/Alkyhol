@@ -34,8 +34,18 @@ canonical observation SHA-256
 `b8eefd69ed8e0166548fa8765e1b38467a4a52fee408ffc9f6c943351e8c6348`.
 Future live pairs must match the frozen construction/COM payload. Local strict
 checks of downloaded native/hosted and native/physical pairs pass; all 115 Python
-tests pass. Fresh full CI for the freeze is pending. Cache blobs and shader
-execution after input disposal are not native parity claims from this probe.
+tests pass. Cache blobs and shader execution after input disposal are not native
+parity claims from this probe.
+
+The strict-reference run [42376529216](https://github.com/daeken/Alkyhol/actions/runs/42376529216)
+passed all twenty-three jobs on `6de9bd1`, including native PSO construction,
+hosted Metal runtime tests and all prior SDK/shader/graphics/resource/descriptor/
+root comparisons. Downloaded clean native and hosted reports match a fresh clean
+physical M4 record at that same revision, including shared fixture identities and
+the frozen common COM payload. The original subsystem v6 caller also passes
+cleanly there. Locally the shader suite has 29 passing tests and one explicitly
+ignored physical-RT material-interface test; that ignored test is not new evidence
+from this milestone. Exact Sakura/MiniEngine shader artifact regeneration passes.
 The original subsystem v6 caller now runs unchanged PipelineState.cpp's compute
 finalization/cache path alongside the four previous verified original objects.
 It supplies the owned compute test shader; original sample embedded-root DXIL

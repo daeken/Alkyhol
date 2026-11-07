@@ -252,3 +252,9 @@ DXIL and production rendering remain outside this bounded API contract.
 The first run 42375717669 failed strict MSVC compilation on an int-to-byte fill
 in the new observer. `ded5bbd` changes only that fill value's exact type; no
 runtime semantics or independent native acceptance check is weakened.
+
+The strict-reference run 42376529216 on `6de9bd1` passed all twenty-three jobs,
+retaining every prior comparison. Fresh downloaded native/hosted reports match
+a clean physical M4 construction/COM report and the frozen payload at that same
+revision. The original subsystem v6 caller also passes cleanly there. These
+checks do not add native command-list dispatch or original-rendering evidence.

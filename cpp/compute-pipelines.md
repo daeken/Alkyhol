@@ -70,7 +70,13 @@ and shared source/fixture identity. The report is frozen at
 The first run failed MSVC compilation on an int-to-byte fill in the observer; the
 fix types the fill value and leaves all assertions/runtime semantics intact.
 The freeze adds an immutable native/source fixture test (115 Python tests pass);
-a fresh complete strict-reference CI result remains pending. This C++ probe does
+the strict-reference run
+[42376529216](https://github.com/daeken/Alkyhol/actions/runs/42376529216) passed all
+twenty-three jobs on `6de9bd1`. Fresh downloaded native/hosted reports match clean
+physical M4 construction/COM observations and the frozen payload at that revision;
+the original subsystem v6 caller also passes cleanly there. Locally 29 shader
+tests pass, with one existing physical-RT interface test explicitly ignored;
+exact sample shader regeneration passes. This C++ probe does
 not execute shader results after discarding inputs. GetCachedBlob is tested
 as unavailable only on Rust; this is not full native pipeline API parity.
 
