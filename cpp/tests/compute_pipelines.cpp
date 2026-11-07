@@ -28,7 +28,7 @@ int main(){
     std::vector<unsigned char> bytecode(compute_probe_dxil,compute_probe_dxil+sizeof(compute_probe_dxil));D3D12_COMPUTE_PIPELINE_STATE_DESC desc{};desc.pRootSignature=root.Get();desc.CS={bytecode.data(),bytecode.size()};desc.NodeMask=1;
     assert(device->CreateComputePipelineState(&desc,__uuidof(ID3D12PipelineState),nullptr)==S_FALSE);
     ComPtr<ID3D12PipelineState> pipeline,second;assert(device->CreateComputePipelineState(&desc,IID_PPV_ARGS(&pipeline))==S_OK);assert(device->CreateComputePipelineState(&desc,IID_PPV_ARGS(&second))==S_OK);second.Reset();
-    std::fill(bytecode.begin(),bytecode.end(),0);root.Reset();blob.Reset();device.Reset();
+    std::fill(bytecode.begin(),bytecode.end(),static_cast<unsigned char>(0));root.Reset();blob.Reset();device.Reset();
     ComPtr<ID3D12Device> parent;assert(pipeline->GetDevice(IID_PPV_ARGS(&parent))==S_OK&&parent->GetNodeCount()==1);
     ComPtr<IUnknown> identity,again;assert(pipeline->QueryInterface(IID_PPV_ARGS(&identity))==S_OK);assert(identity->QueryInterface(IID_PPV_ARGS(&again))==S_OK&&identity.Get()==again.Get());
     ComPtr<ID3D12Pageable> pageable;assert(pipeline->QueryInterface(IID_PPV_ARGS(&pageable))==S_OK);
