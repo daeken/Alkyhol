@@ -18,7 +18,7 @@ if __package__:
 else:
     from build_original_miniengine import ROOT,ensure,header_hashes
 
-ORIGINALS=['MiniEngine/Core/CommandListManager.cpp','MiniEngine/Core/CommandAllocatorPool.cpp','MiniEngine/Core/DescriptorHeap.cpp']
+ORIGINALS=['MiniEngine/Core/CommandListManager.cpp','MiniEngine/Core/CommandAllocatorPool.cpp','MiniEngine/Core/DescriptorHeap.cpp','MiniEngine/Core/RootSignature.cpp']
 PIN='68a2b1e97f71642924e74c7757ca21756ad221b5'
 
 def current_objects(upstream,build,report,headers):
@@ -36,15 +36,15 @@ def current_objects(upstream,build,report,headers):
 
 def validate_observation(text):
     result=json.loads(text)
-    expected={'scenario':'original-command-manager-v4','next_values':[9,(2<<56)|9,(3<<56)|9],
-              'queues':3,'copy_queues':3,'copy_bytes_per_queue':257,'descriptor_types':4,'visible_heaps':2,'allocator_pool_reused':True,'increments_per_queue':8,'idle':True,'shutdown':True}
+    expected={'scenario':'original-command-manager-v5','next_values':[9,(2<<56)|9,(3<<56)|9],
+              'queues':3,'copy_queues':3,'copy_bytes_per_queue':257,'descriptor_types':4,'visible_heaps':2,'root_signatures':3,'root_cache_reused':True,'allocator_pool_reused':True,'increments_per_queue':8,'idle':True,'shutdown':True}
     if result!=expected or any(type(result[k]) is not type(v) for k,v in expected.items()) or any(type(v) is not int for v in result['next_values']):
         raise ValueError('original command manager did not complete its full sequence')
     return result
 
 def run(output,build):
     if platform.system()!='Darwin':raise RuntimeError('actual Metal macOS host required')
-    upstream=ensure('DirectX-Graphics-Samples');headers=ensure('DirectX-Headers')
+    upstream=ensure('DirectX-Graphics-Samples');headers=ensure('DirectX-Headers');math=ensure('DirectXMath')
     manifest=build/'cpp-build.json';record=json.loads(manifest.read_text())
     objects=current_objects(upstream,build,record,header_hashes())
     cargo=shutil.which('cargo') or str(Path.home()/'.cargo/bin/cargo')
@@ -56,10 +56,14 @@ def run(output,build):
             *sorted((ROOT/'src').glob('*.rs')),*sorted((ROOT/'cpp/runtime/src').glob('*.rs')),*sorted((ROOT/'cpp/runtime/src').glob('*.metal'))]
     def hashes():
         return {**header_hashes(),**{p.relative_to(ROOT).as_posix():hashlib.sha256(p.read_bytes()).hexdigest() for p in inputs}}
+    compiler=Path(record['units'][0]['command'][0])
+    if hashlib.sha256(compiler.read_bytes()).hexdigest()!=record['compiler_sha256']:raise ValueError('original caller compiler changed')
+    sdk=subprocess.check_output(['xcrun','--show-sdk-path'],text=True).strip()
     before=hashes()
     with tempfile.TemporaryDirectory(prefix='alkyhol-original-queue-') as scratch:
         executable=Path(scratch)/'original_command_manager'
-        command=['clang++','-arch','x86_64','-std=c++14','-fms-extensions',
+        command=[str(compiler),'-arch','x86_64','-std=c++14','-fms-extensions','-msse4.1','-isysroot',sdk,
+                 '-I'+str(math/'Inc'),'-I'+str(build/'dependency-include'),'-I'+str(upstream/'MiniEngine/Core/Math'),
                  '-I'+str(ROOT/'cpp/include'),'-I'+str(headers/'include'),'-I'+str(headers/'include/directx'),
                  '-I'+str(upstream/'MiniEngine/Core'),str(source),*map(str,objects),str(library),
                  '-framework','Metal','-framework','Foundation','-framework','CoreGraphics',
@@ -75,7 +79,7 @@ def run(output,build):
                 'upstream_revision':PIN,'source_revision':subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),
                 'tracked_tree_clean':subprocess.run(['git','diff','--quiet','HEAD'],cwd=ROOT).returncode==0,
                 'host':platform.platform(),'machine':platform.machine(),
-                'caller_compiler':subprocess.check_output(['clang++','--version'],text=True),
+                'caller_compiler':subprocess.check_output([str(compiler),'--version'],text=True),
                 'original_units':[u for u in record['units'] if u['source'] in ORIGINALS],
                 'build_command':command,'artifacts':before,'executable_sha256':hashlib.sha256(executable.read_bytes()).hexdigest(),
                 'observation':observation,'diagnostics':result.stderr}

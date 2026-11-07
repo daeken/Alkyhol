@@ -4,6 +4,8 @@ pub mod com_object;
 pub mod ffi;
 pub mod graphics;
 pub mod kernel;
+mod root_hash;
+pub mod root_signature;
 pub mod tls;
 
 #[cfg(unix)]

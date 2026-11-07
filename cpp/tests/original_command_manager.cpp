@@ -8,6 +8,7 @@
 // Same public constant as the pinned MiniEngine pch.h.
 #define D3D12_GPU_VIRTUAL_ADDRESS_UNKNOWN ((D3D12_GPU_VIRTUAL_ADDRESS)-1)
 #include "DescriptorHeap.h"
+#include "RootSignature.h"
 #include <cassert>
 #include <cstdio>
 #include <cstring>
@@ -17,6 +18,20 @@ int main(){
     Microsoft::WRL::ComPtr<ID3D12Device> device;
     assert(AlkyholCreateMetalDeviceSubset(nullptr,IID_PPV_ARGS(&device))==S_OK);
     Graphics::g_Device=device.Get();
+    {
+        RootSignature first(1),cached(1),mixed(5,1);
+        first[0].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV,3,4,D3D12_SHADER_VISIBILITY_PIXEL,2);
+        first.Finalize(L"unchanged original root helper");auto* identity=first.GetSignature();assert(identity);
+        first.Finalize(L"already finalized");assert(first.GetSignature()==identity);
+        cached[0].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV,3,4,D3D12_SHADER_VISIBILITY_PIXEL,2);
+        cached.Finalize(L"original cached root helper");assert(cached.GetSignature()==identity);
+        mixed[0].InitAsConstants(0,4);mixed[1].InitAsConstantBuffer(1);mixed[2].InitAsBufferSRV(3);mixed[3].InitAsBufferUAV(2);
+        mixed[4].InitAsDescriptorTable(2,D3D12_SHADER_VISIBILITY_PIXEL);mixed[4].SetTableRange(0,D3D12_DESCRIPTOR_RANGE_TYPE_SRV,0,2,1);mixed[4].SetTableRange(1,D3D12_DESCRIPTOR_RANGE_TYPE_CBV,0,3,1);
+        D3D12_SAMPLER_DESC sampler{};sampler.Filter=D3D12_FILTER_MIN_MAG_MIP_LINEAR;sampler.AddressU=sampler.AddressV=sampler.AddressW=D3D12_TEXTURE_ADDRESS_MODE_WRAP;sampler.MaxAnisotropy=1;sampler.ComparisonFunc=D3D12_COMPARISON_FUNC_ALWAYS;sampler.MaxLOD=FLT_MAX;
+        mixed.InitStaticSampler(0,sampler,D3D12_SHADER_VISIBILITY_PIXEL);mixed.Finalize(L"original mixed root helper",D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);assert(mixed.GetSignature());
+        Microsoft::WRL::ComPtr<ID3D12Device> parent;assert(mixed.GetSignature()->GetDevice(IID_PPV_ARGS(&parent))==S_OK&&parent.Get()==device.Get());
+        RootSignature::DestroyAll();
+    }
     unsigned descriptor_types=0,visible_heaps=0;
     for(auto type:{D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV,D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER,D3D12_DESCRIPTOR_HEAP_TYPE_RTV,D3D12_DESCRIPTOR_HEAP_TYPE_DSV}) {
         DescriptorAllocator descriptors(type);const auto first=descriptors.Allocate(128);const auto second=descriptors.Allocate(128);const auto rollover=descriptors.Allocate(1);const auto stride=device->GetDescriptorHandleIncrementSize(type);
@@ -55,6 +70,6 @@ int main(){
     auto* first=pool.RequestAllocator(0);pool.DiscardAllocator(7,first);auto* second=pool.RequestAllocator(6);assert(second!=first);pool.DiscardAllocator(8,second);
     auto* reused=pool.RequestAllocator(7);assert(reused==first&&pool.Size()==2);pool.Shutdown();
     manager.IdleGPU();manager.Shutdown();assert(!manager.GetGraphicsQueue().IsReady()&&!manager.GetComputeQueue().IsReady()&&!manager.GetCopyQueue().IsReady());
-    std::printf("{\"scenario\":\"original-command-manager-v4\",\"next_values\":[%llu,%llu,%llu],\"queues\":3,\"copy_queues\":%u,\"copy_bytes_per_queue\":257,\"descriptor_types\":%u,\"visible_heaps\":%u,\"allocator_pool_reused\":true,\"increments_per_queue\":8,\"idle\":true,\"shutdown\":true}\n",static_cast<unsigned long long>(final_values[0]),static_cast<unsigned long long>(final_values[1]),static_cast<unsigned long long>(final_values[2]),copy_queues,descriptor_types,visible_heaps);
+    std::printf("{\"scenario\":\"original-command-manager-v5\",\"next_values\":[%llu,%llu,%llu],\"queues\":3,\"copy_queues\":%u,\"copy_bytes_per_queue\":257,\"descriptor_types\":%u,\"visible_heaps\":%u,\"root_signatures\":3,\"root_cache_reused\":true,\"allocator_pool_reused\":true,\"increments_per_queue\":8,\"idle\":true,\"shutdown\":true}\n",static_cast<unsigned long long>(final_values[0]),static_cast<unsigned long long>(final_values[1]),static_cast<unsigned long long>(final_values[2]),copy_queues,descriptor_types,visible_heaps);
     Graphics::g_Device=nullptr;
 }

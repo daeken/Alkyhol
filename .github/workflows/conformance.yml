@@ -288,6 +288,12 @@ jobs:
         with:
           name: cpp-cbv-copies-Windows
           path: cpp-cbv-copies.json
+      - name: Observe root serialization and retained COM layouts
+        run: python tools/run_cpp_root_signatures.py --output cpp-root-signatures.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cpp-root-signatures-Windows
+          path: cpp-root-signatures.json
       - name: Observe native D3D12 COM private-data and interface ownership
         run: python tools/run_cpp_object_reference.py --output cpp-object-reference.json
       - uses: actions/upload-artifact@v4
@@ -467,6 +473,12 @@ jobs:
         with:
           name: cpp-cbv-copies-Metal
           path: cpp-cbv-copies.json
+      - name: Observe root serialization and retained COM layouts
+        run: python tools/run_cpp_root_signatures.py --output cpp-root-signatures.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cpp-root-signatures-Metal
+          path: cpp-root-signatures.json
       - uses: actions/upload-artifact@v4
         with:
           name: cpp-metal-factory
@@ -617,4 +629,25 @@ jobs:
           revision=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
           compare_reports(reports,revision)
           print('All 72 data/guard words agree: native DXIL consumer vs explicit bounded Metal record consumer. No general Alkyhol root-signature, pipeline or Dispatch claim')
+          PY
+
+  compare-cpp-root-signatures:
+    needs: [cpp-metal-factory, graphics-reference]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: cpp-root-signatures-*
+          path: cpp-root-observations
+      - name: Compare complete serialized roots and COM ownership assertions
+        run: |
+          python3 - <<'PY'
+          import json, subprocess
+          from pathlib import Path
+          from tools.run_cpp_root_signatures import compare_reports
+          reports=[json.loads(p.read_text()) for p in Path('cpp-root-observations').glob('*/*.json')]
+          revision=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
+          compare_reports(reports,revision)
+          print('All bytes of six root containers and COM assertions agree; no GPU binding, pipeline, dispatch or original rendering claim')
           PY

@@ -367,3 +367,15 @@ not a native lifetime parity claim).
 python3 tools/build_cpp_cbv_probe.py --check
 python3 tools/run_cpp_cbv_copies.py --output local/cpp-cbv-copies.json
 ```
+
+
+## Owned root-signature layouts
+
+Version-1.0 root serialization and the restricted device's real eight-slot
+ID3D12RootSignature objects now run the unchanged original RootSignature.cpp
+helper, including its static-sampler conversion and cache. Standalone containers
+are validated and deep-copied; metadata/parent ownership remains real. See the
+[bounded contract and open provenance](../root-signatures.md). A shared C++ probe
+records all 980 bytes of six root layouts locally; native Windows execution is
+pending. GPU binding, pipeline creation, dispatch and production device creation
+remain unavailable. This adds CPU layout/COM support, not original rendering.

@@ -423,16 +423,6 @@ unsafe extern "C" fn desc_object(
 ) -> i32 {
     unsafe { unsupported_out("D3D12 object creation", out) }
 }
-unsafe extern "C" fn root_signature(
-    _: *mut Device,
-    _: u32,
-    _: usize,
-    _: usize,
-    _: *const Guid,
-    out: *mut *mut c_void,
-) -> i32 {
-    unsafe { unsupported_out("root signature", out) }
-}
 unsafe extern "C" fn sampler(_: *mut Device, _: usize, _: usize) {
     unsupported_void("sampler view");
 }
@@ -653,7 +643,7 @@ static DEVICE_VTABLE: DeviceVtable = DeviceVtable {
     feature,
     heap: descriptor_heaps::create,
     increment: descriptor_heaps::increment,
-    root: root_signature,
+    root: root_signatures::create,
     cbv: cbv_descriptors::create_cbv,
     srv: view3,
     uav: view4,
@@ -1032,3 +1022,6 @@ mod descriptor_heaps;
 
 #[path = "cbv_descriptors.rs"]
 mod cbv_descriptors;
+
+#[path = "root_signatures.rs"]
+mod root_signatures;

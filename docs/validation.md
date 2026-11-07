@@ -4,6 +4,26 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## Original root-signature helper: local layout/COM milestone
+
+The unchanged MiniEngine RootSignature.cpp now runs through Rust's real
+version-1.0 serialization and owned eight-slot root-signature COM object. The
+original helper exercises Finalize, mixed parameter layouts, static sampler
+conversion, repeat-finalization and original cache reuse. Its source/object are
+verified from the complete pinned 70-unit build alongside the three prior
+queue/allocator/heap objects (v5 observation). This is a subsystem execution;
+the complete original app still relinks and exits 78 at device creation.
+
+The shared C++ observer records all 980 bytes of six checked root containers,
+legacy/versioned equality and real COM identity/metadata/parent assertions on
+physical M4/x86-64. Nine new core units pass (77 core tests total), three new
+runtime units pass (52 total), both Clippy checks/formatting pass, and all 108
+Python tests pass. Root layout/checksum code comes from pinned open DXC with
+retained NCSA attribution/license; no gated component is introduced.
+[The exact bounded contract and provenance](../cpp/root-signatures.md) records
+limits and failures. Native Windows SDK/WARP comparison for this new milestone
+is pending; no GPU binding/PSO/Dispatch or original-frame parity is claimed.
+
 ## Constant-buffer descriptors and copies: physical Metal evidence
 
 The explicit restricted device now initializes non-null UPLOAD buffer CBVs with

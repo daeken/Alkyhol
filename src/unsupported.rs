@@ -60,31 +60,6 @@ pub unsafe extern "C" fn D3D12EnableExperimentalFeatures(
     unavailable("D3D12EnableExperimentalFeatures");
     E_NOTIMPL
 }
-unsafe fn serialization_failure(blob: *mut *mut c_void, error: *mut *mut c_void) -> i32 {
-    if !error.is_null() {
-        unsafe {
-            *error = ptr::null_mut();
-        }
-    }
-    unsafe { interface_failure("D3D12 root signature serialization", blob) }
-}
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn D3D12SerializeRootSignature(
-    _desc: *const c_void,
-    _version: i32,
-    blob: *mut *mut c_void,
-    error: *mut *mut c_void,
-) -> i32 {
-    unsafe { serialization_failure(blob, error) }
-}
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn D3D12SerializeVersionedRootSignature(
-    _desc: *const c_void,
-    blob: *mut *mut c_void,
-    error: *mut *mut c_void,
-) -> i32 {
-    unsafe { serialization_failure(blob, error) }
-}
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn DirectInput8Create(
     _instance: *mut c_void,
