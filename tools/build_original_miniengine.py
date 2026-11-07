@@ -100,7 +100,7 @@ def header_hashes():
     return {str(p.relative_to(ROOT)):hashlib.sha256(p.read_bytes()).hexdigest()
             for p in sorted([*(ROOT/'cpp/include').rglob('*'),ROOT/'cpp/bridge/modern_crt.h']) if p.is_file()}
 
-def link_original(upstream,output):
+def link_original(upstream,output,runtime="metal"):
     report=json.loads((output/'cpp-build.json').read_text())
     if not report['complete'] or report['headers_sha256']!=header_hashes():
         raise RuntimeError('complete current C++ compilation is required before linking')
@@ -108,8 +108,14 @@ def link_original(upstream,output):
         if hashlib.sha256((upstream/unit['source']).read_bytes()).hexdigest()!=unit['sha256'] or hashlib.sha256((output/unit['object']).read_bytes()).hexdigest()!=unit['object_sha256']:
             raise RuntimeError('source or object changed after compilation: '+unit['source'])
     cargo=shutil.which('cargo') or str(Path.home()/'.cargo/bin/cargo')
-    subprocess.run([cargo,'build','--offline','--target','x86_64-apple-darwin'],cwd=ROOT,check=True)
-    library=ROOT/'target/x86_64-apple-darwin/debug/libalkyhol.a'
+    if runtime=='metal':
+        subprocess.run([cargo,'build','--manifest-path',str(ROOT/'cpp/runtime/Cargo.toml'),'--locked','--target','x86_64-apple-darwin'],cwd=ROOT,check=True)
+        library=ROOT/'cpp/runtime/target/x86_64-apple-darwin/debug/libalkyhol_cpp_metal.a'
+        frameworks=['-framework','Metal','-framework','Foundation','-framework','CoreGraphics','-lobjc']
+    elif runtime=='root':
+        subprocess.run([cargo,'build','--offline','--target','x86_64-apple-darwin'],cwd=ROOT,check=True)
+        library=ROOT/'target/x86_64-apple-darwin/debug/libalkyhol.a';frameworks=[]
+    else:raise ValueError('unknown C++ runtime backend: '+runtime)
     driver=output/'main.o';headers=ensure('DirectX-Headers')
     compiler=['clang++','-arch','x86_64','-std=c++14','-fms-extensions',
               '-I'+str(ROOT/'cpp/include'),'-I'+str(headers/'include'),'-I'+str(headers/'include/directx')]
@@ -123,10 +129,10 @@ def link_original(upstream,output):
     samples=[output/u['object'] for u in report['units'] if Path(u['object']).parts[1]=='Sample']
     executable=output/'MiniEngine-Sponza'
     command=[*compiler,str(driver),*map(str,samples),*map(str,archives),str(library),
-             '-framework','Security','-framework','CoreFoundation','-lresolv','-lz','-o',str(executable)]
+             *frameworks,'-framework','Security','-framework','CoreFoundation','-lresolv','-lz','-o',str(executable)]
     result=subprocess.run(command,capture_output=True,text=True)
     (output/'link.log').write_text(result.stdout+result.stderr)
-    record={'complete':result.returncode==0,'command':command,'rust_library_sha256':hashlib.sha256(library.read_bytes()).hexdigest(),
+    record={'complete':result.returncode==0,'runtime':runtime,'command':command,'rust_library_sha256':hashlib.sha256(library.read_bytes()).hexdigest(),
             'entry_bridge_sha256':hashlib.sha256((ROOT/'cpp/bridge/main.cpp').read_bytes()).hexdigest(),
             'cpp_report_sha256':hashlib.sha256((output/'cpp-build.json').read_bytes()).hexdigest()}
     if result.returncode==0:record['executable_sha256']=hashlib.sha256(executable.read_bytes()).hexdigest()
@@ -141,6 +147,7 @@ if __name__=='__main__':
     parser.add_argument('--shaders-only',action='store_true')
     parser.add_argument('--cpp-only',action='store_true')
     parser.add_argument('--link-only',action='store_true')
+    parser.add_argument('--runtime',choices=['metal','root'],default='metal',help='explicit library choice; no automatic fallback')
     parser.add_argument('--dxc',type=Path,default=ROOT/'local/dxc-build/bin/dxc')
     parser.add_argument('--compiler',type=Path,default=ROOT/'local/clang-compat/bin/clang++')
     parser.add_argument('--jobs',type=int,default=3)
@@ -150,4 +157,4 @@ if __name__=='__main__':
     upstream=ensure('DirectX-Graphics-Samples')
     if not (args.cpp_only or args.link_only):build_shaders(upstream,output,args.dxc.resolve(),args.jobs)
     if not (args.shaders_only or args.link_only):build_cpp(upstream,output,args.compiler.resolve(),args.jobs)
-    if args.link_only or not (args.shaders_only or args.cpp_only):link_original(upstream,output)
+    if args.link_only or not (args.shaders_only or args.cpp_only):link_original(upstream,output,args.runtime)

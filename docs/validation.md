@@ -4,6 +4,36 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## Direct-Metal DXGI factory/adapter COM: local discovery evidence
+
+The new combined Rust COM runtime constructs actual Metal-backed DXGI factory
+and adapter objects. On physical M4, an x86-64 C++ executable called the SDK
+interfaces through all 30 factory and 11 adapter vtable slots, checking inherited
+metadata, canonical identities, parent ownership after releasing factory handles,
+LUID round trips, guarded descriptor writes and explicit unsupported operations.
+It enumerated Apple M4, registry ID 4294968282, with actual advisory Metal
+working-set budget 19069665280 bytes. This is physical device discovery, not
+command submission, DXR support, a native Windows descriptor comparison or a frame.
+
+Descriptions and IDs come from retained Metal devices. Unknown PCI identifiers
+remain zero. DedicatedVideoMemory explicitly presents a virtual adapter working-set
+budget, not physical VRAM or guaranteed capacity; other unknown memory budgets
+remain zero. GPU preference ordering, software/WARP, window/output/presentation
+services fail rather than reporting synthetic adapters or success. Factory
+private-data forwarding is exercised locally; native DXGI-specific edge semantics
+remain unmeasured. The previous native D3D12Object reference is unchanged.
+
+All six new runtime Rust tests and Clippy pass locally; the 67 root tests and root
+Clippy pass, all existing C++ fixtures pass, and 59 Python tests pass. Tests cover
+layout/LUID bits, constructor failures, actual Metal descriptor properties,
+all factory IID versions, selection failures, parent lifetimes and atomic refs.
+The original unchanged C++ application relinks against the combined Metal library
+(default) and still exits 78 at unavailable D3D12 device creation. The explicit
+root-only build remains available; no automatic backend fallback is introduced.
+A new hosted Metal CI job is configured; its first result is pending.
+See [runtime mapping](../cpp/runtime/README.md) for exact APIs, field semantics
+and the remaining device/queue/resource and rendering boundary.
+
 ## Rust ID3D12Object metadata base: local CPU execution
 
 The new seven-slot Rust vtable implements IUnknown identity/reference ownership

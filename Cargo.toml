@@ -8,5 +8,8 @@ description = "Incremental Win32 source compatibility for native hosts"
 [lib]
 crate-type = ["rlib", "cdylib", "staticlib"]
 
+[features]
+cpp-metal-factory = []
+
 [workspace]
-exclude = ["graphics", "sakura", "miniengine", "shader"]
+exclude = ["graphics", "sakura", "miniengine", "shader", "cpp/runtime"]

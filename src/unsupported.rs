@@ -21,6 +21,7 @@ unsafe fn interface_failure(name: &str, out: *mut *mut c_void) -> i32 {
     }
     E_NOTIMPL
 }
+#[cfg(not(feature = "cpp-metal-factory"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn CreateDXGIFactory2(
     _flags: u32,

@@ -364,3 +364,24 @@ jobs:
           compare_reports(reports,revision)
           print('All 34 object-metadata records, byte sentinels and foreign reference events agree; no GPU/device claim')
           PY
+
+  cpp-metal-factory:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+          targets: x86_64-apple-darwin
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: cargo fmt --manifest-path cpp/runtime/Cargo.toml --check
+      - run: cargo clippy --manifest-path cpp/runtime/Cargo.toml --locked --all-targets -- -D warnings
+      - run: cargo test --manifest-path cpp/runtime/Cargo.toml --locked
+      - name: Execute all C++ factory/adapter vtable slots against actual Metal
+        run: python tools/run_cpp_metal_factory.py --output cpp-metal-factory.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cpp-metal-factory
+          path: cpp-metal-factory.json

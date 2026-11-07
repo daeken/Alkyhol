@@ -8,3 +8,5 @@ __pycache__/
 /miniengine/target/
 /shader/target/
 /miniengine-geometry.json
+
+/cpp/runtime/target/

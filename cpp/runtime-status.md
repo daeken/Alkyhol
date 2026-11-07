@@ -16,7 +16,8 @@ COM device is implemented. This is a build milestone, not a functioning renderer
 | CRT/source headers | Wide host paths/streams/stat, bounded secure fields, aligned allocation, async tasks; not a complete UCRT implementation |
 | Wide printf | Windows wide string/character conventions used by original helpers, including `%s`, `%S`, `%ws`; bounded formats, not all MSVC printf extensions |
 | DirectInput public tables | 256 keyboard and 11 mouse object descriptors with public GUIDs; metadata only |
-| D3D12 / DXGI creation | Explicit E_NOTIMPL and cleared interface outputs; no device/factory objects or capability success |
+| DXGI discovery | Real Metal factory through IDXGIFactory6 and adapter through IDXGIAdapter1; retained devices, parent ownership, descriptors, metadata and LUID lookup; no swap chains/outputs/device capability |
+| D3D12 creation | Explicit E_NOTIMPL and cleared interface outputs; no device, resource or command capability success |
 | D3D12 root serialization/debug/experiments | Explicit failures; no serialized blob or debug interface |
 | Window/message/input services | Explicit unavailable diagnostics/failure returns; no simulated window, silent event loop or successful input device |
 | Command-line shell services | Explicit unavailable diagnostics/failure outputs |
@@ -35,5 +36,5 @@ from compiling the original libraries to DXIL.
 The inherited metadata unit now has a real CPU Rust implementation and an explicit
 ABI-test constructor. [ID3D12Object metadata](reference/README.md) preserves its
 independent native contract. The next runtime steps are derived object identity,
-real Metal device/queue/resource ownership and actual GPU operations; the CPU
+real D3D12 device/queue/resource ownership over Metal and actual GPU operations; the CPU
 metadata constructor must not substitute for those interfaces or device creation.

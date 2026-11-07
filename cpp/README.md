@@ -8,13 +8,14 @@ revision and reject tracked edits; generated files stay outside the checkout.
 Current evidence: all **70 original C++ translation units** and **184 original
 project shader entries** compile, including the seven complete DXR libraries.
 The complete original application links as an x86-64 Mach-O executable against
-Rust's `libalkyhol.a`. Original Core/Model libraries use ordinary static archive
+the combined Rust `libalkyhol_cpp_metal.a` (including the root library). Original Core/Model libraries use ordinary static archive
 extraction, as in the upstream project. No sample source edits, removed project
 units, placeholder shader bytecode or unresolved-symbol linker exceptions are used.
 
 This establishes compilation and linking, **not original application rendering**.
-D3D12/DXGI device creation, window/input services and root-signature serialization
-remain explicit unavailable exports. The small host entry bridge checks device
+D3D12 device creation, window/input services and root-signature serialization
+remain explicit unavailable exports. Direct-Metal DXGI factory/adapter discovery
+is now implemented; see [runtime mapping](runtime/README.md). The small host entry bridge checks device
 creation first and exits 78 with its failing HRESULT; upstream Release assertions
 otherwise discard failures and would dereference missing interfaces. It does not
 launch the Rust reference port or claim an original frame. See
