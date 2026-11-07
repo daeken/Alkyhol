@@ -5,12 +5,14 @@ from pathlib import Path
 import struct
 import subprocess
 import sys
+import tempfile
 import unittest
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'tools'))
 from build_pe_dynamic_lookup import SOURCES, IMPORTS, DEPENDENCY_REFERENCE
-from run_pe_dynamic_lookup import EXPECTED_WORDS, NATIVE, HOST, decode
+from run_pe_dynamic_lookup import REFERENCE, EXPECTED_WORDS, NATIVE, HOST, decode
 from compare_pe_dynamic_lookup import compare
 
 
@@ -79,6 +81,17 @@ class DynamicLookupProtocolTests(unittest.TestCase):
             reports = self.reports()
             for r in reports: r['binaries'][binary] = 'e'*64
             with self.assertRaises(ValueError): compare(reports, reference=self.reports()[0])
+
+    def test_default_frozen_native_record_and_exact_input_are_required(self):
+        native = json.loads(REFERENCE.read_text(encoding='utf-8'))
+        host = copy.deepcopy(native)
+        host.update(backend=HOST, normal=decode(self.execution()), rebased=decode(self.execution(), rebase=True))
+        self.assertEqual(compare([native, host]), 21)
+        with tempfile.TemporaryDirectory() as directory:
+            with mock.patch('compare_pe_dynamic_lookup.REFERENCE', Path(directory)/'missing.json'):
+                with self.assertRaises(FileNotFoundError): compare([native, host])
+        for r in [native, host]: r['binaries']['dynamic-lookup.exe'] = 'e'*64
+        with self.assertRaises(ValueError): compare([native, host])
 
 
 if __name__ == '__main__': unittest.main()

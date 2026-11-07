@@ -4,7 +4,17 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
-## Guest module/export lookup: physical M4, independent native run pending
+## Guest module/export lookup: native Windows, hosted Mac and physical M4
+
+All three [PE jobs](https://github.com/daeken/Alkyhol/actions/runs/42408269870)
+pass on `99bce97`. Downloaded clean native Windows/hosted Mac records and a clean
+physical M4 record at that same revision agree on the identical EXE/DLL/source/
+import identities and all 21 raw DWORDs. Both host images relocate in the forced
+run. The complete native report is frozen at
+`pe/reference/dynamic-lookup-windows-v1.json`; drivers/comparisons require its
+exact binary/source/import/result record by default. Missing-reference and joint
+identity drift guards bring the Python suite to 185. Full conformance CI remains
+to be recorded for the strict revision.
 
 The new ModuleContext retains explicit attached DLL owner borrows and exposes
 real Win64 GetModuleHandleW/GetProcAddress bridges with actual full-width image
@@ -22,10 +32,10 @@ actual PE-header/module identity, case/extension lookup, Direct/Alias/ordinal
 target identity, NONAME calls, named/ordinal data sharing and writes, initialized
 BSS, forwarded LastError calls and missing-symbol/module failures. Both images
 actually rebase in the forced run. The same two binaries are transferred to
-native Windows; that independent comparison is pending.
+native Windows, and that independent comparison agrees as recorded above.
 
 All 57 PE host tests, eight lifetime compiler checks, 19 portable arm64 tests,
-184 Python tests and PE Clippy pass locally. Host units execute real lookup
+185 Python tests and PE Clippy pass locally. Host units execute real lookup
 targets and forwarders, reject duplicate/nested/invalid registries, preserve
 64-bit module identity instead of truncating kernel-handle bits, check scoped
 teardown and thread isolation, and exercise unsupported/null/string/ordinal

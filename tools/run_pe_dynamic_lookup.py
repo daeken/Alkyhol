@@ -58,12 +58,10 @@ def main():
     for name, digest in manifest['sources'].items():
         if hashlib.sha256((ROOT/name).read_bytes()).hexdigest() != digest:
             raise ValueError('dynamic lookup source identity changed')
-    # Bootstrap only until the first independent native observation is frozen.
-    if REFERENCE.exists():
-        reference = json.loads(REFERENCE.read_text(encoding='utf-8'))
-        for field in ['binaries', 'sources', 'imports']:
-            if manifest[field] != reference[field]:
-                raise ValueError('changed frozen dynamic lookup fixture')
+    reference = json.loads(REFERENCE.read_text(encoding='utf-8'))
+    for field in ['binaries', 'sources', 'imports']:
+        if manifest[field] != reference[field]:
+            raise ValueError('changed frozen dynamic lookup fixture')
     windows = platform.system() == 'Windows'
     if windows:
         backend, executable = NATIVE, None

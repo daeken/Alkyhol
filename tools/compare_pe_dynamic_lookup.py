@@ -50,14 +50,13 @@ def compare(reports, reference=None):
     for field in ['status', 'words', 'stdout_hex']:
         if host['normal'][field] != native['normal'][field] or host['rebased'][field] != native['normal'][field]:
             raise ValueError('actual guest lookup observations differ')
-    if reference is None and REFERENCE.exists():
+    if reference is None:
         reference = json.loads(REFERENCE.read_text(encoding='utf-8'))
-    if reference is not None:
-        if reference['backend'] != NATIVE or reference['tracked_tree_clean'] is not True:
-            raise ValueError('invalid frozen native lookup reference')
-        for field in ['binaries', 'sources', 'imports', 'normal']:
-            if native[field] != reference[field]:
-                raise ValueError(f'changed frozen native lookup evidence: {field}')
+    if reference['backend'] != NATIVE or reference['schema_version'] != 1 or reference['tracked_tree_clean'] is not True:
+        raise ValueError('invalid frozen native lookup reference')
+    for field in ['binaries', 'sources', 'imports', 'normal']:
+        if native[field] != reference[field]:
+            raise ValueError(f'changed frozen native lookup evidence: {field}')
     return len(EXPECTED_WORDS)
 
 

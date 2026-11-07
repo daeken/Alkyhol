@@ -639,7 +639,13 @@ python3 tools/run_pe_dynamic_lookup.py --directory local/pe/dynamic-lookup --out
 ```
 
 Physical M4/Rosetta passes all 21 raw words normally and with both images rebased.
-Native evidence is tracked in [validation](validation.md). These are finite owned
+All three PE jobs pass on `99bce97`
+([run](https://github.com/daeken/Alkyhol/actions/runs/42408269870)); clean native/
+hosted reports and clean physical M4 execution at that same revision agree on
+the identical EXE/DLL/source/import identities and all raw results. The complete
+native record is frozen at `pe/reference/dynamic-lookup-windows-v1.json` and is
+required by default, including its exact identities. Further CI evidence is
+tracked in [validation](validation.md). These are finite owned
 binary tests, not general Windows loader or game compatibility claims.
 
 Primary contracts: [GetModuleHandleW](https://learn.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-getmodulehandlew)

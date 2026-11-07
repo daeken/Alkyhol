@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "backend": "native Windows guest module lookup",
+  "binaries": {
+    "dynamic-lookup.exe": "369d6e7ffcbc6a098ff6e46281e3c18e2bdb8f170202cf906ff606d08f8b0540",
+    "alkyhol_exports.dll": "423d6e191a3ebb4f4f5ce11710591edc9ebe163ece79bd35cc6fe5146d13399d"
+  },
+  "sources": {
+    "pe/fixtures/dynamic-lookup/contract.c": "2d69d192fe820dc2b8adcafb608bc036a827687d97f2a74ad419727679b1e623",
+    "pe/fixtures/dynamic-lookup/kernel32.def": "2134558dd013915398fc5961c280165783c1197d43060ad7a3d6030ee5d6d589",
+    "pe/fixtures/exports/library.c": "b2b9fcf9581d59e982b7754354eb8798616e0d0903b1816f786d4331ec263b96",
+    "pe/fixtures/exports/library.def": "a011d8748d774d3f147a0352277adfddc574416aa9a4610f152766a1db874493"
+  },
+  "imports": [
+    {
+      "module": "KERNEL32.dll",
+      "symbols": [
+        {
+          "name": "ExitProcess"
+        },
+        {
+          "name": "GetLastError"
+        },
+        {
+          "name": "GetModuleHandleW"
+        },
+        {
+          "name": "GetProcAddress"
+        },
+        {
+          "name": "GetStdHandle"
+        },
+        {
+          "name": "SetLastError"
+        },
+        {
+          "name": "WriteFile"
+        }
+      ]
+    },
+    {
+      "module": "alkyhol_exports.dll",
+      "symbols": [
+        {
+          "name": "Direct"
+        }
+      ]
+    }
+  ],
+  "normal": {
+    "status": 0,
+    "words": [
+      1146703436,
+      1,
+      1,
+      1,
+      571916821,
+      571916821,
+      1,
+      1,
+      305419905,
+      826366246,
+      1,
+      324508639,
+      270544960,
+      58174457,
+      17767,
+      1,
+      127,
+      1,
+      127,
+      1,
+      126
+    ],
+    "stdout_hex": "4c4e594401000000010000000100000015c2162215c216220100000001000000815634122659413101000000df9b571340302010f9ab770367450000010000007f000000010000007f000000010000007e000000",
+    "relocated": null
+  },
+  "rebased": null,
+  "revision": "99bce976ae2b4d760a0714ab53c7b76ca52aa2ec",
+  "tracked_tree_clean": true
+}
