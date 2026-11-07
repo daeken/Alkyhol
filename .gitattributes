@@ -23,3 +23,6 @@ shader/tests/fixtures/compute.hlsl text eol=lf
 pe/fixtures/* text eol=lf
 # Cross-host inputs for unchanged public u-config binary execution.
 pe/fixtures/u-config/** text eol=lf
+
+# Identical owned DLL source bytes for the actual Windows export observer.
+pe/fixtures/exports/* text eol=lf

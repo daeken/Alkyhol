@@ -27,6 +27,20 @@ jobs:
         run: python tools/fetch_uconfig_binary.py
       - name: Execute real released PE package queries, listing and quoted Unicode arguments
         run: python tools/run_uconfig_binary.py --binary local/pe/u-config/pkg-config.exe --output local/pe/u-config-alkyhol.json
+      - name: Build owned DLL and inspect export metadata without entering it
+        run: |
+          python tools/build_pe_export_fixture.py
+          python tools/run_pe_exports.py --dll local/pe/export-fixture/alkyhol_exports.dll --output local/pe/exports-metadata.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe-export-fixture
+          path: |
+            local/pe/export-fixture/alkyhol_exports.dll
+            local/pe/export-fixture/exports-fixture.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe-exports-metadata
+          path: local/pe/exports-metadata.json
       - uses: actions/upload-artifact@v4
         with:
           name: u-config-release
@@ -77,6 +91,16 @@ jobs:
         with:
           name: u-config-windows
           path: local/pe/u-config-windows.json
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe-export-fixture
+          path: local/pe/export-fixture
+      - name: Resolve actual named, ordinal, data and forwarded exports using Windows
+        run: python tools/run_pe_exports.py --dll local/pe/export-fixture/alkyhol_exports.dll --output local/pe/exports-windows.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe-exports-windows
+          path: local/pe/exports-windows.json
   compare-pe:
     needs: [alkyhol-pe, native-windows-pe]
     runs-on: ubuntu-latest
@@ -105,3 +129,12 @@ jobs:
           name: u-config-windows
           path: local/pe/observations
       - run: python tools/compare_uconfig_binary.py local/pe/observations/u-config-windows.json local/pe/observations/u-config-alkyhol.json
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe-exports-metadata
+          path: local/pe/observations
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe-exports-windows
+          path: local/pe/observations
+      - run: python tools/compare_pe_exports.py local/pe/observations/exports-windows.json local/pe/observations/exports-metadata.json

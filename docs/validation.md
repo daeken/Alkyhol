@@ -4,6 +4,26 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## DLL export reference probe: native execution pending
+
+An owned no-CRT PE64 DLL is now built once with open Clang/LLVM and transferred
+unchanged to the existing Windows PE workflow. Its source/.def contract contains
+biased ordinals 17..23 with a sparse hole, two names targeting the same code,
+exported initialized/BSS data, an ordinal-only function and a kernel32 forwarder.
+The DLL retains an actual absolute data pointer/DIR64 fixup. A read-only Rust CLI
+reports its metadata without mapping/entering it; a separate native Windows
+observer uses actual LoadLibraryW/GetProcAddress/FreeLibrary and callable function/
+data checks. Its query list comes independently from the owned .def contract,
+not from the Rust parser. Native-only initialization/function/hole observations
+are explicitly separate from common metadata and must not be attributed to Rust.
+
+Local metadata inspection, 31 PE Rust tests on physical M4/x86-64, 17 portable
+arm64 tests, 136 Python tests, PE formatting/Clippy and both existing executable
+observers pass. Native Windows execution/comparison of this new DLL probe remains
+pending CI; the definition is not execution evidence. No Rust DLL lifecycle or
+GetProcAddress bridge is added. Existing native fixtures and original samples are
+unchanged. See [the probe contract](pe.md#owned-dll-export-reference-probe).
+
 ## DLL export metadata: host-only foundation
 
 The PE crate now inspects DLLs through a separate `Image::parse_dll` API and

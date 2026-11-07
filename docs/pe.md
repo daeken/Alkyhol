@@ -174,3 +174,31 @@ reference-counting, unload or Windows exception behavior is provided yet. The
 existing EXE startup gates and both frozen native binary observers remain intact.
 Six new host parser units exercise these rules, every truncated prefix, aliases,
 ordinal-only/empty tables, zero-entry DLLs and malformed forwarder/table bounds.
+
+## Owned DLL export reference probe
+
+`tools/build_pe_export_fixture.py` builds the owned MIT-licensed
+`pe/fixtures/exports/library.c` / `library.def` once to `alkyhol_exports.dll` with
+open Clang/LLVM and no CRT. `inspect_exports` is a Rust read-only metadata CLI;
+it never maps or enters the DLL. The expanded PE workflow transfers the identical
+DLL and manifest to native Windows, where `tools/run_pe_exports.py` independently
+queries the source-declared named/ordinal/data exports with actual GetProcAddress.
+Forwarding is tested against the real kernel32 function address, not a successful
+unknown placeholder. The paired common record compares actual target RVAs with
+the Rust metadata, plus the known source-declared forwarder and ordinal/name map.
+
+```sh
+python3 tools/build_pe_export_fixture.py
+python3 tools/run_pe_exports.py --dll local/pe/export-fixture/alkyhol_exports.dll --output local/pe/export-fixture/metadata.json
+```
+
+Windows additionally observes DllMain's BSS initialization, real exported-function
+returns through Win64 ABI, initialized data, the result of a sparse-ordinal lookup
+(without dereferencing it), and successful FreeLibrary. Those fields are labeled
+`native_only`; Rust must report null there. The sparse ordinal is recorded without
+guessing that Windows necessarily returns NULL. Native execution is pending the
+initial workflow run; local parser/protocol units are not native evidence.
+`tools/compare_pe_exports.py` requires distinct native and metadata-only backends,
+identical DLL/source/revision identities, clean tracked trees and equal common
+records. It also rejects invented host execution or missing native call results.
+This prepares a DLL lifecycle reference; Rust DLL execution remains unsupported.

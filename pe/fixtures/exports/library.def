@@ -1,0 +1,8 @@
+LIBRARY alkyhol_exports
+EXPORTS
+    Direct=Probe @17
+    Alias=Probe @18
+    Forwarded=KERNEL32.GetLastError @20
+    Data @21 DATA
+    Bss @22 DATA
+    OrdinalOnly=OrdinalProbe @23 NONAME
