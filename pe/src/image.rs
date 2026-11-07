@@ -82,7 +82,7 @@ impl<'a> Image<'a> {
     }
     /// Inspect a bounded AMD64 DLL without mapping or calling its entry. A zero
     /// DLL entry is allowed; a nonzero entry must still be initialized code.
-    /// DLL runtime initialization remains explicitly unsupported.
+    /// Parsing never initializes the DLL; runtime loading is a separate API.
     pub fn parse_dll(bytes: &'a [u8]) -> Result<Self> {
         Self::parse_kind(bytes, true)
     }

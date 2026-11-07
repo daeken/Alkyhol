@@ -4,6 +4,33 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## Explicit DLL-to-DLL linking: physical M4, native comparison pending
+
+The new unsafe LinkedLibrary API binds named code/data IAT imports and named
+forwarders to explicitly supplied, already attached DLLs. Rust borrows retain
+their lifetimes through consumer DETACH; nested consumers retain transitive
+borrows. It does not discover/load a graph, search paths, expose guest module
+APIs, add ordinals/TLS/SEH or change the isolated loader's rejection rules.
+
+An owned no-CRT consumer DLL has SHA-256
+`915abbc81ac8138e0320fb56a0b6f3e735bcd359039fb35d9a03596626e17628`;
+it imports actual code/data from the unchanged frozen DLL with SHA-256
+`423d6e191a3ebb4f4f5ce11710591edc9ebe163ece79bd35cc6fe5146d13399d`.
+Normal and forced-rebase physical M4/Rosetta runs agree on Evaluate `826366381`,
+forwarded Direct `571916821`, forwarded last-error sentinels `0x3456`/`0x4567`,
+actual resolved target equality and all 48 ordered ATTACH/DETACH trace bytes.
+The trace observes the dependency's initialized data/BSS during both consumer
+notifications. Both DLLs actually relocate in the forced run. The new native
+Windows LoadLibraryEx comparison is wired into the existing PE workflow but has
+not run yet. [Exact contract and reproduction](pe.md#explicit-borrowed-dll-dependencies).
+
+All 39 PE Rust tests pass under Rosetta (three new dependency units), all 17
+portable arm64 tests and 150 Python tests pass, and PE formatting/Clippy pass.
+The unchanged frozen executable, successful/failed DLL observers and all eleven
+released u-config cases pass again on physical M4, including forced rebasing.
+These host/regression assertions are separate from the pending native dependency
+comparison. No original sample, shader, asset, frozen fixture or game data changes.
+
 ## Failed DLL initialization: native Windows, hosted Mac and physical M4
 
 A separate owned no-CRT DLL (SHA-256
@@ -36,7 +63,8 @@ The strict frozen-reference revision `1f442b6` also passes all three
 clean native/hosted reports and a fresh clean physical M4 run at that revision
 agree with the frozen DLL/source/trace/error evidence. Its separate 24-job
 [conformance run](https://github.com/daeken/Alkyhol/actions/runs/42393693625)
-is still running when this record is written. Existing frozen native executable/
+also passes, as do all 27 jobs on docs-only `8d851f6` (PE 42394130461,
+conformance 42394130444). Existing frozen native executable/
 DLL comparisons and all source/COM/Metal/shader implementations remain unchanged.
 
 ## Isolated PE64 DLL execution: physical M4 milestone

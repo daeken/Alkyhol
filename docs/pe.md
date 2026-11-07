@@ -60,8 +60,10 @@ runtime currently requires 4K pages in the x86 process. Memory starts zero-fille
 including uninitialized section bytes; imports/fixups are applied before final
 permissions. Import slots cannot overlap relocation fixups.
 
-Imports are resolved by exact symbol and case-insensitive **kernel32.dll** identity
-only. No arbitrary `dlsym` of native exports, name-only DLL matching, fallback
+The ordinary executable and isolated DLL constructors resolve imports by exact
+symbol and case-insensitive **kernel32.dll** identity only. The explicit borrowed
+dependency API below also accepts named imports from caller-supplied DLL instances.
+No arbitrary `dlsym` of native exports, name-only DLL matching, fallback
 libraries or successful unknown stubs occur. The compiler-generated
 `extern "win64"` wrappers preserve the Windows argument/return and nonvolatile
 register contract while invoking Alkyhol's native exports. `CreateFileW` receives
@@ -121,7 +123,7 @@ explicitly reviewed native evidence milestone, not silently updating expected
 output. See [validation](validation.md) for executed revisions and CI results.
 
 Static TLS/callbacks, unwind/SEH, CFG/load config, delay/bound/ordinal imports,
-General dependent-DLL loading, CLR, dynamic lookup, guest threads/callbacks, COM vtable ABI
+Automatic dependent-DLL loading, CLR, dynamic lookup, guest threads/callbacks, COM vtable ABI
 bridges, general Windows process structures and Windows CRT startup are not implemented in this
 binary path. Unsupported metadata or imports fail before entry; unrecognized
 instructions are **not** statically detected. Trusted code must not issue Windows
@@ -134,7 +136,7 @@ import inventory can prioritize API families but cannot establish dynamic lookup
 transitive dependencies, COM method usage, actual execution or game compatibility.
 No game launch or rendering claim follows from this fixture. For the decompilation
 pipeline, unchanged PE execution supplies an independent behavioral check before
-recompilation through Alkyhol. Next useful coverage is DLL/import lifecycle and
+recompilation through Alkyhol. Next useful coverage is automatic module lifecycle and
 TEB/static TLS/callbacks, then CRT startup and Windows unwinding, followed by real
 binary COM/graphics callers and redistributable sample/benchmark executables.
 
@@ -292,3 +294,48 @@ loader error `1114` (ERROR_DLL_INIT_FAILED).
 Those interfaces have different contracts. No Win32 loader-error parity is
 claimed by comparing the shared lifecycle trace. General module-manager,
 dependencies, threads, TLS and SEH restrictions above still apply.
+
+## Explicit borrowed DLL dependencies
+
+`unsafe LinkedLibrary::load(bytes, rebase, dependencies)` extends the isolated
+loader with a finite set of **already attached** DLL instances. Named IAT imports
+and named export forwarders resolve to those actual mapped code/data addresses;
+kernel32 still uses only its explicit Win64 ABI whitelist. All imports/forwarders
+are preflighted before the new DLL's DllMain. Missing modules or symbols never
+receive successful placeholders. The ordinary EXE and isolated constructors keep
+rejecting foreign dependencies.
+
+Dependencies have caller-assigned ASCII DLL basenames (at most 255 bytes), matched
+case-insensitively; symbols stay case-sensitive. There are at most 64 names, with
+no duplicate case aliases, path components or kernel32 override. Module-definition
+LIBRARY text is not treated as a filesystem identity, consistent with Microsoft's
+[LoadLibrary contract](https://learn.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-loadlibraryw).
+The owner borrows each LoadedLibrary for its lifetime and drops its own DLL before
+releasing those borrows. `library()` exposes lookups or a borrow for another
+explicit dependent DLL, retaining transitive lifetimes. The embedding caller loads
+the acyclic dependency order. No filesystem search, automatic graph discovery,
+global cache/refcount, guest LoadLibrary/GetProcAddress, ordinal import/forwarder,
+loader-lock/reentrancy, TLS, thread or SEH support is implied.
+
+The new owned `pe/fixtures/dependent` consumer is linked once against the **unchanged
+frozen** `alkyhol_exports.dll`. Its original C DllMain and Evaluate function import
+code and data from that second DLL; ReadError calls an imported forwarded API.
+Two exports additionally forward directly and transitively into that dependency.
+Each ATTACH/DETACH writes a 24-byte trace containing reason, persistent counter,
+NULL-reserved flag, dependency function result and initialized/BSS data. The
+dependency must remain initialized throughout consumer DETACH. Actual call
+results, forwarded target identities and all 48 trace bytes agree between normal
+and forced-rebase physical M4 executions; both DLLs report relocation in the
+forced case. Three synthetic host units separately cover IAT/forwarder addresses,
+transitive lifetimes, pre-entry failures and failed-parent cleanup.
+
+```sh
+python3 tools/build_pe_dependent.py
+python3 tools/run_pe_dependent.py --directory local/pe/dependent --output local/pe/dependent-alkyhol.json
+```
+
+The existing PE workflow now transfers the identical two DLLs to Windows, where
+actual LoadLibraryExW performs its own dependency resolution and initialization.
+That native comparison is pending until an executed result is recorded in
+[validation](validation.md). The driver uses DLL_LOAD_DIR|DEFAULT_DIRS solely for
+the explicit native fixture directory; Alkyhol's API adds no Windows search policy.

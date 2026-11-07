@@ -37,6 +37,21 @@ jobs:
         run: |
           python tools/build_pe_failed_attach.py
           python tools/run_pe_failed_attach.py --dll local/pe/failed-attach/alkyhol_failed_attach.dll --output local/pe/failed-attach-alkyhol.json
+      - name: Link a real consumer DLL to the unchanged frozen dependency and execute cross-DLL calls
+        run: |
+          python tools/build_pe_dependent.py
+          python tools/run_pe_dependent.py --directory local/pe/dependent --output local/pe/dependent-alkyhol.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe-dependent-fixture
+          path: |
+            local/pe/dependent/alkyhol_exports.dll
+            local/pe/dependent/alkyhol_dependent.dll
+            local/pe/dependent/dependent-fixture.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe-dependent-alkyhol
+          path: local/pe/dependent-alkyhol.json
       - uses: actions/upload-artifact@v4
         with:
           name: pe-failed-attach-fixture
@@ -123,6 +138,16 @@ jobs:
           path: local/pe/failed-attach
       - name: Observe real Windows failed DLL initialization and cleanup of the identical binary
         run: python tools/run_pe_failed_attach.py --dll local/pe/failed-attach/alkyhol_failed_attach.dll --output local/pe/failed-attach-windows.json
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe-dependent-fixture
+          path: local/pe/dependent
+      - name: Let the real Windows loader resolve and initialize the identical dependent DLLs
+        run: python tools/run_pe_dependent.py --directory local/pe/dependent --output local/pe/dependent-windows.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe-dependent-windows
+          path: local/pe/dependent-windows.json
       - uses: actions/upload-artifact@v4
         with:
           name: pe-failed-attach-windows
@@ -182,3 +207,12 @@ jobs:
           name: pe-failed-attach-windows
           path: local/pe/observations
       - run: python tools/compare_pe_failed_attach.py local/pe/observations/failed-attach-windows.json local/pe/observations/failed-attach-alkyhol.json
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe-dependent-alkyhol
+          path: local/pe/observations
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe-dependent-windows
+          path: local/pe/observations
+      - run: python tools/compare_pe_dependent.py local/pe/observations/dependent-windows.json local/pe/observations/dependent-alkyhol.json

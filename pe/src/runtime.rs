@@ -1,5 +1,5 @@
 use crate::{Image, Result, abi};
-use std::{ffi::c_void, ptr};
+use std::{collections::BTreeMap, ffi::c_void, ptr};
 
 unsafe extern "C" {
     fn mmap(
@@ -34,15 +34,19 @@ impl LoadedImage {
     pub fn load(bytes: &[u8], rebase: bool) -> Result<Self> {
         let image = Image::parse(bytes)?;
         image.check_startup()?;
-        Self::map(&image, rebase)
+        Self::map(&image, rebase, &abi::resolve)
     }
-    fn map(image: &Image<'_>, rebase: bool) -> Result<Self> {
+    fn map(
+        image: &Image<'_>,
+        rebase: bool,
+        resolve: &impl Fn(&str, &str) -> Option<usize>,
+    ) -> Result<Self> {
         let bytes = image.bytes;
         let imports = image.imports()?;
         let relocations = image.relocations()?;
         let mut bindings = Vec::new();
         for import in &imports {
-            let address = abi::resolve(&import.module, &import.symbol)
+            let address = resolve(&import.module, &import.symbol)
                 .ok_or_else(|| format!("unsupported import {}!{}", import.module, import.symbol))?;
             if relocations
                 .iter()
@@ -180,7 +184,8 @@ impl Drop for LoadedImage {
 
 /// An isolated, explicitly loaded trusted DLL. This is not a process module
 /// cache or guest LoadLibrary/GetProcAddress implementation. Imports/forwarders
-/// can target only the supported kernel32 ABI; other dependencies fail pre-entry.
+/// can target only the supported kernel32 ABI with the isolated load constructor;
+/// see LinkedLibrary for explicitly borrowed DLL dependencies.
 pub struct LoadedLibrary {
     mapping: LoadedImage,
     symbols: Vec<(u32, Vec<String>, usize)>,
@@ -195,6 +200,13 @@ impl LoadedLibrary {
     /// loader operations are supported. Any ProcessContext used by the DLL must
     /// outlive this object. Drop executes PROCESS_DETACH on this same thread.
     pub unsafe fn load(bytes: &[u8], rebase: bool) -> Result<Self> {
+        unsafe { Self::load_resolved(bytes, rebase, &abi::resolve) }
+    }
+    unsafe fn load_resolved(
+        bytes: &[u8],
+        rebase: bool,
+        resolve: &impl Fn(&str, &str) -> Option<usize>,
+    ) -> Result<Self> {
         let image = Image::parse_dll(bytes)?;
         image.check_library_startup()?;
         let exports = image.exports()?.map(|t| t.entries).unwrap_or_default();
@@ -202,12 +214,12 @@ impl LoadedLibrary {
         let mut pending = Vec::new();
         for export in exports {
             let external = match &export.target {
-                crate::ExportTarget::Forwarder(value) => Some(resolve_forwarder(value)?),
+                crate::ExportTarget::Forwarder(value) => Some(resolve_forwarder(value, resolve)?),
                 crate::ExportTarget::Address { .. } => None,
             };
             pending.push((export, external));
         }
-        let mapping = LoadedImage::map(&image, rebase)?;
+        let mapping = LoadedImage::map(&image, rebase, resolve)?;
         let symbols = pending
             .into_iter()
             .map(|(e, external)| {
@@ -276,17 +288,84 @@ impl Drop for LoadedLibrary {
         // The owned mapping drops after DETACH returns.
     }
 }
-fn resolve_forwarder(value: &str) -> Result<usize> {
+/// One trusted DLL linked against explicitly supplied, already attached DLLs.
+/// Borrowing retains every dependency until this DLL has detached and unmapped.
+/// There is no filesystem search, automatic graph loading or global module cache.
+pub struct LinkedLibrary<'a> {
+    library: LoadedLibrary,
+    _dependencies: BTreeMap<String, &'a LoadedLibrary>,
+}
+impl<'a> LinkedLibrary<'a> {
+    /// Bind named imports and named forwarders to explicit dependency instances.
+    /// Names are ASCII DLL basenames, matched case-insensitively. Symbols remain
+    /// case-sensitive. kernel32 is reserved for the explicit native ABI bridges.
+    /// At most 64 dependencies are accepted. None are loaded or reinitialized.
+    ///
+    /// # Safety
+    /// LoadedLibrary's trusted-code/context rules apply to this DLL and every
+    /// dependency. The caller must supply the intended module identities and a
+    /// correctly initialized acyclic dependency order. Reentrancy, threads, SEH,
+    /// static TLS and ordinal imports/forwarders remain unsupported.
+    pub unsafe fn load(
+        bytes: &[u8],
+        rebase: bool,
+        dependencies: &[(&str, &'a LoadedLibrary)],
+    ) -> Result<Self> {
+        if dependencies.len() > 64 {
+            return Err("more than 64 explicit DLL dependencies".into());
+        }
+        let mut modules = BTreeMap::new();
+        for &(name, library) in dependencies {
+            let name = name.to_ascii_lowercase();
+            if name.len() > 255
+                || !name.ends_with(".dll")
+                || !name
+                    .as_bytes()
+                    .first()
+                    .is_some_and(u8::is_ascii_alphanumeric)
+                || !name
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b))
+                || name == "kernel32.dll"
+            {
+                return Err("invalid or reserved explicit DLL basename".into());
+            }
+            if modules.insert(name, library).is_some() {
+                return Err("duplicate case-insensitive DLL dependency".into());
+            }
+        }
+        let resolve = |module: &str, symbol: &str| {
+            abi::resolve(module, symbol).or_else(|| {
+                modules
+                    .get(&module.to_ascii_lowercase())
+                    .and_then(|library| library.get_name(symbol))
+                    .map(|p| p as usize)
+            })
+        };
+        let library = unsafe { LoadedLibrary::load_resolved(bytes, rebase, &resolve) }?;
+        Ok(Self {
+            library,
+            _dependencies: modules,
+        })
+    }
+    /// Borrow the attached DLL for lookup or as another explicit dependency.
+    /// Its lifetime cannot escape this owner and its transitive dependency borrows.
+    pub fn library(&self) -> &LoadedLibrary {
+        &self.library
+    }
+}
+
+fn resolve_forwarder(value: &str, resolve: &impl Fn(&str, &str) -> Option<usize>) -> Result<usize> {
     let (module, name) = value.rsplit_once('.').ok_or("invalid export forwarder")?;
-    let module = if module.eq_ignore_ascii_case("kernel32") {
-        "kernel32.dll"
+    let module = if module.to_ascii_lowercase().ends_with(".dll") {
+        module.to_owned()
     } else {
-        module
+        format!("{module}.dll")
     };
     if name.starts_with('#') {
         return Err("ordinal export forwarders are unsupported".into());
     }
-    abi::resolve(module, name).ok_or_else(|| format!("unsupported export forwarder {value}"))
+    resolve(&module, name).ok_or_else(|| format!("unsupported export forwarder {value}"))
 }
 
 #[cfg(test)]
@@ -491,6 +570,154 @@ mod tests {
         assert!(error.contains("ATTACH returned FALSE"));
         let record = unsafe { *log.get() };
         assert_eq!((record.reason, record.calls, record.reserved), (0, 2, 0));
+    }
+    fn dependent_fixture(log: *mut LifecycleLog, accept: bool) -> Vec<u8> {
+        let mut bytes = lifecycle_fixture(log, accept, Some("custom.Entry"));
+        let p32 = |b: &mut [u8], o, n: u32| b[o..o + 4].copy_from_slice(&n.to_le_bytes());
+        p32(&mut bytes, 0x98 + 120, 0x2020);
+        p32(&mut bytes, 0x98 + 124, 40);
+        p32(&mut bytes, 0x620, 0x21a0);
+        p32(&mut bytes, 0x62c, 0x21c0);
+        p32(&mut bytes, 0x630, 0x3020);
+        bytes[0x7a0..0x7a8].copy_from_slice(&0x21d0u64.to_le_bytes());
+        bytes[0x7c0..0x7cb].copy_from_slice(b"custom.dll\0");
+        bytes[0x7d2..0x7d8].copy_from_slice(b"Entry\0");
+        bytes
+    }
+    #[test]
+    fn explicit_dependencies_bind_actual_iat_forwarders_and_detach_before_borrowed_dll() {
+        let child_log = lifecycle_log();
+        let child_bytes = lifecycle_fixture(child_log.get(), true, None);
+        let child = unsafe { LoadedLibrary::load(&child_bytes, true) }.unwrap();
+        let parent_log = lifecycle_log();
+        let parent_bytes = dependent_fixture(parent_log.get(), true);
+        // The isolated API must keep rejecting foreign dependencies.
+        assert!(unsafe { LoadedLibrary::load(&parent_bytes, true) }.is_err());
+        assert_eq!(unsafe { (*parent_log.get()).calls }, 0);
+        let parent =
+            unsafe { LinkedLibrary::load(&parent_bytes, true, &[("CuStOm.DlL", &child)]) }.unwrap();
+        assert!(parent.library().relocated());
+        let address = child.get_name("Entry").unwrap();
+        assert_eq!(parent.library().get_name("Entry"), Some(address));
+        assert_eq!(
+            unsafe {
+                parent
+                    .library
+                    .mapping
+                    .base
+                    .add(0x3020)
+                    .cast::<usize>()
+                    .read()
+            },
+            address as usize
+        );
+        assert_eq!(
+            unsafe { ((*child_log.get()).calls, (*parent_log.get()).calls) },
+            (1, 1)
+        );
+        drop(parent);
+        assert_eq!(
+            unsafe { ((*child_log.get()).calls, (*parent_log.get()).calls) },
+            (1, 2)
+        );
+        drop(child);
+        assert_eq!(unsafe { (*child_log.get()).calls }, 2);
+    }
+    #[test]
+    fn explicit_dependency_errors_are_pre_entry_and_failed_parent_leaves_child_attached() {
+        let child_log = lifecycle_log();
+        let child_bytes = lifecycle_fixture(child_log.get(), true, None);
+        let child = unsafe { LoadedLibrary::load(&child_bytes, true) }.unwrap();
+        let log = lifecycle_log();
+        let bytes = dependent_fixture(log.get(), true);
+        for name in [
+            "kernel32.dll",
+            "../custom.dll",
+            "custom",
+            "",
+            "💮.dll",
+            "/custom.dll",
+        ] {
+            assert!(unsafe { LinkedLibrary::load(&bytes, true, &[(name, &child)]) }.is_err());
+        }
+        let overlong = format!("{}.dll", "a".repeat(252));
+        assert!(unsafe { LinkedLibrary::load(&bytes, true, &[(&overlong, &child)]) }.is_err());
+        assert!(unsafe { LinkedLibrary::load(&bytes, true, &[]) }.is_err());
+        assert!(
+            unsafe {
+                LinkedLibrary::load(
+                    &bytes,
+                    true,
+                    &[("custom.dll", &child), ("CUSTOM.DLL", &child)],
+                )
+            }
+            .is_err()
+        );
+        let too_many = vec![("custom.dll", &child); 65];
+        assert!(unsafe { LinkedLibrary::load(&bytes, true, &too_many) }.is_err());
+        for mode in [
+            "wrong-symbol",
+            "wrong-module",
+            "ordinal",
+            "overlapping-relocation",
+        ] {
+            let mut invalid = bytes.clone();
+            match mode {
+                "wrong-symbol" => invalid[0x7d2] = b'e',
+                "wrong-module" => invalid[0x7c0] = b'x',
+                "ordinal" => {
+                    invalid[0x7a0..0x7a8].copy_from_slice(&0x8000000000000011u64.to_le_bytes())
+                }
+                "overlapping-relocation" => {
+                    invalid[0x608..0x60a].copy_from_slice(&0xa020u16.to_le_bytes())
+                }
+                _ => unreachable!(),
+            }
+            assert!(
+                unsafe { LinkedLibrary::load(&invalid, true, &[("custom.dll", &child)]) }.is_err(),
+                "{mode}"
+            );
+        }
+        assert_eq!(unsafe { (*log.get()).calls }, 0);
+        let rejected = dependent_fixture(log.get(), false);
+        assert!(
+            unsafe { LinkedLibrary::load(&rejected, true, &[("custom.dll", &child)]) }.is_err()
+        );
+        assert_eq!(
+            unsafe { ((*log.get()).calls, (*child_log.get()).calls) },
+            (2, 1)
+        );
+    }
+    #[test]
+    fn explicit_transitive_dependency_borrows_preserve_resolved_export_targets() {
+        let leaf_log = lifecycle_log();
+        let leaf_bytes = lifecycle_fixture(leaf_log.get(), true, None);
+        let leaf = unsafe { LoadedLibrary::load(&leaf_bytes, true) }.unwrap();
+        let middle_log = lifecycle_log();
+        let middle_bytes = dependent_fixture(middle_log.get(), true);
+        let middle =
+            unsafe { LinkedLibrary::load(&middle_bytes, true, &[("custom.dll", &leaf)]) }.unwrap();
+        let root_log = lifecycle_log();
+        let root_bytes = dependent_fixture(root_log.get(), true);
+        let root =
+            unsafe { LinkedLibrary::load(&root_bytes, true, &[("custom.dll", middle.library())]) }
+                .unwrap();
+        assert_eq!(root.library().get_name("Entry"), leaf.get_name("Entry"));
+        drop(root);
+        assert_eq!(
+            unsafe {
+                (
+                    (*root_log.get()).calls,
+                    (*middle_log.get()).calls,
+                    (*leaf_log.get()).calls,
+                )
+            },
+            (2, 1, 1)
+        );
+        drop(middle);
+        assert_eq!(unsafe { (*middle_log.get()).calls }, 2);
+        drop(leaf);
+        assert_eq!(unsafe { (*leaf_log.get()).calls }, 2);
     }
     #[test]
     fn unsupported_library_features_fail_before_any_guest_initializer() {

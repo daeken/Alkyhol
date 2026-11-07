@@ -1,0 +1,6 @@
+LIBRARY alkyhol_dependent
+EXPORTS
+    Evaluate
+    ReadError
+    Through=alkyhol_exports.Direct
+    Error=alkyhol_exports.Forwarded
