@@ -14,7 +14,7 @@ from compare_pe_root_signatures import compare
 
 class RootSignaturePeProtocolTests(unittest.TestCase):
     def execution(self, windows=False):
-        return subprocess.CompletedProcess([], 0, expected_bytes(), b'' if windows else
+        return subprocess.CompletedProcess([], 0, expected_bytes(windows), b'' if windows else
             b'PE64: 4 sections, 5 named imports, 1 DIR64 fixups\nentering Win64 code; relocated=true\n')
 
     def reports(self):
@@ -24,16 +24,19 @@ class RootSignaturePeProtocolTests(unittest.TestCase):
                   'observation': decode(self.execution(True), windows=True),
                   'forced_rebase_observation': None}
         host = copy.deepcopy(native)
-        host.update(backend=HOST, forced_rebase_observation=copy.deepcopy(host['observation']))
+        host.update(backend=HOST, observation=decode(self.execution()))
+        host['forced_rebase_observation'] = copy.deepcopy(host['observation'])
         return [native, host]
 
     def test_exact_source_sdk_layout_bytes_and_binary_observations_match(self):
-        self.assertEqual(len(expected_bytes()), 1200)
+        self.assertEqual(len(expected_bytes()), 1216)
         for windows in [True, False]:
             self.assertEqual(decode(self.execution(windows), windows, not windows),
-                             self.reports()[0]['observation'])
+                             self.reports()[0 if windows else 1]['observation'])
         reports = self.reports()
-        self.assertEqual(compare(reports, reference=reports[0]), 1200)
+        self.assertEqual(compare(reports, reference=reports[0]), 1180)
+        self.assertEqual(expected_bytes()[:-36], expected_bytes(True)[:-36])
+        self.assertNotEqual(expected_bytes()[-36:], expected_bytes(True)[-36:])
 
     def test_crashes_truncation_extra_bytes_and_each_observed_byte_fail(self):
         run = self.execution()
@@ -45,13 +48,14 @@ class RootSignaturePeProtocolTests(unittest.TestCase):
             run.stdout = stdout
             with self.assertRaises(ValueError):
                 decode(run)
-        for index in range(len(expected_bytes())):
-            run = self.execution()
-            changed = bytearray(run.stdout)
-            changed[index] ^= 1
-            run.stdout = bytes(changed)
-            with self.assertRaises(ValueError):
-                decode(run)
+        for windows in [True, False]:
+            for index in range(len(expected_bytes())):
+                run = self.execution(windows)
+                changed = bytearray(run.stdout)
+                changed[index] ^= 1
+                run.stdout = bytes(changed)
+                with self.assertRaises(ValueError):
+                    decode(run, windows)
 
     def test_unexpected_diagnostic_or_missing_actual_rebase_fails(self):
         for stderr in [b'', b'noise', self.execution().stderr.replace(b'true', b'false')]:
@@ -63,6 +67,15 @@ class RootSignaturePeProtocolTests(unittest.TestCase):
         run.stderr = b'pretend success'
         with self.assertRaises(ValueError):
             decode(run, windows=True)
+
+    def test_known_native_acceptance_and_host_bound_must_remain_visible(self):
+        for target, source in [(0, 1), (1, 0)]:
+            reports = self.reports()
+            reports[target]['observation'] = copy.deepcopy(reports[source]['observation'])
+            if target == 1:
+                reports[1]['forced_rebase_observation'] = copy.deepcopy(reports[1]['observation'])
+            with self.assertRaises(ValueError):
+                compare(reports, reference=self.reports()[0])
 
     def test_identity_raw_results_backends_and_joint_frozen_drift_fail(self):
         for field, value in [('tracked_tree_clean', False), ('schema_version', 2),

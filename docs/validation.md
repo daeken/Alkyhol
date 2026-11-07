@@ -4,19 +4,18 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
-## Binary D3D12 serializers: physical M4, independent native run pending
+## Binary D3D12 serializers: supported layouts and a measured native difference
 
 The new binary d3d12 provider bridges both root serializers to the existing open
 Rust version-1.0 implementation and wraps both success/error COM blobs in Win64
 vtables. The owned unchanged PE SHA-256 is
-`1a8e67d25912746b273acc8308245694d5999c3fdca6c109623ffa05fe4112d9`.
-Physical M4/Rosetta normal and forced-rebase executions agree on all 1200 output
-bytes: all 980 bytes of the six previously frozen SDK root containers plus actual
-legacy/versioned success, canonical COM identity/reference releases and invalid
-65-DWORD diagnostic predicates. The extracted Mach-O payload equals the input.
+`8d24b6875941525ce0dd5af5ee8a7263437fc1b558222a9d9ce0f4f60d9e0d6c`.
+Physical M4/Rosetta normal and forced-rebase executions agree on all 1216 output
+bytes. The common 1180-byte prefix contains all 980 bytes of the six previously
+frozen SDK root containers plus actual legacy/versioned success, canonical COM
+identity and virtual reference releases. The extracted Mach-O payload equals the input.
 The fixture uses no CRT/SDK headers or device and is transferred unchanged for
-native Windows d3d12 execution. That new native binary comparison is pending;
-the older SDK source-ABI byte record is independent but not that execution.
+native Windows d3d12 execution. Full execution of this final fixture is pending.
 
 All 52 PE host tests, four lifetime compiler checks, 19 portable arm64 tests,
 171 Python tests and PE Clippy pass locally. New host units cover both actual
@@ -27,13 +26,22 @@ diagnostic text, host null/unsupported-version edge cases and allocation failure
 are not claimed equivalent. Existing source interfaces, frozen PE inputs,
 graphics samples/shaders/assets and game data are unchanged.
 
-Initial PE CI `42404379361` on `bad2ead` passes the Mac job but the native
-Windows process exits 28: its 65-DWORD case did not return the assumed diagnostic
-blob. This is a real failed comparison, not native parity. An instrumented
-unfrozen fixture now flushes partial observations before failure so the native
-HRESULT/success/error predicates can be examined without weakening the check.
-The initial fixture/hash above is retained as the identity of that failed run;
-new native observations are pending. All earlier frozen PE fixtures are intact.
+Initial PE CI `42404379361` on `bad2ead` passes the Mac job but native Windows
+exits 28: the 65-DWORD case did not return the assumed diagnostic blob. Its PE
+hash was `1a8e67d25912746b273acc8308245694d5999c3fdca6c109623ffa05fe4112d9`.
+Instrumented revision `db121a3`, PE `f3b4199923e719567edfd93ad4afb0ded29ed5b22880afbb060ca8f84e467fea`,
+in native run `42404657986` emits 1192 bytes before the same failure. The entire
+1180-byte supported prefix agrees; its last three words are HRESULT 0,
+success-is-null 0, error-is-present 0. Thus Windows serializes 65 constants
+successfully while our existing bounded serializer rejects them. This is an
+explicit support difference, not equivalent error behavior or a GPU validity test.
+The final unfrozen fixture retains that case, reads/releases whichever actual
+blobs are returned and records a separate nine-word backend profile. Comparisons
+require the exact supported prefix and each distinct restriction profile; they
+cannot silently erase the difference or treat either profile as parity. The
+implementation's original 64-DWORD bound is unchanged. A fifth protocol negative
+checks that substituting one backend's restriction result for the other fails.
+All earlier frozen PE fixtures and acceptance criteria are intact.
 
 ## Win64 virtual COM: native Windows, hosted Mac and physical M4
 

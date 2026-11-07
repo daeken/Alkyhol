@@ -112,13 +112,24 @@ void entry(void) {
     mixed[2].kind=3; mixed[2].payload.descriptor[0]=3; mixed[2].payload.descriptor[1]=6;
     desc.count=3; desc.parameters=mixed; desc.sampler_count=0; desc.samplers=0; desc.flags=1;
     capture(&desc);
-    /* Valid pointers, invalid 65-DWORD budget. Diagnostic spelling is backend-specific. */
+    /* Deliberately outside Alkyhol's 64-DWORD bound. Native Windows was measured
+     * to serialize this anyway (S_OK, success blob, no diagnostic). Preserve
+     * both observations; do not treat our bounded rejection as native parity. */
     constants.payload.constants[2]=65; desc.count=1; desc.parameters=&constants; desc.flags=0;
     record((U32)D3D12SerializeRootSignature(&desc,1,&blob,&error));
-    record(blob==0); record(error!=0); CHECK(error!=0,28);
-    size=error->vtable->GetBufferSize(error); CHECK(size>1&&size<65536,29);
-    text=(const U8 *)error->vtable->GetBufferPointer(error); CHECK(text!=0,30);
-    record(text[size-1]==0); record(error->vtable->Release(error));
+    record(blob==0); record(error!=0);
+    if(blob) {
+        size=blob->vtable->GetBufferSize(blob); CHECK(size>=4&&size<1024,28);
+        text=(const U8 *)blob->vtable->GetBufferPointer(blob); CHECK(text!=0,29);
+        record((U32)size);
+        record((U32)text[size-4]|((U32)text[size-3]<<8)|((U32)text[size-2]<<16)|((U32)text[size-1]<<24));
+        record(blob->vtable->Release(blob));
+    } else { record(0xffffffffu); record(0xffffffffu); record(0xffffffffu); }
+    if(error) {
+        size=error->vtable->GetBufferSize(error); CHECK(size>1&&size<65536,30);
+        text=(const U8 *)error->vtable->GetBufferPointer(error); CHECK(text!=0,32);
+        record(1); record(text[size-1]==0); record(error->vtable->Release(error));
+    } else { record(0xffffffffu); record(0xffffffffu); record(0xffffffffu); }
     CHECK(WriteFile(GetStdHandle(0xfffffff5u),output,used,&written,0)&&written==used,31);
     ExitProcess(0);
 }

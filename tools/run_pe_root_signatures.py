@@ -18,7 +18,7 @@ NATIVE = 'native Windows PE64 / d3d12 serializers'
 HOST = 'Alkyhol Win64 serializers / x86-64 Mach-O'
 
 
-def expected_bytes():
+def expected_bytes(windows=False):
     # Independently frozen SDK byte evidence predates this PE client. This does
     # not reuse source-ABI device/metadata assertions as binary execution evidence.
     layouts = json.loads(LAYOUT_REFERENCE.read_text(encoding='utf-8'))['observation']['layouts']
@@ -29,11 +29,16 @@ def expected_bytes():
         output += struct.pack('<6I', 0, 0, len(layout), 1, 1, 1)
         output += bytes(layout)
         output += struct.pack('<II', 0, 0)
-    return output+struct.pack('<5I', 0x80070057, 1, 1, 1, 0)
+    # Native run 42404657986 measured S_OK/non-null success/no diagnostic for
+    # 65 constants. The bounded Rust serializer deliberately rejects that input.
+    # Preserve this difference explicitly; only the preceding six layouts agree.
+    tail = ([0, 0, 0, 92, 65, 0, 0xffffffff, 0xffffffff, 0xffffffff] if windows else
+            [0x80070057, 1, 1, 0xffffffff, 0xffffffff, 0xffffffff, 1, 1, 0])
+    return output+struct.pack('<9I', *tail)
 
 
 def decode(run, windows=False, rebase=False):
-    if run.returncode != 0 or run.stdout != expected_bytes():
+    if run.returncode != 0 or run.stdout != expected_bytes(windows):
         raise ValueError(f'PE serializer failed or raw observations differ: {run.returncode}, '
                          f'{run.stdout.hex()}, {run.stderr!r}')
     if windows:

@@ -24,6 +24,11 @@ one-million-slot table extents, visibility ALL through PIXEL, and ordinary root
 flags through ALLOW_STREAM_OUTPUT (0x7f). Reserved register spaces, unbounded
 ranges, local signatures, heap indexing, newer visibilities, non-finite LODs and
 versions 1.1/1.2 fail explicitly. This is a finite implementation, not the full SDK.
+The later unchanged-PE probe measured native D3D12 serialization accepting 65
+constants, while this bounded implementation rejects them. The 64-DWORD limit
+here is an explicit support restriction, not a claim of native serialization
+error parity. [Binary observations](../docs/pe.md#binary-d3d12-root-serialization)
+preserve that difference separately from the six matching serialized layouts.
 
 The restricted Metal device's `CreateRootSignature` accepts checked canonical
 standalone version-1.0 root containers through 1 MiB, node mask 0/1, and supplies

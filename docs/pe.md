@@ -514,10 +514,13 @@ The separate owned no-CRT fixture calls both exports from unchanged PE machine
 code for the six existing frozen SDK layouts: empty, 64 constants, seven root
 descriptors, offset/APPEND tables, static samplers and stage-disjoint bindings.
 It reads and compares both returned containers, queries their COM identity and
-balances actual virtual releases. Its 1200-byte stream includes all 980 existing
-native SDK container bytes and actual COM/HRESULT predicates. A valid-pointer
-65-DWORD failure also checks an owned NUL-terminated diagnostic and cleared
-success output; diagnostic spelling is backend-specific and is not compared.
+balances actual virtual releases. Its 1180-byte common prefix includes all 980
+existing native SDK container bytes and actual COM/HRESULT predicates. A separate
+36-byte profile preserves a known difference: Windows successfully serializes
+65 constants, while the existing bounded Rust serializer rejects them with an
+owned NUL-terminated diagnostic and cleared success output. Each distinct profile
+is checked exactly; this case is not claimed equivalent. Diagnostic spelling is
+backend-specific and is not compared. Neither result is a GPU validity test.
 No GPU/device or Windows compiler binary is used on macOS.
 
 ```sh
@@ -528,8 +531,8 @@ python3 tools/run_pe_root_signatures.py --fixture local/pe/root-signatures/root-
 Physical M4/Rosetta normal/forced-rebase execution passes, including the exact
 input/extracted PE SHA-256 check. The PE workflow transfers that identical file
 to native Windows and compares actual observations. See [validation](validation.md)
-for the state of independent native execution; source-ABI SDK bytes alone do not
-establish native execution of this PE. This CPU serialization milestone does not
+for exact native execution evidence and the known restriction; source-ABI SDK
+bytes alone do not establish native execution of this PE. This CPU milestone does not
 add binary D3D12 device execution or game compatibility.
 
 Primary contracts: [D3D12SerializeRootSignature](https://learn.microsoft.com/en-us/windows/win32/api/d3d12/nf-d3d12-d3d12serializerootsignature)
