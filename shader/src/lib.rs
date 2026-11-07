@@ -80,6 +80,7 @@ pub struct Translation {
     pub resources: Vec<ResourceBinding>,
     pub vertex_inputs: Vec<VertexInput>,
     pub dxil_spirv_version: (u32, u32, u32),
+    pub requires_ray_query: bool,
 }
 
 /// Original D3D vertex semantics mapped to Metal attribute locations.
@@ -94,12 +95,45 @@ pub struct VertexInput {
 /// Compile HLSL to a real DXIL container using an explicitly selected DXC.
 /// Compiler errors and warnings fail; no SPIR-V shortcut or MSL fallback exists.
 pub fn compile_hlsl(dxc: &Path, source: &Path, entry: &str, stage: Stage) -> Result<Vec<u8>> {
+    compile_hlsl_with_options(dxc, source, entry, stage, &HlslOptions::default())
+}
+
+/// Explicit compilation choices. Stripping a root signature selects reflected
+/// discrete resource bindings; callers must supply the corresponding runtime.
+#[derive(Default)]
+pub struct HlslOptions<'a> {
+    pub shader_model_6_5: bool,
+    pub strip_root_signature: bool,
+    pub defines: &'a [(&'a str, &'a str)],
+}
+
+pub fn compile_hlsl_with_options(
+    dxc: &Path,
+    source: &Path,
+    entry: &str,
+    stage: Stage,
+    options: &HlslOptions<'_>,
+) -> Result<Vec<u8>> {
     validate_entry(entry)?;
     let temp = tempfile::tempdir().map_err(|e| e.to_string())?;
     let output = temp.path().join("shader.dxil");
-    let result = Command::new(dxc)
-        .args(["-T", stage.profile(), "-E", entry, "-Ges", "-WX", "-Fo"])
-        .arg(&output)
+    let profile = if options.shader_model_6_5 {
+        stage.profile().replace("6_0", "6_5")
+    } else {
+        stage.profile().into()
+    };
+    let mut command = Command::new(dxc);
+    command
+        .args(["-T", &profile, "-E", entry, "-Ges", "-WX", "-Fo"])
+        .arg(&output);
+    if options.strip_root_signature {
+        command.arg("-Qstrip_rootsignature");
+    }
+    for (name, value) in options.defines {
+        validate_entry(name)?;
+        command.arg("-D").arg(format!("{name}={value}"));
+    }
+    let result = command
         .arg(source)
         .output()
         .map_err(|e| format!("DXC: {e}"))?;
@@ -220,7 +254,8 @@ impl Bindings {
         let namespace = match b.kind {
             ResourceKind::RawBuffer
             | ResourceKind::StructuredBuffer
-            | ResourceKind::ConstantBuffer => MetalNamespace::Buffer,
+            | ResourceKind::ConstantBuffer
+            | ResourceKind::RtAccelerationStructure => MetalNamespace::Buffer,
             ResourceKind::Sampler => MetalNamespace::Sampler,
             ResourceKind::Texture1D
             | ResourceKind::Texture2D
@@ -366,6 +401,10 @@ pub fn translate_dxil(bytes: &[u8], entry: &str) -> Result<Translation> {
     let words = converter.compiled_spirv().map_err(|e| e.to_string())?;
     let mut compiler =
         Compiler::<targets::Msl>::new(Module::from_words(&words)).map_err(|e| e.to_string())?;
+    let requires_ray_query = compiler
+        .declared_capabilities()
+        .map_err(|e| e.to_string())?
+        .contains(&spirv::Capability::RayQueryKHR);
     let entries = compiler
         .entry_points()
         .map_err(|e| e.to_string())?
@@ -436,5 +475,6 @@ pub fn translate_dxil(bytes: &[u8], entry: &str) -> Result<Translation> {
         resources: state.resources.values().cloned().collect(),
         vertex_inputs: state.vertex_inputs.values().cloned().collect(),
         dxil_spirv_version: dxil_spirv::version(),
+        requires_ray_query,
     })
 }

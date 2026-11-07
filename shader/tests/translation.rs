@@ -104,6 +104,64 @@ fn compiler_diagnostics_and_invalid_parameters_fail() {
 }
 
 #[test]
+fn explicit_compile_options_preserve_defines_and_require_root_signature_opt_in() {
+    let temp = tempfile::tempdir().unwrap();
+    let file = temp.path().join("options.hlsl");
+    std::fs::write(&file,"RWStructuredBuffer<uint> o:register(u0); [RootSignature(\"DescriptorTable(UAV(u0))\")] [numthreads(1,1,1)] void main() {o[0]=TEST_VALUE;}").unwrap();
+    let options = HlslOptions {
+        shader_model_6_5: true,
+        strip_root_signature: false,
+        defines: &[("TEST_VALUE", "42")],
+    };
+    assert!(
+        compile_hlsl_with_options(&dxc(), &file, "main", Stage::Compute, &options)
+            .unwrap_err()
+            .contains("root signatures")
+    );
+    let options = HlslOptions {
+        strip_root_signature: true,
+        ..options
+    };
+    let bytes = compile_hlsl_with_options(&dxc(), &file, "main", Stage::Compute, &options).unwrap();
+    let result = translate_dxil(&bytes, "main").unwrap();
+    assert!(!result.requires_ray_query);
+    assert_eq!(result.resources.len(), 1);
+    assert!(result.msl.contains("42u"));
+    let bad = HlslOptions {
+        defines: &[("-bad", "1")],
+        ..Default::default()
+    };
+    assert!(compile_hlsl_with_options(&dxc(), &file, "main", Stage::Compute, &bad).is_err());
+}
+
+#[test]
+fn original_sponza_adapter_declares_real_ray_queries_and_original_entry_bodies() {
+    let file = Path::new(env!("CARGO_MANIFEST_DIR")).join("samples/miniengine/bary.hlsl");
+    assert!(compile_hlsl(&dxc(), &file, "AlkyholMain", Stage::Compute).is_err());
+    let bytes = compile_hlsl_with_options(
+        &dxc(),
+        &file,
+        "AlkyholMain",
+        Stage::Compute,
+        &HlslOptions {
+            shader_model_6_5: true,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let shader = translate_dxil(&bytes, "AlkyholMain").unwrap();
+    assert!(shader.requires_ray_query);
+    assert_eq!(shader.threads_per_group, Some([8, 8, 1]));
+    let acceleration = shader
+        .resources
+        .iter()
+        .find(|r| r.kind == "RtAccelerationStructure")
+        .unwrap();
+    assert_eq!(acceleration.namespace, MetalNamespace::Buffer);
+    assert!(shader.msl.contains("intersection_query"));
+}
+
+#[test]
 fn unsupported_descriptor_arrays_counters_and_geometry_stage_fail() {
     let temp = tempfile::tempdir().unwrap();
     let file = temp.path().join("unsupported.hlsl");

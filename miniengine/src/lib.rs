@@ -3,4 +3,5 @@ pub mod camera;
 pub mod dds;
 pub mod h3d;
 mod material_paths;
+mod original;
 pub mod renderer;

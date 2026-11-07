@@ -6,9 +6,10 @@ float shadow_visibility(Surface surface,instance_acceleration_structure scene,de
 }
 kernel void render_scene(instance_acceleration_structure scene [[buffer(0)]],constant Params& p [[buffer(1)]],
                          device atomic_uint* counts [[buffer(2)]],device const Vertex* vertices [[buffer(3)]],device const MeshInfo* mesh [[buffer(4)]],
-                         constant MaterialTextures& textures [[buffer(5)]],texture2d<float,access::write> output [[texture(0)]],uint2 pixel [[thread_position_in_grid]]){
+                         constant MaterialTextures& textures [[buffer(5)]],device const float4* camera_rays [[buffer(6)]],texture2d<float,access::write> output [[texture(0)]],uint2 pixel [[thread_position_in_grid]]){
  if(pixel.x>=p.width||pixel.y>=p.height)return;
- ray r;r.origin=p.eye.xyz;r.direction=camera_direction(float2(pixel),p);r.min_distance=0;r.max_distance=FLT_MAX;
+ uint ray_offset=(pixel.y*p.width+pixel.x)*2;float4 ray_origin=camera_rays[ray_offset],ray_direction=camera_rays[ray_offset+1];
+ ray r;r.origin=ray_origin.xyz;r.direction=ray_direction.xyz;r.min_distance=ray_origin.w;r.max_distance=ray_direction.w;
  intersector<triangle_data,instancing> tracer;tracer.assume_geometry_type(geometry_type::triangle);tracer.force_opacity(forced_opacity::opaque);tracer.accept_any_intersection(false);tracer.set_triangle_cull_mode(triangle_cull_mode::back);tracer.set_triangle_front_facing_winding(winding::clockwise);
  auto hit=tracer.intersect(r,scene,1);
  if(hit.type==intersection_type::none){output.write(float4(0,0,0,1),pixel);atomic_fetch_add_explicit(&counts[34],1,memory_order_relaxed);return;}

@@ -3,6 +3,34 @@ use alkyhol_miniengine::{
     renderer::{RenderMode, Renderer},
 };
 #[test]
+#[ignore = "requires physical Metal RT and original Sponza assets"]
+fn original_hlsl_bary_pipeline_agrees_with_manual_reference_on_all_camera_presets() {
+    objc::rc::autoreleasepool(|| {
+        let assets =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../local/miniengine/assets");
+        let mut renderer = Renderer::new(&assets, 129, 73).unwrap();
+        renderer.set_mode(RenderMode::Bary);
+        let temp =
+            std::env::temp_dir().join(format!("alkyhol-original-hlsl-{}", std::process::id()));
+        for preset in 0..5 {
+            let camera = Camera::preset(preset).unwrap();
+            renderer.set_original_bary_enabled(true);
+            let original = renderer.render(&camera, None).unwrap();
+            renderer.capture(&temp.join("original.png")).unwrap();
+            let pixels = image::open(temp.join("original.png")).unwrap().to_rgba8();
+            renderer.set_original_bary_enabled(false);
+            let manual = renderer.render(&camera, None).unwrap();
+            renderer.capture(&temp.join("manual.png")).unwrap();
+            assert_eq!(original, manual, "camera {preset} traversal");
+            assert_eq!(
+                pixels,
+                image::open(temp.join("manual.png")).unwrap().to_rgba8(),
+                "camera {preset} exact RGBA8"
+            );
+        }
+    });
+}
+#[test]
 #[ignore = "requires physical Metal RT and pinned Sponza H3D; run --include-ignored"]
 fn full_sponza_debug_views_preserve_hit_geometry_and_capture_repeatably() {
     objc::rc::autoreleasepool(|| {

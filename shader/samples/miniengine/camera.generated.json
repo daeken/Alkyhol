@@ -1,0 +1,39 @@
+{
+  "msl": "#include <metal_stdlib>\n#include <simd/simd.h>\n\nusing namespace metal;\n\nstruct SSBO\n{\n    uint4 _m0[1];\n};\n\nstruct _15\n{\n    float4 _m0[6];\n};\n\nkernel void main0(constant _15& _17 [[buffer(0)]], device SSBO& _10 [[buffer(1)]], uint3 gl_GlobalInvocationID [[thread_position_in_grid]])\n{\n    uint _34 = uint(_17._m0[5u].x);\n    if (!((gl_GlobalInvocationID.x >= _34) || (gl_GlobalInvocationID.y >= uint(_17._m0[5u].y))))\n    {\n        float _50 = (((float(gl_GlobalInvocationID.x) + 0.5) / _17._m0[5u].x) * 2.0) + (-1.0);\n        float _53 = (-0.0) - ((((float(gl_GlobalInvocationID.y) + 0.5) / _17._m0[5u].y) * 2.0) + (-1.0));\n        float _86 = fma(_17._m0[1u].w, _53, _17._m0[0u].w * _50) + _17._m0[3u].w;\n        float _96 = ((_17._m0[3u].x + fma(_17._m0[1u].x, _53, _17._m0[0u].x * _50)) / _86) - _17._m0[4u].x;\n        float _97 = ((fma(_17._m0[1u].y, _53, _17._m0[0u].y * _50) + _17._m0[3u].y) / _86) - _17._m0[4u].y;\n        float _98 = ((fma(_17._m0[1u].z, _53, _17._m0[0u].z * _50) + _17._m0[3u].z) / _86) - _17._m0[4u].z;\n        float _103 = rsqrt(dot(float3(_96, _97, _98), float3(_96, _97, _98)));\n        uint _108 = (_34 * gl_GlobalInvocationID.y) + gl_GlobalInvocationID.x;\n        _10._m0[_108 * 2u] = uint4(as_type<uint>(_17._m0[4u].x), as_type<uint>(_17._m0[4u].y), as_type<uint>(_17._m0[4u].z), as_type<uint>(0.0));\n        _10._m0[(_108 * 2u) + 1u] = uint4(as_type<uint>(_96 * _103), as_type<uint>(_97 * _103), as_type<uint>(_98 * _103), as_type<uint>(3.4028234663852885981170418348452e+38));\n    }\n}\n\n",
+  "entry_point": "main0",
+  "stage": "Compute",
+  "threads_per_group": [
+    8,
+    8,
+    1
+  ],
+  "resources": [
+    {
+      "class": "Cbv",
+      "space": 0,
+      "register": 1,
+      "kind": "ConstantBuffer",
+      "namespace": "Buffer",
+      "metal_index": 0,
+      "spirv_set": 0,
+      "spirv_binding": 1
+    },
+    {
+      "class": "Uav",
+      "space": 0,
+      "register": 20,
+      "kind": "StructuredBuffer",
+      "namespace": "Buffer",
+      "metal_index": 1,
+      "spirv_set": 2,
+      "spirv_binding": 20
+    }
+  ],
+  "vertex_inputs": [],
+  "dxil_spirv_version": [
+    2,
+    72,
+    1
+  ],
+  "requires_ray_query": false
+}

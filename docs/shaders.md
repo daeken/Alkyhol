@@ -1,5 +1,9 @@
 # Direct3D shader translation to Metal
 
+Project constraint: the compiler/translation toolchain must be open source and
+freely available without an account-gated proprietary compiler. Apple's Metal
+Shader Converter is deliberately excluded. Native Metal remains the host API.
+
 The `alkyhol-shader` Rust crate and CLI take **compiled DXIL containers** to native
 Metal Shading Language. HLSL source uses Microsoft's DXC frontend first:
 
@@ -39,6 +43,10 @@ manually written MSL fallback or DXC direct-to-SPIR-V bypass is used.
 ## First contract
 
 Vertex, pixel and compute shaders use SM6.0 profiles through the HLSL frontend.
+`compile_hlsl_with_options` explicitly selects SM6.5, preprocessor definitions,
+or root-signature stripping for runtimes that supply reflected discrete bindings.
+Inline ray queries now translate acceleration-structure resources into Metal's
+buffer namespace; `requires_ray_query` reports that capability in the output.
 The binary API requires a bounded, structurally checked DXBC envelope containing
 one DXIL program. Legacy SHDR/SHEX shader instructions, raw LLVM bitcode, embedded
 root signatures, DXR/library/geometry/tessellation/mesh stages, descriptor arrays,
@@ -60,8 +68,10 @@ The caller supplies a matching Metal vertex descriptor. This first milestone
 exercises compatible vertex/pixel signatures; it does not implement a general
 semantic linker or D3D12 root-signature/descriptor-heap runtime. Successful
 translation is not proof of arbitrary shader semantics, DXR support or game
-compatibility. The existing Sakura and Sponza apps still use their manual MSL
-ports; no automatic conversion of those full renderers is claimed.
+compatibility. Sakura still uses manual MSL. Sponza now uses original HLSL ray
+generation in all modes and original hit/miss bodies for view 2 through explicit
+[source adapters](../shader/samples/miniengine/README.md). Its material and
+postprocessing paths are still manual MSL; no full DXR binary translation is claimed.
 
 ## Executed local validation
 

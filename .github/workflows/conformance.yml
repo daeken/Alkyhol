@@ -74,7 +74,9 @@ jobs:
       - name: Translate DXIL and execute generated Metal (hosted GPU, no RT claim)
         env:
           DXC: ${{ github.workspace }}/local/dxc-build/bin/dxc
-        run: cargo test --manifest-path shader/Cargo.toml --locked -- --nocapture 2>&1 | tee shader-validation.txt
+        run: |
+          cargo test --manifest-path shader/Cargo.toml --locked -- --nocapture 2>&1 | tee shader-validation.txt
+          cargo run --manifest-path shader/Cargo.toml --locked --example translate_samples -- "$DXC" --check
       - uses: actions/upload-artifact@v4
         if: always()
         with:

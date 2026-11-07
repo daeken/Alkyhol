@@ -27,8 +27,9 @@ transitive DLL dependencies need separate evidence. See [scope](docs/scope.md).
 Automatic shader translation now has a first tested milestone:
 **HLSL → DXIL → SPIR-V → MSL**, with direct compiled-DXIL input, Rust binding
 metadata and real Metal compute/raster tests. See [shader translation](docs/shaders.md)
-for commands, supported contracts and current limits. The demo renderers still
-use their manual MSL ports.
+for commands, supported contracts and current limits. Sponza now uses original
+HLSL primary ray generation in every view and original hit/miss shader bodies in
+view 2 through explicit source adapters; remaining shading and Sakura use manual MSL.
 
 The core is dependency-free so file/event conformance work can run without a GPU
 or a network connection. Graphics has its own manifest and dependency resolution.

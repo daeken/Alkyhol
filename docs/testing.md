@@ -64,3 +64,9 @@ mirrored/invalid/degenerate tangent frames, lighting endpoints and the Stanard t
 curve. Physical full-scene tests verify repeatability, ray accounting, all views,
 shadow pixel changes, floor-only reflection changes, finite output and all five
 camera presets. See [MiniEngine details](miniengine.md).
+
+Original HLSL intake is hash-bound by Python tests. Shader tests cover explicit
+SM6.5/define/root-signature options and actual inline-query translation. Checked-in
+sample MSL is regenerated and compared in CI. MiniEngine tests additionally check
+strict binding metadata, original ray-generation cbuffer layout/dispatch padding,
+and exact physical-Metal A/B pixels/hit counts for all five barycentric views.

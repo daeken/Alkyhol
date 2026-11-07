@@ -4,6 +4,26 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## Original Sponza HLSL migration: local evidence
+
+The physical Apple M4 passed 13 MiniEngine tests after adopting original HLSL
+primary-ray generation in every mode and original hit/miss bodies for view 2.
+Five-preset A/B tests require exact RGBA8 pixels and per-mesh/miss counts against
+the manual Metal intersector using the same generated rays. A separate compute
+test verifies the original camera cbuffer, ray records and padded-dispatch guard;
+it can run without RT. Source hashes and generated artifacts are checked separately.
+
+All 13 shader tests, all 31 Python tests, regenerated shader equality, rustfmt
+and shader/MiniEngine Clippy passed locally. The rebuilt live app showed view 2
+and switched back to shaded/reflections; its observed title was around 59 FPS at
+960×540. That is an overall live-view measurement, not an uncapped GPU benchmark.
+
+The compiler path is entirely open source (DXC, dxil-spirv, SPIRV-Cross and Rust
+adapters); the user explicitly excluded Apple's account-gated converter. The
+adapters' fixed source contracts are described in [shader intake](../shader/samples/miniengine/README.md).
+Full DXR library translation, original shaded-hit migration, Sakura migration
+and native Windows full-frame DXR comparison are still outstanding.
+
 ## First complete milestone
 
 [Conformance run 42326374803](https://github.com/daeken/Alkyhol/actions/runs/42326374803)

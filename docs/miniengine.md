@@ -106,6 +106,21 @@ Image tests prove shadows change pixels, reflection changes stay within eligible
 floor pixels, diagnostic modes preserve geometry and all five original camera
 presets render without nonfinite output or immediate self-reflection hits.
 
+Original-shader migration now uses the unchanged Microsoft `RayGen` body for
+every primary ray. View 2 additionally calls original `Hit`/`Miss` bodies through
+the open-source DXC/DXIL/SPIR-V/MSL path with real inline ray queries. Explicit
+source adapters, generated artifacts and their limits are documented in
+[shader intake](../shader/samples/miniengine/README.md). Shaded hit logic and
+postprocessing remain manual MSL in this milestone. No proprietary compiler is used.
+
+The physical M4 passed all 13 MiniEngine tests including exact original/manual
+view-2 pixel and hit-count agreement across all five presets, plus a hosted-compatible
+camera compute test for cbuffer layout, emitted rays and padded-dispatch guards.
+Using the original matrix-based camera changed three mesh assignments at 129×73
+compared with the older direct-basis camera math; all views now share the original
+HLSL-generated rays, preserving the strict cross-view checks. This is not evidence
+of native Windows full-frame DXR parity.
+
 Continue the remaining MiniEngine postprocessing paths through tested milestones;
 keep all diagnostic modes accessible and native DXR parity separate from Metal
 host assertions.

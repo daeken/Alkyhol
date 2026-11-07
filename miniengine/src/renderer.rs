@@ -74,6 +74,10 @@ pub struct Renderer {
     width: u32,
     height: u32,
     counts: Buffer,
+    original_bary: crate::original::BaryPipeline,
+    original_bary_enabled: bool,
+    original_camera: crate::original::CameraPipeline,
+    camera_rays: Buffer,
 }
 impl Renderer {
     pub fn new(assets: &Path, width: u32, height: u32) -> Result<Self, String> {
@@ -200,6 +204,12 @@ impl Renderer {
         let presentation = native.new_render_pipeline_state(&descriptor)?;
         let output = output_texture(native, width, height)?;
         let counts = native.new_buffer(168, MTLResourceOptions::StorageModeShared);
+        let original_bary = crate::original::BaryPipeline::new(native)?;
+        let original_camera = crate::original::CameraPipeline::new(native)?;
+        let camera_rays = native.new_buffer(
+            width as u64 * height as u64 * 32,
+            MTLResourceOptions::StorageModePrivate,
+        );
         Ok(Self {
             textures,
             texture_arguments,
@@ -214,6 +224,10 @@ impl Renderer {
             width,
             height,
             counts,
+            original_bary,
+            original_bary_enabled: true,
+            original_camera,
+            camera_rays,
         })
     }
     pub fn set_mode(&mut self, mode: RenderMode) {
@@ -222,11 +236,20 @@ impl Renderer {
     pub fn mode(&self) -> RenderMode {
         self.mode
     }
+    /// Explicit A/B reference control; original HLSL is the default for view 2.
+    /// A compilation failure never silently switches to the manual reference.
+    pub fn set_original_bary_enabled(&mut self, enabled: bool) {
+        self.original_bary_enabled = enabled;
+    }
     pub fn extent(&self) -> (u32, u32) {
         (self.width, self.height)
     }
     pub fn resize(&mut self, width: u32, height: u32) -> Result<(), String> {
         self.output = output_texture(self.device.metal_device(), width, height)?;
+        self.camera_rays = self.device.metal_device().new_buffer(
+            width as u64 * height as u64 * 32,
+            MTLResourceOptions::StorageModePrivate,
+        );
         self.width = width;
         self.height = height;
         Ok(())
@@ -253,28 +276,41 @@ impl Renderer {
                 std::ptr::write_bytes(self.counts.contents(), 0, 168);
             }
             let command = self.device.metal_queue().new_command_buffer();
-            let encoder = command.new_compute_command_encoder();
-            encoder.set_compute_pipeline_state(&self.pipeline);
-            encoder.set_acceleration_structure(0, Some(&self.scene.acceleration));
-            encoder.set_bytes(
-                1,
-                std::mem::size_of::<Params>() as u64,
-                (&params as *const Params).cast(),
-            );
-            encoder.set_buffer(2, Some(&self.counts), 0);
-            encoder.set_buffer(3, Some(&self.vertices), 0);
-            encoder.set_buffer(4, Some(&self.offsets), 0);
-            encoder.set_buffer(5, Some(&self.texture_arguments), 0);
-            for texture in &self.textures {
-                encoder.use_resource(texture, MTLResourceUsage::Read);
+            if self.mode == RenderMode::Bary && self.original_bary_enabled {
+                self.original_bary
+                    .encode(command, &self.scene, camera, &self.output, &self.counts);
+            } else {
+                self.original_camera.encode(
+                    command,
+                    camera,
+                    self.width as u64,
+                    self.height as u64,
+                    &self.camera_rays,
+                );
+                let encoder = command.new_compute_command_encoder();
+                encoder.set_compute_pipeline_state(&self.pipeline);
+                encoder.set_acceleration_structure(0, Some(&self.scene.acceleration));
+                encoder.set_bytes(
+                    1,
+                    std::mem::size_of::<Params>() as u64,
+                    (&params as *const Params).cast(),
+                );
+                encoder.set_buffer(2, Some(&self.counts), 0);
+                encoder.set_buffer(3, Some(&self.vertices), 0);
+                encoder.set_buffer(4, Some(&self.offsets), 0);
+                encoder.set_buffer(5, Some(&self.texture_arguments), 0);
+                encoder.set_buffer(6, Some(&self.camera_rays), 0);
+                for texture in &self.textures {
+                    encoder.use_resource(texture, MTLResourceUsage::Read);
+                }
+                encoder.set_texture(0, Some(&self.output));
+                self.scene.use_resources(encoder);
+                encoder.dispatch_threads(
+                    MTLSize::new(self.width as u64, self.height as u64, 1),
+                    MTLSize::new(8, 8, 1),
+                );
+                encoder.end_encoding();
             }
-            encoder.set_texture(0, Some(&self.output));
-            self.scene.use_resources(encoder);
-            encoder.dispatch_threads(
-                MTLSize::new(self.width as u64, self.height as u64, 1),
-                MTLSize::new(8, 8, 1),
-            );
-            encoder.end_encoding();
             if let Some(drawable) = drawable {
                 let pass = RenderPassDescriptor::new();
                 let a = pass.color_attachments().object_at(0).unwrap();
