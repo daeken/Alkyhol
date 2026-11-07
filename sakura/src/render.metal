@@ -5,33 +5,11 @@
 #include <metal_raytracing>
 using namespace metal;
 using namespace raytracing;
-struct Vertex { packed_float3 position; packed_float3 normal; packed_float2 uv; };
 struct Params {
     float4 eye, right, up, forward, light;
     uint width, height, leaf_vertices, debug;
 };
 constexpr sampler linear_wrap(coord::normalized,address::repeat,filter::linear,mip_filter::none);
-constant uint cube_indices[36]={3,1,0,2,1,3,6,4,5,7,4,6,11,9,8,10,9,11,14,12,13,15,12,14,19,17,16,18,17,19,22,20,21,23,20,22};
-float3 interpolate_normal(device const Vertex* v,uint3 indices,float2 b) {
-    float3 a=v[indices.x].normal,c=v[indices.y].normal,d=v[indices.z].normal;
-    return a+b.x*(c-a)+b.y*(d-a);
-}
-float star_density(float3 direction) {
-    float3 sky=direction*10.0f;float density=0,fade=1;
-    for(int s=0;s<200;++s) {
-        float3 p=sky+direction*(s*0.05f);p=abs(fmod(p,2.0f)-1.0f);
-        float pa=0,a=0;
-        for(int i=0;i<50;++i) {float inv=1.0f/dot(p,p);p=abs(p)*inv-0.53f;float len=length(p);a+=abs(len-pa);pa=len;}
-        density+=a*fade;fade*=0.9f;
-    }
-    return smoothstep(0.1f,0.9f,saturate(density/(200*50*0.12f)));
-}
-float4 miss_colour(float3 direction,float3 light) {
-    float3 d=normalize(direction),sky=d*10.0f;
-    float density=star_density(d);float3 glow=mix(float3(.4,.6,1),float3(1,.6,.8),density);
-    float ld=saturate(dot(d,normalize(light-sky)));glow*=mix(.8f+.2f*ld,4.0f,density);
-    return float4(mix(float3(.05,.02,.08),glow,density*1.3f),1);
-}
 // Explicit two-level stack: identical maximum recursion depth to the source, no MSL recursion.
 float4 radiance(ray r,instance_acceleration_structure scene,
                device const Vertex* cube,device const Vertex* trunk,device const Vertex* leaves,device const Vertex* bush,
@@ -50,22 +28,13 @@ float4 radiance(ray r,instance_acceleration_structure scene,
         float3 position=r.origin+r.direction*hit.distance;
         float2 b=hit.triangle_barycentric_coord;
         uint base=primitive*3;uint3 indices=uint3(base,base+1,base+2);
-        float3 normal;
-        if(material==0)normal=interpolate_normal(cube,indices,b);
-        else if(material==1)normal=interpolate_normal(trunk,uint3(cube_indices[base],cube_indices[base+1],cube_indices[base+2]),b);
-        else if(material==2) {
-            // Upstream reads IndicesLeaves with a trunk PrimitiveIndex. Its sequential indices
-            // are explicit zero when the leaf index-buffer read is outside its declared bounds.
-            if(base+2>=p.leaf_vertices)indices=uint3(0);
-            normal=interpolate_normal(trunk,indices,b);
-        } else if(material==3)normal=interpolate_normal(leaves,indices,b);
-        else normal=interpolate_normal(bush,indices,b);
+        float3 normal=material_normal(material,primitive,b,p.leaf_vertices,cube,trunk,leaves,bush);
         float3 colour;
         if(material==0) {
             float3 sampled=trunk_tex.sample(linear_wrap,fract(position.xz),level(0)).rgb;
             if(all(sampled<float3(.1))&&depth<2) {
                 atomic_fetch_add_explicit(&counts[6],1,memory_order_relaxed);
-                float cosi=saturate(dot(-r.direction,normal));float3 fresnel=sampled+(1-sampled)*pow(1-cosi,5.0f);
+                float3 fresnel=schlick(r.direction,normal,sampled);
                 addition+=multiplier*sampled*(1-fresnel)*1.7f;multiplier*=fresnel*1.7f;
                 r.origin=position+normal*.001f;r.direction=reflect(r.direction,normal);continue;
             }
@@ -77,13 +46,13 @@ float4 radiance(ray r,instance_acceleration_structure scene,
             if(depth==2)return float4(addition,first_material==0?1.0f:0.0f);
             r.origin=position+normal*.5f;r.direction=reflect(r.direction,normal);continue;
         } else if(material==2) {
-            float3 weights=normalize(max(abs(normal),float3(.00001)));
+            float3 weights=triplanar_weights(normal);
             colour=(trunk_tex.sample(linear_wrap,position.yz*.5f,level(0)).rgb*weights.x+
                     trunk_tex.sample(linear_wrap,position.xz*.5f,level(0)).rgb*weights.y+
                     trunk_tex.sample(linear_wrap,position.xy*.5f,level(0)).rgb*weights.z)*.5f;
         } else {
             float ndotl=saturate(dot(normal,normalize(p.light.xyz-position)));
-            if(material==3)colour=primitive%3==0?float3(.8,.7,.9):primitive%3==1?float3(1,.8,.9):float3(.85,.4,.6);
+            if(material==3)colour=petal_colour(primitive);
             else {
                 float2 a=bush[indices.x].uv,c=bush[indices.y].uv,d=bush[indices.z].uv;
                 colour=bush_tex.sample(linear_wrap,a+b.x*(c-a)+b.y*(d-a),level(0)).rgb;

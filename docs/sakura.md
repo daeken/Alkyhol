@@ -132,3 +132,13 @@ preserves the source's recursion limit, including floor alpha and cube attenuati
 This is a running source-level rendering port. It does not run the original Windows
 executable, implement DXR shader binaries or provide DirectX SER scheduling modes.
 Its real-device assertions and live UI observations do not establish game compatibility.
+
+The independent geometry audit is in `sakura/tests/intersections.rs` (explicit
+physical RT/asset test). It compares real full-scene GPU nearest hits to independent
+CPU triangles for selected view and trunk-directed rays. `shader_math.rs` runs
+pure Metal compute checks for material attributes, Fresnel, weights and petal
+colors even without RT. Its scalar-host/full-fractal observations are labeled
+unresolved rather than accepted as equal; see the validation record. The default
+sample deliberately keeps the original loader's truncation of 479 trunk quad
+faces, which may create holes. Repairing original geometry would be a separate,
+explicit option, not an unannounced change to faithful rendering.

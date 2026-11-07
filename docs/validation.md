@@ -311,3 +311,41 @@ Windows/Metal full-frame pixel equivalence. WIC/Rust JPEG rounding and cross-GPU
 floating-point behavior remain comparison work. DirectX SER scheduling modes are
 not implemented; the UI says SER off. This source-level application port does not
 run original Windows/game binaries and is not evidence of game compatibility.
+
+## Sakura geometry audit and shader units, 2026-11-07
+
+On the same physical M4/macOS 27.0.1/Rust 1.99.1, the full-scene intersection audit
+compared 58 Metal nearest-hit queries with an independent CPU slab/Möller–Trumbore
+triangle implementation. Queries cover a pixel grid and directions toward nearby
+trunks, considering all 13,525 instances as potential occluders. All 58 agreed on
+nearest distance; the reported GPU triangle was independently intersected too,
+allowing coincident triangles at the same depth. Material counts were
+`[11, 1, 32, 13, 1, 0]`. This establishes the queried geometry only, not every view,
+all trunks or native Windows/DXR equivalence. It did not reproduce a depth error.
+
+The pinned trunk OBJ contains 17,970 triangle faces and 479 quad faces. Upstream's
+ObjModelLoader reads only the first three corners of each face; the port retains
+that behavior. This drops the second triangle of each quad. This is a possible
+source of visible holes, not a demonstrated explanation for every reported missing
+trunk. No default asset/geometry repair was made.
+
+Shader arithmetic helpers now have real Metal compute checks for all five normal
+buffer paths, the leaf-index bounds behavior, unnormalized interpolation, original
+cube/trunk index mixing, Schlick endpoints/interior/clamping, Euclidean triplanar
+weights (including zero), and all three petal colors. These analytic fixtures are
+shader-unit assertions. They require Metal compute, not RT hardware. Full scene
+rendering after extraction produced the same 960×540/time-zero PNG SHA-256 as the
+running milestone: `118e5c5ba39d3488bd0810b71716db06842244bd0ce4c17e7990e7db6b1e225d`.
+All nine Sakura integration tests passed locally with `--include-ignored`, plus
+Sakura Clippy. Raw output is ignored under
+`local/sakura/shader-and-geometry-audit-tests.log`.
+
+A separate exploratory full-fractal scalar-host comparison **did not agree** at an
+attempted 0.001 absolute tolerance. For directions +X/+Y/−Z, GPU densities were
+`[0.8959779, 0.91883063, 0.63184154]`; independent scalar Rust f32 observations were
+`[0.936103, 0.936103, 0.7602065]`. The discrepancy is unresolved, and no larger
+acceptance tolerance was adopted. The shader test records these observations and
+asserts only the finite density range for this part; it does not count them as
+host/GPU equality or native DXR evidence. Original sky math, loop counts and the
+working full-frame output are retained. The user clarified that the purple/noisy
+sky matches the sample screenshot; the remaining visual concern is trunk coverage.

@@ -79,7 +79,14 @@ impl Renderer {
         let native = device.metal_device();
         let options = CompileOptions::new();
         options.set_fast_math_enabled(false);
-        let library = native.new_library_with_source(include_str!("render.metal"), &options)?;
+        let library = native.new_library_with_source(
+            concat!(
+                include_str!("shader_math.metal"),
+                "\n",
+                include_str!("render.metal")
+            ),
+            &options,
+        )?;
         let kernel = library.get_function("render_sakura", None)?;
         let pipeline = native.new_compute_pipeline_state_with_function(&kernel)?;
         let vertex = library.get_function("screen_vertex", None)?;
