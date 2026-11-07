@@ -107,6 +107,8 @@ The explicit subset constructor now supports typed 19-slot ID3D12CommandQueue
 and 11-slot ID3D12Fence interfaces, retaining the device and composing the same
 metadata store. DIRECT, COMPUTE and COPY queues accept normal priority, no flags
 and a single node; other configurations fail. Fences accept no sharing flags.
+GetDesc normalizes the default node mask 0 to 1, matching the independent WARP
+measurement preserved in `cpp/reference/queue-fence-windows-v1.json`.
 CPU Signal can advance or rewind the fence value. SetEventOnCompletion retains
 a validated event reference, signals already satisfied waits immediately and
 supports the null-event blocking form. Retained notifications cannot alias a new

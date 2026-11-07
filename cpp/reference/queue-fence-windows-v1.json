@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "backend": "native Windows SDK WARP queue/fence",
+  "observation": {
+    "scenario": "queue-fence-v1",
+    "desc": [
+      3,
+      0,
+      0,
+      1
+    ],
+    "values": [
+      5,
+      7,
+      8,
+      3,
+      9,
+      12,
+      21,
+      2
+    ],
+    "waits": [
+      0,
+      258,
+      258,
+      0,
+      0,
+      258,
+      0,
+      0,
+      0,
+      0
+    ],
+    "retained_submission": true,
+    "parent_lifetime": true
+  },
+  "diagnostics": "",
+  "source_revision": "52df42e386bdacfa25c7dd971d2950ed93a947f8",
+  "tracked_tree_clean": true,
+  "host": "Windows-2025Server-10.0.26100-SP0",
+  "machine": "AMD64",
+  "compiler": "usage: cl [ option... ] filename... [ /link linkoption... ]\nMicrosoft (R) C/C++ Optimizing Compiler Version 19.51.36260 for x64\nCopyright (C) Microsoft Corporation.  All rights reserved.\n\n",
+  "windows_sdk": "10.0.26100.0\\",
+  "build_command": [
+    "cl",
+    "/nologo",
+    "/W4",
+    "/WX",
+    "/EHsc",
+    "/std:c++17",
+    "D:\\a\\Alkyhol\\Alkyhol\\cpp\\tests\\queue_fence.cpp",
+    "/Fe:C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\alkyhol-device-buffers-_0xbkrvw\\queue_fence.exe",
+    "/link",
+    "d3d12.lib",
+    "dxgi.lib",
+    "dxguid.lib"
+  ],
+  "artifacts": {
+    "cpp/tests/queue_fence.cpp": "bd9e93380e628f89106a71987f4ffae1b72605fb2d1ca7a643cb0965a11388a4",
+    "tools/run_cpp_device_buffers.py": "21d6d548e46e20a61949290a2bcb96ac0cdf2b5d542e81a13d6a257b286006f7",
+    "tools/run_cpp_queue_fence.py": "af067c8cdaa4ca11af2b949770e29694a4861f4f289d4603fa9eb7219d65f023"
+  },
+  "executable_sha256": "bb266984fee83de3c5ed912f85abb9449d79f654f98ac1e53d16d200d6c5ed3b"
+}

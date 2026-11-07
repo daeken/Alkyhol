@@ -413,13 +413,16 @@ pub(super) unsafe extern "C" fn create_queue(
     if desc.is_null() || iid.is_null() {
         return E_POINTER;
     }
-    let desc = unsafe { *desc.cast::<QueueDesc>() };
+    let mut desc = unsafe { *desc.cast::<QueueDesc>() };
     if ![0, 2, 3].contains(&desc.kind) || desc.priority != 0 || desc.flags != 0 || desc.node > 1 {
         return E_NOTIMPL;
     }
     if ![IID_IUNKNOWN, IID_ID3D12OBJECT, CHILD, PAGEABLE, QUEUE].contains(unsafe { &*iid }) {
         return E_NOINTERFACE;
     }
+    // Native WARP normalizes the default single-node mask from 0 to 1.
+    // Preserve that observed GetDesc result, rather than echoing the input.
+    desc.node = 1;
     autoreleasepool(|| {
         let native = unsafe { (*this).metal.new_command_queue() };
         if native.as_ptr().is_null() {
@@ -647,6 +650,7 @@ mod tests {
                 );
                 let queue = raw.cast::<Queue>();
                 assert_eq!(description(queue).kind, kind);
+                assert_eq!(description(queue).node, 1);
                 queues.push(queue);
             }
             let mut other = ptr::null_mut();

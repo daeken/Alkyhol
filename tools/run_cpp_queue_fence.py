@@ -4,9 +4,9 @@ import argparse
 import json
 from pathlib import Path
 if __package__:
-    from .run_cpp_device_buffers import run_probe
+    from .run_cpp_device_buffers import ROOT,run_probe
 else:
-    from run_cpp_device_buffers import run_probe
+    from run_cpp_device_buffers import ROOT,run_probe
 
 SOURCE='cpp/tests/queue_fence.cpp'
 
@@ -34,6 +34,9 @@ def compare_reports(reports,revision):
         raise ValueError('synchronization probe source bytes differ')
     if reports[0]['observation']!=reports[1]['observation']:
         raise ValueError('native and Metal synchronization observations differ')
+    frozen=json.loads((ROOT/'cpp/reference/queue-fence-windows-v1.json').read_text())
+    if reports[0]['observation']!=frozen['observation']:
+        raise ValueError('live synchronization differs from frozen native contract')
 
 def run(output):
     return run_probe(output,'queue_fence','queue/fence',validate_observation,

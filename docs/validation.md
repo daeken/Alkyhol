@@ -28,9 +28,21 @@ all 70 original C++ units and a complete relink. The original application still
 exits 78 at unavailable D3D12CreateDevice, before original initialization. Original
 source, assets and shaders remain unchanged. New CI executes an independent WARP
 queue/fence probe and compares its exact output with hosted Metal from the same
-revision; no native result is claimed here until execution completes. Previous
+revision. Previous
 buffer observations and their exact original probe bytes are preserved, and live
 buffer comparisons now also require equality to that unchanged native snapshot.
+
+Native WARP execution in
+[42363080977](https://github.com/daeken/Alkyhol/actions/runs/42363080977) on
+`52df42e` observed all eight fence values, ten waits and both lifetime checks
+matching Metal. The exact comparison correctly failed on a descriptor mismatch:
+native GetDesc normalizes input NodeMask 0 to returned 1, while Metal echoed 0.
+That independent native report/source identity is frozen as
+`cpp/reference/queue-fence-windows-v1.json`; Rust now normalizes its single-node
+queue descriptor to the measured result. The comparator also requires the live
+pair to equal this unchanged native snapshot. Native remeasurement of the fix
+remains pending; no comparison tolerance or expected native output was changed.
+The Python suite now has 72 passing tests.
 
 ## Restricted Metal COM device and committed buffers: local evidence
 

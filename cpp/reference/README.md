@@ -62,3 +62,19 @@ its host-only negative queue check from DIRECT to unsupported VIDEO_DECODE as
 real queues become available. Its native body and buffer observation sequence
 remain unchanged. Live native/Metal comparisons must also equal the unchanged
 frozen buffer observation, so two backends cannot jointly drift from it.
+
+## Native queue/fence reference
+
+`queue-fence-windows-v1.json` preserves actual native SDK/WARP execution on
+`52df42e` in CI 42363080977, MSVC 19.51.36260, SDK 10.0.26100.0. CPU signals
+and rewinds, event threshold waits, null-event waits, ordered queue signals and
+parent/pending-submission lifetimes all agreed with Metal. The exact comparison
+exposed one real mismatch: native GetDesc returns NodeMask 1 for requested 0.
+Rust was corrected to match this measurement; the native report is unchanged.
+The shared source hash remains checked and both live observations must equal the
+frozen snapshot, without manufacturing descriptor fields or completion values.
+
+The queue signal sequence contains no command lists or shader workloads. Native
+WARP execution and actual empty Metal command-buffer completion support this
+finite synchronization contract, not arbitrary GPU work, fault recovery,
+cross-queue GPU waits, feature-level conformance or original C++ rendering.
