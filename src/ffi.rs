@@ -190,6 +190,28 @@ pub extern "C" fn ResetEvent(h: Handle) -> i32 {
     boolean(kernel().reset_event(h))
 }
 #[cfg_attr(not(target_os = "windows"), unsafe(no_mangle))]
+pub unsafe extern "C" fn CreateSemaphoreW(
+    security: *const c_void,
+    initial: i32,
+    maximum: i32,
+    name: *const u16,
+) -> Handle {
+    if !security.is_null() || !name.is_null() {
+        return handle(Err(WinError(ERROR_NOT_SUPPORTED)), 0);
+    }
+    handle(kernel().create_semaphore(initial, maximum), 0)
+}
+#[cfg_attr(not(target_os = "windows"), unsafe(no_mangle))]
+pub unsafe extern "C" fn ReleaseSemaphore(h: Handle, release: i32, previous: *mut i32) -> i32 {
+    boolean(kernel().release_semaphore(h, release).map(|count| {
+        if !previous.is_null() {
+            unsafe {
+                *previous = count;
+            }
+        }
+    }))
+}
+#[cfg_attr(not(target_os = "windows"), unsafe(no_mangle))]
 pub extern "C" fn WaitForSingleObject(h: Handle, ms: u32) -> u32 {
     match kernel().wait(h, ms) {
         Ok(result) => result,

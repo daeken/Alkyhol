@@ -17,7 +17,9 @@ made safe by null checks. Output parameters must not alias input buffers.
 | CloseHandle | Release token, reject stale or wrong tokens | Closing during a wait is undefined on Windows; not supported here |
 | CreateEventW | Unnamed manual/auto reset, initial state | Null security and name; no cross-process namespace |
 | SetEvent / ResetEvent | Saturating signaled bit; notify one/all | No waiter-order guarantee |
-| WaitForSingleObject | Event waits, zero/finite/infinite timeout | Other waitable object types unsupported |
+| CreateSemaphoreW | Unnamed counting semaphore; nonnegative initial count, positive maximum, initial ≤ maximum | Null security/name; process-local, no inheritance or named namespace |
+| ReleaseSemaphore | Positive increment, optional previous count, atomic maximum enforcement | Overflow fails with ERROR_TOO_MANY_POSTS and leaves count unchanged; no waiter-order/fairness guarantee |
+| WaitForSingleObject | Event/semaphore waits, zero/finite/infinite timeout; each successful semaphore wait consumes one permit | Other waitable object types unsupported; closing a handle during a wait is not supported |
 | QueryPerformanceCounter/Frequency | Monotonic nanosecond counter, fixed 1GHz frequency | Epoch unrelated to Windows boot time; no exact scheduling guarantee |
 | Sleep | Host sleep/yield | No Windows scheduler/alertable behavior emulation |
 
@@ -54,3 +56,12 @@ native Windows and native Alkyhol observations when those jobs actually execute.
 The same runner now includes the [Microsoft sample adaptations](../samples/msdn/README.md).
 Those ports have explicit differences from their upstream examples; in particular,
 they do not establish share-denial, named events or Windows thread APIs.
+
+Semaphore LONG counts use signed 32-bit storage on every host. Invalid creation
+counts and nonpositive release counts fail with ERROR_INVALID_PARAMETER. Unknown,
+stale and wrong-type release handles fail with ERROR_INVALID_HANDLE. Failed facade
+release calls leave a supplied previous-count output untouched; the portable
+Windows comparison does not assume that undocumented output behavior. Success
+preserves last-error. These semantics are guided by
+[CreateSemaphoreW](https://learn.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-createsemaphorew)
+and [ReleaseSemaphore](https://learn.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-releasesemaphore).

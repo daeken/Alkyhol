@@ -40,9 +40,10 @@ against the Windows SDK and compares the observations. Passing portable
 samples demonstrates only those tested contracts, not game compatibility. Native
 Windows comparison results must be labeled separately from host-only assertions.
 
-The runner also executes two [Microsoft sample adaptations](samples/msdn/README.md):
+The runner also executes three [Microsoft sample adaptations](samples/msdn/README.md):
 synchronous file writing with readback and four readers gated by a manual-reset
-event. Their upstream revision, license and deliberate scope changes are recorded.
+event, plus twelve workers sharing a ten-permit semaphore. Their upstream revision,
+license and deliberate scope changes are recorded.
 See the [test map](docs/testing.md) for function and logical-unit coverage.
 
 ## Graphics

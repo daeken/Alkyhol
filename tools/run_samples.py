@@ -15,6 +15,7 @@ SAMPLES = {
     'kernel_contract': ('samples/kernel_contract.c', EXPECTED),
     'msdn_file_write': ('samples/msdn/file_write.c', dict.fromkeys(('write_count', 'readback', 'eof'), True)),
     'msdn_event_readers': ('samples/msdn/event_readers.cpp', dict.fromkeys(('all_readers', 'manual_stays_signaled', 'reset'), True)),
+    'msdn_semaphore_workers': ('samples/msdn/semaphore_workers.cpp', dict.fromkeys(('permit_capacity', 'all_workers', 'bounded_active', 'previous_count', 'errors'), True)),
 }
 
 

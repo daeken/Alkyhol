@@ -24,6 +24,7 @@ pub const ERROR_FILE_EXISTS: u32 = 80;
 pub const ERROR_INVALID_PARAMETER: u32 = 87;
 pub const ERROR_NEGATIVE_SEEK: u32 = 131;
 pub const ERROR_ALREADY_EXISTS: u32 = 183;
+pub const ERROR_TOO_MANY_POSTS: u32 = 298;
 pub const ERROR_NO_UNICODE_TRANSLATION: u32 = 1113;
 pub const GENERIC_READ: u32 = 0x8000_0000;
 pub const GENERIC_WRITE: u32 = 0x4000_0000;
@@ -78,9 +79,38 @@ struct EventObject {
     state: Mutex<EventState>,
     changed: Condvar,
 }
+struct SemaphoreObject {
+    count: Mutex<i32>,
+    maximum: i32,
+    changed: Condvar,
+}
+impl SemaphoreObject {
+    fn wait(&self, milliseconds: u32) -> u32 {
+        let deadline = (milliseconds != INFINITE)
+            .then(|| Instant::now() + Duration::from_millis(milliseconds.into()));
+        let mut count = self.count.lock().unwrap();
+        loop {
+            if *count > 0 {
+                *count -= 1;
+                return WAIT_OBJECT_0;
+            }
+            match deadline {
+                None => count = self.changed.wait(count).unwrap(),
+                Some(deadline) => {
+                    let remaining = deadline.saturating_duration_since(Instant::now());
+                    if remaining.is_zero() {
+                        return WAIT_TIMEOUT;
+                    }
+                    count = self.changed.wait_timeout(count, remaining).unwrap().0;
+                }
+            }
+        }
+    }
+}
 enum Object {
     File(FileObject),
     Event(EventObject),
+    Semaphore(SemaphoreObject),
 }
 
 #[derive(Default)]
@@ -276,8 +306,42 @@ impl Kernel {
         event.state.lock().unwrap().signaled = false;
         Ok(())
     }
+    /// Unnamed, process-local counting semaphore. No access-mask or namespace support.
+    pub fn create_semaphore(&self, initial: i32, maximum: i32) -> WinResult<Handle> {
+        if maximum <= 0 || initial < 0 || initial > maximum {
+            return Err(WinError(ERROR_INVALID_PARAMETER));
+        }
+        Ok(self.insert(Object::Semaphore(SemaphoreObject {
+            count: Mutex::new(initial),
+            maximum,
+            changed: Condvar::new(),
+        })))
+    }
+    /// Atomically add permits and return the prior count. Failure leaves it unchanged.
+    pub fn release_semaphore(&self, handle: Handle, release: i32) -> WinResult<i32> {
+        let object = self.object(handle)?;
+        let Object::Semaphore(semaphore) = &*object else {
+            return Err(WinError(ERROR_INVALID_HANDLE));
+        };
+        if release <= 0 {
+            return Err(WinError(ERROR_INVALID_PARAMETER));
+        }
+        let mut count = semaphore.count.lock().unwrap();
+        // Both operands are within [0, maximum]; no signed addition can overflow.
+        if release > semaphore.maximum - *count {
+            return Err(WinError(ERROR_TOO_MANY_POSTS));
+        }
+        let previous = *count;
+        *count += release;
+        // Wake every waiter to compete for the new permits. Ordering is unspecified.
+        semaphore.changed.notify_all();
+        Ok(previous)
+    }
     pub fn wait(&self, handle: Handle, milliseconds: u32) -> WinResult<u32> {
         let object = self.object(handle)?;
+        if let Object::Semaphore(semaphore) = &*object {
+            return Ok(semaphore.wait(milliseconds));
+        }
         let Object::Event(event) = &*object else {
             return Err(WinError(ERROR_NOT_SUPPORTED));
         };

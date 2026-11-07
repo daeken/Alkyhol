@@ -10,6 +10,7 @@ extern "C" {
 typedef uintptr_t HANDLE;
 typedef int32_t BOOL;
 typedef uint32_t DWORD;
+typedef int32_t LONG;
 typedef uint16_t WCHAR;
 typedef union { int64_t QuadPart; } LARGE_INTEGER;
 #define TRUE 1
@@ -37,6 +38,8 @@ typedef union { int64_t QuadPart; } LARGE_INTEGER;
 #define ERROR_FILE_EXISTS 80
 #define ERROR_ALREADY_EXISTS 183
 #define ERROR_NEGATIVE_SEEK 131
+#define ERROR_INVALID_PARAMETER 87
+#define ERROR_TOO_MANY_POSTS 298
 DWORD GetLastError(void);
 void SetLastError(DWORD);
 BOOL CloseHandle(HANDLE);
@@ -50,6 +53,8 @@ BOOL FlushFileBuffers(HANDLE);
 HANDLE CreateEventW(const void*, BOOL, BOOL, const WCHAR*);
 BOOL SetEvent(HANDLE);
 BOOL ResetEvent(HANDLE);
+HANDLE CreateSemaphoreW(const void*, LONG, LONG, const WCHAR*);
+BOOL ReleaseSemaphore(HANDLE, LONG, LONG*);
 DWORD WaitForSingleObject(HANDLE, DWORD);
 BOOL QueryPerformanceCounter(LARGE_INTEGER*);
 BOOL QueryPerformanceFrequency(LARGE_INTEGER*);
