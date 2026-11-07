@@ -4,6 +4,29 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## Binary D3D12 serializers: physical M4, independent native run pending
+
+The new binary d3d12 provider bridges both root serializers to the existing open
+Rust version-1.0 implementation and wraps both success/error COM blobs in Win64
+vtables. The owned unchanged PE SHA-256 is
+`1a8e67d25912746b273acc8308245694d5999c3fdca6c109623ffa05fe4112d9`.
+Physical M4/Rosetta normal and forced-rebase executions agree on all 1200 output
+bytes: all 980 bytes of the six previously frozen SDK root containers plus actual
+legacy/versioned success, canonical COM identity/reference releases and invalid
+65-DWORD diagnostic predicates. The extracted Mach-O payload equals the input.
+The fixture uses no CRT/SDK headers or device and is transferred unchanged for
+native Windows d3d12 execution. That new native binary comparison is pending;
+the older SDK source-ABI byte record is independent but not that execution.
+
+All 52 PE host tests, four lifetime compiler checks, 19 portable arm64 tests,
+171 Python tests and PE Clippy pass locally. New host units cover both actual
+Win64 exports, ABI layout/deep ownership, returned diagnostic virtual calls,
+optional outputs and unsupported versions; closed bundles bind all three COM
+builtin exports and reject replacement of the d3d12 namespace. Native failure
+diagnostic text, host null/unsupported-version edge cases and allocation failure
+are not claimed equivalent. Existing source interfaces, frozen PE inputs,
+graphics samples/shaders/assets and game data are unchanged.
+
 ## Win64 virtual COM: native Windows, hosted Mac and physical M4
 
 All 27 jobs pass at strict-reference revision `1e47b28`: three

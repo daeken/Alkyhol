@@ -53,6 +53,20 @@ jobs:
         run: |
           python tools/build_pe_binary_com.py
           python tools/run_pe_binary_com.py --fixture local/pe/binary-com/binary-com.exe --output local/pe/binary-com-alkyhol.json
+      - name: Execute unchanged PE D3D12 serializers and returned Win64 COM blobs
+        run: |
+          python tools/build_pe_root_signatures.py
+          python tools/run_pe_root_signatures.py --fixture local/pe/root-signatures/root-signatures.exe --output local/pe/root-signatures-alkyhol.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe-root-signatures-fixture
+          path: |
+            local/pe/root-signatures/root-signatures.exe
+            local/pe/root-signatures/root-signatures-fixture.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe-root-signatures-alkyhol
+          path: local/pe/root-signatures-alkyhol.json
       - uses: actions/upload-artifact@v4
         with:
           name: pe-binary-com-fixture
@@ -207,6 +221,16 @@ jobs:
           path: local/pe/binary-com
       - name: Execute the identical PE vtable caller against real Windows d3dcompiler_47 COM
         run: python tools/run_pe_binary_com.py --fixture local/pe/binary-com/binary-com.exe --output local/pe/binary-com-windows.json
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe-root-signatures-fixture
+          path: local/pe/root-signatures
+      - name: Execute the identical PE serializer client against real Windows d3d12
+        run: python tools/run_pe_root_signatures.py --fixture local/pe/root-signatures/root-signatures.exe --output local/pe/root-signatures-windows.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe-root-signatures-windows
+          path: local/pe/root-signatures-windows.json
       - uses: actions/upload-artifact@v4
         with:
           name: pe-binary-com-windows
@@ -318,3 +342,12 @@ jobs:
           name: pe-binary-com-windows
           path: local/pe/observations
       - run: python tools/compare_pe_binary_com.py local/pe/observations/binary-com-windows.json local/pe/observations/binary-com-alkyhol.json
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe-root-signatures-alkyhol
+          path: local/pe/observations
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe-root-signatures-windows
+          path: local/pe/observations
+      - run: python tools/compare_pe_root_signatures.py local/pe/observations/root-signatures-windows.json local/pe/observations/root-signatures-alkyhol.json

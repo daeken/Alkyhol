@@ -30,3 +30,4 @@ pe/fixtures/failed-attach/* text eol=lf
 pe/fixtures/dependent/* text eol=lf
 pe/fixtures/ordinal/* text eol=lf
 pe/fixtures/binary-com/* text eol=lf
+pe/fixtures/root-signatures/* text eol=lf

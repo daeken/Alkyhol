@@ -152,10 +152,15 @@ pub(crate) fn resolve(module: &str, name: &str) -> Option<usize> {
     if module.eq_ignore_ascii_case("d3dcompiler_47.dll") {
         return crate::binary_com::address(name);
     }
+    if module.eq_ignore_ascii_case("d3d12.dll") {
+        return crate::binary_com::d3d12_address(name);
+    }
     None
 }
 pub(crate) fn is_builtin(module: &str) -> bool {
-    module.eq_ignore_ascii_case("kernel32.dll") || module.eq_ignore_ascii_case("d3dcompiler_47.dll")
+    ["kernel32.dll", "d3dcompiler_47.dll", "d3d12.dll"]
+        .iter()
+        .any(|name| module.eq_ignore_ascii_case(name))
 }
 
 #[cfg(test)]
@@ -190,12 +195,18 @@ mod tests {
         assert!(resolve("kernel32.dll", "CreateThread").is_none());
         assert!(resolve("kernel32.dll", "GetProcAddress").is_none());
         assert!(resolve("D3DCOMPILER_47.dll", "D3DCreateBlob").is_some());
+        assert!(resolve("D3D12.DLL", "D3D12SerializeRootSignature").is_some());
+        assert!(resolve("d3d12.dll", "D3D12SerializeVersionedRootSignature").is_some());
         for (module, name) in [
             ("vendor.dll", "D3DCreateBlob"),
             ("kernel32.dll", "D3DCreateBlob"),
             ("d3dcompiler_47.dll", "d3dcreateblob"),
             ("d3dcompiler_47.dll", "D3DCompile"),
             ("d3dcompiler_43.dll", "D3DCreateBlob"),
+            ("d3dcompiler_47.dll", "D3D12SerializeRootSignature"),
+            ("vendor.dll", "D3D12SerializeRootSignature"),
+            ("d3d12.dll", "d3d12serializerootsignature"),
+            ("d3d12.dll", "D3D12CreateDevice"),
         ] {
             assert!(resolve(module, name).is_none());
         }

@@ -61,7 +61,7 @@ including uninitialized section bytes; imports/fixups are applied before final
 permissions. Import slots cannot overlap relocation fixups.
 
 The ordinary executable and isolated DLL constructors resolve imports by exact
-symbol from the explicit **kernel32.dll** and **d3dcompiler_47.dll** whitelists,
+symbol from the explicit **kernel32.dll**, **d3dcompiler_47.dll** and **d3d12.dll** whitelists,
 with case-insensitive DLL identity. The dependency APIs below also accept named/
 ordinal imports from caller-supplied DLL instances.
 No arbitrary `dlsym` of native exports, name-only DLL matching, fallback
@@ -86,7 +86,8 @@ program](u-config.md) adds ten process-service names (34 kernel32 names total):
 | Dynamic TLS slots | TlsAlloc, TlsFree, TlsGetValue, TlsSetValue |
 
 The separate binary-COM milestone below adds d3dcompiler_47!D3DCreateBlob and
-five explicit Win64 ID3DBlob virtual slots.
+five explicit Win64 ID3DBlob virtual slots. The serializer milestone adds
+d3d12!D3D12SerializeRootSignature and D3D12SerializeVersionedRootSignature.
 
 The existing [restricted kernel contracts](contracts.md) still apply: for example,
 file sharing must be FILE_SHARE_READ|WRITE|DELETE, security/template/named objects
@@ -462,7 +463,7 @@ The final Release frees the native object/data and its exclusive wrapper once.
 Allocation, data access and atomic reference semantics reuse `src/com.rs`; source
 C++ vtables and callers retain their existing native ABI.
 
-The two builtin DLL identities are reserved across isolated/dependent/bundle
+The builtin DLL identities are reserved across isolated/dependent/bundle
 loading. Unknown compiler exports, wrong DLL versions/names and system ordinals
 fail preflight. Shader compilation retains its existing open toolchain. macOS
 does not load a Windows compiler DLL to implement this memory interface.
@@ -498,3 +499,38 @@ D3D12 devices and game compatibility remain separate milestones.
 Primary contracts: [D3DCreateBlob](https://learn.microsoft.com/en-us/windows/win32/api/d3dcompiler/nf-d3dcompiler-d3dcreateblob),
 [ID3D10Blob/ID3DBlob inheritance](https://learn.microsoft.com/en-us/windows/win32/api/d3dcommon/nn-d3dcommon-id3d10blob)
 and [IUnknown::QueryInterface](https://learn.microsoft.com/en-us/windows/win32/api/unknwn/nf-unknwn-iunknown-queryinterface%28refiid_void%29).
+
+## Binary D3D12 root serialization
+
+The d3d12.dll provider exposes exactly D3D12SerializeRootSignature and
+D3D12SerializeVersionedRootSignature. Both take real Windows x64 structure layouts,
+including nested pointer arrays, and call the existing open Rust version-1.0
+[serializer](../cpp/root-signatures.md). Success and diagnostic blobs each acquire
+an exclusive Win64 wrapper; no native-ABI vtable is published. Optional error
+outputs, failure clearing and reference ownership remain explicit. Version 1.1/1.2,
+device creation, deserialization and other d3d12 exports remain unsupported.
+
+The separate owned no-CRT fixture calls both exports from unchanged PE machine
+code for the six existing frozen SDK layouts: empty, 64 constants, seven root
+descriptors, offset/APPEND tables, static samplers and stage-disjoint bindings.
+It reads and compares both returned containers, queries their COM identity and
+balances actual virtual releases. Its 1200-byte stream includes all 980 existing
+native SDK container bytes and actual COM/HRESULT predicates. A valid-pointer
+65-DWORD failure also checks an owned NUL-terminated diagnostic and cleared
+success output; diagnostic spelling is backend-specific and is not compared.
+No GPU/device or Windows compiler binary is used on macOS.
+
+```sh
+python3 tools/build_pe_root_signatures.py
+python3 tools/run_pe_root_signatures.py --fixture local/pe/root-signatures/root-signatures.exe --output local/pe/root-signatures-alkyhol.json
+```
+
+Physical M4/Rosetta normal/forced-rebase execution passes, including the exact
+input/extracted PE SHA-256 check. The PE workflow transfers that identical file
+to native Windows and compares actual observations. See [validation](validation.md)
+for the state of independent native execution; source-ABI SDK bytes alone do not
+establish native execution of this PE. This CPU serialization milestone does not
+add binary D3D12 device execution or game compatibility.
+
+Primary contracts: [D3D12SerializeRootSignature](https://learn.microsoft.com/en-us/windows/win32/api/d3d12/nf-d3d12-d3d12serializerootsignature)
+and [D3D12SerializeVersionedRootSignature](https://learn.microsoft.com/en-us/windows/win32/api/d3d12/nf-d3d12-d3d12serializeversionedrootsignature).
