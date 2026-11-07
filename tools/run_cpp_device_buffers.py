@@ -55,6 +55,7 @@ def run_probe(output,name,label,validate,traps=()):
     if not native and platform.system()!='Darwin':raise RuntimeError('Windows SDK or actual Metal host required')
     source=ROOT/f'cpp/tests/{name}.cpp';inputs=[source,Path(__file__).resolve()]
     if name!='device_buffers':inputs.append(ROOT/f'tools/run_cpp_{name}.py')
+    if name=='cbv_copies':inputs += [ROOT/'cpp/tests/cbv_probe.hlsl',ROOT/'cpp/tests/cbv_probe_dxil.h',ROOT/'tools/build_cpp_cbv_probe.py']
     with tempfile.TemporaryDirectory(prefix='alkyhol-device-buffers-') as scratch:
         executable=Path(scratch)/(name+'.exe' if native else name)
         if native:

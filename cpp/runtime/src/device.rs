@@ -60,6 +60,7 @@ pub struct Device {
     metadata: Metadata,
     metal: metal::Device,
     byte_copy: byte_copy::Kernel,
+    descriptors: Mutex<cbv_descriptors::Registry>,
 }
 struct Parent(*mut Device);
 impl Drop for Parent {
@@ -88,6 +89,7 @@ pub struct Resource {
     desc: ResourceDesc,
     heap: HeapProperties,
     usage: Arc<Mutex<BufferUsage>>,
+    _descriptor_memory: Arc<cbv_descriptors::BufferMemory>,
     parent: Parent,
 }
 unsafe extern "C" fn device_query(
@@ -301,6 +303,19 @@ unsafe extern "C" fn committed(
         unsafe {
             device_add(this);
         }
+        let descriptor_memory = Arc::new(cbv_descriptors::BufferMemory {
+            buffer: buffer.to_owned(),
+            offset: offset as u64,
+            width: desc.width,
+            heap: heap.kind,
+        });
+        unsafe {
+            (*this)
+                .descriptors
+                .lock()
+                .unwrap()
+                .buffer(&descriptor_memory);
+        }
         let resource = Box::new(Resource {
             vtable: &RESOURCE_VTABLE,
             refs: AtomicU32::new(1),
@@ -315,6 +330,7 @@ unsafe extern "C" fn committed(
                 owner: None,
                 failed: false,
             })),
+            _descriptor_memory: descriptor_memory,
             parent: Parent(this),
         });
         unsafe {
@@ -417,29 +433,14 @@ unsafe extern "C" fn root_signature(
 ) -> i32 {
     unsafe { unsupported_out("root signature", out) }
 }
-unsafe extern "C" fn view2(_: *mut Device, _: usize, _: usize) {
-    unsupported_void("descriptor view")
+unsafe extern "C" fn sampler(_: *mut Device, _: usize, _: usize) {
+    unsupported_void("sampler view");
 }
 unsafe extern "C" fn view3(_: *mut Device, _: usize, _: usize, _: usize) {
     unsupported_void("resource view")
 }
 unsafe extern "C" fn view4(_: *mut Device, _: usize, _: usize, _: usize, _: usize) {
     unsupported_void("unordered access view")
-}
-unsafe extern "C" fn copy_descriptors(
-    _: *mut Device,
-    _: u32,
-    _: usize,
-    _: usize,
-    _: u32,
-    _: usize,
-    _: usize,
-    _: i32,
-) {
-    unsupported_void("descriptor copy")
-}
-unsafe extern "C" fn copy_simple(_: *mut Device, _: u32, _: usize, _: usize, _: i32) {
-    unsupported_void("descriptor copy")
 }
 unsafe extern "C" fn allocation_info(_: *mut Device, _: u32, _: u32, _: usize) -> AllocationInfo {
     unavailable("resource allocation info");
@@ -653,14 +654,14 @@ static DEVICE_VTABLE: DeviceVtable = DeviceVtable {
     heap: descriptor_heaps::create,
     increment: descriptor_heaps::increment,
     root: root_signature,
-    cbv: view2,
+    cbv: cbv_descriptors::create_cbv,
     srv: view3,
     uav: view4,
     rtv: view3,
     dsv: view3,
-    sampler: view2,
-    copy: copy_descriptors,
-    copy_simple,
+    sampler,
+    copy: cbv_descriptors::copy_descriptors,
+    copy_simple: cbv_descriptors::copy_simple,
     allocation: allocation_info,
     custom: custom_heap,
     committed,
@@ -753,6 +754,7 @@ pub unsafe extern "C" fn AlkyholCreateMetalDeviceSubset(
             metadata: Metadata::new(),
             metal,
             byte_copy: byte_copy::Kernel::default(),
+            descriptors: Mutex::new(cbv_descriptors::Registry::default()),
         });
         unsafe {
             *out = Box::into_raw(object).cast();
@@ -1027,3 +1029,6 @@ mod byte_copy;
 
 #[path = "descriptor_heaps.rs"]
 mod descriptor_heaps;
+
+#[path = "cbv_descriptors.rs"]
+mod cbv_descriptors;

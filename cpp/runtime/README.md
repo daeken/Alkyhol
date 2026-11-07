@@ -305,8 +305,9 @@ These are opaque source-ABI handles,
 not permission for callers to dereference descriptor memory, a Windows driver
 encoding or an initialized Metal argument table. The backend increment describes
 its own reserved slot stride, as required by [handle arithmetic](https://learn.microsoft.com/windows/win32/api/d3d12/nf-d3d12-id3d12device-getdescriptorhandleincrementsize).
-An empty heap is not a usable view. View/sampler creation, descriptor copying and
-binding remain explicit unsupported operations.
+An empty heap is not a usable view. The bounded CBV/copy extension below adds
+initialized constant-buffer records; other view/sampler creation and general
+command-list binding remain explicitly unsupported.
 
 ```sh
 python3 tools/run_cpp_descriptor_heaps.py --output local/cpp-descriptor-heaps.json
@@ -329,3 +330,34 @@ The native observation/source identity is preserved at
 CPU-only heaps too; the runtime matches that observation with actual backing GPU
 addresses while retaining flags as the visibility contract. It does not initialize
 or bind any descriptor view.
+
+
+## Bounded constant-buffer views and copies
+
+The explicit subset accepts non-null UPLOAD CBVs: a live same-device GPU address,
+256-byte alignment and size, at most 64 KiB, wholly within the resource. Virtual
+records retain native storage. CopyDescriptorsSimple and CopyDescriptors flatten
+CPU source ranges into CPU/visible destination ranges and snapshot values, with
+NULL size arrays meaning unit ranges. All validation precedes writes. Supported
+copies require initialized CBVs, matching totals, no duplicate destinations and
+no source/destination overlap. Empty ranges, visible copy sources, other view
+kinds, DEFAULT CBVs and null views remain unavailable; invalid/unsupported void
+operations abort with a diagnostic. This bounded extension does not add SRVs,
+UAVs, samplers, root signatures, pipelines or D3D12 Dispatch.
+
+`AlkyholProbeCbvHeap` is an explicit diagnostic, consuming exactly four initialized
+visible records through native GPU addresses with a small MIT MSL reader. It
+writes 16 data words plus eight untouched guard words to a 24-word readback;
+capacity beyond 24 stays untouched. No normal command-list capability is implied.
+The separate native observer consumes copied views through an actual D3D12 root
+signature/PSO/Dispatch with an open-DXC-compiled HLSL fixture. The different
+consumers compare descriptor contents; they are not identical shader translation.
+Native execution for this new workload is pending. Physical M4/API-validation
+execution passes. Registries use weak references; initialized records retain
+native allocations after their COM resource shell dies (a tested local extension,
+not a native lifetime parity claim).
+
+```sh
+python3 tools/build_cpp_cbv_probe.py --check
+python3 tools/run_cpp_cbv_copies.py --output local/cpp-cbv-copies.json
+```

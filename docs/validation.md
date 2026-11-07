@@ -4,6 +4,46 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## Constant-buffer descriptors and copies: physical Metal evidence
+
+The explicit restricted device now initializes non-null UPLOAD buffer CBVs with
+256-byte aligned addresses/sizes, sizes through 64 KiB and complete live buffer
+bounds. Only registered same-device resources/heaps are accepted. CBV/SRV/UAV
+heap slots own virtual 64-byte records; this is Alkyhol's encoding, not native
+Windows descriptor bytes. CopyDescriptorsSimple and multi-range CopyDescriptors
+snapshot initialized CBVs by value, including NULL size arrays (one per range).
+All ranges, source slots and totals are checked before any destination write.
+Visible copy sources, overlap, duplicate destinations, empty ranges, other view
+types and null CBVs remain explicitly unsupported. Unsupported void calls abort.
+
+On physical M4/x86-64 with Metal API validation, a shared C++ observer performs
+simple copies, source overwrite independence, CPU staging with unequal range
+partitions, and scattered unit-size copies. An explicitly named diagnostic API
+consumes the four resulting CBV records on the GPU through actual native buffer
+addresses. All three readbacks have sixteen expected data words and eight intact
+guard words (72 total). No CPU substitute fills those readbacks. Native Windows
+CI uses that same C++ copy workload but consumes its views via a real D3D12 root
+signature/compute pipeline and a tiny HLSL shader compiled with pinned open DXC.
+The committed DXIL header must regenerate exactly with that open compiler; no
+gated converter or new proprietary shader compiler is used. Native/hosted
+execution of this new workload is pending. This is descriptor-content evidence,
+not identical-DXIL Metal translation, general Rust D3D12 root signatures/pipelines/
+Dispatch, original rendering or game compatibility.
+
+Seven new runtime units pass (49 total): typed records, live GPU/CPU intervals,
+range/size/alignment failures, copy snapshot/order semantics, rejection without
+partial writes, real GPU consumption/guards, diagnostic bounds, and retained
+native allocation lifetime after COM shell release. That last ownership behavior
+is an explicit local extension, not a native resource-lifetime observation.
+Registries hold weak references and do not create ownership cycles. Runtime
+Clippy/formatting, all 103 Python tests and exact open-DXC regeneration pass.
+The unchanged original queue/allocator/heap subsystem caller still passes; the
+complete original application relinks and still exits 78 before initialization
+at D3D12CreateDevice. Original sources, assets, shaders and Rust apps are unchanged.
+
+The preceding frozen allocation record passed all twenty CI jobs on `5ba4baa`
+in [42370649149](https://github.com/daeken/Alkyhol/actions/runs/42370649149).
+
 ## Descriptor-heap allocation: local COM/storage evidence
 
 The explicit Metal subset now supplies typed 11-slot ID3D12DescriptorHeap objects

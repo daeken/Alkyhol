@@ -1,4 +1,4 @@
-//! Owned descriptor-heap storage and opaque handles. No initialized views/binding.
+//! Owned descriptor-heap storage and opaque handles. Bounded CBVs live in cbv_descriptors.
 use super::*;
 const HEAP: Guid = guid!(
     0x8efb471d, 0x616c, 0x4f49, 0x90, 0xf7, 0x12, 0x7b, 0xb7, 0x63, 0xfa, 0x51
@@ -31,6 +31,7 @@ struct Heap {
     metadata: Metadata,
     description: Description,
     storage: metal::Buffer,
+    data: Arc<cbv_descriptors::HeapData>,
     parent: Parent,
 }
 unsafe extern "C" fn query(this: *mut Heap, iid: *const Guid, out: *mut *mut c_void) -> i32 {
@@ -176,6 +177,18 @@ pub(super) unsafe extern "C" fn create(
         if storage.gpu_address() == 0 {
             return E_NOTIMPL;
         }
+        let data = match cbv_descriptors::HeapData::new(
+            storage.to_owned(),
+            desc.kind,
+            desc.flags,
+            desc.count,
+        ) {
+            Ok(data) => Arc::new(data),
+            Err(e) => return e,
+        };
+        unsafe {
+            (*this).descriptors.lock().unwrap().heap(&data);
+        }
         unsafe {
             device_add(this);
             *out = Box::into_raw(Box::new(Heap {
@@ -184,6 +197,7 @@ pub(super) unsafe extern "C" fn create(
                 metadata: Metadata::new(),
                 description: desc,
                 storage,
+                data,
                 parent: Parent(this),
             }))
             .cast();
@@ -199,6 +213,25 @@ pub(super) unsafe extern "C" fn increment(_: *mut Device, kind: i32) -> u32 {
         0
     }
 }
+/// Explicit diagnostic consumer of four initialized CBV records. No general
+/// root-signature/pipeline/Dispatch capability is implied by this evidence API.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn AlkyholProbeCbvHeap(
+    heap: *mut c_void,
+    first: u32,
+    out: *mut u32,
+    capacity: u32,
+) -> i32 {
+    if heap.is_null() {
+        return E_POINTER;
+    }
+    let heap = heap.cast::<Heap>();
+    if unsafe { (*heap).vtable } != &VTABLE {
+        return E_INVALIDARG;
+    }
+    unsafe { cbv_descriptors::probe((*heap).parent.0, &(*heap).data, first, out, capacity) }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -10,3 +10,6 @@ cpp/bridge/*.patch whitespace=-blank-at-eol
 # Shared C++ probes must have identical actual bytes on native Windows and macOS.
 cpp/tests/* text eol=lf
 cpp/reference/probes/* text eol=lf
+
+# This generator is part of the cross-host CBV fixture identity.
+tools/build_cpp_cbv_probe.py text eol=lf
