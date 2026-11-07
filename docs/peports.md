@@ -91,3 +91,8 @@ The actual native record at `pe/reference/peports-windows-v1.json` is frozen and
 required by default, including release/source/license/corpus and original owned
 PE input identities. This covers the program's valid flag-zero conversion calls;
 host-only conversion boundaries remain explicitly separate.
+
+Strict-reference revision `04fb895` passes all 27 CI jobs. Downloaded clean native/
+hosted records and fresh clean physical M4 execution at that same revision agree
+on all 16 cases and frozen identities. See [executed validation](validation.md)
+for CI links, exact test counts and the distinct host/native evidence scopes.

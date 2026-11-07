@@ -6,6 +6,18 @@ See the latest direct-Metal record for current implementation evidence.
 
 ## Third released PE64 application: peports native Windows and physical M4
 
+All 27 CI jobs pass at strict-reference revision `04fb895`: three
+[PE jobs](https://github.com/daeken/Alkyhol/actions/runs/42420310102) and all 24
+[conformance jobs](https://github.com/daeken/Alkyhol/actions/runs/42420310162).
+Downloaded clean native Windows/hosted Mac records and fresh clean physical
+M4/Rosetta execution at that same revision match the unchanged released PE,
+source/license/corpus/original-input identities and every status/stdout/stderr
+byte in all 16 cases. Normal and forced-rebase host results agree. The 80 PE host
+tests/eight lifetime compiler checks, 22 portable tests, 222 Python tests and
+Clippy pass. All older frozen binary, SDK/source/COM, shader and Metal comparisons
+pass; native conversion observations remain limited to this application's used
+valid flag-zero paths.
+
 The unchanged released w64devkit 2.11.0 x64 peports PE SHA-256 is
 `1a57a02c27cbdd69e1c49ee59a2e84e46684163750700b56d03fad4108c71c3d`.
 Its original bundled source agrees byte-for-byte with tagged upstream. Physical
@@ -20,7 +32,9 @@ physical M4 execution at that same revision match release/source/license/corpus/
 input-PE identities and every status/stdout/stderr byte in all 16 cases.
 The actual native record is frozen at `pe/reference/peports-windows-v1.json`;
 future drivers/comparisons require its exact identities/results. A missing-reference/
-joint-corpus-drift guard brings the Python suite to 222. No binary/source patch, replacement parser or output/path
+joint-corpus-drift guard brings the Python suite to 222. Initial `64f37ae` also
+passes all 27 jobs, including all 24 conformance jobs in
+[42419886852](https://github.com/daeken/Alkyhol/actions/runs/42419886852). No binary/source patch, replacement parser or output/path
 normalization is used.
 
 Two real 16-bit UTF-16 Win64 conversion imports support valid CP_UTF8 input,
@@ -34,8 +48,8 @@ The original 512-MiB static arena makes SizeOfImage `0x20008000`, beyond the old
 address space. A portable exact-boundary/extent/overflow test and a physical
 sparse mapping test check zero-filled/writable end pages and real RX execution;
 VirtualAlloc remains capped at 512 MiB. Startup/section/W^X gates stay enforced.
-All 80 PE host tests/eight compiler checks, 22 portable tests, Clippy and 221 Python
-tests pass. Older frozen PE/source fixtures and graphics are untouched. See
+Initial code passes 80 PE host tests/eight compiler checks, 22 portable tests,
+Clippy and 221 Python tests; strict-reference hardening adds the 222nd Python test. Older frozen PE/source fixtures and graphics are untouched. See
 [peports](peports.md) for exact provenance, bounded conversions and coverage.
 
 ## Second released PE64 application: make2compdb native Windows and physical M4
