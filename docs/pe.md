@@ -107,7 +107,13 @@ section overlap, W+X rejection and relocation kinds/overlap. Isolated child
 processes verify real protection faults for header/code/read-only-data writes and
 writable-data execution; allowed data writes and code execution pass. These host
 assertions and ABI observations are distinct from native Windows observations.
-See [validation](validation.md) for executed revisions and CI results.
+Native Windows, hosted Mac and physical M4 executions agree on the identical
+fixture at `77631c7` (PE workflow 42382929856). The full native report is frozen in
+[`pe/reference/windows-v1.json`](../pe/reference/windows-v1.json); future pairs
+must match its PE/source identities and observations. This deliberately detects
+joint drift as well as mismatched hosts. Changing this fixture requires a new,
+explicitly reviewed native evidence milestone, not silently updating expected
+output. See [validation](validation.md) for executed revisions and CI results.
 
 Static TLS/callbacks, unwind/SEH, CFG/load config, delay/bound/ordinal imports,
 DLL startup/loading, CLR, dynamic lookup, guest threads/callbacks, COM vtable ABI

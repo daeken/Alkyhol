@@ -20,9 +20,9 @@ semaphores, timing predicates and file seek/truncation/readback. All 19 report
 words and the separate 12 file bytes match independent expectations. Twelve PE
 Rust tests pass on the x86-64 process (eight portable parser units plus import
 identity, mapping/entry, pseudo-handle semantics and isolated real permission-fault tests); eight portable
-tests also pass on native arm64. Root Rust tests (77), Python tests (127), PE
+tests also pass on native arm64. Root Rust tests (77), Python tests (128), PE
 Clippy and formatting pass locally. This is host/Rosetta evidence; native Windows
-comparison is pending the new workflow and must be recorded separately. Existing
+comparison initially awaited the new workflow; the executed result follows below. Existing
 source/COM/Metal/sample implementations and fixtures are unchanged. The exact
 bounded [binary contract](pe.md) lists unsupported startup/CRT/COM operations.
 
@@ -42,6 +42,22 @@ table. The fixture tests NULL as genuinely invalid and separately records both
 pseudo-handle return/last-error pairs, rather than excluding the discrepancy.
 These new records still require native execution evidence; the restricted source
 kernel's original invalid-owned-handle contract/tests are unchanged.
+
+Native Windows execution and the comparison job now pass in
+[42382929856](https://github.com/daeken/Alkyhol/actions/runs/42382929856) on `77631c7`.
+All three PE jobs pass. The transferred PE SHA-256 is
+`b07f5490efc122124ab9e21037b9dbeab84fb268dce29b7e138fc7b5f106162b`;
+its actual extracted Mach-O payload hash agrees. Clean native Windows, hosted
+Mac and physical M4 reports on that same revision agree on all 19 words, the
+12 Unicode-file bytes and status zero. Physical/hosted forced-rebase runs agree
+with their normal runs. Native pseudo-handle closes return one and preserve both
+last-error sentinels; NULL fails with error six. The full native report is frozen
+at `pe/reference/windows-v1.json`, observation SHA-256
+`142b5e834d87fb520f1d41f63add9d5ffc7741868eca9dba19486bfdbbca2009`.
+Live pairs must now match that reference's exact PE identity, source identities
+and observations, not merely each other. A joint-drift rejection test passes
+(128 Python tests). This remains finite kernel/ABI execution evidence, with no
+CRT, game, general DLL, binary COM/graphics or original shaded DXR frame claim.
 
 ## COM compute dispatch: physical Metal command-list evidence
 

@@ -5,7 +5,10 @@ import json
 from pathlib import Path
 
 
-def compare(reports):
+REFERENCE = Path(__file__).resolve().parents[1] / 'pe/reference/windows-v1.json'
+
+
+def compare(reports, reference=None):
     if len(reports) != 2:
         raise ValueError('need exactly two execution reports')
     by_backend = {r['backend']: r for r in reports}
@@ -24,6 +27,13 @@ def compare(reports):
         raise ValueError('missing independent forced-rebase execution')
     if native['observation']['status'] != 0:
         raise ValueError('failed guest execution')
+    if reference is None:
+        reference = json.loads(REFERENCE.read_text())
+    if reference['backend'] != 'native Windows PE64 / kernel32' or reference['tracked_tree_clean'] is not True:
+        raise ValueError('invalid frozen native Windows reference')
+    for field in ['pe_sha256', 'sources', 'observation']:
+        if native[field] != reference[field]:
+            raise ValueError(f'PE result differs from frozen native Windows reference: {field}')
     return native['pe_sha256']
 
 

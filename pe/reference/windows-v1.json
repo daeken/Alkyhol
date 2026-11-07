@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "backend": "native Windows PE64 / kernel32",
+  "host_machine": "AMD64",
+  "pe_sha256": "b07f5490efc122124ab9e21037b9dbeab84fb268dce29b7e138fc7b5f106162b",
+  "executed_pe_sha256": "b07f5490efc122124ab9e21037b9dbeab84fb268dce29b7e138fc7b5f106162b",
+  "sources": {
+    "pe/fixtures/contract.c": "244a880882af44cd0893dbcf3da88458af57f28df252c45dab64ecc7eff6898c",
+    "pe/fixtures/abi_canary.S": "0f86d88b6497adb254833fab8a74118b2d3b4d0e81d261db6ec0f70cda103602",
+    "pe/fixtures/kernel32.def": "636f99a0fda66e3da72735ba9d9ffbbdfa16b870e369e2f65a20c860a3ef4531"
+  },
+  "observation": {
+    "status": 0,
+    "words": [
+      1094863153,
+      3405691582,
+      2557880079,
+      9999,
+      258,
+      1163284052,
+      0,
+      1,
+      16,
+      8,
+      826366246,
+      3735928559,
+      4277009102,
+      12,
+      6,
+      1,
+      3735884340,
+      1,
+      3405660961
+    ],
+    "file_hex": "78563412efcdab9026594131"
+  },
+  "forced_rebase_observation": null,
+  "revision": "77631c7461605e7ddf2ef679ee365a806c576593",
+  "tracked_tree_clean": true
+}
