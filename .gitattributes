@@ -13,3 +13,8 @@ cpp/reference/probes/* text eol=lf
 
 # This generator is part of the cross-host CBV fixture identity.
 tools/build_cpp_cbv_probe.py text eol=lf
+
+# Exact shared compute fixture bytes and generator identity on every host.
+cpp/tests/compute_probe.dxil -text
+tools/build_cpp_compute_probe.py text eol=lf
+shader/tests/fixtures/compute.hlsl text eol=lf

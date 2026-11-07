@@ -113,7 +113,9 @@ jobs:
       - name: Build pinned Microsoft HLSL frontend
         run: python tools/build_dxc.py --jobs 3
       - name: Verify native CBV fixture with pinned open DXC
-        run: python tools/build_cpp_cbv_probe.py --check
+        run: |
+          python tools/build_cpp_cbv_probe.py --check
+          python tools/build_cpp_compute_probe.py --check
       - run: cargo fmt --manifest-path shader/Cargo.toml --check
       - run: cargo clippy --manifest-path shader/Cargo.toml --locked --all-targets -- -D warnings
       - name: Translate DXIL and execute generated Metal (hosted GPU, no RT claim)
@@ -294,6 +296,12 @@ jobs:
         with:
           name: cpp-root-signatures-Windows
           path: cpp-root-signatures.json
+      - name: Create real compute PSOs through native SDK or Rust open shader lowering
+        run: python tools/run_cpp_compute_pipelines.py --output cpp-compute-pipelines.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cpp-compute-pipelines-Windows
+          path: cpp-compute-pipelines.json
       - name: Observe native D3D12 COM private-data and interface ownership
         run: python tools/run_cpp_object_reference.py --output cpp-object-reference.json
       - uses: actions/upload-artifact@v4
@@ -479,6 +487,12 @@ jobs:
         with:
           name: cpp-root-signatures-Metal
           path: cpp-root-signatures.json
+      - name: Create real compute PSOs through native SDK or Rust open shader lowering
+        run: python tools/run_cpp_compute_pipelines.py --output cpp-compute-pipelines.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cpp-compute-pipelines-Metal
+          path: cpp-compute-pipelines.json
       - uses: actions/upload-artifact@v4
         with:
           name: cpp-metal-factory
@@ -650,4 +664,25 @@ jobs:
           revision=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
           compare_reports(reports,revision)
           print('All bytes of six root containers and COM assertions agree; no GPU binding, pipeline, dispatch or original rendering claim')
+          PY
+
+  compare-cpp-compute-pipelines:
+    needs: [cpp-metal-factory, graphics-reference]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: cpp-compute-pipelines-*
+          path: cpp-compute-pso-observations
+      - name: Compare compute PSO construction and common COM assertions
+        run: |
+          python3 - <<'PY'
+          import json, subprocess
+          from pathlib import Path
+          from tools.run_cpp_compute_pipelines import compare_reports
+          reports=[json.loads(p.read_text()) for p in Path('cpp-compute-pso-observations').glob('*/*.json')]
+          revision=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
+          compare_reports(reports,revision)
+          print('Compute PSO construction and common COM assertions agree on identical DXIL; no command-list Dispatch or original rendering claim')
           PY

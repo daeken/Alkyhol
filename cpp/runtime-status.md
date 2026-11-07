@@ -29,6 +29,7 @@ renderer or a feature-level claim.
 | Original queue-management subsystem | Unchanged CommandListManager and CommandAllocatorPool objects execute creation, allocator allocation/deferred reuse/reset, three-queue COM copies, high-bit fences/waits, idle and shutdown on physical Metal through a separate caller |
 | D3D12 creation | Explicit E_NOTIMPL and cleared interface outputs; no device, resource or command capability success |
 | Root serialization/COM layout | Bounded version-1.0 standalone RTS0/DXBC serialization, owned layouts and all eight root-object slots. All 980 serialized bytes and COM assertions match native WARP, hosted Rust/Metal and physical M4; frozen native report. Original RootSignature.cpp Finalize/cache/static-sampler helper now runs. No GPU binding/PSO/Dispatch |
+| Compute PSO creation | Real nine-slot COM object and native Metal executable from open DXIL lowering; single-buffer resources covered by owned roots. Original ComputePSO finalization/cache helper runs with the established test shader. Physical GPU unit checks 96 words; new native construction comparison pending. Embedded roots, graphics PSOs, binding/Dispatch and cache blobs remain unavailable |
 | D3D12 debug/experiments | Explicit failures; no debug interface |
 | Window/message/input services | Explicit unavailable diagnostics/failure returns; no simulated window, silent event loop or successful input device |
 | Command-line shell services | Explicit unavailable diagnostics/failure outputs |

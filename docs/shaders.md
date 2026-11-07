@@ -169,3 +169,11 @@ tails. All 28 shader tests pass (seven host units, 21 integration tests), plus
 Clippy and exact sample regeneration. This is Metal/host evidence; native Windows
 GetDimensions comparison has not yet been measured. Existing native compute
 fixtures and comparators are unchanged.
+
+
+The restricted C++ Metal runtime now reuses this open translator to create real
+compute PSO objects. `translate_compute_pipeline` selects the single declared
+compute entry from an executable container without guessing its name. Existing
+embedded-root and unsupported-stage failures remain intact. See
+[the bounded COM PSO contract](../cpp/compute-pipelines.md); this integration does
+not yet provide command-list shader binding/Dispatch or original C++ rendering.

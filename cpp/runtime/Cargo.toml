@@ -10,6 +10,7 @@ crate-type = ["staticlib", "rlib"]
 
 [dependencies]
 alkyhol = { path = "../..", features = ["cpp-metal-factory"] }
+alkyhol-shader = { path = "../../shader" }
 metal = "=0.32.0"
 objc = "=0.2.7"
 block = "=0.1.6"

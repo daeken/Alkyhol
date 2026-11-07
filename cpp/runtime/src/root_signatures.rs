@@ -72,6 +72,16 @@ static VTABLE: Vtable = Vtable {
     name,
     device,
 };
+pub(super) unsafe fn snapshot(parent: *mut Device, object: usize) -> Result<Layout, i32> {
+    if object == 0 {
+        return Err(E_NOTIMPL);
+    }
+    let root = object as *mut Root;
+    if unsafe { (*root).vtable } != &VTABLE || unsafe { (*root).parent.0 } != parent {
+        return Err(E_INVALIDARG);
+    }
+    Ok(unsafe { (*root)._layout.clone() })
+}
 pub(super) unsafe extern "C" fn create(
     this: *mut Device,
     node: u32,

@@ -9,6 +9,8 @@
 #define D3D12_GPU_VIRTUAL_ADDRESS_UNKNOWN ((D3D12_GPU_VIRTUAL_ADDRESS)-1)
 #include "DescriptorHeap.h"
 #include "RootSignature.h"
+#include "PipelineState.h"
+#include "compute_probe_dxil.h"
 #include <cassert>
 #include <cstdio>
 #include <cstring>
@@ -31,6 +33,14 @@ int main(){
         mixed.InitStaticSampler(0,sampler,D3D12_SHADER_VISIBILITY_PIXEL);mixed.Finalize(L"original mixed root helper",D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);assert(mixed.GetSignature());
         Microsoft::WRL::ComPtr<ID3D12Device> parent;assert(mixed.GetSignature()->GetDevice(IID_PPV_ARGS(&parent))==S_OK&&parent.Get()==device.Get());
         RootSignature::DestroyAll();
+    }
+    {
+        RootSignature root(4);root[0].InitAsConstantBuffer(0);root[1].InitAsBufferSRV(0);root[2].InitAsBufferSRV(0,D3D12_SHADER_VISIBILITY_ALL,2);root[3].InitAsBufferUAV(0);root.Finalize(L"original compute root");
+        ComputePSO first(L"original compute PSO"),cached(L"original cached compute PSO");
+        first.SetRootSignature(root);first.SetComputeShader(compute_probe_dxil,sizeof(compute_probe_dxil));first.Finalize();assert(first.GetPipelineStateObject());
+        cached.SetRootSignature(root);cached.SetComputeShader(compute_probe_dxil,sizeof(compute_probe_dxil));cached.Finalize();assert(cached.GetPipelineStateObject()==first.GetPipelineStateObject());
+        Microsoft::WRL::ComPtr<ID3D12Device> parent;assert(first.GetPipelineStateObject()->GetDevice(IID_PPV_ARGS(&parent))==S_OK&&parent.Get()==device.Get());
+        PSO::DestroyAll();RootSignature::DestroyAll();
     }
     unsigned descriptor_types=0,visible_heaps=0;
     for(auto type:{D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV,D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER,D3D12_DESCRIPTOR_HEAP_TYPE_RTV,D3D12_DESCRIPTOR_HEAP_TYPE_DSV}) {
@@ -70,6 +80,6 @@ int main(){
     auto* first=pool.RequestAllocator(0);pool.DiscardAllocator(7,first);auto* second=pool.RequestAllocator(6);assert(second!=first);pool.DiscardAllocator(8,second);
     auto* reused=pool.RequestAllocator(7);assert(reused==first&&pool.Size()==2);pool.Shutdown();
     manager.IdleGPU();manager.Shutdown();assert(!manager.GetGraphicsQueue().IsReady()&&!manager.GetComputeQueue().IsReady()&&!manager.GetCopyQueue().IsReady());
-    std::printf("{\"scenario\":\"original-command-manager-v5\",\"next_values\":[%llu,%llu,%llu],\"queues\":3,\"copy_queues\":%u,\"copy_bytes_per_queue\":257,\"descriptor_types\":%u,\"visible_heaps\":%u,\"root_signatures\":3,\"root_cache_reused\":true,\"allocator_pool_reused\":true,\"increments_per_queue\":8,\"idle\":true,\"shutdown\":true}\n",static_cast<unsigned long long>(final_values[0]),static_cast<unsigned long long>(final_values[1]),static_cast<unsigned long long>(final_values[2]),copy_queues,descriptor_types,visible_heaps);
+    std::printf("{\"scenario\":\"original-command-manager-v6\",\"next_values\":[%llu,%llu,%llu],\"queues\":3,\"copy_queues\":%u,\"copy_bytes_per_queue\":257,\"descriptor_types\":%u,\"visible_heaps\":%u,\"root_signatures\":4,\"root_cache_reused\":true,\"compute_pipelines\":2,\"compute_cache_reused\":true,\"allocator_pool_reused\":true,\"increments_per_queue\":8,\"idle\":true,\"shutdown\":true}\n",static_cast<unsigned long long>(final_values[0]),static_cast<unsigned long long>(final_values[1]),static_cast<unsigned long long>(final_values[2]),copy_queues,descriptor_types,visible_heaps);
     Graphics::g_Device=nullptr;
 }

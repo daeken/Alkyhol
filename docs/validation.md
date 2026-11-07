@@ -4,6 +4,35 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## Compute PSO creation: real Metal executable / original helper milestone
+
+The restricted COM device now creates real nine-slot compute PSO objects through
+the existing open DXIL -> SPIR-V -> MSL path. It selects the declared compute
+entry, validates reflected buffer bindings against an owned same-device root
+layout, and retains the actual Metal executable. Unsupported stages, embedded
+roots, resource arrays/textures, root constants, cache blobs and flags fail
+explicitly. [The bounded contract](../cpp/compute-pipelines.md) records the exact
+limits. Command-list shader binding/Dispatch and graphics PSOs remain unavailable.
+
+Six new runtime units pass (58 total), including direct Metal GPU execution of
+the COM-created pipeline on physical M4 with all 96 words checked (76 data and
+20 sentinel tail). This uses the established 4932-byte DXIL container with SHA-256
+`e3084e25dfa23ef53e98eb1dd6eac386c3695718ac03d6631904b6711cc11d4e`.
+It is direct Metal unit evidence, separate from the earlier native WARP compute
+comparison and from D3D12 command-list execution. Two new translator units pass;
+runtime/shader Clippy/formatting, all 114 Python tests and exact open-DXC fixture
+regeneration pass locally.
+
+The shared C++ construction/COM probe passes on physical M4/x86-64. Native WARP
+and hosted Rust/Metal comparisons for that same workload are newly wired into CI
+and remain pending. Cache-blob support is deliberately not a common parity claim.
+The original subsystem v6 caller now runs unchanged PipelineState.cpp's compute
+finalization/cache path alongside the four previous verified original objects.
+It supplies the owned compute test shader; original sample embedded-root DXIL
+is still unsupported through this API. No upstream source/header is edited.
+The complete original app still relinks and exits 78 at device creation, before
+original initialization/rendering. Working Rust samples and assets are unchanged.
+
 ## Original root-signature helper: local layout/COM milestone
 
 The unchanged MiniEngine RootSignature.cpp now runs through Rust's real

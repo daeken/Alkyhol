@@ -18,7 +18,7 @@ if __package__:
 else:
     from build_original_miniengine import ROOT,ensure,header_hashes
 
-ORIGINALS=['MiniEngine/Core/CommandListManager.cpp','MiniEngine/Core/CommandAllocatorPool.cpp','MiniEngine/Core/DescriptorHeap.cpp','MiniEngine/Core/RootSignature.cpp']
+ORIGINALS=['MiniEngine/Core/CommandListManager.cpp','MiniEngine/Core/CommandAllocatorPool.cpp','MiniEngine/Core/DescriptorHeap.cpp','MiniEngine/Core/RootSignature.cpp','MiniEngine/Core/PipelineState.cpp']
 PIN='68a2b1e97f71642924e74c7757ca21756ad221b5'
 
 def current_objects(upstream,build,report,headers):
@@ -36,8 +36,8 @@ def current_objects(upstream,build,report,headers):
 
 def validate_observation(text):
     result=json.loads(text)
-    expected={'scenario':'original-command-manager-v5','next_values':[9,(2<<56)|9,(3<<56)|9],
-              'queues':3,'copy_queues':3,'copy_bytes_per_queue':257,'descriptor_types':4,'visible_heaps':2,'root_signatures':3,'root_cache_reused':True,'allocator_pool_reused':True,'increments_per_queue':8,'idle':True,'shutdown':True}
+    expected={'scenario':'original-command-manager-v6','next_values':[9,(2<<56)|9,(3<<56)|9],
+              'queues':3,'copy_queues':3,'copy_bytes_per_queue':257,'descriptor_types':4,'visible_heaps':2,'root_signatures':4,'root_cache_reused':True,'compute_pipelines':2,'compute_cache_reused':True,'allocator_pool_reused':True,'increments_per_queue':8,'idle':True,'shutdown':True}
     if result!=expected or any(type(result[k]) is not type(v) for k,v in expected.items()) or any(type(v) is not int for v in result['next_values']):
         raise ValueError('original command manager did not complete its full sequence')
     return result
@@ -51,7 +51,7 @@ def run(output,build):
     subprocess.run([cargo,'build','--manifest-path',str(ROOT/'cpp/runtime/Cargo.toml'),'--locked','--target','x86_64-apple-darwin'],cwd=ROOT,check=True,timeout=300)
     library=ROOT/'cpp/runtime/target/x86_64-apple-darwin/debug/libalkyhol_cpp_metal.a'
     source=ROOT/'cpp/tests/original_command_manager.cpp'
-    inputs=[source,Path(__file__).resolve(),manifest,library,*objects,*[upstream/p for p in ORIGINALS],
+    inputs=[source,ROOT/'cpp/tests/compute_probe_dxil.h',ROOT/'cpp/tests/compute_probe.dxil',ROOT/'tools/build_cpp_compute_probe.py',ROOT/'shader/tests/fixtures/compute.hlsl',ROOT/'shader/Cargo.toml',ROOT/'shader/Cargo.lock',*sorted((ROOT/'shader/src').glob('*.rs')),Path(__file__).resolve(),manifest,library,*objects,*[upstream/p for p in ORIGINALS],
             ROOT/'Cargo.toml',ROOT/'Cargo.lock',ROOT/'cpp/runtime/Cargo.toml',ROOT/'cpp/runtime/Cargo.lock',
             *sorted((ROOT/'src').glob('*.rs')),*sorted((ROOT/'cpp/runtime/src').glob('*.rs')),*sorted((ROOT/'cpp/runtime/src').glob('*.metal'))]
     def hashes():

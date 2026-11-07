@@ -638,7 +638,7 @@ static DEVICE_VTABLE: DeviceVtable = DeviceVtable {
     queue: queue::create_queue,
     allocator: commands::create_allocator,
     graphics: desc_object,
-    compute: desc_object,
+    compute: compute_pipelines::create,
     list: commands::create_list,
     feature,
     heap: descriptor_heaps::create,
@@ -1025,3 +1025,6 @@ mod cbv_descriptors;
 
 #[path = "root_signatures.rs"]
 mod root_signatures;
+
+#[path = "compute_pipelines.rs"]
+mod compute_pipelines;

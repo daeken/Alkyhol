@@ -45,6 +45,31 @@ fn compute_preserves_namespaces_spaces_and_group_size() {
 }
 
 #[test]
+fn compute_pso_selects_the_declared_entry_without_guessing_its_name() {
+    let bytes = compile("compute.hlsl", "CSMain", Stage::Compute);
+    let translated = translate_compute_pipeline(&bytes).unwrap();
+    let explicit = translate_dxil(&bytes, "CSMain").unwrap();
+    assert_eq!(translated.msl, explicit.msl);
+    assert_eq!(translated.entry_point, explicit.entry_point);
+    assert_eq!(translated.threads_per_group, Some([8, 1, 1]));
+    assert_eq!(translated.resources.len(), 4);
+}
+
+#[test]
+fn compute_pso_rejects_graphics_programs_and_corrupt_envelopes() {
+    let vertex = compile("microsoft-hello-triangle.hlsl", "VSMain", Stage::Vertex);
+    assert!(
+        translate_compute_pipeline(&vertex)
+            .unwrap_err()
+            .contains("compute entry")
+    );
+    let bytes = compile("compute.hlsl", "CSMain", Stage::Compute);
+    for length in [0, 4, 31, bytes.len() - 1] {
+        assert!(translate_compute_pipeline(&bytes[..length]).is_err());
+    }
+}
+
+#[test]
 fn original_microsoft_vertex_and_pixel_shaders_translate_without_edits() {
     for (entry, stage) in [("VSMain", Stage::Vertex), ("PSMain", Stage::Pixel)] {
         let shader = translate_dxil(

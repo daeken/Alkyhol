@@ -396,6 +396,23 @@ pub fn translate_dxil(bytes: &[u8], entry: &str) -> Result<Translation> {
     translate_dxil_with_options(bytes, entry, &MslOptions::default())
 }
 
+/// A compute PSO supplies executable DXIL without a separate entry-point name.
+/// Select its single declared compute entry, preserving its actual identifier.
+/// Libraries, other stages, embedded root signatures and ambiguous modules fail.
+pub fn translate_compute_pipeline(bytes: &[u8]) -> Result<Translation> {
+    validate_container(bytes)?;
+    let blob = ParsedBlob::parse(bytes).map_err(|e| format!("DXIL parse: {e}"))?;
+    if blob.num_entry_points().map_err(|e| e.to_string())? != 1
+        || blob.shader_stage() != ShaderStage::Compute
+    {
+        return Err("compute pipeline requires exactly one executable compute entry".into());
+    }
+    let entry = blob
+        .entry_point_demangled_name(0)
+        .map_err(|e| e.to_string())?;
+    translate_dxil(bytes, &entry)
+}
+
 /// Target attachment component counts, when the host uses a wider attachment
 /// than the source shader's output (e.g. original RGB display into RGBA Metal).
 #[derive(Default)]
