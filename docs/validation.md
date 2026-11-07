@@ -4,6 +4,29 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## Direct UTF conversion boundaries: initial physical evidence
+
+A new owned MIT no-CRT PE SHA-256
+`e2fcefadce6eb2cf582ea427cd5b2559ccf8c6a3d93e5291d91c4de5f101e739`
+records 44 UTF-8/UTF-16 input/flag query cases, 30 exact-size writes and two short-
+buffer status/error calls. Physical M4/Rosetta normal and forced-rebase runs agree
+on all 1,064 raw DWORDs. The runtime now performs default U+FFFD replacement for
+malformed input; strict flags still fail with error 1113. Cases cover supplementary/
+maximum scalars, embedded/terminated NULs, illegal/truncated/surrogate/overlong/
+out-of-range UTF-8, lone/repeated UTF-16 surrogates and invalid zero input lengths.
+Native Windows execution is newly defined and pending; local replacement results
+alone are not independent native evidence.
+
+All successful write bytes/units and destination tails are recorded exactly.
+Strict-invalid and zero-length inputs only make queries, with no failed-query
+write calls. Short-buffer cases compare return/last-error only; failed-write
+buffer contents are not recorded, normalized or claimed equal. Other code pages,
+flags/default-character machinery and remaining invalid-pointer/buffer boundaries
+stay unsupported or host-only. See [text conversion](text-conversion.md) for the
+complete finite contract. All 81 PE host tests/eight lifetime compiler checks,
+22 portable tests, Clippy and 227 Python tests pass. Older frozen binaries,
+source inputs, application corpora and graphics remain intact.
+
 ## Third released PE64 application: peports native Windows and physical M4
 
 All 27 CI jobs pass at strict-reference revision `04fb895`: three

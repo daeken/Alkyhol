@@ -43,6 +43,20 @@ jobs:
         with:
           name: pe-make2compdb-alkyhol
           path: local/pe/make2compdb-alkyhol.json
+      - name: Observe UTF-8 replacement strict validation and exact byte/unit boundaries
+        run: |
+          python tools/build_pe_text_conversion.py
+          python tools/run_pe_text_conversion.py --fixture local/pe/text-conversion/text-conversion.exe --output local/pe/text-conversion-alkyhol.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe-text-conversion-fixture
+          path: |
+            local/pe/text-conversion/text-conversion.exe
+            local/pe/text-conversion/text-conversion-fixture.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe-text-conversion-alkyhol
+          path: local/pe/text-conversion-alkyhol.json
       - name: Build owned DLL and inspect export metadata without entering it
         run: |
           python tools/build_pe_export_fixture.py
@@ -460,6 +474,16 @@ jobs:
         with:
           name: pe-peports-windows
           path: local/pe/peports-windows.json
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe-text-conversion-fixture
+          path: local/pe/text-conversion
+      - name: Observe direct UTF conversion calls against the native Windows API using the identical PE
+        run: python tools/run_pe_text_conversion.py --fixture local/pe/text-conversion/text-conversion.exe --output local/pe/text-conversion-windows.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe-text-conversion-windows
+          path: local/pe/text-conversion-windows.json
   compare-pe:
     needs: [alkyhol-pe, native-windows-pe]
     runs-on: ubuntu-latest
@@ -629,3 +653,12 @@ jobs:
           name: pe-peports-windows
           path: local/pe/observations
       - run: python tools/compare_peports_binary.py local/pe/observations/peports-windows.json local/pe/observations/peports-alkyhol.json
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe-text-conversion-alkyhol
+          path: local/pe/observations
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe-text-conversion-windows
+          path: local/pe/observations
+      - run: python tools/compare_pe_text_conversion.py local/pe/observations/text-conversion-windows.json local/pe/observations/text-conversion-alkyhol.json

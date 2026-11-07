@@ -1,5 +1,5 @@
-//! Bounded Win64 UTF-8/UTF-16 conversion. Other code pages and lossy replacement
-//! are unsupported; source compatibility's 32-bit wchar_t adapter is separate.
+//! Bounded Win64 UTF-8/UTF-16 conversion, including default replacement.
+//! Other code pages are unsupported; the 32-bit wchar_t source ABI is separate.
 #![allow(non_snake_case)]
 use alkyhol::ffi;
 use std::ptr;
@@ -70,8 +70,9 @@ unsafe extern "win64" fn MultiByteToWideChar(
         Err(e) => return fail(e),
     };
     let text = match std::str::from_utf8(&bytes) {
-        Ok(v) => v,
-        Err(_) => return fail(if flags == 8 { 1113 } else { 50 }),
+        Ok(v) => std::borrow::Cow::Borrowed(v),
+        Err(_) if flags == 0 => String::from_utf8_lossy(&bytes),
+        Err(_) => return fail(1113),
     };
     let wide: Vec<u16> = text.encode_utf16().collect();
     unsafe { output(&wide, target, capacity) }
@@ -102,7 +103,8 @@ unsafe extern "win64" fn WideCharToMultiByte(
     };
     let text = match String::from_utf16(&wide) {
         Ok(v) => v,
-        Err(_) => return fail(if flags == 128 { 1113 } else { 50 }),
+        Err(_) if flags == 0 => String::from_utf16_lossy(&wide),
+        Err(_) => return fail(1113),
     };
     unsafe { output(text.as_bytes(), target, capacity) }
 }
@@ -210,6 +212,60 @@ mod tests {
         }
     }
     #[test]
+    fn default_replacement_preserves_valid_prefix_suffix_and_unicode_subparts() {
+        for (bytes, expected) in [
+            (vec![0xff], "�"),
+            (vec![65, 0xff, 66], "A�B"),
+            (vec![0xf0, 0x9f], "�"),
+            (vec![0xed, 0xa0, 0x80], "���"),
+            (vec![0xc0, 0xaf], "��"),
+            (vec![0xf4, 0x90, 0x80, 0x80], "����"),
+        ] {
+            let mut out = [0xababu16; 16];
+            ffi::SetLastError(0xbeef);
+            let count = unsafe {
+                MultiByteToWideChar(
+                    65001,
+                    0,
+                    bytes.as_ptr(),
+                    bytes.len() as i32,
+                    out.as_mut_ptr(),
+                    16,
+                )
+            };
+            let expected: Vec<u16> = expected.encode_utf16().collect();
+            assert_eq!(count, expected.len() as i32);
+            assert_eq!(&out[..expected.len()], expected);
+            assert_eq!(out[expected.len()], 0xabab);
+            assert_eq!(ffi::GetLastError(), 0xbeef);
+        }
+        for (wide, expected) in [
+            (vec![0xd800], "�"),
+            (vec![0xdc00], "�"),
+            (vec![65, 0xd800, 66], "A�B"),
+            (vec![0xd800, 0xd800, 0xdc00], "�𐀀"),
+        ] {
+            let mut out = [0xabu8; 16];
+            ffi::SetLastError(0xbeef);
+            let count = unsafe {
+                WideCharToMultiByte(
+                    65001,
+                    0,
+                    wide.as_ptr(),
+                    wide.len() as i32,
+                    out.as_mut_ptr(),
+                    16,
+                    ptr::null(),
+                    ptr::null_mut(),
+                )
+            };
+            assert_eq!(count, expected.len() as i32);
+            assert_eq!(&out[..expected.len()], expected.as_bytes());
+            assert_eq!(out[expected.len()], 0xab);
+            assert_eq!(ffi::GetLastError(), 0xbeef);
+        }
+    }
+    #[test]
     fn unsupported_encodings_invalid_unicode_flags_and_buffer_errors_do_not_become_success() {
         let mut wide = [0xababu16; 8];
         let mut bytes = [0xabu8; 8];
@@ -233,18 +289,20 @@ mod tests {
             assert_eq!(ffi::GetLastError(), error);
             assert_eq!(wide, [0xabab; 8]);
         }
-        for flags in [0, 8] {
+        {
+            let flags = 8;
             assert_eq!(
                 unsafe {
                     MultiByteToWideChar(65001, flags, [0xff].as_ptr(), 1, wide.as_mut_ptr(), 8)
                 },
                 0
             );
-            assert_eq!(ffi::GetLastError(), if flags == 8 { 1113 } else { 50 });
+            assert_eq!(ffi::GetLastError(), 1113);
         }
         let valid = [65u16, 0];
         let invalid = [0xd800u16];
-        for flags in [0, 128] {
+        {
+            let flags = 128;
             assert_eq!(
                 unsafe {
                     WideCharToMultiByte(
@@ -260,7 +318,7 @@ mod tests {
                 },
                 0
             );
-            assert_eq!(ffi::GetLastError(), if flags == 128 { 1113 } else { 50 });
+            assert_eq!(ffi::GetLastError(), 1113);
         }
         assert_eq!(
             unsafe {

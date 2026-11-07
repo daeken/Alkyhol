@@ -55,11 +55,12 @@ Two new kernel32 Win64 imports bring that whitelist to 47:
 
 Input spans/scans are bounded to one MiB of source bytes. Queries accept zero
 output capacity, insufficient buffers fail, and successful conversions copy the
-exact required bytes/units. Strict malformed Unicode returns error 1113. Lossy
-replacement for malformed input with flags zero, other code pages and other flags
-fail explicitly with error 50; there is no silent ACP assumption or replacement
-success. Native application comparisons cover valid flag-zero inputs; strict/
-malformed/unsupported/buffer boundaries have host assertions only. The source ABI's
+exact required bytes/units. Strict malformed Unicode returns error 1113. Default flag-zero conversion now
+uses Unicode replacement characters for malformed input, as described in the
+[direct boundary observer](text-conversion.md). Other code pages/flags fail
+explicitly with error 50; there is no silent ACP assumption. This application's
+native comparisons cover valid flag-zero inputs; separate direct-call evidence
+and remaining host-only boundaries are recorded in that observer's validation. The source ABI's
 32-bit wide-character converters remain separate.
 
 ## Corpus and evidence
