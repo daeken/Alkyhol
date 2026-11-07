@@ -85,11 +85,10 @@ def main():
     for field, identity in expected_identity().items():
         if manifest[field] != identity:
             raise ValueError('bundle changed existing frozen DLL/source identities')
-    if REFERENCE.exists():
-        reference = json.loads(REFERENCE.read_text(encoding='utf-8'))
-        for field in ['binaries', 'sources', 'provided_modules']:
-            if manifest[field] != reference[field]:
-                raise ValueError('changed frozen shared DLL fixture')
+    reference = json.loads(REFERENCE.read_text(encoding='utf-8'))
+    for field in ['binaries', 'sources', 'provided_modules']:
+        if manifest[field] != reference[field]:
+            raise ValueError('changed frozen shared DLL fixture')
     for name, digest in manifest['binaries'].items():
         if hashlib.sha256((directory / name).read_bytes()).hexdigest() != digest:
             raise ValueError('changed bundle binary')

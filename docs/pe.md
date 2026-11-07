@@ -436,6 +436,11 @@ python3 tools/run_pe_library_set.py --directory local/pe/library-set --output lo
 The expanded PE workflow transfers the identical three DLLs to Windows. Its
 observer keeps two real LoadLibraryEx handles, reuses the frozen native call
 observers against those cached instances, compares shared targets, then frees
-consumers in reverse order. That new native comparison is pending until recorded
-in [validation](validation.md). Native shared-leaf notification counts are not
+consumers in reverse order. All three [PE jobs](https://github.com/daeken/Alkyhol/actions/runs/42399759919)
+pass at `1e028b8`: clean native Windows, hosted Mac and physical M4 records agree
+on the unchanged three DLLs, both earlier result sets, shared target identity and
+all 48 C notification bytes. The full native report is frozen at
+`pe/reference/library-set-windows-v1.json`; drivers and comparators require its
+input identities and actual results. See [validation](validation.md).
+Native shared-leaf notification counts are not
 measured by these DLLs; the once-only diamond count is host-unit evidence.

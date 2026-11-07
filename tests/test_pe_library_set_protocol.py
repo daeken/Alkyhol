@@ -4,12 +4,14 @@ import json
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 import unittest
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'tools'))
 from build_pe_library_set import ORDER, expected_identity
-from run_pe_library_set import EXPECTED, EXPECTED_TRACE, check_execution
+from run_pe_library_set import REFERENCE, EXPECTED, EXPECTED_TRACE, check_execution
 from compare_pe_library_set import compare, NATIVE, HOST
 
 
@@ -79,6 +81,18 @@ class LibrarySetProtocolTests(unittest.TestCase):
         reports = self.reports()
         reports[0]['relocated'] = [True]*3
         with self.assertRaises(ValueError): compare(reports,reference=self.reports()[0])
+
+
+    def test_default_frozen_native_record_rejects_changed_shared_execution(self):
+        native = json.loads(REFERENCE.read_text(encoding='utf-8'))
+        host = copy.deepcopy(native)
+        host.update(backend=HOST,relocated=[True,True,False],rebased_common=copy.deepcopy(host['common']),rebased_relocated=[True]*3)
+        self.assertEqual(compare([native,host]),48)
+        with tempfile.TemporaryDirectory() as directory:
+            with mock.patch('compare_pe_library_set.REFERENCE',Path(directory)/'missing-native.json'):
+                with self.assertRaises(FileNotFoundError): compare([native,host])
+        for r in [native,host]: r['common']['results']['shared_leaf_targets'] = False
+        with self.assertRaises(ValueError): compare([native,host])
 
 
 if __name__ == '__main__': unittest.main()

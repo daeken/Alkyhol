@@ -36,14 +36,13 @@ def compare(reports, reference=None):
     for flags in [host['relocated'], host['rebased_relocated']]:
         if not isinstance(flags,list) or len(flags) != 3 or any(type(v) is not bool for v in flags):
             raise ValueError('invalid actual relocation observations')
-    if reference is None and REFERENCE.exists():
+    if reference is None:
         reference = json.loads(REFERENCE.read_text(encoding='utf-8'))
-    if reference is not None:
-        if reference['backend'] != NATIVE or reference['schema_version'] != 1 or reference['tracked_tree_clean'] is not True:
-            raise ValueError('invalid frozen native bundle record')
-        for field in ['binaries','sources','provided_modules','common']:
-            if native[field] != reference[field]:
-                raise ValueError(f'changed frozen native bundle evidence: {field}')
+    if reference['backend'] != NATIVE or reference['schema_version'] != 1 or reference['tracked_tree_clean'] is not True:
+        raise ValueError('invalid frozen native bundle record')
+    for field in ['binaries','sources','provided_modules','common']:
+        if native[field] != reference[field]:
+            raise ValueError(f'changed frozen native bundle evidence: {field}')
     return len(EXPECTED_TRACE)
 
 

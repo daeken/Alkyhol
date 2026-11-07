@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "backend": "native Windows shared DLL bundle",
+  "binaries": {
+    "alkyhol_exports.dll": "423d6e191a3ebb4f4f5ce11710591edc9ebe163ece79bd35cc6fe5146d13399d",
+    "alkyhol_dependent.dll": "915abbc81ac8138e0320fb56a0b6f3e735bcd359039fb35d9a03596626e17628",
+    "alkyhol_ordinal.dll": "49ce61a1f2ecf91a4ed14672370cd6db579c350d297d041c31e76ad093f09fdc"
+  },
+  "sources": {
+    "pe/fixtures/dependent/library.c": "5e28444cf980ea1156b16861d02616ba6949e847de93bfb4c1c79ea346a7c6bd",
+    "pe/fixtures/dependent/library.def": "8ba7ea3730072fce94ff9b81d497a3fa230004c8875a719421dd290eb6590751",
+    "pe/fixtures/dependent/kernel32.def": "5649a849e3c6fd0ee5d54ad08e8f149747b7daf846e91b7b81fa1d63ba44d001",
+    "pe/fixtures/exports/library.c": "b2b9fcf9581d59e982b7754354eb8798616e0d0903b1816f786d4331ec263b96",
+    "pe/fixtures/exports/library.def": "a011d8748d774d3f147a0352277adfddc574416aa9a4610f152766a1db874493",
+    "pe/fixtures/ordinal/library.c": "63830babe71a92f171dc41e5bfcea5bb0027943ef207fd7cfd0e8189bc48125e",
+    "pe/fixtures/ordinal/library.def": "b4a7dd99bb0369c8df5a9cfbfd52c34c3c6135695599afde8d320566c07535f6",
+    "pe/fixtures/ordinal/imports.def": "119d5f29d8fcb11b5ce94dd28d68ce0b42341d5100201c39e29f62985e991d8e"
+  },
+  "provided_modules": [
+    "alkyhol_dependent.dll",
+    "alkyhol_ordinal.dll",
+    "alkyhol_exports.dll"
+  ],
+  "common": {
+    "results": {
+      "dependent": {
+        "evaluation": 826366381,
+        "through_call": 571916821,
+        "read_error": 13398,
+        "double_forward_error": 17767,
+        "through_matches_dependency": true,
+        "error_matches_dependency": true
+      },
+      "ordinal": {
+        "evaluation": 324508621,
+        "initial": 305419905,
+        "through_call": 305419905,
+        "forward_data": 826366246,
+        "through_matches_ordinal": true,
+        "data_matches_ordinal": true,
+        "direct_matches_ordinal": true
+      },
+      "shared_leaf_targets": true
+    },
+    "trace_hex": "0100000001000000010000009fc2162226594131df9b57130000000002000000010000009fc2162226594131df9b5713"
+  },
+  "relocated": null,
+  "rebased_common": null,
+  "rebased_relocated": null,
+  "revision": "1e028b81d32b78c495e113be37daef895f924572",
+  "tracked_tree_clean": true
+}

@@ -4,7 +4,7 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
-## Closed DLL bundle lifecycle: physical M4, native comparison pending
+## Closed DLL bundle lifecycle: native Windows, hosted Mac and physical M4
 
 LibrarySet now owns an explicitly supplied acyclic DLL graph, preflights all
 imports/forwarders/metadata before any initializer, orders dependencies before
@@ -18,9 +18,14 @@ change. Physical M4/Rosetta accepts consumers before their dependency in the inp
 list, preserves all earlier named/ordinal call/data/forwarder observations, checks
 that both consumers target the same actual leaf code address, and retains the
 exact 48-byte original C notification trace. Normal and forced-rebase results
-agree; all three DLLs actually rebase in the forced run. The new native Windows
-LoadLibraryEx shared-instance comparison is wired into existing PE CI and is
-pending. [Contract/reproduction](pe.md#closed-dll-bundles).
+agree; all three DLLs actually rebase in the forced run. All three
+[PE jobs](https://github.com/daeken/Alkyhol/actions/runs/42399759919) pass at
+`1e028b8`. Downloaded clean native Windows/hosted Mac records and a clean physical
+M4 record at that same revision agree on the unchanged DLLs, both earlier call/
+data/forwarder records, shared code target equality and all 48 notification bytes.
+The full native report is frozen at `pe/reference/library-set-windows-v1.json`;
+future drivers require its exact input identities before entry, and comparisons
+require its observed results. [Contract/reproduction](pe.md#closed-dll-bundles).
 
 Four new host runtime units check once-only shared-leaf diamond initialization,
 lookup/IAT targets, complete pre-entry graph/symbol/startup rejection, failed-
@@ -35,6 +40,8 @@ released u-config case and successful/failed/dependent/ordinal DLL observer pass
 again locally, including forced rebase. No original sample, shader, asset or game
 data is changed, and existing native comparison fixtures remain intact.
 Prior docs-only `6af2878` passes all 27 jobs (PE 42398043239; conformance 42398043244).
+Freezing the shared native reference adds a sixth protocol unit and brings Python
+coverage to 162 passing tests. No fixture bytes or older native expectations change.
 
 ## Mixed ordinal DLL imports/forwarders: native Windows, hosted Mac and physical M4
 

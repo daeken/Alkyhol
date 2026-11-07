@@ -242,8 +242,8 @@ impl LibrarySet {
 }
 impl Drop for LibrarySet {
     fn drop(&mut self) {
-        // Vec's ordinary forward field destruction would unload dependencies
-        // before their consumers. Explicit reverse order also handles rollback.
+        // Ordinary container destruction does not express reverse dependency
+        // order. Explicit popping also handles constructor rollback.
         while let Some((_, library)) = self.libraries.pop() {
             drop(library);
         }
