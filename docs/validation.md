@@ -4,6 +4,25 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## Shader binding validation hardening: local host evidence
+
+Five new Rust remapper unit tests cover descriptor interval boundaries, adjacent
+and overlapping ranges in either order, independent namespaces/spaces, repeated
+callbacks, conflicting kind/count/alignment, maximum registers/spaces, range
+wraparound and unsupported arrays/counters/kinds. Conflicting duplicate callbacks
+now fail explicitly rather than retaining the first declaration. A fault stops
+later remapping and preserves its original error. These are synthetic host-side
+metadata assertions; no new native shader semantics are inferred from them.
+
+All 24 shader tests passed locally (five host units plus 19 integration tests,
+including physical M4 execution); formatting and Clippy pass. A real DXC/DXIL
+translation test accepts exactly 128 SRV texture slots with a buffer UAV, then
+rejects a texture UAV that would require slot 129. The shared SRV/UAV texture
+budget is a translator check, not additional native GPU boundary evidence.
+All checked-in sample shader artifacts regenerated identically. The working
+sample apps, source adapters, native compute fixture and frozen comparators are
+unchanged.
+
 ## Same-container DXIL compute: native Windows and Metal evidence
 
 The physical Apple M4 ran the new `dxil-compute-v1` observation probe and matched

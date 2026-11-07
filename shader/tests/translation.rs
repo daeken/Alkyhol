@@ -290,3 +290,43 @@ fn unsupported_descriptor_arrays_counters_and_geometry_stage_fail() {
             .contains("unsupported shader stage")
     );
 }
+
+#[test]
+fn texture_slot_budget_counts_entire_arrays_and_both_srv_uav_namespaces() {
+    let temp = tempfile::tempdir().unwrap();
+    let file = temp.path().join("texture_budget.hlsl");
+    for texture_output in [false, true] {
+        let output = if texture_output {
+            "RWTexture2D<uint> o:register(u0);"
+        } else {
+            "RWStructuredBuffer<uint> o:register(u0);"
+        };
+        let target = if texture_output { "id.xy" } else { "id.x" };
+        std::fs::write(&file, format!("Texture2D<uint> t[128]:register(t0); {output} [numthreads(1,1,1)] void main(uint3 id:SV_DispatchThreadID) {{o[{target}]=t[NonUniformResourceIndex(id.x&127)].Load(int3(0,0,0));}}")).unwrap();
+        let bytes = compile_hlsl(&dxc(), &file, "main", Stage::Compute).unwrap();
+        let shader = translate_dxil(&bytes, "main");
+        if texture_output {
+            assert!(shader.unwrap_err().contains("too many Texture resources"));
+        } else {
+            let shader = shader.unwrap();
+            let textures = shader
+                .resources
+                .iter()
+                .find(|r| r.class == RegisterClass::Srv)
+                .unwrap();
+            assert_eq!(
+                (textures.metal_index, textures.count, textures.namespace),
+                (0, 128, MetalNamespace::Texture)
+            );
+            let output = shader
+                .resources
+                .iter()
+                .find(|r| r.class == RegisterClass::Uav)
+                .unwrap();
+            assert_eq!(
+                (output.metal_index, output.namespace),
+                (0, MetalNamespace::Buffer)
+            );
+        }
+    }
+}

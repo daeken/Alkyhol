@@ -70,7 +70,10 @@ semantic linker or D3D12 root-signature/descriptor-heap runtime. Successful
 translation is not proof of arbitrary shader semantics, DXR support or game
 compatibility. Fixed texture descriptor arrays now report their element count
 and reserve contiguous Metal texture slots; overlapping D3D ranges and exhausted
-slot budgets fail. Nonuniform per-lane selection is tested on actual Metal.
+slot budgets fail. Repeated remapper callbacks must agree on kind, namespace,
+array count and alignment; conflicting declarations at the same register fail.
+Once a remapper fault occurs, later callbacks cannot add accepted bindings or
+replace the original fault. Nonuniform per-lane selection is tested on actual Metal.
 
 Sakura uses original HLSL function bodies through an explicit
 [bounded SER-off adapter](../shader/samples/sakura/README.md). Sponza's default
@@ -88,7 +91,8 @@ invalid stages/counts/locations/duplicates fail. Shader source remains unchanged
 
 ## Executed local validation
 
-On physical Apple M4, all 18 shader tests pass, including real compute/raster
+On physical Apple M4, all 24 shader tests pass: five host remapper unit tests
+and 19 integration tests, including real compute/raster
 execution, fixed texture arrays with nonuniform per-lane indexing, the original
 81-texture material interface, original Sakura helper/budget contracts, original
 HelloTriangle interpolation, exact checker/copy pixels, malformed/unsupported
@@ -134,3 +138,17 @@ then agreed on all 96 words from identical DXIL in
 on `3d866ad`; all twelve jobs passed. Full shaded DXR frame comparison is outside
 this finite compute contract. Synthetic validator/process-failure tests do not
 count as GPU evidence.
+
+Host remapper tests separately cover adjacent and overlapping descriptor intervals
+in both insertion orders, independent register spaces/classes, idempotent and
+conflicting duplicate callbacks, maximum representable registers/spaces, range
+wraparound, zero/unbounded/oversized ranges, unsupported arrays/counters/kinds,
+and preservation of the first fault. These synthetic callback tests exercise Rust
+validation; they are not additional native shader/GPU observations. Checked-in
+Sakura and MiniEngine shader regeneration remains byte-for-byte unchanged.
+
+A real DXC/DXIL translation test additionally accepts an array using exactly 128
+texture slots with a separate buffer UAV, then rejects the same 128 SRVs plus a
+texture UAV because both consume Metal's shared texture namespace. This checks
+the translator's allocation contract; the 128-texture boundary is not a new
+native GPU execution observation.

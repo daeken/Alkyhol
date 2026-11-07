@@ -254,6 +254,9 @@ impl Bindings {
         b: &D3dBinding,
         counter: bool,
     ) -> Option<VulkanBinding> {
+        if self.error.is_some() {
+            return None;
+        }
         let namespace = match b.kind {
             ResourceKind::RawBuffer
             | ResourceKind::StructuredBuffer
@@ -288,6 +291,19 @@ impl Bindings {
             return None;
         }
         let set = b.register_space * 4 + class as u32;
+        // A repeated callback for the same resource is harmless. Conflicting
+        // views at one D3D register cannot share one authoritative Metal slot.
+        if let Some(previous) = self
+            .resources
+            .get(&(class, b.register_space, b.register_index))
+            && (previous.kind != format!("{:?}", b.kind)
+                || previous.namespace != namespace
+                || previous.count != b.range_size
+                || previous.alignment != b.alignment)
+        {
+            self.error = Some("conflicting duplicate D3D resource binding".into());
+            return None;
+        }
         for (&(other_class, space, register), other) in &self.resources {
             if other_class == class
                 && space == b.register_space
@@ -531,4 +547,184 @@ pub fn translate_dxil_with_options(
         requires_ray_query,
         fragment_output_components,
     })
+}
+
+#[cfg(test)]
+mod binding_tests {
+    use super::*;
+    fn texture(register: u32, count: u32) -> D3dBinding {
+        D3dBinding {
+            stage: ShaderStage::Compute,
+            kind: ResourceKind::Texture2D,
+            resource_index: 0,
+            register_space: 0,
+            register_index: register,
+            range_size: count,
+            alignment: 0,
+        }
+    }
+    #[test]
+    fn descriptor_intervals_accept_adjacency_and_separate_spaces_or_classes() {
+        let mut bindings = Bindings::default();
+        for source in [
+            texture(5, 3),
+            texture(8, 2),
+            D3dBinding {
+                register_space: 1,
+                ..texture(5, 3)
+            },
+        ] {
+            assert!(bindings.remap(RegisterClass::Srv, &source, false).is_some());
+        }
+        let cb = D3dBinding {
+            kind: ResourceKind::ConstantBuffer,
+            ..texture(5, 1)
+        };
+        assert!(bindings.remap(RegisterClass::Cbv, &cb, false).is_some());
+        assert_eq!(bindings.resources.len(), 4);
+        assert!(bindings.error.is_none());
+    }
+    #[test]
+    fn overlapping_ranges_fail_in_both_orders_and_preserve_the_first_fault() {
+        for (first, second) in [
+            (texture(5, 3), texture(7, 2)),
+            (texture(7, 2), texture(5, 3)),
+        ] {
+            let mut bindings = Bindings::default();
+            assert!(bindings.remap(RegisterClass::Srv, &first, false).is_some());
+            assert!(bindings.remap(RegisterClass::Srv, &second, false).is_none());
+            assert_eq!(
+                bindings.error.as_deref(),
+                Some("overlapping D3D descriptor ranges")
+            );
+            assert!(
+                bindings
+                    .remap(RegisterClass::Srv, &texture(100, 1), false)
+                    .is_none()
+            );
+            assert_eq!(bindings.resources.len(), 1);
+            assert_eq!(
+                bindings.error.as_deref(),
+                Some("overlapping D3D descriptor ranges")
+            );
+        }
+    }
+    #[test]
+    fn duplicate_binding_is_idempotent_but_conflicting_metadata_fails() {
+        let source = texture(4, 2);
+        let mut bindings = Bindings::default();
+        assert!(bindings.remap(RegisterClass::Srv, &source, false).is_some());
+        assert!(bindings.remap(RegisterClass::Srv, &source, false).is_some());
+        assert_eq!(bindings.resources.len(), 1);
+        for conflicting in [
+            D3dBinding {
+                range_size: 1,
+                ..source
+            },
+            D3dBinding {
+                kind: ResourceKind::Texture3D,
+                ..source
+            },
+            D3dBinding {
+                alignment: 4,
+                ..source
+            },
+        ] {
+            let mut bindings = Bindings::default();
+            assert!(bindings.remap(RegisterClass::Srv, &source, false).is_some());
+            assert!(
+                bindings
+                    .remap(RegisterClass::Srv, &conflicting, false)
+                    .is_none()
+            );
+            assert_eq!(
+                bindings.error.as_deref(),
+                Some("conflicting duplicate D3D resource binding")
+            );
+            let saved = bindings.resources.values().next().unwrap();
+            assert_eq!(
+                (saved.count, saved.kind.as_str(), saved.alignment),
+                (2, "Texture2D", 0)
+            );
+        }
+    }
+    #[test]
+    fn last_register_and_space_are_valid_but_overflow_and_unbounded_ranges_fail() {
+        let source = D3dBinding {
+            register_space: u32::MAX / 4,
+            ..texture(u32::MAX, 1)
+        };
+        let mut bindings = Bindings::default();
+        let mapped = bindings.remap(RegisterClass::Srv, &source, false).unwrap();
+        assert_eq!((mapped.set, mapped.binding), (u32::MAX - 2, u32::MAX));
+        let mut bindings = Bindings::default();
+        assert!(
+            bindings
+                .remap(RegisterClass::Srv, &texture(u32::MAX - 127, 128), false)
+                .is_some()
+        );
+        for invalid in [
+            D3dBinding {
+                range_size: 2,
+                ..source
+            },
+            D3dBinding {
+                register_space: u32::MAX / 4 + 1,
+                ..source
+            },
+            texture(0, 0),
+            texture(0, 129),
+            texture(0, u32::MAX),
+        ] {
+            let mut bindings = Bindings::default();
+            assert!(
+                bindings
+                    .remap(RegisterClass::Srv, &invalid, false)
+                    .is_none()
+            );
+            assert!(bindings.resources.is_empty());
+        }
+    }
+    #[test]
+    fn nontexture_arrays_counters_and_unknown_kinds_never_produce_a_binding() {
+        for (class, source, counter) in [
+            (
+                RegisterClass::Srv,
+                D3dBinding {
+                    kind: ResourceKind::StructuredBuffer,
+                    ..texture(0, 2)
+                },
+                false,
+            ),
+            (
+                RegisterClass::Sampler,
+                D3dBinding {
+                    kind: ResourceKind::Sampler,
+                    ..texture(0, 2)
+                },
+                false,
+            ),
+            (
+                RegisterClass::Uav,
+                D3dBinding {
+                    kind: ResourceKind::StructuredBuffer,
+                    ..texture(0, 1)
+                },
+                true,
+            ),
+            (
+                RegisterClass::Srv,
+                D3dBinding {
+                    kind: ResourceKind::TypedBuffer,
+                    ..texture(0, 1)
+                },
+                false,
+            ),
+        ] {
+            let mut bindings = Bindings::default();
+            assert!(bindings.remap(class, &source, counter).is_none());
+            assert!(bindings.resources.is_empty());
+            assert!(bindings.error.is_some());
+        }
+    }
 }
