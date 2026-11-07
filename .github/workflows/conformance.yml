@@ -236,6 +236,12 @@ jobs:
         with:
           python-version: '3.12'
       - uses: ilammy/msvc-dev-cmd@v1
+      - name: Observe native D3D12 COM private-data and interface ownership
+        run: python tools/run_cpp_object_reference.py --output cpp-object-reference.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cpp-object-reference-Windows
+          path: cpp-object-reference.json
       - name: Observe Sakura placement on native MSVC
         shell: cmd
         run: |

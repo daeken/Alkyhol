@@ -4,6 +4,22 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## Next COM runtime contract: native reference observer (pending execution)
+
+The original C++ application's device-creation boundary is unchanged. A new
+independent Windows SDK/WARP observer measures ID3D12Object private bytes,
+size queries/undersized buffers, replacement/removal/zero-size entries, stored
+IUnknown AddRef/Release lifetimes and Unicode debug names on a real fence.
+It records actual HRESULTs, returned sizes, exact output/sentinel bytes and an
+instrumented caller-owned IUnknown's reference events. Diagnostic lifecycle
+snapshots carry no manufactured HRESULT. Missing/reordered records or malformed
+transport fail validation; no predetermined success values stand in for native
+behavior. This establishes a reference contract before its Rust implementation.
+
+The observer compiles to an object against the current host headers, and all
+48 Python tests pass locally. Actual native execution is pending the new CI step;
+these host checks are not native behavior, a Metal fence or original C++ rendering.
+
 ## Complete original MiniEngine C++ compile/link: local source ABI evidence
 
 On the physical M4 macOS host, the pinned original checkout remains clean at
