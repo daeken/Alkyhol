@@ -4,7 +4,7 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
-## Integer/vector stack-slot unwinding: initial physical evidence
+## Integer/vector stack-slot unwinding: native Windows, hosted Mac and physical M4
 
 The new owned unchanged PE SHA-256 is
 `5b3835f6a641536355a7f6b68af588a53630aa95017612e0c6b646930ec3e8b2`.
@@ -16,7 +16,15 @@ Context checks read expected saved bytes/return addresses directly from the real
 stack and verify restored RIP/RSP/GPRs/XMM6/XMM15, establisher, exact flags and every
 other seeded byte. This is manual context restoration, with normal actual returns;
 no full capture, exception dispatch/resumption or game compatibility is claimed.
-Native Windows execution and additional SDK/MSVC XMM layout checks are pending.
+All three [PE jobs](https://github.com/daeken/Alkyhol/actions/runs/42416493858)
+pass on `8b67924`, including actual native Windows execution and SDK/MSVC assertions
+for all ten XMM slot offsets. Downloaded clean native/hosted records and clean
+physical M4 execution at that same revision agree on executed PE/source identity
+and all 37 words. This independently covers RBX/R12 and XMM6/XMM15 near/far saves
+and unscaled ALLOC_LARGE; other supported registers have host assertions only.
+The complete native record is frozen at `pe/reference/unwind-saves-windows-v1.json`;
+drivers and comparisons now require its exact inputs/results by default. A
+missing-reference/joint-drift protocol guard brings the Python suite to 209.
 
 SAVE_NONVOL, SAVE_NONVOL_FAR, SAVE_XMM128 and SAVE_XMM128_FAR now extend the bounded
 NOP-body, flags-zero, frame-register-zero manual unwinder. All eight nonvolatile

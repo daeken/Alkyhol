@@ -835,7 +835,8 @@ advance RSP; fixed allocations and pushes continue to restore it independently.
 This subset accepts the eight nonvolatile integer registers and XMM6..15, with
 aligned nonoverlapping slots wholly inside the fixed allocation. All slot saves
 must precede allocation/pop actions in the unwind sequence; duplicate save targets
-and other ordering fail honestly. Version/flags/frame-register/NOP-body/registration
+and other ordering fail honestly. Caller home-space saves outside the fixed
+allocation remain unsupported. Version/flags/frame-register/NOP-body/registration
 restrictions remain. Stack extents and alignment are checked before each read,
 and context writes are committed only after the entire recipe has been decoded
 and its required stack data read successfully. These checks do not protect against
@@ -856,3 +857,8 @@ all restored/unrelated bytes, and return normally through the actual stack.
 No exception is dispatched or resumed; x87/AVX state and full capture remain absent.
 The separate Windows SDK probe asserts all ten XMM slot offsets. Native execution
 and finite host coverage are recorded in [validation](validation.md).
+
+Native Windows, hosted Mac and physical M4 agree on all 37 raw words at `8b67924`.
+The actual native record at `pe/reference/unwind-saves-windows-v1.json` is frozen
+and required by default; native cases exercise RBX/R12 and XMM6/XMM15. The remaining
+supported register numbers have host tests, not independent native observations.
