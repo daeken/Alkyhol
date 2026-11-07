@@ -301,3 +301,41 @@ fn common_io_errors_and_unknown_errors_remain_errors() {
         );
     }
 }
+
+#[test]
+fn retained_event_notifications_validate_kind_keep_identity_and_preserve_reset_modes() {
+    let kernel = Kernel::default();
+    let auto = kernel.create_event(false, false);
+    let manual = kernel.create_event(true, false);
+    let a = kernel.event_notifier(auto).unwrap();
+    let m = kernel.event_notifier(manual).unwrap();
+    a.signal();
+    a.signal();
+    m.signal();
+    assert_eq!(kernel.wait(auto, 0).unwrap(), WAIT_OBJECT_0);
+    assert_eq!(kernel.wait(auto, 0).unwrap(), WAIT_TIMEOUT);
+    assert_eq!(kernel.wait(manual, 0).unwrap(), WAIT_OBJECT_0);
+    assert_eq!(kernel.wait(manual, 0).unwrap(), WAIT_OBJECT_0);
+    kernel.reset_event(manual).unwrap();
+    assert_eq!(kernel.wait(manual, 0).unwrap(), WAIT_TIMEOUT);
+    let semaphore = kernel.create_semaphore(0, 1).unwrap();
+    assert!(matches!(
+        kernel.event_notifier(semaphore),
+        Err(WinError(ERROR_INVALID_HANDLE))
+    ));
+    let foreign = Kernel::default();
+    assert!(matches!(
+        foreign.event_notifier(auto),
+        Err(WinError(ERROR_INVALID_HANDLE))
+    ));
+    kernel.close_handle(auto).unwrap();
+    assert!(matches!(
+        kernel.event_notifier(auto),
+        Err(WinError(ERROR_INVALID_HANDLE))
+    ));
+    let next = kernel.create_event(false, false);
+    a.signal();
+    assert_eq!(kernel.wait(next, 0).unwrap(), WAIT_TIMEOUT);
+    // The retained reference can still be used from another thread after close.
+    std::thread::spawn(move || a.signal()).join().unwrap();
+}

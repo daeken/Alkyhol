@@ -42,18 +42,25 @@ def compare_reports(reports,revision):
         validate_observation(json.dumps(report['observation']))
     if reports[0]['artifacts']['cpp/tests/device_buffers.cpp']!=reports[1]['artifacts']['cpp/tests/device_buffers.cpp']:raise ValueError('probe source bytes differ')
     if reports[0]['observation']!=reports[1]['observation']:raise ValueError('native and Metal buffer observations differ')
+    frozen=json.loads((ROOT/'cpp/reference/device-shared-buffers-windows-v1.json').read_text())
+    if reports[0]['observation']!=frozen['observation']:raise ValueError('live buffer behavior differs from frozen native contract')
 
 
 def run(output):
+    return run_probe(output,'device_buffers','device buffers',validate_observation,
+                     ['trap-view','trap-heap','trap-copy','trap-footprints','trap-tiling'])
+
+def run_probe(output,name,label,validate,traps=()):
     native=os.name=='nt'
     if not native and platform.system()!='Darwin':raise RuntimeError('Windows SDK or actual Metal host required')
-    source=ROOT/'cpp/tests/device_buffers.cpp';inputs=[source,Path(__file__).resolve()]
+    source=ROOT/f'cpp/tests/{name}.cpp';inputs=[source,Path(__file__).resolve()]
+    if name!='device_buffers':inputs.append(ROOT/f'tools/run_cpp_{name}.py')
     with tempfile.TemporaryDirectory(prefix='alkyhol-device-buffers-') as scratch:
-        executable=Path(scratch)/('device_buffers.exe' if native else 'device_buffers')
+        executable=Path(scratch)/(name+'.exe' if native else name)
         if native:
             command=['cl','/nologo','/W4','/WX','/EHsc','/std:c++17',str(source),'/Fe:'+str(executable),'/link','d3d12.lib','dxgi.lib','dxguid.lib']
             identity=subprocess.run(['cl'],capture_output=True,text=True,timeout=30);compiler=identity.stdout+identity.stderr
-            backend='native Windows SDK WARP device buffers'
+            backend='native Windows SDK WARP '+label
         else:
             headers=ensure('DirectX-Headers');mingw=ensure('mingw-w64');overlay=Path(scratch)/'include';overlay.mkdir()
             for path in (mingw/'mingw-w64-headers/include').glob('dxgi*.h'):(overlay/path.name).symlink_to(path)
@@ -62,7 +69,7 @@ def run(output):
             subprocess.run([cargo,'build','--manifest-path',str(ROOT/'cpp/runtime/Cargo.toml'),'--locked','--target','x86_64-apple-darwin'],check=True,cwd=ROOT,timeout=300)
             library=ROOT/'cpp/runtime/target/x86_64-apple-darwin/debug/libalkyhol_cpp_metal.a'
             command=['clang++','-arch','x86_64','-std=c++14','-fms-extensions','-I'+str(ROOT/'cpp/include'),'-I'+str(headers/'include'),'-I'+str(headers/'include/directx'),'-I'+str(overlay),str(source),str(library),'-framework','Metal','-framework','Foundation','-framework','CoreGraphics','-framework','Security','-framework','CoreFoundation','-lobjc','-lresolv','-o',str(executable)]
-            compiler=subprocess.check_output(['clang++','--version'],text=True);backend='Rust restricted Metal COM device buffers'
+            compiler=subprocess.check_output(['clang++','--version'],text=True);backend='Rust restricted Metal COM '+label
             inputs += [ROOT/'Cargo.toml',ROOT/'Cargo.lock',ROOT/'cpp/runtime/Cargo.toml',ROOT/'cpp/runtime/Cargo.lock',library,*sorted((ROOT/'src').glob('*.rs')),*sorted((ROOT/'cpp/runtime/src').glob('*.rs')),*sorted(p for p in (ROOT/'cpp/include').rglob('*') if p.is_file())]
         hashes=lambda:{p.relative_to(ROOT).as_posix():hashlib.sha256(p.read_bytes()).hexdigest() for p in inputs}
         before=hashes();compiled=subprocess.run(command,cwd=scratch,capture_output=True,text=True,timeout=120)
@@ -70,9 +77,9 @@ def run(output):
         digest=hashlib.sha256(executable.read_bytes()).hexdigest()
         result=subprocess.run([str(executable)],capture_output=True,text=True,cwd=scratch,timeout=30)
         if result.returncode:raise RuntimeError(f'buffer probe execution failed: {result.returncode}\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}')
-        observation=validate_observation(result.stdout)
+        observation=validate(result.stdout)
         if not native:
-            for mode in ['trap-view','trap-heap','trap-copy','trap-footprints','trap-tiling']:
+            for mode in traps:
                 failed=subprocess.run([str(executable),mode],capture_output=True,text=True,cwd=scratch,timeout=30)
                 if failed.returncode!=-signal.SIGABRT or 'is not implemented' not in failed.stderr:raise RuntimeError('unsupported void/struct operation returned or failed unexpectedly: '+mode)
         if before!=hashes() or digest!=hashlib.sha256(executable.read_bytes()).hexdigest():raise RuntimeError('buffer probe inputs changed during execution')

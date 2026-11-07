@@ -52,7 +52,7 @@ int main(int argc,char** argv){
     }
     D3D12_FEATURE_DATA_D3D12_OPTIONS5 options{};assert(device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS5,&options,sizeof(options))==S_OK&&options.RaytracingTier==D3D12_RAYTRACING_TIER_NOT_SUPPORTED);
     ComPtr<ID3D12Device5> dxr;assert(device.As(&dxr)==E_NOINTERFACE&&!dxr.Get());
-    ComPtr<ID3D12CommandQueue> queue;D3D12_COMMAND_QUEUE_DESC queue_desc{};assert(device->CreateCommandQueue(&queue_desc,IID_PPV_ARGS(&queue))==E_NOTIMPL&&!queue.Get());
+    ComPtr<ID3D12CommandQueue> queue;D3D12_COMMAND_QUEUE_DESC queue_desc{};queue_desc.Type=D3D12_COMMAND_LIST_TYPE_VIDEO_DECODE;assert(device->CreateCommandQueue(&queue_desc,IID_PPV_ARGS(&queue))==E_NOTIMPL&&!queue.Get());
 #endif
     std::printf("{\"scenario\":\"device-shared-buffers-v1\",\"resources\":[");bool first=true;
     ComPtr<ID3D12Resource> retained;

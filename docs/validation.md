@@ -4,6 +4,34 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## Restricted COM queues/fences: local completion evidence
+
+On physical M4, real x86-64 C++ virtual calls now create COPY queues and fences
+through the explicit Metal subset constructor. The shared probe observes values
+`[5,7,8,3,9,12,21,2]`, ten expected event wait results, queued rewinds and retained
+parent/pending-submission lifetimes. Queue signals submit actual empty native
+Metal command buffers; completion callbacks, rather than immediate CPU writes,
+advance the fence. This is GPU queue-completion evidence, not COM command-list
+execution, shader execution, original C++ initialization or a frame.
+
+Six new runtime units (18 total) pass, covering typed layouts, CPU rewinds and
+event thresholds, genuinely blocking null-event waits, out-of-order completion
+callbacks, failure sentinels, actual Metal completion, release/lifetime behavior,
+supported queue kinds and rejection of foreign-device fences. All 68 root tests,
+runtime/root Clippy, 70 Python tests and existing C++/compiler probes pass locally.
+Six unsupported queue void-method paths separately abort with explicit diagnostics;
+GPU queue Wait and timestamp APIs fail honestly. Event retention after CloseHandle
+and injected callback failure are local assertions, not measured native semantics.
+
+The compatibility-header change was followed by a fresh successful compile of
+all 70 original C++ units and a complete relink. The original application still
+exits 78 at unavailable D3D12CreateDevice, before original initialization. Original
+source, assets and shaders remain unchanged. New CI executes an independent WARP
+queue/fence probe and compares its exact output with hosted Metal from the same
+revision; no native result is claimed here until execution completes. Previous
+buffer observations and their exact original probe bytes are preserved, and live
+buffer comparisons now also require equality to that unchanged native snapshot.
+
 ## Restricted Metal COM device and committed buffers: local evidence
 
 A separately named `AlkyholCreateMetalDeviceSubset` now constructs real retained

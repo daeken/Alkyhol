@@ -250,6 +250,12 @@ jobs:
         with:
           name: cpp-device-buffers-Windows
           path: cpp-device-buffers.json
+      - name: Observe real queue completion and fence synchronization
+        run: python tools/run_cpp_queue_fence.py --output cpp-queue-fence.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cpp-queue-fence-Windows
+          path: cpp-queue-fence.json
       - name: Observe native D3D12 COM private-data and interface ownership
         run: python tools/run_cpp_object_reference.py --output cpp-object-reference.json
       - uses: actions/upload-artifact@v4
@@ -393,6 +399,12 @@ jobs:
         with:
           name: cpp-device-buffers-Metal
           path: cpp-device-buffers.json
+      - name: Observe real queue completion and fence synchronization
+        run: python tools/run_cpp_queue_fence.py --output cpp-queue-fence.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cpp-queue-fence-Metal
+          path: cpp-queue-fence.json
       - uses: actions/upload-artifact@v4
         with:
           name: cpp-metal-factory
@@ -417,4 +429,25 @@ jobs:
           revision=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
           compare_reports(reports,revision)
           print('All shared upload/readback descriptors, heap properties, mapped data and parent ownership checks agree; feature-level conformance not claimed')
+          PY
+
+  compare-cpp-queue-fence:
+    needs: [cpp-metal-factory, graphics-reference]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: cpp-queue-fence-*
+          path: cpp-sync-observations
+      - name: Compare native WARP and restricted Metal queue/fence behavior
+        run: |
+          python3 - <<'PY'
+          import json, subprocess
+          from pathlib import Path
+          from tools.run_cpp_queue_fence import compare_reports
+          reports=[json.loads(p.read_text()) for p in Path('cpp-sync-observations').glob('*/*.json')]
+          revision=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
+          compare_reports(reports,revision)
+          print('Finite CPU signals/rewinds, event waits, queue completion order and lifetimes agree; no COM command-list execution or original rendering claim')
           PY

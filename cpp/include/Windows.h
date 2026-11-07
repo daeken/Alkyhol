@@ -49,6 +49,7 @@ extern "C" BOOL QueryPerformanceCounter(LARGE_INTEGER*);
 extern "C" BOOL QueryPerformanceFrequency(LARGE_INTEGER*);
 #define INFINITE 0xffffffffu
 #define WAIT_OBJECT_0 0
+#define WAIT_TIMEOUT 258
 #define SWP_NOSIZE 0x0001
 #define SWP_NOMOVE 0x0002
 #define SWP_NOZORDER 0x0004

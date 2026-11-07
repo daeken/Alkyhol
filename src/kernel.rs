@@ -163,6 +163,34 @@ enum Object {
     Thread(Arc<ThreadObject>),
 }
 
+/// A retained unnamed event reference for asynchronous completions. Closing its
+/// original handle does not invalidate this owned reference or make it alias a
+/// new handle. It grants signaling only, not a new public handle or wait right.
+#[derive(Clone)]
+pub struct EventNotifier {
+    object: Arc<Object>,
+}
+impl EventNotifier {
+    pub fn signal(&self) {
+        let Object::Event(event) = &*self.object else {
+            unreachable!("validated event reference")
+        };
+        signal_event(event);
+    }
+}
+fn signal_event(event: &EventObject) {
+    let mut state = event.state.lock().unwrap();
+    if !state.signaled {
+        state.signaled = true;
+        state.generation = state.generation.wrapping_add(1);
+        if event.manual {
+            event.changed.notify_all();
+        } else {
+            event.changed.notify_one();
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct Kernel {
     objects: Mutex<HashMap<Handle, Arc<Object>>>,
@@ -334,21 +362,17 @@ impl Kernel {
             changed: Condvar::new(),
         }))
     }
-    pub fn set_event(&self, handle: Handle) -> WinResult<()> {
+    /// Retain a validated event for asynchronous notification, independently of
+    /// the lifetime of the public handle. Files, threads and semaphores fail.
+    pub fn event_notifier(&self, handle: Handle) -> WinResult<EventNotifier> {
         let object = self.object(handle)?;
-        let Object::Event(event) = &*object else {
+        if !matches!(&*object, Object::Event(_)) {
             return Err(WinError(ERROR_INVALID_HANDLE));
-        };
-        let mut state = event.state.lock().unwrap();
-        if !state.signaled {
-            state.signaled = true;
-            state.generation = state.generation.wrapping_add(1);
-            if event.manual {
-                event.changed.notify_all();
-            } else {
-                event.changed.notify_one();
-            }
         }
+        Ok(EventNotifier { object })
+    }
+    pub fn set_event(&self, handle: Handle) -> WinResult<()> {
+        self.event_notifier(handle)?.signal();
         Ok(())
     }
     pub fn reset_event(&self, handle: Handle) -> WinResult<()> {

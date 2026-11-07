@@ -55,3 +55,10 @@ M4 observations now agree on `5048884`, with all fifteen jobs passing in
 The fixture records descriptors, heap properties, mapped CPU data, nonzero-address
 checks and canonical parent identity; it does not prove native GPU allocation
 internals, feature-level support, COM command execution or rendering.
+
+The exact original probe bytes are archived as `probes/device_buffers_v1.cpp`,
+with the frozen report's source hash still checked. The live probe changes only
+its host-only negative queue check from DIRECT to unsupported VIDEO_DECODE as
+real queues become available. Its native body and buffer observation sequence
+remain unchanged. Live native/Metal comparisons must also equal the unchanged
+frozen buffer observation, so two backends cannot jointly drift from it.

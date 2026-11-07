@@ -8,7 +8,7 @@ from tools.run_cpp_device_buffers import ROOT,run,validate_observation,compare_r
 
 class DeviceBufferReportTests(unittest.TestCase):
     def valid(self):
-        return {'scenario':'device-shared-buffers-v1','parent_lifetime':True,'gpu_addresses_nonzero':True,'resources':[{'heap':[kind,0,0,1,1],'heap_flags':0,'desc':[1,0,width,1,1,1,0,1,0,1,0],'checksum':123} for kind in [2,3] for width in [257,1024]]}
+        return json.loads((ROOT/'cpp/reference/device-shared-buffers-windows-v1.json').read_text())['observation']
     def reports(self):
         report={'schema_version':1,'backend':'native Windows SDK WARP device buffers','source_revision':'current','tracked_tree_clean':True,'artifacts':{'cpp/tests/device_buffers.cpp':'source'},'observation':self.valid()}
         other=copy.deepcopy(report);other['backend']='Rust restricted Metal COM device buffers';return [report,other]
@@ -35,13 +35,17 @@ class DeviceBufferReportTests(unittest.TestCase):
             if isinstance(row[field],list):row[field][0]+=1
             else:row[field]+=1
             with self.assertRaises(ValueError):compare_reports(reports,'current')
+    def test_live_backends_cannot_jointly_drift_from_frozen_reference(self):
+        reports=self.reports()
+        for report in reports:report['observation']['resources'][0]['heap_flags']=0
+        with self.assertRaises(ValueError):compare_reports(reports,'current')
     def test_frozen_native_buffer_evidence_and_source_identity_are_preserved(self):
         import hashlib
         reference=json.loads((ROOT/'cpp/reference/device-shared-buffers-windows-v1.json').read_text())
         self.assertTrue(reference['tracked_tree_clean'])
         self.assertEqual(reference['backend'],'native Windows SDK WARP device buffers')
         self.assertEqual(reference['source_revision'],'2b5bbe39d90f2c973ffd7277b395aea7ea81296e')
-        self.assertEqual(reference['artifacts']['cpp/tests/device_buffers.cpp'],hashlib.sha256((ROOT/'cpp/tests/device_buffers.cpp').read_bytes()).hexdigest())
+        self.assertEqual(reference['artifacts']['cpp/tests/device_buffers.cpp'],hashlib.sha256((ROOT/'cpp/reference/probes/device_buffers_v1.cpp').read_bytes()).hexdigest())
         observed=validate_observation(json.dumps(reference['observation']))
         self.assertEqual(hashlib.sha256(json.dumps(observed,sort_keys=True,separators=(',',':')).encode()).hexdigest(),'b321745cbdcf68bc226f55a51d80adddb4757fe6ad4688a97e3fe3d0c3607167')
     def test_rejects_unsupported_hosts_before_any_build(self):

@@ -493,15 +493,6 @@ unsafe extern "C" fn open_name(_: *mut Device, _: usize, _: u32, out: *mut usize
 unsafe extern "C" fn resident(_: *mut Device, _: u32, _: usize) -> i32 {
     unavailable("residency control")
 }
-unsafe extern "C" fn create_fence(
-    _: *mut Device,
-    _: u64,
-    _: u32,
-    _: *const Guid,
-    out: *mut *mut c_void,
-) -> i32 {
-    unsafe { unsupported_out("fence", out) }
-}
 unsafe extern "C" fn removed(_: *mut Device) -> i32 {
     unavailable("device removal status")
 }
@@ -642,7 +633,7 @@ static DEVICE_VTABLE: DeviceVtable = DeviceVtable {
     interface: device_interface,
     name: device_name,
     nodes,
-    queue: desc_object,
+    queue: queue::create_queue,
     allocator,
     graphics: desc_object,
     compute: desc_object,
@@ -670,7 +661,7 @@ static DEVICE_VTABLE: DeviceVtable = DeviceVtable {
     open_name,
     resident,
     evict: resident,
-    fence: create_fence,
+    fence: queue::create_fence,
     removed,
     footprints,
     query_heap: desc_object,
@@ -1010,3 +1001,6 @@ mod tests {
         });
     }
 }
+
+#[path = "queue.rs"]
+mod queue;

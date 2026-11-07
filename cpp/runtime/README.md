@@ -100,3 +100,39 @@ width remains unchanged. The native record is frozen separately under
 `cpp/reference/device-shared-buffers-windows-v1.json`. Native COM identity is
 checked through canonical IUnknown round trips, without assuming all interface
 pointers share one address.
+
+## Restricted command queues and fences
+
+The explicit subset constructor now supports typed 19-slot ID3D12CommandQueue
+and 11-slot ID3D12Fence interfaces, retaining the device and composing the same
+metadata store. DIRECT, COMPUTE and COPY queues accept normal priority, no flags
+and a single node; other configurations fail. Fences accept no sharing flags.
+CPU Signal can advance or rewind the fence value. SetEventOnCompletion retains
+a validated event reference, signals already satisfied waits immediately and
+supports the null-event blocking form. Retained notifications cannot alias a new
+handle after CloseHandle; that extra ownership contract is tested locally.
+
+Queue Signal submits a real empty Metal command buffer and updates the fence
+only from its completion callback. Submission and callback ordering preserve
+queued rewinds; pending timeline state survives release of its COM shell. Failed
+Metal completion records failure and uses the device-removed fence sentinel,
+rather than reporting the requested value as completed. Fault handling is a host
+assertion, not a native device-removal comparison. Queue objects and pending
+completion state own their respective native/runtime lifetimes.
+
+This milestone does not execute COM command lists or shaders. GPU queue Wait and
+timestamps/clock calibration return E_NOTIMPL; command-list submission, tiled
+mappings and marker/event void methods abort with explicit diagnostics. Those
+unsupported paths are exercised separately from successful observations. The
+production D3D12CreateDevice and original application startup remain gated.
+
+```sh
+python3 tools/run_cpp_queue_fence.py --output local/cpp-queue-fence.json
+```
+
+The shared C++ probe observes CPU signals/rewinds, independent event thresholds,
+null-event waits, actual queued completion, queued rewind order and parent/pending
+submission lifetimes. Native WARP and Metal execute the same source through
+different device constructors; CI compares exact outputs from a clean identical
+revision. Local Metal execution alone is not native synchronization evidence or
+original C++ rendering.

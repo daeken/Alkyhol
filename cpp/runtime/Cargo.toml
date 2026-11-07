@@ -12,3 +12,4 @@ crate-type = ["staticlib", "rlib"]
 alkyhol = { path = "../..", features = ["cpp-metal-factory"] }
 metal = "=0.32.0"
 objc = "=0.2.7"
+block = "=0.1.6"
