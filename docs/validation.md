@@ -17,10 +17,14 @@ canonical observation SHA-256
 The strict comparator now requires this frozen input/binary/result identity and
 checks that retained raw streams really produce the compared observations.
 Raw listing order may differ; duplicates or any other changed bytes fail. A new
-negative protocol test brings Python coverage to 134 passing tests. The existing
-24-job conformance suite also passed on the process-service code `13ec88b` in
-[42385649755](https://github.com/daeken/Alkyhol/actions/runs/42385649755); report-only
-and strict-reference revisions are checked separately.
+negative protocol test brings Python coverage to 134 passing tests. All 27 jobs
+pass at `1ccfd87`: the PE run above and the 24-job
+[conformance run 42386144322](https://github.com/daeken/Alkyhol/actions/runs/42386144322).
+The strict frozen-reference [PE run 42386424722](https://github.com/daeken/Alkyhol/actions/runs/42386424722)
+then passes all three jobs on `9645f17`. Downloaded clean native/hosted reports
+and a clean physical M4 run at that same revision agree with the frozen native
+observations and exact upstream PE identity. Existing shader/graphics/COM/SDK
+comparisons remain intact; the stricter comparator changes no product runtime.
 
 The unmodified official w64devkit 2.11.0 x64 `pkg-config.exe` (u-config 0.35.0)
 executes under Rosetta through Alkyhol. Its 46,232 input bytes have SHA-256
@@ -39,11 +43,11 @@ whitelist to 34. The released code exposed undefined high stack-slot bits in an
 int32 template-handle argument; documented low-32-bit kernel-handle canonicalization
 fixes the actual file-open path without interpreting pointers as handles.
 
-Twenty-three PE Rust tests, ten portable arm64 PE tests, 78 root tests and 132
-Python tests pass locally; formatting/PE Clippy and the unchanged frozen original
-PE observer pass. Real PTY Unicode output is host unit evidence. Native Windows
-execution of the same released binary/corpus is pending the expanded PE workflow;
-finite host success is not yet native comparison or general Windows compatibility.
+Initial local validation passed twenty-three PE Rust tests, ten portable arm64
+PE tests, 78 root tests and 132 Python tests, plus formatting/PE Clippy and the
+unchanged frozen original PE observer. Subsequent protocol tests bring Python
+coverage to 134. Real PTY Unicode output is host unit evidence; released-binary
+native comparisons are recorded above and remain finite program-path evidence.
 Existing source/COM/Metal implementations and all original shaders/assets remain
 intact. The shared token allocator changes ownership plumbing, not object API
 semantics; it now reserves unique positive 32-bit-compatible tokens for companion
@@ -64,7 +68,8 @@ encoding. Its released program correctly echoed that unintended mojibake; Mac
 correctly echoed lambda/cherry-blossom. All corpus/report JSON now explicitly
 uses UTF-8; the unchanged corpus bytes and guest expectations are not weakened.
 A literal UTF-8 case-identity test guards this boundary (133 Python tests).
-Native execution must be repeated with the corrected input before claiming parity.
+The successful native rerun above uses the corrected input; no parity was
+claimed from the mojibake run.
 
 ## PE64 binary execution: first physical Rosetta milestone
 
