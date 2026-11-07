@@ -218,3 +218,86 @@ fn ffi_rejects_null_and_overlapped_without_fake_success() {
         assert_eq!(GetLastError(), ERROR_NOT_SUPPORTED);
     }
 }
+
+#[test]
+fn file_access_disposition_and_seek_boundaries() {
+    let k = Kernel::default();
+    let p = path();
+    for access in [0, 1, GENERIC_READ | 1] {
+        assert_eq!(
+            open(&k, &p, access, CREATE_NEW),
+            Err(WinError(ERROR_NOT_SUPPORTED))
+        );
+    }
+    for disposition in [0, 6, u32::MAX] {
+        assert_eq!(
+            open(&k, &p, GENERIC_WRITE, disposition),
+            Err(WinError(ERROR_INVALID_PARAMETER))
+        );
+    }
+    assert_eq!(
+        open(&k, &p, GENERIC_READ, CREATE_NEW),
+        Err(WinError(ERROR_NOT_SUPPORTED))
+    );
+    assert_eq!(
+        open(&k, &p, GENERIC_WRITE, TRUNCATE_EXISTING),
+        Err(WinError(ERROR_FILE_NOT_FOUND))
+    );
+    assert!(!p.exists());
+    let h = open(&k, &p, GENERIC_WRITE, CREATE_ALWAYS).unwrap();
+    assert_eq!(get_last_error(), 0);
+    assert_eq!(
+        k.read_file(h, &mut [0; 1]),
+        Err(WinError(ERROR_ACCESS_DENIED))
+    );
+    k.write_file(h, b"abcdef").unwrap();
+    k.flush_file(h).unwrap();
+    assert_eq!(k.seek(h, 1, 0).unwrap(), 1);
+    assert_eq!(
+        k.seek(h, i64::MAX, 1),
+        Err(WinError(ERROR_INVALID_PARAMETER))
+    );
+    assert_eq!(k.seek(h, 0, 99), Err(WinError(ERROR_INVALID_PARAMETER)));
+    assert_eq!(k.seek(h, 0, 1).unwrap(), 1);
+    k.close_handle(h).unwrap();
+    let h = open(&k, &p, GENERIC_WRITE, TRUNCATE_EXISTING).unwrap();
+    assert_eq!(k.file_size(h).unwrap(), 0);
+    k.close_handle(h).unwrap();
+    let h = open(&k, &p, GENERIC_READ, OPEN_EXISTING).unwrap();
+    assert_eq!(k.flush_file(h), Err(WinError(ERROR_ACCESS_DENIED)));
+    k.close_handle(h).unwrap();
+    std::fs::remove_file(p).unwrap();
+}
+
+#[test]
+fn all_file_methods_reject_event_handles() {
+    let k = Kernel::default();
+    let h = k.create_event(false, false);
+    assert_eq!(
+        k.read_file(h, &mut [0; 1]),
+        Err(WinError(ERROR_INVALID_HANDLE))
+    );
+    assert_eq!(k.write_file(h, b"a"), Err(WinError(ERROR_INVALID_HANDLE)));
+    assert_eq!(k.seek(h, 0, 0), Err(WinError(ERROR_INVALID_HANDLE)));
+    assert_eq!(k.set_end_of_file(h), Err(WinError(ERROR_INVALID_HANDLE)));
+    assert_eq!(k.flush_file(h), Err(WinError(ERROR_INVALID_HANDLE)));
+    k.close_handle(h).unwrap();
+}
+
+#[test]
+fn common_io_errors_and_unknown_errors_remain_errors() {
+    use std::io::ErrorKind;
+    for (kind, expected) in [
+        (ErrorKind::NotFound, ERROR_FILE_NOT_FOUND),
+        (ErrorKind::PermissionDenied, ERROR_ACCESS_DENIED),
+        (ErrorKind::AlreadyExists, ERROR_FILE_EXISTS),
+        (ErrorKind::InvalidInput, ERROR_INVALID_PARAMETER),
+        (ErrorKind::InvalidData, ERROR_INVALID_PARAMETER),
+        (ErrorKind::Other, ERROR_INVALID_FUNCTION),
+    ] {
+        assert_eq!(
+            WinError::from(std::io::Error::from(kind)),
+            WinError(expected)
+        );
+    }
+}
