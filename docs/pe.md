@@ -254,4 +254,10 @@ pointers or expecting Linux mincore error semantics is not the cleanup oracle.
 These host lifecycle assertions are distinct from the frozen Windows successful
 load/call/free observations; full Windows unload side-effect parity is unmeasured.
 The expanded PE workflow now compares actual Alkyhol DLL execution separately
-from static metadata. Native Windows comparison of this new runtime is pending CI.
+from static metadata. Native Windows, hosted Mac and clean physical M4 actual
+runtime records agree at `cf5be5e` (PE run 42391811360); all 27 jobs pass there.
+General module loading and unmeasured lifecycle effects remain separate.
+
+A [PE32 feasibility note](pe32.md) records the user's 32-bit question, primary
+WoW64/Rosetta sources and observed current 4-GiB page-zero reservation. It is
+research only; no Alkyhol 32-bit mode switch or runtime support is claimed.

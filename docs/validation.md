@@ -6,6 +6,15 @@ See the latest direct-Metal record for current implementation evidence.
 
 ## Isolated PE64 DLL execution: physical M4 milestone
 
+All 27 jobs now pass on `cf5be5e`: the three expanded
+[PE jobs](https://github.com/daeken/Alkyhol/actions/runs/42391811360) and all 24
+[conformance jobs](https://github.com/daeken/Alkyhol/actions/runs/42391811409).
+Downloaded clean native Windows and hosted Mac DLL execution reports, plus a
+fresh clean physical M4 run at that same revision, agree on the unchanged DLL,
+all six lookup records and all five frozen initialization/call/hole observations.
+Normal and forced-rebase Alkyhol executions agree. All previous executable,
+metadata-only, SDK/source/COM/Metal/shader comparisons remain intact.
+
 The explicit unsafe LoadedLibrary API now executes the unchanged owned DLL
 already measured/frozen on native Windows (SHA-256
 `423d6e191a3ebb4f4f5ce11710591edc9ebe163ece79bd35cc6fe5146d13399d`).
@@ -25,9 +34,8 @@ query and freed-pointer reads are not the unmap oracle. Image mappings now use
 64-KiB alignment with failure-safe trimming. All 17 portable arm64 tests, 139
 Python tests, PE formatting/Clippy and both unchanged executable observers pass.
 
-The new runtime observer is wired into the existing identical-DLL Windows
-workflow, but its live same-revision comparison is pending CI. Frozen Windows
-success observations and physical M4 execution are established; general Windows
+The live same-revision runtime comparison now passes as recorded above. This
+establishes finite DLL success-path evidence; general Windows
 module caching/refcounts, dependent DLLs, guest LoadLibrary/GetProcAddress APIs,
 threads, static TLS, SEH and full unload side-effect parity remain unimplemented
 or unmeasured. [Exact isolated-runtime contract](pe.md#isolated-trusted-dll-runtime).
