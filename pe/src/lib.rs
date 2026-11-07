@@ -14,6 +14,8 @@ mod function_tables;
 #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
 mod module_context;
 #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
+mod virtual_unwind;
+#[cfg(all(target_os = "macos", target_arch = "x86_64"))]
 pub use module_context::ModuleContext;
 #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
 mod process;

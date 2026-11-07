@@ -4,6 +4,35 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## Manual AMD64 body unwinding: initial physical evidence
+
+The new owned MIT PE SHA-256 is
+`01526ce4bd95eac7b9c868459b5ebe7177849e4f1c6688e9b0bf2ad7e3bd182e`.
+Physical M4/Rosetta development execution agrees on all 34 raw words in normal
+and forced-rebase runs. Three real active assembly frames supply captured fields
+and real saved stack values: small allocation/RBX/R12, scaled large allocation/RBP,
+and leaf. The test verifies restored caller RIP/RSP/registers, establisher frame,
+exact context flags and every other seeded CONTEXT byte. Actual execution returns
+normally; no exception is thrown, dispatched or resumed. Native Windows execution
+and SDK/MSVC layout checks are newly defined and still pending at this revision.
+
+The bounded RtlVirtualUnwind implementation supports v1 flags-zero/frame-zero
+recipes at NOP body control points, with PUSH_NONVOL, ALLOC_SMALL and both large
+allocation forms. Unscaled large allocations and all eight nonvolatile register
+forms have host assertions, not yet independent native coverage. Unsupported
+handlers, chaining, frame registers, XMM saves, prologue/epilogue control points,
+context-pointer outputs and unregistered entries fail explicitly. General unwind,
+RtlUnwindEx, static `.pdata` startup and exception dispatch remain unimplemented.
+No full CPU-context capture or game compatibility is claimed.
+
+All 68 PE host tests plus eight lifetime compiler checks pass under Rosetta;
+Clippy passes. The portable 19 tests and 202 Python tests pass. New host assertions
+cover opcode operands/bounds/overflow, preserved context bytes, real eight-argument
+Win64 calling convention and child-process failure status 78. The older function-
+table protocol's synthetic positive host header was corrected from seven to its
+actual ten imports, and is now positively decoded before comparison; production
+acceptance and its frozen inputs/native results are unchanged.
+
 ## Dynamic AMD64 function-table metadata: native Windows, hosted Mac and physical M4
 
 All 27 jobs pass at strict-reference revision `253685a`: three

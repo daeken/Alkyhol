@@ -35,3 +35,4 @@ pe/fixtures/linked-image/* text eol=lf
 pe/fixtures/dynamic-lookup/* text eol=lf
 pe/fixtures/generated-code/* text eol=lf
 pe/fixtures/function-tables/* text eol=lf
+pe/fixtures/virtual-unwind/* text eol=lf

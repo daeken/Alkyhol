@@ -150,6 +150,7 @@ pub(crate) fn resolve(module: &str, name: &str) -> Option<usize> {
         return shims::address(name)
             .or_else(|| crate::process::address(name))
             .or_else(|| crate::function_tables::address(name))
+            .or_else(|| crate::virtual_unwind::address(name))
             .or_else(|| crate::module_context::address(name));
     }
     if module.eq_ignore_ascii_case("d3dcompiler_47.dll") {
@@ -210,7 +211,8 @@ mod tests {
             assert!(resolve("kernel32.dll", name).is_some());
             assert!(resolve("vendor.dll", name).is_none());
         }
-        assert!(resolve("kernel32.dll", "RtlVirtualUnwind").is_none());
+        assert!(resolve("kernel32.dll", "RtlVirtualUnwind").is_some());
+        assert!(resolve("vendor.dll", "RtlVirtualUnwind").is_none());
         assert!(resolve("kernel32.dll", "RtlUnwindEx").is_none());
         assert!(resolve("kernel32.dll", "RtlInstallFunctionTableCallback").is_none());
         assert!(resolve("D3DCOMPILER_47.dll", "D3DCreateBlob").is_some());

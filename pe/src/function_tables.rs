@@ -113,6 +113,32 @@ impl Registry {
         }
         None
     }
+    pub(crate) fn selected(
+        &self,
+        pointer: *const RuntimeFunction,
+        base: u64,
+        pc: u64,
+    ) -> Option<RuntimeFunction> {
+        for table in &self.tables {
+            if table.base != base {
+                continue;
+            }
+            let Some(offset) = (pointer as usize).checked_sub(table.original) else {
+                continue;
+            };
+            let stride = std::mem::size_of::<RuntimeFunction>();
+            if !offset.is_multiple_of(stride) {
+                continue;
+            }
+            let Some(entry) = table.entries.get(offset / stride) else {
+                continue;
+            };
+            if pc >= base + u64::from(entry.begin) && pc < base + u64::from(entry.end) {
+                return Some(*entry);
+            }
+        }
+        None
+    }
 }
 unsafe extern "win64" fn RtlAddFunctionTable(
     table: *const RuntimeFunction,

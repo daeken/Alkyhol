@@ -1,0 +1,8 @@
+LIBRARY KERNEL32.dll
+EXPORTS
+    RtlAddFunctionTable
+    RtlDeleteFunctionTable
+    RtlVirtualUnwind
+    GetStdHandle
+    WriteFile
+    ExitProcess

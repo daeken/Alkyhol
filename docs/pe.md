@@ -96,7 +96,8 @@ DLL lookups and do not create fake builtin/main-image module handles.
 VirtualProtect, VirtualFree and FlushInstructionCache add bounded owned-allocation
 protection, release and generated-code execution (39 kernel32 names total).
 Explicit dynamic function-table registration/lookup/removal adds three Rtl names
-(42 kernel32 names total); this is metadata support, with unwinding still separate.
+(42 kernel32 names total). Bounded manual RtlVirtualUnwind adds the 43rd name;
+its supported frame/context contract is described below.
 
 The existing [restricted kernel contracts](contracts.md) still apply: for example,
 file sharing must be FILE_SHARE_READ|WRITE|DELETE, security/template/named objects
@@ -732,8 +733,8 @@ Unwind RVAs must be nonzero/DWORD-aligned; indirect entries and overlapping tabl
 envelopes fail explicitly. Records and code/unwind storage must stay valid and
 immutable until deletion. Registration snapshots metadata; it does not interpret
 or validate unwind recipe bytes, register Mach-O stack frames, unwind registers
-or dispatch Windows exceptions. RtlVirtualUnwind, RtlUnwindEx, callback/growable
-tables and static `.pdata` startup remain unavailable. Existing loader startup
+or dispatch Windows exceptions. Manual RtlVirtualUnwind support is described below;
+RtlUnwindEx, callback/growable tables and static `.pdata` startup remain unavailable. Existing loader startup
 gates are preserved. Guest threads/reentrant callbacks remain unsupported.
 
 Lookup currently requires a nonnull image-base output and NULL history pointer.
@@ -770,3 +771,49 @@ Primary contracts: [RtlAddFunctionTable](https://learn.microsoft.com/en-us/windo
 [RtlLookupFunctionEntry](https://learn.microsoft.com/en-us/windows/win32/api/winnt/nf-winnt-rtllookupfunctionentry),
 [RtlDeleteFunctionTable](https://learn.microsoft.com/en-us/windows/win32/api/winnt/nf-winnt-rtldeletefunctiontable)
 and [AMD64 function/unwind record layout](https://learn.microsoft.com/en-us/cpp/build/exception-handling-x64).
+
+
+## Bounded manual AMD64 frame unwinding
+
+RtlVirtualUnwind now restores caller fields in a supplied AMD64 CONTEXT for an
+explicitly registered dynamic entry. This is a manual metadata/stack operation;
+it does not resume execution, dispatch exceptions or implement throw/catch.
+The Win64 bridge accepts all eight real arguments, including four stack arguments.
+The finite contract requires HandlerType zero, NULL ContextPointers, a 16-byte
+aligned CONTEXT, valid caller-owned stack/recipe storage, and matching registered
+entry/base/control address. Only a NOP control point in the completed function
+body is accepted, so unsupported prologue/epilogue semantics fail explicitly.
+
+Version-1 flags-zero, frame-register-zero recipes support PUSH_NONVOL for the
+eight AMD64 nonvolatile integer registers, ALLOC_SMALL and both ALLOC_LARGE
+operand forms. Code offsets must descend within the prologue, allocations must
+precede register pops during restoration, and the complete stack frame is bounded
+to 512 MiB. Unknown operations, handlers, chaining, frame pointers, context-pointer
+outputs and other control points terminate with diagnostic/status 78. No missing
+operation returns a fake successful no-handler result. Static `.pdata`, XMM saves,
+RtlUnwindEx, SEH dispatch and actual stack resumption remain separate work.
+
+The implementation reads only required fields, plans restorations before changing
+CONTEXT, restores saved GPRs/RSP/RIP, and writes the original body RSP as the
+no-frame-register establisher frame. HandlerData is left untouched; its no-handler
+value has no native parity claim. Caller pointers are trusted native addresses,
+not a protected guest address space.
+
+```sh
+python3 tools/build_pe_virtual_unwind.py
+python3 tools/run_pe_virtual_unwind.py --fixture local/pe/virtual-unwind/virtual-unwind.exe --output local/pe/virtual-unwind-alkyhol.json
+```
+
+The owned unchanged probe manually captures required fields of three actual active
+Win64 assembly frames: RBX/R12 pushes plus a 40-byte allocation; RBP plus a 768-byte
+scaled large allocation; and a leaf. It independently reads saved stack values
+and the real return address, verifies caller-context restoration and preservation
+of unrelated seeded bytes, then returns normally through the original stack.
+This is not a full RtlCaptureContext implementation. The unscaled ALLOC_LARGE form
+has host tests only. Native Windows SDK layout assertions compile separately;
+Windows executes the identical PE rather than rebuilding it. Native results and
+frozen input identities are recorded in [validation](validation.md).
+
+Primary contracts: [RtlVirtualUnwind](https://learn.microsoft.com/en-us/windows/win32/api/winnt/nf-winnt-rtlvirtualunwind),
+[AMD64 CONTEXT](https://learn.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-context)
+and [AMD64 unwind operations](https://learn.microsoft.com/en-us/cpp/build/exception-handling-x64).

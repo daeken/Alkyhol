@@ -19,7 +19,7 @@ from compare_pe_function_tables import compare
 class FunctionTableProtocolTests(unittest.TestCase):
     def execution(self, windows=False):
         return subprocess.CompletedProcess([], 0, struct.pack('<37I', *EXPECTED_WORDS), b'' if windows else
-            b'PE64: 4 sections, 7 named imports, 1 DIR64 fixups\nentering Win64 code; relocated=true\n')
+            b'PE64: 4 sections, 10 named imports, 1 DIR64 fixups\nentering Win64 code; relocated=true\n')
 
     def reports(self):
         native = {'schema_version': 1, 'backend': NATIVE, 'tracked_tree_clean': True,
@@ -32,6 +32,7 @@ class FunctionTableProtocolTests(unittest.TestCase):
 
     def test_exact_original_record_lookup_lifecycle_and_resolved_code_results_match(self):
         reports = self.reports()
+        self.assertEqual(decode(self.execution(),rebase=True),reports[1]['normal'])
         self.assertEqual(compare(reports, reference=reports[0]), 37)
         self.assertEqual(EXPECTED_WORDS[10:13], [64,74,512])
         self.assertEqual(len({EXPECTED_WORDS[13],EXPECTED_WORDS[20],EXPECTED_WORDS[23]}),3)

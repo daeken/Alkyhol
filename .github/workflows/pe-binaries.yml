@@ -73,6 +73,20 @@ jobs:
         run: |
           python tools/build_pe_function_tables.py
           python tools/run_pe_function_tables.py --fixture local/pe/function-tables/function-tables.exe --output local/pe/function-tables-alkyhol.json
+      - name: Manually unwind captured fields of real active Win64 assembly frames
+        run: |
+          python tools/build_pe_virtual_unwind.py
+          python tools/run_pe_virtual_unwind.py --fixture local/pe/virtual-unwind/virtual-unwind.exe --output local/pe/virtual-unwind-alkyhol.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe-virtual-unwind-fixture
+          path: |
+            local/pe/virtual-unwind/virtual-unwind.exe
+            local/pe/virtual-unwind/virtual-unwind-fixture.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe-virtual-unwind-alkyhol
+          path: local/pe/virtual-unwind-alkyhol.json
       - uses: actions/upload-artifact@v4
         with:
           name: pe-function-tables-fixture
@@ -309,6 +323,21 @@ jobs:
           path: local/pe/function-tables
       - name: Observe actual Windows dynamic function metadata APIs using the identical PE
         run: python tools/run_pe_function_tables.py --fixture local/pe/function-tables/function-tables.exe --output local/pe/function-tables-windows.json
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe-virtual-unwind-fixture
+          path: local/pe/virtual-unwind
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - name: Assert actual native Windows SDK AMD64 context layouts with MSVC
+        run: cl /nologo /std:c++17 /W4 /WX /c pe/fixtures/virtual-unwind/sdk-layout.cpp /Folocal/pe/virtual-unwind/sdk-layout.obj
+      - name: Execute the identical PE against native Windows RtlVirtualUnwind
+        run: python tools/run_pe_virtual_unwind.py --fixture local/pe/virtual-unwind/virtual-unwind.exe --output local/pe/virtual-unwind-windows.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe-virtual-unwind-windows
+          path: local/pe/virtual-unwind-windows.json
       - uses: actions/upload-artifact@v4
         with:
           name: pe-function-tables-windows
@@ -485,3 +514,12 @@ jobs:
           name: pe-function-tables-windows
           path: local/pe/observations
       - run: python tools/compare_pe_function_tables.py local/pe/observations/function-tables-windows.json local/pe/observations/function-tables-alkyhol.json
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe-virtual-unwind-alkyhol
+          path: local/pe/observations
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe-virtual-unwind-windows
+          path: local/pe/observations
+      - run: python tools/compare_pe_virtual_unwind.py local/pe/observations/virtual-unwind-windows.json local/pe/observations/virtual-unwind-alkyhol.json
