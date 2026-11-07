@@ -4,7 +4,7 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
-## Same-container DXIL compute reference: local evidence
+## Same-container DXIL compute: native Windows and Metal evidence
 
 The physical Apple M4 ran the new `dxil-compute-v1` observation probe and matched
 all 96 independently expected words: 19 uint4 results and a 20-word untouched
@@ -15,9 +15,25 @@ actual backend identity are recorded by the runner. All 40 Python tests and shad
 formatting/Clippy pass locally; six new Python tests check validator/comparator
 and subprocess failures and are synthetic assertions, not native GPU evidence.
 
-An independent Windows SDK WARP probe and same-DXIL transfer/comparison jobs are
-now defined. They have not yet completed, so no native compute agreement is claimed
-in this record. Existing sample rendering paths and quality are unchanged.
+[Run 42347852341](https://github.com/daeken/Alkyhol/actions/runs/42347852341)
+passed all twelve jobs on revision `3d866ad`, including the new native compute and
+comparison jobs. An independent native MSVC/Windows SDK program used explicit
+D3D12 WARP, consumed the exact DXIL container produced by the hosted shader job,
+and matched all 96 words against both the independent scalar contract and
+translated Metal. The comparison requires matching container SHA-256, source
+revision and clean tracked trees. This is actual native compute evidence, separate
+from hosted Metal's lack of RT and the physical M4 observation above.
+
+Downloaded reports also agree with the physical M4 on the exact container hash:
+`e3084e25dfa23ef53e98eb1dd6eac386c3695718ac03d6631904b6711cc11d4e`.
+The executed native adapter was WARP vendor 5140/device 140/software flag 2;
+hosted Metal identified Apple Paravirtual device, while local Metal identified M4.
+
+The native reference links only Windows SDK D3D12/DXGI, with no Alkyhol library,
+shader rewrite or Windows-side recompilation. This finite arithmetic/binding/
+barrier probe does not establish general DXIL semantics, native full shaded DXR
+frames or game compatibility. Existing sample rendering paths and quality are
+unchanged.
 
 ## Original Sponza material/shadow/reflection HLSL: local evidence
 

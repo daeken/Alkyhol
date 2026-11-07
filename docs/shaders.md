@@ -92,7 +92,7 @@ On physical Apple M4, all 18 shader tests pass, including real compute/raster
 execution, fixed texture arrays with nonuniform per-lane indexing, the original
 81-texture material interface, original Sakura helper/budget contracts, original
 HelloTriangle interpolation, exact checker/copy pixels, malformed/unsupported
-DXIL, reflection, attachment contracts and CLI failures. All 34 Python tests
+DXIL, reflection, attachment contracts and CLI failures. All 40 Python tests
 pass, including original-source hashes and exact extraction. Formatting, Clippy
 and checked-in artifact regeneration also pass. Physical full-scene tests are
 recorded separately in [executed validation](validation.md).
@@ -101,9 +101,10 @@ The checker expectation and independent Windows SDK D3D12 reference are unchange
 Colour interpolation permits one UNORM8 code; compute words, sampled texture-array
 colours, checker bytes and sentinel tails are exact. Hosted Metal repeats compute/
 raster tests but lacks RT; physical RT interface tests are explicitly ignored
-there. Native Windows DXIL compute/full shaded DXR frame comparisons remain
-unmeasured. Existing portable Win32/native SDK, MSVC geometry/placement and checker
-comparisons continue through the conformance workflow.
+there. Native Windows DXIL compute has the finite same-container evidence below;
+full shaded DXR frame comparison remains unmeasured. Existing portable Win32/native
+SDK, MSVC geometry/placement and checker comparisons continue through the
+conformance workflow.
 
 ## Identical-DXIL native compute reference
 
@@ -126,7 +127,10 @@ python tools/run_shader_compute.py --dxil compute.dxil --output shader-compute.j
 ```
 
 The conformance workflow now transfers that DXIL from the shader job to a native
-Windows job, then compares all 96 words, including 20 sentinel words. The physical
-M4 probe passed locally; the new native result is pending until the CI jobs
-actually execute. Full shaded DXR frame comparison is outside this finite compute
-contract. Synthetic validator/process-failure tests do not count as GPU evidence.
+Windows job, then compares all 96 words, including 20 sentinel words. Physical M4
+passed the probe locally. Native Windows WARP and hosted Metal
+then agreed on all 96 words from identical DXIL in
+[CI 42347852341](https://github.com/daeken/Alkyhol/actions/runs/42347852341)
+on `3d866ad`; all twelve jobs passed. Full shaded DXR frame comparison is outside
+this finite compute contract. Synthetic validator/process-failure tests do not
+count as GPU evidence.

@@ -37,3 +37,10 @@ files and extracts exact function bodies for a bounded two-level SER-off adapter
 Microsoft MIT and Pablo Roman Andrioli Star Nest notices accompany the source.
 This specialization uses open inline-query compilation, not Apple's proprietary
 converter or an ignored SER hint.
+
+`examples/compute_contract.rs` and `reference/dxil_compute.cpp` are original
+Alkyhol MIT-licensed observation probes for the unchanged `compute.hlsl` fixture.
+The Windows SDK program consumes the same DXIL bytes as the Metal translator;
+it neither links Alkyhol nor recompiles the shader. Source/executable/container
+identities accompany each measurement. This reference adds no proprietary shader
+converter dependency.
