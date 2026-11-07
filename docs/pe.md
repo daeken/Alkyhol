@@ -695,6 +695,12 @@ python3 tools/run_pe_generated_code.py --fixture local/pe/generated-code/generat
 ```
 
 Physical M4/Rosetta normally and forcibly rebased executes all 29 raw words.
+All three PE jobs pass on `2444dd5`
+([run](https://github.com/daeken/Alkyhol/actions/runs/42410651433)); clean native/
+hosted reports and fresh clean physical M4 execution at that same revision agree
+on the identical executed PE/source identity and all raw observations. The full
+native record is frozen at `pe/reference/generated-code-windows-v1.json` and
+required by default, including its exact input identity.
 Host-only child tests independently observe faults for write-to-RX, execute-from-
 RW, read-from-NOACCESS and write-to-READONLY, and query the actual Mach VM map to
 verify release without dereferencing freed storage. Native results and exact

@@ -4,7 +4,17 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
-## Guest-generated code and memory permissions: physical M4, native run pending
+## Guest-generated code and memory permissions: native Windows, hosted Mac and physical M4
+
+All three [PE jobs](https://github.com/daeken/Alkyhol/actions/runs/42410651433)
+pass on `2444dd5`. Downloaded clean native Windows/hosted Mac records and clean
+physical M4 execution at that same revision agree on the exact PE/source/input
+identity and all 29 raw DWORDs, including both actual generated-code results.
+Normal and forced-rebase host observations agree. The complete native report is
+frozen at `pe/reference/generated-code-windows-v1.json`; drivers and comparisons
+require its exact input/results by default. A missing-reference/joint-drift
+negative brings the Python suite to 191. Full strict conformance CI remains to
+be recorded separately.
 
 VirtualProtect/VirtualFree/FlushInstructionCache now perform real protection,
 release and platform cache operations for the process context's bounded owned
@@ -19,11 +29,11 @@ Physical M4/Rosetta normal and forced-rebase runs agree on all 29 raw DWORDs,
 including both actual results from emitted/rewritten Win64 instructions,
 neighbor-page data, cross-page protection rounding/old values, no-access recovery
 and successful release. The Mach-O's extracted PE payload equals the exact input.
-The identical PE is transferred to Windows for independent OS API execution;
-that new native comparison is pending.
+The identical PE is transferred to Windows for independent OS API execution,
+and that native comparison agrees as recorded above.
 
 All 60 PE host tests, eight lifetime compiler checks, 19 portable arm64 tests,
-190 Python tests and PE Clippy pass locally. Three new host units exercise
+191 Python tests and PE Clippy pass locally. Three new host units exercise
 actual generated Win64 code, mixed per-page changes and release; preserve outputs/
 ownership on rejected inputs; and use isolated children to measure write-RX,
 execute-RW, read-NOACCESS and write-READONLY faults. A child queries the actual

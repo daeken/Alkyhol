@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "backend": "native Windows PE64 generated code",
+  "pe_sha256": "a138926f31fad3b21b07eb8cdb7bfca097ebdfcc8745055397e543054ee1d0b5",
+  "executed_pe_sha256": "a138926f31fad3b21b07eb8cdb7bfca097ebdfcc8745055397e543054ee1d0b5",
+  "sources": {
+    "pe/fixtures/generated-code/contract.c": "4e3f92c3dd09b96eb36a447d4e3ac89ff0d38fed3563603634edc7fa0b69ccb4",
+    "pe/fixtures/generated-code/kernel32.def": "271802b8895a86edbe7ccfbf06c2cf608ce6496bba732e6ec8cb298410a871b7"
+  },
+  "normal": {
+    "status": 0,
+    "words": [
+      1246319696,
+      1,
+      1,
+      1,
+      1,
+      4,
+      1,
+      1420321414,
+      107,
+      1,
+      32,
+      1,
+      4,
+      1,
+      3147230170,
+      1,
+      32,
+      1,
+      2,
+      1,
+      2,
+      107,
+      165,
+      1,
+      4,
+      1,
+      1,
+      165,
+      1
+    ],
+    "stdout_hex": "5054494a0100000001000000010000000100000004000000010000008662a8546b0000000100000020000000010000000400000001000000daeb96bb0100000020000000010000000200000001000000020000006b000000a500000001000000040000000100000001000000a500000001000000"
+  },
+  "rebased": null,
+  "revision": "2444dd5af71f197271ecbbc97e2e7801aff90921",
+  "tracked_tree_clean": true
+}
