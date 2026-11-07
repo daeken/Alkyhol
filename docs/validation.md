@@ -6,6 +6,17 @@ See the latest direct-Metal record for current implementation evidence.
 
 ## Integer/vector stack-slot unwinding: native Windows, hosted Mac and physical M4
 
+All 27 CI jobs pass at strict-reference revision `9a4bc97`: three
+[PE jobs](https://github.com/daeken/Alkyhol/actions/runs/42416821128) and all 24
+[conformance jobs](https://github.com/daeken/Alkyhol/actions/runs/42416821230).
+Downloaded clean Windows/hosted records and fresh clean physical M4/Rosetta
+execution at that same revision match the identical executed PE/source identity
+and all 37 raw DWORDs. Both normal and forced-rebase host executions pass. The
+71 PE host tests/eight lifetime compiler checks, 19 portable tests, 209 Python
+tests and Clippy pass. All older frozen binary and native SDK/source/COM/shader/
+Metal comparisons remain intact; these are finite manual-restoration observations,
+not exception dispatch, full CPU-state capture or game compatibility.
+
 The new owned unchanged PE SHA-256 is
 `5b3835f6a641536355a7f6b68af588a53630aa95017612e0c6b646930ec3e8b2`.
 Physical M4/Rosetta development executions match all 37 raw words in normal and
@@ -24,7 +35,9 @@ and all 37 words. This independently covers RBX/R12 and XMM6/XMM15 near/far save
 and unscaled ALLOC_LARGE; other supported registers have host assertions only.
 The complete native record is frozen at `pe/reference/unwind-saves-windows-v1.json`;
 drivers and comparisons now require its exact inputs/results by default. A
-missing-reference/joint-drift protocol guard brings the Python suite to 209.
+missing-reference/joint-drift protocol guard brings the Python suite to 209. Initial
+`8b67924` also passes all 27 jobs, including all 24 conformance jobs in
+[42416493864](https://github.com/daeken/Alkyhol/actions/runs/42416493864).
 
 SAVE_NONVOL, SAVE_NONVOL_FAR, SAVE_XMM128 and SAVE_XMM128_FAR now extend the bounded
 NOP-body, flags-zero, frame-register-zero manual unwinder. All eight nonvolatile

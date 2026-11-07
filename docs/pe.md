@@ -862,3 +862,8 @@ Native Windows, hosted Mac and physical M4 agree on all 37 raw words at `8b67924
 The actual native record at `pe/reference/unwind-saves-windows-v1.json` is frozen
 and required by default; native cases exercise RBX/R12 and XMM6/XMM15. The remaining
 supported register numbers have host tests, not independent native observations.
+
+Strict-reference revision `9a4bc97` passes all 27 CI jobs. Downloaded clean native/
+hosted records and fresh clean physical M4 execution at that same revision agree
+on all 37 words and the frozen executed PE/source identity. See the executed
+[validation record](validation.md) for CI links, counts and precise coverage.
