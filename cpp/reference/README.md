@@ -16,7 +16,8 @@ Important measured distinctions for the upcoming Rust object implementation:
 - Null interface assignment remains a present pointer-sized entry, not removal.
 - Getting a stored interface acquires a reference; replacement and object destruction
   release retained references. Same-pointer assignment still calls AddRef/Release.
-- SetName stores UTF-16 debug-name bytes including NUL, even for an empty name.
+- SetName stores UTF-16 debug-name bytes including NUL; an empty name has a
+  measured entry size of two bytes. Its post-clear contents were not read back.
 
 This is finite evidence on this SDK/runtime, not all COM behavior. Callback
 reentrancy, concurrent setters/getters, allocation failures, invalid pointers,

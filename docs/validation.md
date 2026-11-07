@@ -21,7 +21,8 @@ for non-null zero-length data, and a present pointer-sized entry for a null
 interface assignment. Size queries do not AddRef; successful interface reads do.
 Insufficient buffers remain unchanged, same-interface replacement performs both
 reference calls, and final object destruction releases the retained IUnknown.
-SetName preserves UTF-16 bytes including a terminator, including empty names.
+SetName preserves UTF-16 bytes including a terminator; an empty name has a
+two-byte measured entry size.
 These observations are frozen separately from a future Rust implementation;
 subsequent native runs must match all records and the unchanged observer source.
 See [reference contract](../cpp/reference/README.md) for the full report and limits.
