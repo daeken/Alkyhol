@@ -1,0 +1,12 @@
+prefix=/alkyhol/sdk
+libdir=${prefix}/lib
+includedir=${prefix}/include
+token=default
+Name: Alkyhol Demo
+Description: dependent package fixture
+Version: 2.4.0
+Requires: alkyhol-base >= 1.2.0
+Requires.private: alkyhol-private
+Libs: -L${libdir} -ldemo
+Libs.private: -lm
+Cflags: -I${includedir}/demo -DDEMO=1

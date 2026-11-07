@@ -1,0 +1,8 @@
+prefix=/alkyhol/sdk
+libdir=${prefix}/lib
+includedir=${prefix}/include
+Name: Alkyhol Base
+Description: base dependency fixture
+Version: 1.2.3
+Libs: -L${libdir} -lbase
+Cflags: -I${includedir}/base -DBASE=1

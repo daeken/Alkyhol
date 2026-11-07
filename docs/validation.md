@@ -4,6 +4,35 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## Off-the-shelf PE64: released Windows u-config on physical M4
+
+The unmodified official w64devkit 2.11.0 x64 `pkg-config.exe` (u-config 0.35.0)
+executes under Rosetta through Alkyhol. Its 46,232 input bytes have SHA-256
+`390f6c01b87cd8c71d3b5aa6cabd1cb63539ba6204972d920347f2376ef4debc`;
+the actual extracted Mach-O payload agrees. Archive, matching source and public-
+domain license are independently pinned; [provenance and bounded contracts](u-config.md)
+record the release/recipe. No source port, rebuild, patch, alternate implementation
+or relaxed exception/TLS/load-config startup gate is used.
+
+Eleven package/CLI cases pass on physical M4, both normally and with forced
+rebasing: real dependency/static flags, version predicates, missing-package errors,
+quoted Unicode/empty values, directory listing and validation. All status/stdout/
+stderr bytes are checked; only unspecified enumeration order is normalized by
+whole lines, with raw output retained. Ten new process-service bridges bring the
+whitelist to 34. The released code exposed undefined high stack-slot bits in an
+int32 template-handle argument; documented low-32-bit kernel-handle canonicalization
+fixes the actual file-open path without interpreting pointers as handles.
+
+Twenty-three PE Rust tests, ten portable arm64 PE tests, 78 root tests and 132
+Python tests pass locally; formatting/PE Clippy and the unchanged frozen original
+PE observer pass. Real PTY Unicode output is host unit evidence. Native Windows
+execution of the same released binary/corpus is pending the expanded PE workflow;
+finite host success is not yet native comparison or general Windows compatibility.
+Existing source/COM/Metal implementations and all original shaders/assets remain
+intact. The shared token allocator changes ownership plumbing, not object API
+semantics; it now reserves unique positive 32-bit-compatible tokens for companion
+streams/searches as well as kernel objects.
+
 ## PE64 binary execution: first physical Rosetta milestone
 
 The strict-reference revision `14c009d` passes all 27 CI jobs: the three

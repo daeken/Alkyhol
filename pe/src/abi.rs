@@ -5,11 +5,25 @@
 use alkyhol::ffi;
 use std::ffi::c_void;
 
+// Kernel handles have only 32 significant bits across Win32/Win64. In
+// particular, upstream u-config declares CreateFileW's template as int32, so the
+// unused upper stack-slot bytes are not initialized by its released executable.
+pub(crate) fn kernel_handle(h: usize) -> usize {
+    h as u32 as i32 as isize as usize
+}
+macro_rules! argument {
+    (h, $value:expr) => {
+        kernel_handle($value)
+    };
+    ($other:ident, $value:expr) => {
+        $value
+    };
+}
 macro_rules! bridge {
     ($name:ident($($arg:ident: $ty:ty),* $(,)?) -> $ret:ty) => {
         unsafe extern "win64" fn $name($($arg: $ty),*) -> $ret {
             // SAFETY: same pointee/width contract; compiler performs the ABI bridge.
-            unsafe { ffi::$name($($arg),*) }
+            unsafe { ffi::$name($(argument!($arg, $arg)),*) }
         }
     };
 }
@@ -22,41 +36,50 @@ mod shims {
     // Windows -1/-2 are current-process/current-thread pseudo-handles. Closing
     // them has no effect; do not send those identities to the owned-handle table.
     unsafe extern "win64" fn CloseHandle(h: usize) -> i32 {
+        let h = kernel_handle(h);
         if h == usize::MAX || h == usize::MAX - 1 {
             1
         } else {
-            ffi::CloseHandle(h)
+            crate::process::close_stream(h).unwrap_or_else(|| ffi::CloseHandle(h))
         }
     }
-    bridge!(
-        CreateFileW(
-            name: *const u16,
-            access: u32,
-            share: u32,
-            security: *const c_void,
-            disposition: u32,
-            flags: u32,
-            template: usize,
-        ) -> usize
-    );
-    bridge!(
-        ReadFile(
-            h: usize,
-            buffer: *mut c_void,
-            count: u32,
-            transferred: *mut u32,
-            overlapped: *mut c_void,
-        ) -> i32
-    );
-    bridge!(
-        WriteFile(
-            h: usize,
-            buffer: *const c_void,
-            count: u32,
-            transferred: *mut u32,
-            overlapped: *mut c_void,
-        ) -> i32
-    );
+    unsafe extern "win64" fn CreateFileW(
+        name: *const u16,
+        access: u32,
+        share: u32,
+        security: *const c_void,
+        disposition: u32,
+        flags: u32,
+        template: usize,
+    ) -> usize {
+        unsafe {
+            crate::process::create_file(name, access, share, security, disposition, flags, template)
+        }
+    }
+    unsafe extern "win64" fn ReadFile(
+        h: usize,
+        buffer: *mut c_void,
+        count: u32,
+        transferred: *mut u32,
+        overlapped: *mut c_void,
+    ) -> i32 {
+        let h = kernel_handle(h);
+        unsafe { crate::process::stream_io(h, buffer, count, transferred, overlapped, false) }
+            .unwrap_or_else(|| unsafe { ffi::ReadFile(h, buffer, count, transferred, overlapped) })
+    }
+    unsafe extern "win64" fn WriteFile(
+        h: usize,
+        buffer: *const c_void,
+        count: u32,
+        transferred: *mut u32,
+        overlapped: *mut c_void,
+    ) -> i32 {
+        let h = kernel_handle(h);
+        unsafe {
+            crate::process::stream_io(h, buffer.cast_mut(), count, transferred, overlapped, true)
+        }
+        .unwrap_or_else(|| unsafe { ffi::WriteFile(h, buffer, count, transferred, overlapped) })
+    }
     bridge!(GetFileSizeEx(h: usize, size: *mut i64) -> i32);
     bridge!(SetFilePointerEx(h: usize, distance: i64, position: *mut i64, method: u32) -> i32);
     bridge!(SetEndOfFile(h: usize) -> i32);
@@ -127,12 +150,20 @@ pub(crate) fn resolve(module: &str, name: &str) -> Option<usize> {
     if !module.eq_ignore_ascii_case("kernel32.dll") {
         return None;
     }
-    shims::address(name)
+    shims::address(name).or_else(|| crate::process::address(name))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn kernel_handle_upper_bits_are_not_pointer_bits() {
+        assert_eq!(kernel_handle(0x1234567800000000), 0);
+        assert_eq!(kernel_handle(0x1234567800000042), 0x42);
+        assert_eq!(kernel_handle(0x12345678ffffffff), usize::MAX);
+        assert_eq!(kernel_handle(0x12345678fffffffe), usize::MAX - 1);
+    }
+
     #[test]
     fn pseudo_close_has_no_effect_and_null_still_fails() {
         let close: unsafe extern "win64" fn(usize) -> i32 =

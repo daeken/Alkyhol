@@ -3,12 +3,17 @@
 A Windows compatibility layer in Rust, with a D3D12-shaped graphics subset using
 direct Metal from Rust. Source compatibility supports portable Win32 programs and
 recompiled/decompiled application code. A first [binary execution path](docs/pe.md)
-also runs unchanged, bounded Windows PE64 fixtures through Win64 ABI bridges in an
+also runs unchanged Windows PE64 programs through Win64 ABI bridges in an
 x86-64 Mach-O host under Rosetta.
 
 This is an early implementation, not a Wine replacement or a claim that Cyberpunk
 2077 runs. Source callers use the host ABI; PE callers use explicit binary ABI
 bridges and checked image mappings. General Windows process startup is incomplete.
+
+The first [off-the-shelf Windows program](docs/u-config.md) is the released
+u-config/pkg-config executable from w64devkit. Its original machine code handles
+package queries, dependency flags, directory listing and quoted Unicode arguments
+through Alkyhol under Rosetta.
 
 ## Evidence first
 

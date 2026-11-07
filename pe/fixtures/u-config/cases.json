@@ -1,0 +1,133 @@
+{
+  "schema_version": 1,
+  "environment": {
+    "PKG_CONFIG_LIBDIR": "pc space λ🌸"
+  },
+  "cases": [
+    {
+      "id": "version",
+      "args": [
+        "--version"
+      ],
+      "status": 0,
+      "stdout": "0.35.0\n",
+      "stderr": "",
+      "stdout_order": "exact"
+    },
+    {
+      "id": "dependency-flags",
+      "args": [
+        "--dont-define-prefix",
+        "--cflags",
+        "--libs",
+        "alkyhol-demo"
+      ],
+      "status": 0,
+      "stdout": "-I/alkyhol/sdk/include/demo -DDEMO=1 -I/alkyhol/sdk/include/base -DBASE=1 -L/alkyhol/sdk/lib -ldemo -lbase\n",
+      "stderr": "",
+      "stdout_order": "exact"
+    },
+    {
+      "id": "static-private-dependencies",
+      "args": [
+        "--dont-define-prefix",
+        "--static",
+        "--libs",
+        "alkyhol-demo"
+      ],
+      "status": 0,
+      "stdout": "-L/alkyhol/sdk/lib -ldemo -lm -lbase -lprivate\n",
+      "stderr": "",
+      "stdout_order": "exact"
+    },
+    {
+      "id": "module-version",
+      "args": [
+        "--modversion",
+        "alkyhol-demo"
+      ],
+      "status": 0,
+      "stdout": "2.4.0\n",
+      "stderr": "",
+      "stdout_order": "exact"
+    },
+    {
+      "id": "quoted-unicode-variable",
+      "args": [
+        "--define-variable=token=λ🌸 quoted \"value\" tail\\",
+        "--variable=token",
+        "alkyhol-demo"
+      ],
+      "status": 0,
+      "stdout": "λ🌸 quoted \"value\" tail\\\n",
+      "stderr": "",
+      "stdout_order": "exact"
+    },
+    {
+      "id": "empty-variable",
+      "args": [
+        "--define-variable=token=",
+        "--variable=token",
+        "alkyhol-demo"
+      ],
+      "status": 0,
+      "stdout": "\n",
+      "stderr": "",
+      "stdout_order": "exact"
+    },
+    {
+      "id": "version-requirement-success",
+      "args": [
+        "--exists",
+        "alkyhol-base >= 1.2.0"
+      ],
+      "status": 0,
+      "stdout": "",
+      "stderr": "",
+      "stdout_order": "exact"
+    },
+    {
+      "id": "version-requirement-failure",
+      "args": [
+        "--exists",
+        "alkyhol-base >= 9"
+      ],
+      "status": 1,
+      "stdout": "",
+      "stderr": "",
+      "stdout_order": "exact"
+    },
+    {
+      "id": "missing-package",
+      "args": [
+        "--modversion",
+        "absent-package"
+      ],
+      "status": 1,
+      "stdout": "",
+      "stderr": "pkg-config: could not find package 'absent-package'\n",
+      "stdout_order": "exact"
+    },
+    {
+      "id": "listing",
+      "args": [
+        "--list-package-names"
+      ],
+      "status": 0,
+      "stdout": "alkyhol-base\nalkyhol-demo\nalkyhol-private\n",
+      "stderr": "",
+      "stdout_order": "unordered-lines"
+    },
+    {
+      "id": "validate",
+      "args": [
+        "--validate",
+        "alkyhol-demo"
+      ],
+      "status": 0,
+      "stdout": "",
+      "stderr": "",
+      "stdout_order": "exact"
+    }
+  ]
+}

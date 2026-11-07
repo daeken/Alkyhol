@@ -42,8 +42,10 @@ Packaging embeds an unchanged snapshot in read-only `__ALKYHOL,__pefile`, extrac
 that section from the finished Mach-O to verify its exact SHA-256 against the
 input snapshot, and writes an adjacent identity report. Packaging alone is not validation or execution.
 `--inspect` checks startup/import support and creates/destroys a checked mapping
-without entering guest code. Missing support exits 78. Runtime arguments currently
-belong to the host: there is no Windows command line/environment/PEB yet.
+without entering guest code. Missing support exits 78. Guest arguments follow
+`--`; command line, environment and inherited streams now have a bounded process
+view. No Windows PEB/TEB is installed. The first [released off-the-shelf program,
+u-config](u-config.md), runs unchanged with real package queries.
 
 ## Image and ABI contract
 
@@ -68,7 +70,8 @@ adapters are not used. Current mapped guest addresses are actual native virtual
 addresses in this deliberately shared process. This is not a pointer conversion
 scheme for another address space and is not a memory safety sandbox.
 
-The 24 bridged imports are all executed by the PE fixture:
+The original PE fixture exercises these 24 bridges; the [released u-config
+program](u-config.md) adds ten process-service names (34 explicit names total):
 
 | Area | Imports |
 | --- | --- |
@@ -119,7 +122,7 @@ output. See [validation](validation.md) for executed revisions and CI results.
 
 Static TLS/callbacks, unwind/SEH, CFG/load config, delay/bound/ordinal imports,
 DLL startup/loading, CLR, dynamic lookup, guest threads/callbacks, COM vtable ABI
-bridges, process environment and Windows CRT startup are not implemented in this
+bridges, general Windows process structures and Windows CRT startup are not implemented in this
 binary path. Unsupported metadata or imports fail before entry; unrecognized
 instructions are **not** statically detected. Trusted code must not issue Windows
 syscalls or access GS/TEB/PEB, throw exceptions or retain pointers after unmapping.

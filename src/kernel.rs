@@ -197,14 +197,21 @@ pub struct Kernel {
 }
 // Global token allocation prevents accidental handle aliasing between Kernel instances.
 static NEXT_HANDLE: AtomicUsize = AtomicUsize::new(1);
+/// Reserve a unique process-local token for a companion compatibility subsystem.
+/// No kernel object is created: the owning subsystem must validate its own token
+/// type/lifetime. Sharing this allocator prevents aliases with kernel handles.
+#[allow(deprecated)]
+pub fn reserve_handle_token() -> WinResult<Handle> {
+    NEXT_HANDLE
+        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| {
+            n.checked_add(1).filter(|v| *v < i32::MAX as usize)
+        })
+        .map_err(|_| WinError(ERROR_NOT_ENOUGH_MEMORY))
+}
 impl Kernel {
     #[allow(deprecated)] // fetch_update remains available on older Rust releases.
     fn insert(&self, object: Object) -> Handle {
-        let handle = NEXT_HANDLE
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| {
-                n.checked_add(1).filter(|v| *v != INVALID_HANDLE_VALUE)
-            })
-            .expect("handle namespace exhausted");
+        let handle = reserve_handle_token().expect("handle namespace exhausted");
         self.objects
             .lock()
             .unwrap()

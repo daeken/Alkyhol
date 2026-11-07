@@ -46,16 +46,36 @@ fn embedded_pe() -> &'static [u8] {
     panic!("missing embedded PE payload")
 }
 fn main() {
-    let args: Vec<_> = std::env::args().skip(1).collect();
+    let raw: Vec<_> = std::env::args().skip(1).collect();
+    let split = raw.iter().position(|a| a == "--").unwrap_or(raw.len());
+    let args = &raw[..split];
     if args
         .iter()
         .any(|a| !["--inspect", "--rebase"].contains(&a.as_str()))
     {
-        eprintln!("usage: translated-program [--inspect] [--rebase]");
+        eprintln!("usage: translated-program [--inspect] [--rebase] [-- guest-arguments...]");
         process::exit(64);
     }
+    let mut guest_args = vec![
+        std::env::current_exe()
+            .expect("host executable path")
+            .to_string_lossy()
+            .into_owned(),
+    ];
+    guest_args.extend(raw.iter().skip(split + 1).cloned());
     let bytes = embedded_pe();
     let result = (|| -> alkyhol_pe::Result<()> {
+        let environment = std::env::vars_os()
+            .map(|(k, v)| {
+                Ok((
+                    k.into_string()
+                        .map_err(|_| "non-Unicode host environment key")?,
+                    v.into_string()
+                        .map_err(|_| "non-Unicode host environment value")?,
+                ))
+            })
+            .collect::<alkyhol_pe::Result<Vec<_>>>()?;
+        let _process = alkyhol_pe::ProcessContext::install(&guest_args, &environment)?;
         let image = alkyhol_pe::Image::parse(bytes)?;
         image.check_startup()?;
         let imports = image.imports()?;
@@ -75,7 +95,7 @@ fn main() {
         }
         let mapped = alkyhol_pe::LoadedImage::load(bytes, args.iter().any(|a| a == "--rebase"))?;
         eprintln!("entering Win64 code; relocated={}", mapped.relocated());
-        // SAFETY: user explicitly requested execution of this trusted fixture.
+        // SAFETY: user explicitly requested execution of this trusted PE program.
         let status = unsafe { mapped.enter() };
         if status > 255 {
             return Err(format!("unsupported Windows exit status {status:#x}"));

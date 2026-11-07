@@ -21,3 +21,5 @@ shader/tests/fixtures/compute.hlsl text eol=lf
 
 # One PE fixture is built on macOS and executed unchanged on Windows.
 pe/fixtures/* text eol=lf
+# Cross-host inputs for unchanged public u-config binary execution.
+pe/fixtures/u-config/** text eol=lf

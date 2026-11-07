@@ -339,3 +339,19 @@ fn retained_event_notifications_validate_kind_keep_identity_and_preserve_reset_m
     // The retained reference can still be used from another thread after close.
     std::thread::spawn(move || a.signal()).join().unwrap();
 }
+
+#[test]
+fn companion_handle_reservations_never_alias_kernel_objects() {
+    let a = Kernel::default();
+    let first = reserve_handle_token().unwrap();
+    let event = a.create_event(false, false);
+    let second = reserve_handle_token().unwrap();
+    assert_ne!(first, event);
+    assert_ne!(second, event);
+    assert_ne!(first, second);
+    assert_eq!(a.close_handle(first), Err(WinError(ERROR_INVALID_HANDLE)));
+    assert_eq!(a.close_handle(second), Err(WinError(ERROR_INVALID_HANDLE)));
+    a.set_event(event).unwrap();
+    assert_eq!(a.wait(event, 0).unwrap(), WAIT_OBJECT_0);
+    a.close_handle(event).unwrap();
+}

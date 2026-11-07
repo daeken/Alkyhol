@@ -23,6 +23,22 @@ jobs:
         run: python tools/build_pe_fixture.py
       - name: Execute unchanged PE machine code through Win64 bridges
         run: python tools/run_pe_probe.py --fixture local/pe/fixture/contract.exe --output local/pe/alkyhol.json
+      - name: Fetch verified released Windows pkg-config without rebuilding it
+        run: python tools/fetch_uconfig_binary.py
+      - name: Execute real released PE package queries, listing and quoted Unicode arguments
+        run: python tools/run_uconfig_binary.py --binary local/pe/u-config/pkg-config.exe --output local/pe/u-config-alkyhol.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: u-config-release
+          path: |
+            local/pe/u-config/pkg-config.exe
+            local/pe/u-config/pkg-config.c
+            local/pe/u-config/UNLICENSE
+            local/pe/u-config/provenance.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: u-config-alkyhol
+          path: local/pe/u-config-alkyhol.json
       - uses: actions/upload-artifact@v4
         with:
           name: pe-fixture
@@ -51,6 +67,16 @@ jobs:
         with:
           name: pe-windows
           path: local/pe/windows.json
+      - uses: actions/download-artifact@v4
+        with:
+          name: u-config-release
+          path: local/pe/u-config
+      - name: Execute the identical upstream released PE using native Windows
+        run: python tools/run_uconfig_binary.py --binary local/pe/u-config/pkg-config.exe --output local/pe/u-config-windows.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: u-config-windows
+          path: local/pe/u-config-windows.json
   compare-pe:
     needs: [alkyhol-pe, native-windows-pe]
     runs-on: ubuntu-latest
@@ -70,3 +96,12 @@ jobs:
           name: pe-windows
           path: local/pe/observations
       - run: python tools/compare_pe_probe.py local/pe/observations/windows.json local/pe/observations/alkyhol.json
+      - uses: actions/download-artifact@v4
+        with:
+          name: u-config-alkyhol
+          path: local/pe/observations
+      - uses: actions/download-artifact@v4
+        with:
+          name: u-config-windows
+          path: local/pe/observations
+      - run: python tools/compare_uconfig_binary.py local/pe/observations/u-config-windows.json local/pe/observations/u-config-alkyhol.json

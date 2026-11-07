@@ -1,0 +1,5 @@
+prefix=/alkyhol/sdk
+Name: Alkyhol Private
+Description: static dependency fixture
+Version: 0.7.0
+Libs: -lprivate
