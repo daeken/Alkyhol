@@ -32,6 +32,8 @@ calculation have dependency-free tests in the root crate.
 Whole-resource copying supports distinct same-device RGBA8 2D textures with
 identical width/height, one mip and one sample. Source must be CopySource and
 destination CopyDest, with explicit transitions before later render/readback use.
+Callers initialize source pixels through clear/draw/copy before observing them;
+newly allocated texture contents have no promised value in this contract.
 The copy preserves states and source pixels. Unsupported type/format reinterpretation,
 resizing, partial/subresource copies, buffers, multi-adapter sharing and compressed,
 depth or multisampled resources are not implemented. Resources are created with

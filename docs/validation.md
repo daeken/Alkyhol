@@ -163,6 +163,37 @@ event/semaphore/TLS ports still use their documented C++ thread substitutions;
 the new Creating Threads port provides the direct thread-API comparison. No game
 compatibility or universal API equivalence is established.
 
+## Whole-resource GPU copy milestone
+
+[Conformance run 42332065590](https://github.com/daeken/Alkyhol/actions/runs/42332065590)
+on revision `6093e2d74ea5d2287e61e7d7f56115d3f6570a48` completed with all six jobs
+passing. The Rust graphics facade now records CopyResource for distinct matching
+RGBA8 2D textures, with explicit CopySource/CopyDest states. It issues an actual
+wgpu texture-to-texture GPU copy. Identity, state and both dimension checks finish
+before any list command is encoded or submitted.
+
+Three new root tests exercise copy state/token failures, sequential copy chains
+and rejection after earlier logical transitions. Two real-device tests compare
+every pixel after chained 65×3 copies and reject width/height mismatches after an
+earlier recorded clear. They verify source pixels and destination state are still
+unchanged, including a subsequent valid transition from the original state.
+The new `copy_resource` example first renders and captures a patterned 65×65
+triangle, then compares the entire copied destination and original source bytes.
+It is original project code guided by the API docs, not a Microsoft sample port.
+
+All six GPU tests and both graphics examples passed locally on physical Apple M4
+Metal (macOS 27.0.1 ARM64, Rust 1.99.1), on hosted Metal (`Apple Paravirtual device`),
+and on explicit software Vulkan (CPU llvmpipe LLVM 21.1.8, Mesa 26.0.8).
+These are separate backend results. There is no native D3D12 copy/raster reference
+in this milestone, no generalized format/subresource support and no game evidence.
+
+The 55 root Rust tests and 18 Python tests passed on Windows, macOS and Linux CI,
+with style/static checks passing for both crates. All six existing kernel C/C++
+samples still executed on Windows SDK/kernel32 and native macOS/Linux Alkyhol;
+their complete observations agreed. Downloaded reports bind this exact revision
+and clean tracked trees, as does a matching local C/C++ report. Those kernel
+comparisons do not validate the new GPU copy operation against D3D12.
+
 ## Reproduce
 
 ```sh
