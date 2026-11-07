@@ -87,6 +87,20 @@ jobs:
         with:
           name: pe-virtual-unwind-alkyhol
           path: local/pe/virtual-unwind-alkyhol.json
+      - name: Restore saved integer/vector slots in real small and far-offset Win64 frames
+        run: |
+          python tools/build_pe_unwind_saves.py
+          python tools/run_pe_unwind_saves.py --fixture local/pe/unwind-saves/unwind-saves.exe --output local/pe/unwind-saves-alkyhol.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe-unwind-saves-fixture
+          path: |
+            local/pe/unwind-saves/unwind-saves.exe
+            local/pe/unwind-saves/unwind-saves-fixture.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe-unwind-saves-alkyhol
+          path: local/pe/unwind-saves-alkyhol.json
       - uses: actions/upload-artifact@v4
         with:
           name: pe-function-tables-fixture
@@ -338,6 +352,18 @@ jobs:
         with:
           name: pe-virtual-unwind-windows
           path: local/pe/virtual-unwind-windows.json
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe-unwind-saves-fixture
+          path: local/pe/unwind-saves
+      - name: Assert native SDK integer/vector context slot layouts with MSVC
+        run: cl /nologo /std:c++17 /W4 /WX /c pe/fixtures/unwind-saves/sdk-layout.cpp /Folocal/pe/unwind-saves/sdk-layout.obj
+      - name: Observe native Windows restoration of near/far integer/vector stack slots
+        run: python tools/run_pe_unwind_saves.py --fixture local/pe/unwind-saves/unwind-saves.exe --output local/pe/unwind-saves-windows.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe-unwind-saves-windows
+          path: local/pe/unwind-saves-windows.json
       - uses: actions/upload-artifact@v4
         with:
           name: pe-function-tables-windows
@@ -523,3 +549,13 @@ jobs:
           name: pe-virtual-unwind-windows
           path: local/pe/observations
       - run: python tools/compare_pe_virtual_unwind.py local/pe/observations/virtual-unwind-windows.json local/pe/observations/virtual-unwind-alkyhol.json
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe-unwind-saves-alkyhol
+          path: local/pe/observations
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe-unwind-saves-windows
+          path: local/pe/observations
+      - run: python tools/compare_pe_unwind_saves.py local/pe/observations/unwind-saves-windows.json local/pe/observations/unwind-saves-alkyhol.json

@@ -4,6 +4,32 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## Integer/vector stack-slot unwinding: initial physical evidence
+
+The new owned unchanged PE SHA-256 is
+`5b3835f6a641536355a7f6b68af588a53630aa95017612e0c6b646930ec3e8b2`.
+Physical M4/Rosetta development executions match all 37 raw words in normal and
+forced-rebase runs. Actual active assembly frames cover near GPR saves, near
+128-bit XMM saves, and far GPR/vector saves in a 1,048,696-byte fixed allocation.
+The far frame supplies the first independent probe for unscaled ALLOC_LARGE.
+Context checks read expected saved bytes/return addresses directly from the real
+stack and verify restored RIP/RSP/GPRs/XMM6/XMM15, establisher, exact flags and every
+other seeded byte. This is manual context restoration, with normal actual returns;
+no full capture, exception dispatch/resumption or game compatibility is claimed.
+Native Windows execution and additional SDK/MSVC XMM layout checks are pending.
+
+SAVE_NONVOL, SAVE_NONVOL_FAR, SAVE_XMM128 and SAVE_XMM128_FAR now extend the bounded
+NOP-body, flags-zero, frame-register-zero manual unwinder. All eight nonvolatile
+GPRs and ten nonvolatile XMM registers have host assertions, including operand
+truncation, scaling/alignment, frame extents, duplicate/overlapping saves, ordering,
+address overflow and preservation of unrelated bytes. Saves must precede all
+allocation/pop actions and lie inside the fixed allocation; unsupported forms
+fail explicitly. The old frozen 34-word body-unwind probe still passes unchanged
+on the expanded implementation. All 71 PE host tests/eight compiler checks, Clippy
+and 208 Python tests pass. Other native fixtures and graphics sources/assets are
+unchanged. Runtime and native SDK evidence remain separate from general unwind,
+static `.pdata`, exception dispatch and game compatibility.
+
 ## Manual AMD64 body unwinding: native Windows, hosted Mac and physical M4
 
 All 27 CI jobs pass at strict-reference revision `fb8fe7a`: three

@@ -10,6 +10,11 @@ const CONTEXT_SIZE: usize = 1232;
 enum Action {
     Allocate(u64),
     Pop(u8),
+    Save {
+        register: u8,
+        offset: u64,
+        xmm: bool,
+    },
 }
 type Result<T> = std::result::Result<T, &'static str>;
 fn unsupported(reason: &str) -> ! {
@@ -32,6 +37,9 @@ fn decode(header: [u8; 4], codes: &[u8], offset: u64, nop: bool) -> Result<Vec<A
     let mut previous = u16::from(prologue) + 1;
     let mut frame_size = 0u64;
     let mut popped = false;
+    let mut stack_changed = false;
+    let mut allocated = 0u64;
+    let mut saves = Vec::new();
     while i < codes.len() {
         let position = codes[i];
         let opcode = codes[i + 1] & 15;
@@ -53,16 +61,72 @@ fn decode(header: [u8; 4], codes: &[u8], offset: u64, nop: bool) -> Result<Vec<A
                 ))),
                 3,
             ),
+            4 | 8 if i + 4 <= codes.len() => {
+                let xmm = opcode == 8;
+                let scale = if xmm { 16 } else { 8 };
+                (
+                    Action::Save {
+                        register: info,
+                        offset: u64::from(u16::from_le_bytes([codes[i + 2], codes[i + 3]])) * scale,
+                        xmm,
+                    },
+                    2,
+                )
+            }
+            5 | 9 if i + 6 <= codes.len() => (
+                Action::Save {
+                    register: info,
+                    offset: u64::from(u32::from_le_bytes(codes[i + 2..i + 6].try_into().unwrap())),
+                    xmm: opcode == 9,
+                },
+                3,
+            ),
             _ => return Err("unwind opcode, register or operand form"),
         };
         let bytes = match action {
             Action::Allocate(n) if n != 0 && n.is_multiple_of(8) => n,
             Action::Pop(_) => 8,
+            Action::Save {
+                register,
+                offset,
+                xmm,
+            } => {
+                let size = if xmm { 16 } else { 8 };
+                if stack_changed
+                    || !offset.is_multiple_of(size)
+                    || if xmm {
+                        !(6..=15).contains(&register)
+                    } else {
+                        !matches!(register, 3 | 5 | 6 | 7 | 12..=15)
+                    }
+                {
+                    return Err("save register, alignment or ordering");
+                }
+                let end = offset.checked_add(size).ok_or("save extent overflow")?;
+                if saves
+                    .iter()
+                    .any(|&(other_register, other_xmm, first, last)| {
+                        (register == other_register && xmm == other_xmm)
+                            || (offset < last && first < end)
+                    })
+                {
+                    return Err("overlapping save slots or duplicate saved register");
+                }
+                saves.push((register, xmm, offset, end));
+                0
+            }
             _ => return Err("stack allocation size"),
         };
         match action {
-            Action::Pop(_) => popped = true,
+            Action::Pop(_) => {
+                popped = true;
+                stack_changed = true;
+            }
             Action::Allocate(_) if popped => return Err("push/allocate ordering"),
+            Action::Allocate(n) => {
+                allocated += n;
+                stack_changed = true;
+            }
             _ => (),
         }
         frame_size = frame_size.checked_add(bytes).ok_or("stack size overflow")?;
@@ -72,10 +136,13 @@ fn decode(header: [u8; 4], codes: &[u8], offset: u64, nop: bool) -> Result<Vec<A
         actions.push(action);
         i += slots * 2;
     }
+    if saves.iter().any(|&(_, _, _, end)| end > allocated) {
+        return Err("save outside fixed allocation");
+    }
     Ok(actions)
 }
 struct Plan {
-    restored: Vec<(usize, u64)>,
+    restored: Vec<(usize, Vec<u8>)>,
     initial_rsp: u64,
     rsp: u64,
     rip: u64,
@@ -97,8 +164,36 @@ unsafe fn plan(actions: &[Action], context: *mut u8) -> Result<Plan> {
             Action::Pop(register) => {
                 let next = rsp.checked_add(8).ok_or("stack address overflow")?;
                 let value = unsafe { (rsp as *const u64).read_unaligned() };
-                restored.push((120 + usize::from(register) * 8, value));
+                restored.push((
+                    120 + usize::from(register) * 8,
+                    value.to_le_bytes().to_vec(),
+                ));
                 rsp = next;
+            }
+            Action::Save {
+                register,
+                offset,
+                xmm,
+            } => {
+                let size = if xmm { 16 } else { 8 };
+                let address = rsp
+                    .checked_add(offset)
+                    .ok_or("saved register address overflow")?;
+                address
+                    .checked_add(size)
+                    .ok_or("saved register extent overflow")?;
+                if !address.is_multiple_of(size) {
+                    return Err("saved register address alignment");
+                }
+                let bytes =
+                    unsafe { std::slice::from_raw_parts(address as *const u8, size as usize) }
+                        .to_vec();
+                let target = if xmm {
+                    416 + usize::from(register) * 16
+                } else {
+                    120 + usize::from(register) * 8
+                };
+                restored.push((target, bytes));
             }
         }
     }
@@ -139,7 +234,7 @@ unsafe fn unwind(
     let state = unsafe { plan(&actions, context) }?;
     unsafe {
         for (offset, value) in state.restored {
-            context.add(offset).cast::<u64>().write_unaligned(value);
+            ptr::copy_nonoverlapping(value.as_ptr(), context.add(offset), value.len());
         }
         context.add(RSP).cast::<u64>().write_unaligned(state.rsp);
         context.add(RIP).cast::<u64>().write_unaligned(state.rip);
@@ -289,7 +384,10 @@ mod tests {
             let state = unsafe { plan(&[Action::Pop(register)], context.0.as_mut_ptr()) }.unwrap();
             assert_eq!(
                 state.restored,
-                vec![(120 + usize::from(register) * 8, stack[0])]
+                vec![(
+                    120 + usize::from(register) * 8,
+                    stack[0].to_le_bytes().to_vec()
+                )]
             );
             assert_eq!(state.rip, stack[1]);
         }
@@ -317,6 +415,185 @@ mod tests {
         );
         assert_eq!(context.0, saved);
         assert_eq!(frame, 0xbeef);
+    }
+    #[test]
+    fn slot_save_operands_registers_scaling_bounds_and_order_are_checked_before_stack_reads() {
+        for xmm in [false, true] {
+            for register in 0..16 {
+                for far in [false, true] {
+                    let opcode = if xmm {
+                        if far { 9 } else { 8 }
+                    } else if far {
+                        5
+                    } else {
+                        4
+                    };
+                    let mut codes = vec![16, register << 4 | opcode];
+                    if far {
+                        codes.extend_from_slice(&32u32.to_le_bytes());
+                    } else {
+                        codes.extend_from_slice(&(if xmm { 2u16 } else { 4u16 }).to_le_bytes());
+                    }
+                    codes.extend_from_slice(&[4, 0xe2]);
+                    let header = [1, 16, (codes.len() / 2) as u8, 0];
+                    let supported = if xmm {
+                        (6..=15).contains(&register)
+                    } else {
+                        matches!(register, 3 | 5 | 6 | 7 | 12..=15)
+                    };
+                    let decoded = decode(header, &codes, 24, true);
+                    assert_eq!(decoded.is_ok(), supported);
+                    if supported {
+                        assert_eq!(
+                            decoded.unwrap(),
+                            vec![
+                                Action::Save {
+                                    register,
+                                    offset: 32,
+                                    xmm
+                                },
+                                Action::Allocate(120)
+                            ]
+                        );
+                        for length in 0..codes.len() {
+                            assert!(decode(header, &codes[..length], 24, true).is_err());
+                        }
+                    }
+                }
+            }
+        }
+        for codes in [
+            vec![16, 0x35, 1, 0, 0, 0, 4, 0xe2], // Far integer alignment.
+            vec![16, 0x69, 8, 0, 0, 0, 4, 0xe2], // Far vector alignment.
+            vec![16, 0x34, 15, 0, 4, 0xe2],      // Save extends beyond fixed allocation.
+            vec![16, 0x34, 4, 0],                // No allocation.
+            vec![16, 0xe2, 4, 0x34, 4, 0],       // Save after changing RSP.
+            vec![16, 0x34, 4, 0, 12, 0xc4, 4, 0, 4, 0xe2], // Overlapping slots.
+            vec![16, 0x34, 4, 0, 12, 0x34, 8, 0, 4, 0xe2], // Duplicate target.
+            vec![16, 0x68, 2, 0, 12, 0x34, 5, 0, 4, 0xe2], // Vector/integer overlap.
+            vec![16, 0x39, 2, 0, 0, 0, 4, 0xe2], // Volatile XMM register.
+        ] {
+            assert!(
+                decode([1, 16, (codes.len() / 2) as u8, 0], &codes, 24, true).is_err(),
+                "{codes:?}"
+            );
+        }
+        // Full operand boundaries are decoded without allocating or reading a stack.
+        for (opcode, offset, size) in [
+            (4u8, 524280u32, 524288u32),
+            (8, 1048560, 1048576),
+            (5, 524288, 524296),
+            (9, 1048576, 1048592),
+        ] {
+            let xmm = opcode >= 8;
+            let mut codes = vec![16, (if xmm { 6 } else { 3 }) << 4 | opcode];
+            if opcode == 4 || opcode == 8 {
+                codes
+                    .extend_from_slice(&((offset / if xmm { 16 } else { 8 }) as u16).to_le_bytes());
+            } else {
+                codes.extend_from_slice(&offset.to_le_bytes());
+            }
+            codes.extend_from_slice(&[4, 0x11]);
+            codes.extend_from_slice(&size.to_le_bytes());
+            assert!(decode([1, 16, (codes.len() / 2) as u8, 0], &codes, 24, true).is_ok());
+        }
+    }
+    #[test]
+    fn saved_integer_and_full_vector_bytes_restore_without_moving_the_stack_pointer() {
+        #[repr(align(16))]
+        struct Stack([u8; 256]);
+        let codes = [
+            24, 0xf8, 6, 0, 20, 0x68, 2, 0, 16, 0xc4, 10, 0, 12, 0x34, 8, 0, 8, 0xe2, 1, 0x50,
+        ];
+        let image = make_image([1, 24, 10, 0], &codes);
+        let mut stack = Stack([0; 256]);
+        for (i, b) in stack.0.iter_mut().enumerate() {
+            *b = (i as u8).wrapping_mul(17).wrapping_add(9);
+        }
+        let base = image.as_ptr() as u64;
+        let rsp = stack.0.as_ptr() as u64;
+        let mut context = Context([0xa5; CONTEXT_SIZE]);
+        put(&mut context, RSP, rsp);
+        let mut expected = context.0;
+        for (target, source, size) in [
+            (656, 96, 16),
+            (512, 32, 16),
+            (216, 80, 8),
+            (144, 64, 8),
+            (160, 120, 8),
+            (RIP, 128, 8),
+        ] {
+            expected[target..target + size].copy_from_slice(&stack.0[source..source + size]);
+        }
+        expected[RSP..RSP + 8].copy_from_slice(&(rsp + 136).to_le_bytes());
+        let mut frame = 0;
+        unsafe { unwind(base, base + 48, entry(), context.0.as_mut_ptr(), &mut frame) }.unwrap();
+        assert_eq!(context.0, expected);
+        assert_eq!(frame, rsp);
+        // All nonvolatile vector slots independently preserve every bit, not floating-point values.
+        for register in 6..16 {
+            put(&mut context, RSP, rsp);
+            let state = unsafe {
+                plan(
+                    &[Action::Save {
+                        register,
+                        offset: 32,
+                        xmm: true,
+                    }],
+                    context.0.as_mut_ptr(),
+                )
+            }
+            .unwrap();
+            assert_eq!(state.restored[0].0, 416 + usize::from(register) * 16);
+            assert_eq!(state.restored[0].1, stack.0[32..48]);
+        }
+        put(&mut context, RSP, u64::MAX - 7);
+        assert!(
+            unsafe {
+                plan(
+                    &[Action::Save {
+                        register: 3,
+                        offset: 8,
+                        xmm: false,
+                    }],
+                    context.0.as_mut_ptr(),
+                )
+            }
+            .is_err()
+        );
+        put(&mut context, RSP, rsp + 8);
+        assert!(
+            unsafe {
+                plan(
+                    &[Action::Save {
+                        register: 6,
+                        offset: 32,
+                        xmm: true,
+                    }],
+                    context.0.as_mut_ptr(),
+                )
+            }
+            .is_err()
+        );
+        // An unsupported later opcode must not partially restore earlier save slots.
+        put(&mut context, RSP, rsp);
+        let before = context.0;
+        frame = 0xfeed;
+        let bad = make_image([1, 16, 3, 0], &[16, 0x34, 4, 0, 4, 3]);
+        assert!(
+            unsafe {
+                unwind(
+                    bad.as_ptr() as u64,
+                    bad.as_ptr() as u64 + 48,
+                    entry(),
+                    context.0.as_mut_ptr(),
+                    &mut frame,
+                )
+            }
+            .is_err()
+        );
+        assert_eq!(context.0, before);
+        assert_eq!(frame, 0xfeed);
     }
     #[test]
     fn win64_eight_argument_bridge_selects_registered_entry_and_unwinds_leaf_context() {

@@ -137,7 +137,7 @@ joint drift as well as mismatched hosts. Changing this fixture requires a new,
 explicitly reviewed native evidence milestone, not silently updating expected
 output. See [validation](validation.md) for executed revisions and CI results.
 
-Static TLS/callbacks, unwind/SEH, CFG/load config, delay/bound imports, system-DLL ordinal resolution,
+Static TLS/callbacks, general unwind/SEH, CFG/load config, delay/bound imports, system-DLL ordinal resolution,
 Filesystem DLL discovery, process-global module loading, CLR, dynamic lookup, guest threads/callbacks, general COM vtable ABI
 bridges, general Windows process structures and Windows CRT startup are not implemented in this
 binary path. Unsupported metadata or imports fail before entry; unrecognized
@@ -790,8 +790,9 @@ operand forms. Code offsets must descend within the prologue, allocations must
 precede register pops during restoration, and the complete stack frame is bounded
 to 512 MiB. Unknown operations, handlers, chaining, frame pointers, context-pointer
 outputs and other control points terminate with diagnostic/status 78. No missing
-operation returns a fake successful no-handler result. Static `.pdata`, XMM saves,
-RtlUnwindEx, SEH dispatch and actual stack resumption remain separate work.
+operation returns a fake successful no-handler result. Explicit integer/vector
+slot-save support is described below. Static `.pdata`, RtlUnwindEx, SEH dispatch
+and actual stack resumption remain separate work.
 
 The implementation reads only required fields, plans restorations before changing
 CONTEXT, restores saved GPRs/RSP/RIP, and writes the original body RSP as the
@@ -821,3 +822,37 @@ and clean physical M4 execution at that same revision agree on all 34 words.
 Primary contracts: [RtlVirtualUnwind](https://learn.microsoft.com/en-us/windows/win32/api/winnt/nf-winnt-rtlvirtualunwind),
 [AMD64 CONTEXT](https://learn.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-context)
 and [AMD64 unwind operations](https://learn.microsoft.com/en-us/cpp/build/exception-handling-x64).
+
+
+## AMD64 integer and vector save slots
+
+The same bounded manual RtlVirtualUnwind now accepts SAVE_NONVOL/SAVE_NONVOL_FAR
+and SAVE_XMM128/SAVE_XMM128_FAR. The offset scale is eight bytes for near integer
+saves, sixteen for near vectors, and unscaled bytes for both far forms. Restores
+copy all saved bits into the actual AMD64 CONTEXT GPR/XMM slots. Saves do not
+advance RSP; fixed allocations and pushes continue to restore it independently.
+
+This subset accepts the eight nonvolatile integer registers and XMM6..15, with
+aligned nonoverlapping slots wholly inside the fixed allocation. All slot saves
+must precede allocation/pop actions in the unwind sequence; duplicate save targets
+and other ordering fail honestly. Version/flags/frame-register/NOP-body/registration
+restrictions remain. Stack extents and alignment are checked before each read,
+and context writes are committed only after the entire recipe has been decoded
+and its required stack data read successfully. These checks do not protect against
+arbitrary invalid native pointers supplied by trusted input code.
+
+```sh
+python3 tools/build_pe_unwind_saves.py
+python3 tools/run_pe_unwind_saves.py --fixture local/pe/unwind-saves/unwind-saves.exe --output local/pe/unwind-saves-alkyhol.json
+```
+
+A separate owned PE leaves all older frozen fixtures unchanged. Three real active
+frames save/clobber/restore RBX/R12, XMM6/XMM15, and both groups with far offsets.
+The far frame has a 1,048,696-byte allocation, integer saves at 524,288/524,304,
+and vector saves at 1,048,576/1,048,608; it exercises unscaled ALLOC_LARGE as well.
+It probes stack pages sequentially and reserves a four-MiB Windows stack. Context
+checks independently read real saved stack bytes and the return address, verify
+all restored/unrelated bytes, and return normally through the actual stack.
+No exception is dispatched or resumed; x87/AVX state and full capture remain absent.
+The separate Windows SDK probe asserts all ten XMM slot offsets. Native execution
+and finite host coverage are recorded in [validation](validation.md).
