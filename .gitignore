@@ -10,3 +10,5 @@ __pycache__/
 /miniengine-geometry.json
 
 /cpp/runtime/target/
+
+/pe/target/

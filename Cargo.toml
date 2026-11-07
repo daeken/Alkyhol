@@ -12,4 +12,4 @@ crate-type = ["rlib", "cdylib", "staticlib"]
 cpp-metal-factory = []
 
 [workspace]
-exclude = ["graphics", "sakura", "miniengine", "shader", "cpp/runtime"]
+exclude = ["graphics", "sakura", "miniengine", "shader", "cpp/runtime", "pe"]

@@ -4,6 +4,28 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## PE64 binary execution: first physical Rosetta milestone
+
+The new `pe/` crate maps checked AMD64 Windows EXEs and supplies explicit Win64
+bridges to the real Rust kernel. `tools/translate_pe.py` embeds unchanged PE bytes
+in a read-only Mach-O section and links that x86-64 host to Alkyhol. This is a
+loader/wrapper, not general static code rewriting or a game launch. The owned
+no-CRT C/assembly fixture is built to actual COFF/PE using open Clang/LLVM; its
+machine code is executed unchanged, rather than recompiled for macOS.
+
+On physical M4/macOS, the fixture passes at its preferred base and after forced
+DIR64 rebasing, including all 24 imports, Win64 nonvolatile GPR/XMM canaries,
+stack arguments, surrogate-pair filename, zero fill, TLS/error stress, events,
+semaphores, timing predicates and file seek/truncation/readback. All 15 report
+words and the separate 12 file bytes match independent expectations. Eleven PE
+Rust tests pass on the x86-64 process (eight portable parser units plus import
+identity, mapping/entry and isolated real permission-fault tests); eight portable
+tests also pass on native arm64. Root Rust tests (77), Python tests (124), PE
+Clippy and formatting pass locally. This is host/Rosetta evidence; native Windows
+comparison is pending the new workflow and must be recorded separately. Existing
+source/COM/Metal/sample implementations and fixtures are unchanged. The exact
+bounded [binary contract](pe.md) lists unsupported startup/CRT/COM operations.
+
 ## COM compute dispatch: physical Metal command-list evidence
 
 The restricted device now records/submits real compute dispatch through D3D12

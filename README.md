@@ -1,12 +1,14 @@
 # Alkyhol
 
-A Windows **source compatibility** layer in Rust, with a D3D12-shaped graphics
-subset using direct Metal from Rust. The first consumers are small, portable Win32 sample
-programs, eventually followed by recompiled/decompiled application code.
+A Windows compatibility layer in Rust, with a D3D12-shaped graphics subset using
+direct Metal from Rust. Source compatibility supports portable Win32 programs and
+recompiled/decompiled application code. A first [binary execution path](docs/pe.md)
+also runs unchanged, bounded Windows PE64 fixtures through Win64 ABI bridges in an
+x86-64 Mach-O host under Rosetta.
 
-This is an early implementation, not a PE loader, Wine replacement or a claim
-that Cyberpunk 2077 runs. Host calling conventions are intentional. Guest addresses
-must be translated before entering these APIs; they are never native pointers.
+This is an early implementation, not a Wine replacement or a claim that Cyberpunk
+2077 runs. Source callers use the host ABI; PE callers use explicit binary ABI
+bridges and checked image mappings. General Windows process startup is incomplete.
 
 ## Evidence first
 

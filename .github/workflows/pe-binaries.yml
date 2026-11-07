@@ -1,0 +1,72 @@
+name: PE binary execution
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  alkyhol-pe:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-apple-darwin
+          components: rustfmt, clippy
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: cargo fmt --manifest-path pe/Cargo.toml --check
+      - run: rustfmt --edition 2024 --check pe/launcher.rs
+      - run: cargo test --manifest-path pe/Cargo.toml --locked --offline
+      - run: cargo test --manifest-path pe/Cargo.toml --target x86_64-apple-darwin --locked --offline
+      - run: cargo clippy --manifest-path pe/Cargo.toml --target x86_64-apple-darwin --locked --offline --all-targets -- -D warnings
+      - name: Build an actual Windows executable once with open LLVM
+        run: python tools/build_pe_fixture.py
+      - name: Execute unchanged PE machine code through Win64 bridges
+        run: python tools/run_pe_probe.py --fixture local/pe/fixture/contract.exe --output local/pe/alkyhol.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe-fixture
+          path: |
+            local/pe/fixture/contract.exe
+            local/pe/fixture/fixture.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe-alkyhol
+          path: local/pe/alkyhol.json
+  native-windows-pe:
+    needs: alkyhol-pe
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe-fixture
+          path: local/pe/fixture
+      - name: Execute the identical PE64 using real Windows kernel32
+        run: python tools/run_pe_probe.py --fixture local/pe/fixture/contract.exe --output local/pe/windows.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe-windows
+          path: local/pe/windows.json
+  compare-pe:
+    needs: [alkyhol-pe, native-windows-pe]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo test --manifest-path pe/Cargo.toml --locked --offline
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe-alkyhol
+          path: local/pe/observations
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe-windows
+          path: local/pe/observations
+      - run: python tools/compare_pe_probe.py local/pe/observations/windows.json local/pe/observations/alkyhol.json

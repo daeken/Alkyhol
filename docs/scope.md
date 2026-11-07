@@ -54,3 +54,13 @@ import inventory are dependencies, not automatically Windows API work.
 - https://learn.microsoft.com/en-us/samples/microsoft/directx-graphics-samples/d3d12-hello-world-samples-win32/
 - https://github.com/microsoft/DirectX-Graphics-Samples (MIT; inspiration, no copied implementation)
 - https://docs.rs/metal/0.32.0/metal/
+
+## Binary execution alongside source compatibility
+
+The user selected unchanged Windows binaries as an independent API/ABI coverage
+path for eventual decompiler-driven native ports. The [PE64 milestone](pe.md)
+embeds unchanged PE bytes in a Rosetta Mach-O host and bridges a bounded kernel32
+subset to Rust. This is a separate tested loader/wrapper contract, not general
+static PE-to-Mach-O rewriting or a game compatibility claim. DLL/TEB/TLS/CRT/SEH
+and binary COM support remain further milestones. Game-derived inventories stay
+local; redistributable fixtures provide reproducible execution evidence.
