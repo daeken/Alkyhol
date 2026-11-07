@@ -50,8 +50,9 @@ both ALLOC_LARGE forms and bounded integer/vector slot saves. All earlier regist
 offset/order/alignment/fixed-frame restrictions remain. Unknown versions/operations,
 handlers, frame pointers, TLS/callbacks, CFG/load config, delay/bound imports and
 other unsupported startup shapes fail before entry. RtlVirtualUnwind still only
-accepts NOP body control points; accepting metadata does not add arbitrary PC,
-prologue/epilogue or exception-dispatch semantics.
+accepts NOP body control points and the bounded
+[recorded prologue boundaries](unwind-prologue.md). Accepting metadata does not
+add arbitrary PC, epilogue or exception-dispatch semantics.
 
 ## Independent Windows client
 

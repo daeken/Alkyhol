@@ -788,8 +788,10 @@ it does not resume execution, dispatch exceptions or implement throw/catch.
 The Win64 bridge accepts all eight real arguments, including four stack arguments.
 The finite contract requires HandlerType zero, NULL ContextPointers, a 16-byte
 aligned CONTEXT, valid caller-owned stack/recipe storage, and matching registered
-entry/base/control address. Only a NOP control point in the completed function
-body is accepted, so unsupported prologue/epilogue semantics fail explicitly.
+entry/base/control address. Completed-body control points require a NOP. The
+[partial-prologue extension](unwind-prologue.md) also accepts function entry and
+recorded unwind-operation boundaries strictly inside the prologue, applying only
+completed operations. Other prologue positions and epilogues fail explicitly.
 
 Version-1 flags-zero, frame-register-zero recipes support PUSH_NONVOL for the
 eight AMD64 nonvolatile integer registers, ALLOC_SMALL and both ALLOC_LARGE

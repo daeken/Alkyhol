@@ -1,4 +1,4 @@
-//! Bounded manual AMD64 v1 body unwinding; no exception dispatch or resumption.
+//! Bounded manual AMD64 v1 body/prologue unwinding; no dispatch or resumption.
 #![allow(non_snake_case)]
 use crate::function_tables::RuntimeFunction;
 use std::{ffi::c_void, ptr};
@@ -165,6 +165,97 @@ mod tests {
         image[128..132].copy_from_slice(&header);
         image[132..132 + codes.len()].copy_from_slice(codes);
         image
+    }
+    #[test]
+    fn partial_prologue_restores_completed_saves_and_preserves_all_other_context_bytes() {
+        #[repr(align(16))]
+        struct Stack([u8; 256]);
+        let codes = [
+            21, 0x68, 4, 0, 15, 0xd4, 5, 0, 10, 1, 21, 0, 3, 0xc0, 1, 0x30,
+        ];
+        let mut image = make_image([1, 21, 8, 0], &codes);
+        image[16..37].fill(0xcc); // Prologue entry does not require a NOP.
+        let mut stack = Stack([0; 256]);
+        for (i, value) in stack.0.iter_mut().enumerate() {
+            *value = (i as u8).wrapping_mul(23).wrapping_add(9);
+        }
+        let rsp = stack.0.as_ptr() as u64;
+        let base = image.as_ptr() as u64;
+        for (offset, delta, completed) in [
+            (0, 184, 0),
+            (1, 176, 1),
+            (3, 168, 2),
+            (10, 0, 3),
+            (15, 0, 4),
+            (21, 0, 5),
+        ] {
+            let mut context = Context([0xa5; CONTEXT_SIZE]);
+            put(&mut context, RSP, rsp + delta);
+            let mut expected = context.0;
+            for (minimum, target, source, size) in [
+                (1, 144, 176, 8),
+                (2, 216, 168, 8),
+                (4, 224, 40, 8),
+                (5, 512, 64, 16),
+            ] {
+                if completed >= minimum {
+                    expected[target..target + size]
+                        .copy_from_slice(&stack.0[source..source + size]);
+                }
+            }
+            expected[RSP..RSP + 8].copy_from_slice(&(rsp + 192).to_le_bytes());
+            expected[RIP..RIP + 8].copy_from_slice(&stack.0[184..192]);
+            let mut establisher = 0;
+            unsafe {
+                unwind(
+                    base,
+                    base + 16 + offset,
+                    entry(),
+                    context.0.as_mut_ptr(),
+                    &mut establisher,
+                )
+            }
+            .unwrap();
+            assert_eq!(context.0, expected, "control offset {offset}");
+            assert_eq!(establisher, rsp + delta);
+        }
+        let mut context = Context([0x5a; CONTEXT_SIZE]);
+        put(&mut context, RSP, rsp);
+        let before = context.0;
+        let mut establisher = 0x1234;
+        assert!(
+            unsafe {
+                unwind(
+                    base,
+                    base + 18,
+                    entry(),
+                    context.0.as_mut_ptr(),
+                    &mut establisher,
+                )
+            }
+            .is_err()
+        );
+        assert_eq!(context.0, before);
+        assert_eq!(establisher, 0x1234);
+        // Invalid FUTURE opcodes reject at entry, before even reading this
+        // deliberately unusable stack pointer or modifying outputs.
+        put(&mut context, RSP, 0);
+        let before = context.0;
+        image[133] = 3;
+        assert!(
+            unsafe {
+                unwind(
+                    base,
+                    base + 16,
+                    entry(),
+                    context.0.as_mut_ptr(),
+                    &mut establisher,
+                )
+            }
+            .is_err()
+        );
+        assert_eq!(context.0, before);
+        assert_eq!(establisher, 0x1234);
     }
     fn entry() -> RuntimeFunction {
         RuntimeFunction {

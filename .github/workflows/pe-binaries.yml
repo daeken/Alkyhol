@@ -147,6 +147,20 @@ jobs:
         with:
           name: pe-static-functions-alkyhol
           path: local/pe/static-functions-alkyhol.json
+      - name: Observe curated partial-prologue contexts with assembler-generated metadata
+        run: |
+          python tools/build_pe_unwind_prologue.py
+          python tools/run_pe_unwind_prologue.py --fixture local/pe/unwind-prologue/unwind-prologue.exe --output local/pe/unwind-prologue-alkyhol.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe-unwind-prologue-fixture
+          path: |
+            local/pe/unwind-prologue/unwind-prologue.exe
+            local/pe/unwind-prologue/unwind-prologue-fixture.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe-unwind-prologue-alkyhol
+          path: local/pe/unwind-prologue-alkyhol.json
       - name: Restore saved integer/vector slots in real small and far-offset Win64 frames
         run: |
           python tools/build_pe_unwind_saves.py
@@ -434,6 +448,16 @@ jobs:
           path: local/pe/static-functions-windows.json
       - uses: actions/download-artifact@v4
         with:
+          name: pe-unwind-prologue-fixture
+          path: local/pe/unwind-prologue
+      - name: Observe native Windows restoration at recorded prologue boundaries
+        run: python tools/run_pe_unwind_prologue.py --fixture local/pe/unwind-prologue/unwind-prologue.exe --output local/pe/unwind-prologue-windows.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe-unwind-prologue-windows
+          path: local/pe/unwind-prologue-windows.json
+      - uses: actions/download-artifact@v4
+        with:
           name: pe-unwind-saves-fixture
           path: local/pe/unwind-saves
       - name: Assert native SDK integer/vector context slot layouts with MSVC
@@ -695,3 +719,13 @@ jobs:
           name: pe-static-functions-windows
           path: local/pe/observations
       - run: python tools/compare_pe_static_functions.py local/pe/observations/static-functions-windows.json local/pe/observations/static-functions-alkyhol.json
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe-unwind-prologue-alkyhol
+          path: local/pe/observations
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe-unwind-prologue-windows
+          path: local/pe/observations
+      - run: python tools/compare_pe_unwind_prologue.py local/pe/observations/unwind-prologue-windows.json local/pe/observations/unwind-prologue-alkyhol.json

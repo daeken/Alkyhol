@@ -4,6 +4,24 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## Partial-prologue manual restoration: physical M4 development
+
+The new owned unchanged PE observer constructs six partial-prologue/body CONTEXT
+inputs from a real fully executed frame's saved stack words. Physical M4/Rosetta
+normal and forced-rebase runs pass all 68 raw DWORDs, including two pushes, a
+168-byte allocation, R13/XMM6 saves, precise stack results and preservation of
+all unrelated seeded bytes. These are curated manual-unwind contexts, not CPU
+snapshots of interrupted prologues or Windows exception dispatch. The original
+static/body fixtures remain unchanged. Independent native Windows execution is
+pending the first CI run; no native parity claim is made yet.
+
+The runtime validates the full supported v1 recipe before skipping unexecuted
+operations at function entry/recorded operation boundaries. Completed body PCs
+still require NOP and unknown prologue PCs/epilogues/handlers remain unsupported.
+All 89 PE host tests/nine compiler checks, 27 portable tests, 239 Python tests and
+Clippy pass. See [partial prologue restoration](unwind-prologue.md) for contracts,
+source provenance and the difference between constructed and captured states.
+
 ## Registered static PE function tables: native Windows and physical M4
 
 All 27 CI jobs pass at strict-reference revision `825549f`: three

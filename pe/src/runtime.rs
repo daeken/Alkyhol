@@ -227,7 +227,7 @@ impl Drop for LoadedImage {
 
 /// Executable whose validated static function records are registered until drop.
 /// The borrowed process guard must remain alive through registry cleanup/unmapping.
-/// Exception dispatch, prologue/epilogue unwinding and DLL static tables remain unsupported.
+/// Exception dispatch, epilogue unwinding and DLL static tables remain unsupported.
 ///
 /// ```compile_fail,E0505
 /// # use alkyhol_pe::{ProcessContext,RegisteredImage};
