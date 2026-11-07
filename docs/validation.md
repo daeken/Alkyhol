@@ -29,11 +29,15 @@ missing/duplicate/reordered traces, invented success, identity/rebase drift and
 changed frozen native evidence; these synthetic negatives are host assertions.
 [Probe contract](pe.md#failed-dll-initialization-probe).
 
-Existing docs/research revision `7230e57` passed all three
-[PE jobs](https://github.com/daeken/Alkyhol/actions/runs/42392689707) and all 24
-[conformance jobs](https://github.com/daeken/Alkyhol/actions/runs/42392689720).
-That run predates the failed-attach probe and is not evidence for its new native
-comparison. Existing frozen native executable/DLL comparisons remain unchanged.
+All 27 jobs pass at `2f88f1b`: the three PE jobs above and all 24
+[conformance jobs](https://github.com/daeken/Alkyhol/actions/runs/42393459612).
+The strict frozen-reference revision `1f442b6` also passes all three
+[PE jobs](https://github.com/daeken/Alkyhol/actions/runs/42393693649); downloaded
+clean native/hosted reports and a fresh clean physical M4 run at that revision
+agree with the frozen DLL/source/trace/error evidence. Its separate 24-job
+[conformance run](https://github.com/daeken/Alkyhol/actions/runs/42393693625)
+is still running when this record is written. Existing frozen native executable/
+DLL comparisons and all source/COM/Metal/shader implementations remain unchanged.
 
 ## Isolated PE64 DLL execution: physical M4 milestone
 
