@@ -13,8 +13,9 @@ extraction, as in the upstream project. No sample source edits, removed project
 units, placeholder shader bytecode or unresolved-symbol linker exceptions are used.
 
 This establishes compilation and linking, **not original application rendering**.
-D3D12 device creation, window/input services and root-signature serialization
-remain explicit unavailable exports. Direct-Metal DXGI factory/adapter discovery
+D3D12 device creation and window/input services remain explicitly unavailable.
+Bounded [root-signature serialization/COM layouts](root-signatures.md) and
+direct-Metal DXGI factory/adapter discovery
 is now implemented; see [runtime mapping](runtime/README.md). The small host entry bridge checks device
 creation first and exits 78 with its failing HRESULT; upstream Release assertions
 otherwise discard failures and would dereference missing interfaces. It does not

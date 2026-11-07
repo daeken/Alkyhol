@@ -21,8 +21,19 @@ runtime units pass (52 total), both Clippy checks/formatting pass, and all 108
 Python tests pass. Root layout/checksum code comes from pinned open DXC with
 retained NCSA attribution/license; no gated component is introduced.
 [The exact bounded contract and provenance](../cpp/root-signatures.md) records
-limits and failures. Native Windows SDK/WARP comparison for this new milestone
-is pending; no GPU binding/PSO/Dispatch or original-frame parity is claimed.
+limits and failures. Native WARP and hosted Rust/Metal producers and root comparison
+passed on `5473a58` in [42373677759](https://github.com/daeken/Alkyhol/actions/runs/42373677759).
+Downloaded clean reports and the separate clean physical M4 report agree on all
+980 bytes and COM assertions. The report is frozen at
+`cpp/reference/root-signatures-windows-v1.json`; its canonical SHA-256 is
+`f0c59ed82431c950da3780d21b233c267d5b204cfc641ed5a67d7cc46fcdc3fe`.
+That overall run caught an older host-only link-boundary test still requiring
+serialization to be unsupported. The check now validates actual success/error
+blobs and version-1.1 rejection. All five host C++ ABI probes pass locally. No
+frozen Windows observer is changed. Strict live pairs must also match the frozen
+native bytes/COM payload; local checks of both actual pairs pass. The Python
+suite now has 110 passing tests. A fresh complete CI result remains pending.
+No GPU binding/PSO/Dispatch or original-frame parity is claimed.
 
 ## Constant-buffer descriptors and copies: physical Metal evidence
 

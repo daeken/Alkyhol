@@ -4,9 +4,9 @@ import argparse
 import json
 from pathlib import Path
 if __package__:
-    from .run_cpp_device_buffers import run_probe
+    from .run_cpp_device_buffers import ROOT,run_probe
 else:
-    from run_cpp_device_buffers import run_probe
+    from run_cpp_device_buffers import ROOT,run_probe
 SOURCE='cpp/tests/root_signatures.cpp'
 def validate_observation(text):
     result=json.loads(text)
@@ -23,6 +23,8 @@ def compare_reports(reports,revision):
         validate_observation(json.dumps(report['observation']))
     if not reports[0]['artifacts'].get(SOURCE) or reports[0]['artifacts'][SOURCE]!=reports[1]['artifacts'].get(SOURCE):raise ValueError('root observer source differs')
     if reports[0]['observation']!=reports[1]['observation']:raise ValueError('native and Rust serialized root bytes or COM assertions differ')
+    frozen=json.loads((ROOT/'cpp/reference/root-signatures-windows-v1.json').read_text())
+    if reports[0]['observation']!=frozen['observation']:raise ValueError('live root observations differ from frozen native contract')
 def run(output):return run_probe(output,'root_signatures','root signatures',validate_observation)
 if __name__=='__main__':
     parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--output',type=Path,required=True)

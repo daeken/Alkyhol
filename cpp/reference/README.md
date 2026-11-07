@@ -190,3 +190,33 @@ frozen-reference run 42372226929 on `a0ae65a` also passed all twenty-one jobs,
 including every prior SDK/shader/graphics comparison and exact open-DXC fixture
 regeneration. Downloaded native/hosted reports from `a0ae65a` match a fresh clean
 physical M4/API-validation report and the frozen payload on all 72 words.
+
+
+## Standalone version-1.0 root signatures
+
+`root-signatures-windows-v1.json` preserves actual Windows SDK 10.0.26100.0/WARP
+execution from CI 42373677759 on `5473a58`. The shared C++ observer serializes six
+layouts through both legacy and versioned entry points, then creates actual root
+objects and asserts capability probes, canonical identity, inherited metadata,
+non-Pageable interface type and retained device lifetime. Complete 980-byte
+container observations include empty roots, 64 DWORDs of constants, seven root
+descriptors, APPEND/explicit offset tables, static sampler bits and stage-disjoint
+registers. All bytes, including retail checksums and the two-block padding case,
+agree with hosted Rust/Metal and clean physical M4 observations at that revision.
+These are CPU layout/COM observations, not GPU use of the root layouts.
+
+The full canonical observation SHA-256 is
+`f0c59ed82431c950da3780d21b233c267d5b204cfc641ed5a67d7cc46fcdc3fe`.
+Future live pairs must also match the frozen native payload. Source/executable
+hashes, SDK/compiler, host, commands and diagnostics remain in the full report.
+The unchanged original RootSignature.cpp also executes locally through the Rust
+serializer/COM implementation, via a separate verified subsystem caller. This
+original-helper execution has not been compared against its native C++ instance.
+
+The root producers/comparison passed in that initial run. Its overall run caught
+an older host ABI test which expected serialization to stay unavailable. Updating
+that obsolete boundary adds success/blob/error checks; the independent Windows
+root observer is unchanged. Fresh full CI is pending. See
+[contract/open source provenance](../root-signatures.md) for all subset limits,
+pinned DXC derivation and retained NCSA license. GPU binding/PSOs/Dispatch and
+original C++ application rendering remain unavailable.

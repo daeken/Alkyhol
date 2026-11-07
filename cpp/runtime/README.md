@@ -376,6 +376,8 @@ ID3D12RootSignature objects now run the unchanged original RootSignature.cpp
 helper, including its static-sampler conversion and cache. Standalone containers
 are validated and deep-copied; metadata/parent ownership remains real. See the
 [bounded contract and open provenance](../root-signatures.md). A shared C++ probe
-records all 980 bytes of six root layouts locally; native Windows execution is
-pending. GPU binding, pipeline creation, dispatch and production device creation
+records all 980 bytes of six root layouts, matching native WARP, hosted Rust/Metal
+and physical M4 on clean `5473a58` (CI 42373677759). The full native report is
+frozen in `cpp/reference/root-signatures-windows-v1.json`; fresh full CI remains
+pending after correcting an old host-only unavailable-serialization check. GPU binding, pipeline creation, dispatch and production device creation
 remain unavailable. This adds CPU layout/COM support, not original rendering.

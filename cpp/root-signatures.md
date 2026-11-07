@@ -70,8 +70,16 @@ of six root containers, including empty, 64-DWORD constants, seven descriptors
 and stage-disjoint registers. Legacy/versioned serialization must be identical;
 real COM identity/metadata/parent lifetime assertions run per case. These are CPU
 layout/COM observations on a Metal host, not GPU execution of the layouts.
-Native Windows SDK/WARP and hosted Metal execution/comparison is newly wired into
-CI; results remain pending for this milestone.
+Native Windows SDK/WARP and hosted Rust/Metal execution in CI 42373677759
+on `5473a58` agree with clean physical M4 execution on all 980 bytes and COM
+assertions. The native report is frozen at `cpp/reference/root-signatures-windows-v1.json`;
+future live pairs must also match it. Its full canonical observation SHA-256 is
+`f0c59ed82431c950da3780d21b233c267d5b204cfc641ed5a67d7cc46fcdc3fe`.
+The initial overall run caught an older host ABI check that still expected root
+serialization to be unavailable. That check now requires real success blobs,
+owned diagnostics and honest version-1.1 rejection; all five C++ ABI probes pass
+locally. The fresh strict-reference CI result remains pending. The extra frozen
+source/byte/joint-drift checks bring the Python suite to 110 passing tests.
 
 The separate original-subsystem caller now links the unchanged original
 `RootSignature.cpp` object alongside the three prior queue/allocator/heap objects.

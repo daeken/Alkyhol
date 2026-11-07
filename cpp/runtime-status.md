@@ -28,7 +28,7 @@ renderer or a feature-level claim.
 | CBVs/descriptor copies | Non-null aligned UPLOAD CBVs and transactional simple/range copies with copied-value ownership. Physical M4 GPU diagnostic reads all copied records/guards. All 72 content/guard words match native WARP, hosted Metal and physical M4 (frozen native report); no general root signatures/PSOs/Dispatch |
 | Original queue-management subsystem | Unchanged CommandListManager and CommandAllocatorPool objects execute creation, allocator allocation/deferred reuse/reset, three-queue COM copies, high-bit fences/waits, idle and shutdown on physical Metal through a separate caller |
 | D3D12 creation | Explicit E_NOTIMPL and cleared interface outputs; no device, resource or command capability success |
-| Root serialization/COM layout | Bounded version-1.0 standalone RTS0/DXBC serialization, owned layouts and all eight root-object slots. Shared C++ probe records 980 bytes locally; native comparison pending. Original RootSignature.cpp Finalize/cache/static-sampler helper now runs. No GPU binding/PSO/Dispatch |
+| Root serialization/COM layout | Bounded version-1.0 standalone RTS0/DXBC serialization, owned layouts and all eight root-object slots. All 980 serialized bytes and COM assertions match native WARP, hosted Rust/Metal and physical M4; frozen native report. Original RootSignature.cpp Finalize/cache/static-sampler helper now runs. No GPU binding/PSO/Dispatch |
 | D3D12 debug/experiments | Explicit failures; no debug interface |
 | Window/message/input services | Explicit unavailable diagnostics/failure returns; no simulated window, silent event loop or successful input device |
 | Command-line shell services | Explicit unavailable diagnostics/failure outputs |

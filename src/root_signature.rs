@@ -1,5 +1,6 @@
 //! Bounded version-1.0 root-signature layout/serialization, not shader execution.
-//! Binary layout follows open DXC (NCSA); attribution: cpp/root-signatures.md.
+//! Adapted from open DXC. Copyright (C) Microsoft Corporation.
+//! NCSA license: cpp/licenses/DXC-NCSA.txt; attribution: cpp/root-signatures.md.
 #![allow(non_snake_case, clippy::missing_safety_doc)]
 use crate::com::{Blob, D3DCreateBlob, E_POINTER, S_OK};
 use std::{ffi::c_void, ptr};
