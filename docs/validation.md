@@ -15,7 +15,15 @@ six outputs match its independent scalar data/guard checks. It covers DIRECT and
 COMPUTE queues, root offsets 256/16/8/16, binding snapshots, repeated root identity,
 initial/reset PSOs, zero dispatch and interleaved aligned/unaligned GPU copies.
 The unchanged established compute DXIL is used; this is not original MiniEngine
-HLSL or an original frame. Native SDK/WARP and hosted comparisons remain pending.
+HLSL or an original frame. Native SDK/WARP execution in CI 42379450367 and clean
+physical M4 execution agree on all 624 words at `8e4c6b2`, with identical shared
+source/fixture hashes. The full native report is frozen at
+`cpp/reference/compute-dispatch-windows-v1.json`, canonical observation SHA-256
+`263fe289e48e36cfe4745892f83e6b51f513fcf74a3fa79528ccb7a89ecbfaa9`.
+Future live pairs must also match this native payload. Frozen readback/source/
+joint-drift protocol tests bring the local Python suite to 120 passing tests.
+Hosted comparison and a complete fresh CI result for this new reference remain
+pending; Windows debug-layer and native negative-HRESULT parity are not claimed.
 
 Seven new host/runtime units pass (65 total), including private shader-state
 batch validation/rollback and negative binding/identity/reset/flag cases. Runtime

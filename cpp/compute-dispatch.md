@@ -62,7 +62,14 @@ The shader is the unchanged established 4932-byte compute fixture, SHA-256
 Unlike the earlier PSO unit, this workload submits through the actual COM command
 list/queue and reads back the real Private UAV buffers. It is an owned test shader,
 not original MiniEngine HLSL or an original Sponza frame. Native Windows SDK/WARP
-and hosted Rust/Metal comparisons are newly added to CI and remain pending.
+and physical M4 now agree on all 624 words and common state/fixture assertions
+on clean `8e4c6b2`, from native execution in CI 42379450367. The full native
+report is frozen at `cpp/reference/compute-dispatch-windows-v1.json`, canonical
+observation SHA-256
+`263fe289e48e36cfe4745892f83e6b51f513fcf74a3fa79528ccb7a89ecbfaa9`.
+Future live pairs must also match it. Hosted comparison and complete fresh CI
+for this new reference remain pending. Frozen source/readback/joint-drift checks
+bring the local Python suite to 120 passing tests.
 Windows debug-layer validation is not claimed by this probe.
 
 Seven new host/runtime units pass (65 total), covering identity/reset/snapshot

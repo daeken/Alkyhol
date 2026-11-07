@@ -258,3 +258,31 @@ retaining every prior comparison. Fresh downloaded native/hosted reports match
 a clean physical M4 construction/COM report and the frozen payload at that same
 revision. The original subsystem v6 caller also passes cleanly there. These
 checks do not add native command-list dispatch or original-rendering evidence.
+
+
+## COM compute dispatch / Private UAV readback
+
+`compute-dispatch-windows-v1.json` preserves actual Windows SDK/WARP execution
+from CI 42379450367 on `8e4c6b2`. The identical C++ source uses the established
+4932-byte DXIL (`e3084e25dfa23ef53e98eb1dd6eac386c3695718ac03d6631904b6711cc11d4e`)
+and submits actual command lists on DIRECT and COMPUTE queues, including
+root-buffer offsets, initial/reset PSOs, binding snapshots, redundant root binding,
+zero dispatch after real dispatch, per-resource UAV barriers and interleaved
+aligned/one-byte copies. It checks and retains every word of six 416-byte
+readbacks: 456 shader data words and 168 prefix/tail/suffix guards, 624 total.
+
+The full canonical observation SHA-256 is
+`263fe289e48e36cfe4745892f83e6b51f513fcf74a3fa79528ccb7a89ecbfaa9`.
+Clean physical M4/API-validation execution at that revision matches every word,
+state-sequence assertion and shared source/fixture identity. Future live pairs
+must also match the frozen native payload; host-only negative/state/lifetime
+extension tests cannot redefine it. The report retains SDK/compiler, executable,
+source/fixture hashes, commands and diagnostics. Hosted comparison and complete
+CI for this new reference remain pending.
+
+This is native WARP / physical Metal COM-dispatch evidence with an owned test
+shader, not original MiniEngine HLSL or a full Sponza frame. The probe does not
+claim Windows debug-layer validation or native negative-HRESULT/resource-lifetime
+parity. Exact limits and intended primary synchronization references are in
+[the dispatch contract](../compute-dispatch.md). All earlier frozen references
+remain unchanged.

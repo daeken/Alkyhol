@@ -1,11 +1,13 @@
 """Synthetic dispatch report gates; actual GPU readbacks come from C++ CI."""
 import copy
+import hashlib
 import json
 import unittest
-from tools.run_cpp_compute_dispatch import INPUTS,DXIL_SHA256,compare_reports,validate_observation
+from tools.run_cpp_compute_dispatch import ROOT,INPUTS,DXIL_SHA256,compare_reports,validate_observation
 class ComputeDispatchReportTests(unittest.TestCase):
     def reports(self):
-        observation={'scenario':'compute-dispatch-v1','cases':[[i for i in range(104)] for _ in range(6)],'queues':2,'root_offsets':[256,16,8,16],'reset':True,'zero_dispatch':True,'binding_snapshots':True,'same_root_preserved':True}
+        # Frozen measured payload in synthetic envelopes; no GPU runs here.
+        observation=json.loads((ROOT/'cpp/reference/compute-dispatch-windows-v1.json').read_text())['observation']
         native={'schema_version':1,'backend':'native Windows SDK WARP compute dispatch','source_revision':'current','tracked_tree_clean':True,'shader_dxil_sha256':DXIL_SHA256,'artifacts':{name:'bytes' for name in INPUTS},'observation':observation}
         host=copy.deepcopy(native);host['backend']='Rust restricted Metal COM compute dispatch';return [native,host]
     def test_complete_unsigned_readbacks_and_all_state_assertions_are_required(self):
@@ -30,3 +32,17 @@ class ComputeDispatchReportTests(unittest.TestCase):
             for word in range(104):
                 reports=self.reports();reports[1]['observation']['cases'][row][word]^=1
                 with self.assertRaises(ValueError):compare_reports(reports,'current')
+
+    def test_joint_backend_drift_cannot_replace_the_native_readbacks(self):
+        reports=self.reports()
+        for report in reports:report['observation']['cases'][0][4]^=1
+        with self.assertRaises(ValueError):compare_reports(reports,'current')
+    def test_frozen_native_source_fixture_and_complete_observation_identity(self):
+        report=json.loads((ROOT/'cpp/reference/compute-dispatch-windows-v1.json').read_text())
+        self.assertEqual(report['backend'],'native Windows SDK WARP compute dispatch')
+        self.assertIs(report['tracked_tree_clean'],True)
+        self.assertEqual(report['source_revision'],'8e4c6b258441220f0b65980e89729e8615f03f15')
+        self.assertEqual(report['shader_dxil_sha256'],DXIL_SHA256)
+        for name in INPUTS:self.assertEqual(report['artifacts'][name],hashlib.sha256((ROOT/name).read_bytes()).hexdigest())
+        canonical=json.dumps(report['observation'],sort_keys=True,separators=(',',':')).encode()
+        self.assertEqual(hashlib.sha256(canonical).hexdigest(),'263fe289e48e36cfe4745892f83e6b51f513fcf74a3fa79528ccb7a89ecbfaa9')

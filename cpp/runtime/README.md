@@ -412,7 +412,9 @@ descriptors and compute PSOs and submit real dispatch/readback with Private UAV
 buffers and per-resource barriers. Initial/reset PSOs and immutable snapshots are
 implemented; unsupported tables/constants/textures/embedded roots and graphics
 remain explicit failures. The shared C++ workload checks all 624 output/guard
-words on physical M4; native SDK comparison is pending. See
+words, matching native WARP and clean physical M4 at `8e4c6b2` in CI 42379450367.
+The full native report is frozen at `cpp/reference/compute-dispatch-windows-v1.json`;
+hosted comparison and fresh full CI remain pending. See
 [the exact contract/evidence](../compute-dispatch.md). The complete original app
 remains compiled/linked and gated before initialization; this test shader is not
 an original Sponza frame.
