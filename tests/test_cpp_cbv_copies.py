@@ -48,7 +48,7 @@ class CbvShaderFixtureTests(unittest.TestCase):
             source=root/'cpp/tests/cbv_probe.hlsl';source.write_text('test')
             target=root/'cpp/tests/cbv_probe_dxil.h'
             def compile_probe(command,**kwargs):
-                self.assertEqual(command[0],'/open/dxc')
+                self.assertEqual(command[0],str(Path('/open/dxc')))
                 self.assertEqual(command[1:7],['-T','cs_6_0','-E','main','-Ges','-WX'])
                 self.assertEqual(command[-1],str(source))
                 self.assertTrue(kwargs['check'])
