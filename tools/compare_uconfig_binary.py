@@ -34,7 +34,23 @@ def compare(reports, reference=None):
         raise ValueError('missing or changed case observations')
     if native['forced_rebase_observations'] is not None or host['forced_rebase_observations'] != host['observations']:
         raise ValueError('forced rebasing was not executed or differs')
-    if reference is None and REFERENCE.exists():
+    for report in reports:
+        pairs = [('raw_observations', 'observations')]
+        if report is host:
+            pairs.append(('raw_forced_rebase_observations', 'forced_rebase_observations'))
+        for raw_key, result_key in pairs:
+            raw = report[raw_key]
+            if set(raw) != set(expected):
+                raise ValueError('missing raw guest output records')
+            for case in spec['cases']:
+                item = raw[case['id']]
+                stdout = bytes.fromhex(item['stdout_hex'])
+                if case['stdout_order'] == 'unordered-lines':
+                    stdout = b''.join(sorted(stdout.splitlines(keepends=True)))
+                result = report[result_key][case['id']]
+                if stdout.hex() != result['stdout_hex'] or item['stderr_hex'] != result['stderr_hex']:
+                    raise ValueError('raw guest output differs from compared observation')
+    if reference is None:
         reference = json.loads(REFERENCE.read_text(encoding='utf-8'))
     if reference is not None:
         if reference['backend'] != 'native Windows PE64 / kernel32' or reference['tracked_tree_clean'] is not True:

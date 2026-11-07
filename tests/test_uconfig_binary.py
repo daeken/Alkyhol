@@ -25,9 +25,12 @@ class ReleasedPEProtocolTests(unittest.TestCase):
                   'upstream_source_sha256': SOURCE_SHA256, 'upstream_license_sha256': LICENSE_SHA256,
                   'input_sha256': {'cases.json': 'b' * 64}, 'observations': observations,
                   'forced_rebase_observations': None}
+        native['raw_observations'] = {k: {field: value[field] for field in ['stdout_hex', 'stderr_hex']} for k, value in observations.items()}
+        native['raw_forced_rebase_observations'] = None
         host = copy.deepcopy(native)
         host['backend'] = 'Alkyhol Win64 ABI / x86-64 Mach-O'
         host['forced_rebase_observations'] = copy.deepcopy(observations)
+        host['raw_forced_rebase_observations'] = copy.deepcopy(native['raw_observations'])
         return [native, host]
 
     def test_native_host_and_rebased_results_must_all_match(self):
@@ -63,6 +66,21 @@ class ReleasedPEProtocolTests(unittest.TestCase):
                        prefix.replace(b'true', b'false')]:
             with self.assertRaises(ValueError):
                 guest_stderr(stderr, True)
+
+    def test_raw_output_can_reorder_listing_but_cannot_drop_duplicate_or_changed_data(self):
+        reports = self.reports()
+        rows = bytes.fromhex(reports[1]['raw_observations']['listing']['stdout_hex']).splitlines(keepends=True)
+        reports[1]['raw_observations']['listing']['stdout_hex'] = b''.join(reversed(rows)).hex()
+        self.assertEqual(compare(reports, reference=self.reports()[0]), 11)
+        for raw_key in ['raw_observations', 'raw_forced_rebase_observations']:
+            reports = self.reports()
+            reports[1][raw_key]['listing']['stdout_hex'] += rows[0].hex()
+            with self.assertRaises(ValueError):
+                compare(reports, reference=self.reports()[0])
+        reports = self.reports()
+        reports[1]['raw_observations']['version']['stderr_hex'] = b'unreported error'.hex()
+        with self.assertRaises(ValueError):
+            compare(reports, reference=self.reports()[0])
 
     def test_unicode_case_has_the_same_explicit_utf8_meaning_on_every_host(self):
         spec = json.loads((ROOT / 'pe/fixtures/u-config/cases.json').read_text(encoding='utf-8'))

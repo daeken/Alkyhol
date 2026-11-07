@@ -102,10 +102,14 @@ retained in the report. Loader diagnostics are removed only as one exact checked
 entry prefix, never by discarding arbitrary stderr.
 
 All eleven cases pass on physical M4 in normal and forced-rebase execution. Native
-Windows comparison is pending the new CI run. Twenty-three PE Rust tests pass,
+Windows and hosted Mac agree on all eleven cases in CI 42386144339 at `1ccfd87`;
+a fresh clean physical M4 run of the transferred executable agrees too. The
+full native record is frozen at `pe/reference/u-config-windows-v1.json`, and
+future pairs must match its exact inputs, binary and observations. Raw stream
+records are checked against the compared outputs, including duplicate detection. Twenty-three PE Rust tests pass,
 including real PTY Unicode output, mapped memory, environment/buffer boundaries,
 search layout/exhaustion, file separators and nonzero upper handle bits. Ten
-portable tests pass on native arm64. Root tests (78), Python tests (132), formatting
+portable tests pass on native arm64. Root tests (78), Python tests (134), formatting
 and PE Clippy pass. The original frozen 24-import/19-word PE observer still passes
 unchanged. Direct unit assertions, PTY output, released-binary behavior and native
 Windows observations are separate evidence; see [validation](validation.md).

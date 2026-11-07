@@ -6,6 +6,22 @@ See the latest direct-Metal record for current implementation evidence.
 
 ## Off-the-shelf PE64: released Windows u-config on physical M4
 
+All three PE jobs pass in [42386144339](https://github.com/daeken/Alkyhol/actions/runs/42386144339)
+on `1ccfd87`. Native Windows, hosted Mac and a fresh clean physical M4 execution
+of the transferred upstream PE agree on all eleven cases, including the literal
+lambda/cherry-blossom argument after explicit UTF-8 input decoding. Actual guest
+status/stdout/stderr agree; both Alkyhol rebased runs agree with their normal
+runs. The full native report is frozen at `pe/reference/u-config-windows-v1.json`,
+canonical observation SHA-256
+`8906455451a1c0c47b045027e2040a6d160661a237438badb552b38709e57a96`.
+The strict comparator now requires this frozen input/binary/result identity and
+checks that retained raw streams really produce the compared observations.
+Raw listing order may differ; duplicates or any other changed bytes fail. A new
+negative protocol test brings Python coverage to 134 passing tests. The existing
+24-job conformance suite also passed on the process-service code `13ec88b` in
+[42385649755](https://github.com/daeken/Alkyhol/actions/runs/42385649755); report-only
+and strict-reference revisions are checked separately.
+
 The unmodified official w64devkit 2.11.0 x64 `pkg-config.exe` (u-config 0.35.0)
 executes under Rosetta through Alkyhol. Its 46,232 input bytes have SHA-256
 `390f6c01b87cd8c71d3b5aa6cabd1cb63539ba6204972d920347f2376ef4debc`;

@@ -1,0 +1,122 @@
+{
+  "schema_version": 1,
+  "backend": "native Windows PE64 / kernel32",
+  "program": "u-config 0.35.0 / w64devkit 2.11.0",
+  "pe_sha256": "390f6c01b87cd8c71d3b5aa6cabd1cb63539ba6204972d920347f2376ef4debc",
+  "executed_pe_sha256": "390f6c01b87cd8c71d3b5aa6cabd1cb63539ba6204972d920347f2376ef4debc",
+  "upstream_source_sha256": "b1d5362c0c84753bc3a22831866cb92ada5b467da6fda406a33162e35e201210",
+  "upstream_license_sha256": "7e12e5df4bae12cb21581ba157ced20e1986a0508dd10d0e8a4ab9a4cf94e85c",
+  "input_sha256": {
+    "pe/fixtures/u-config/cases.json": "cffc52a3424d0fe3b8716e4f2f74f7a5739927b4b392ec9ecbc310926b138c31",
+    "pe/fixtures/u-config/pc/alkyhol-base.pc": "49ff5fdfbc1fbd4f0d959dc05328db219d37ebef7c4ca5669ac1fd713cbfaa0c",
+    "pe/fixtures/u-config/pc/alkyhol-demo.pc": "b5c30779ad46bdf58f7ba1297756c108a9be1cc3c2a96d208bd6da6f050766d4",
+    "pe/fixtures/u-config/pc/alkyhol-private.pc": "559e53de8f1afcd90fd81237144b083e098a1438fcd7e367ebc76c8f8be837d8"
+  },
+  "observations": {
+    "version": {
+      "status": 0,
+      "stdout_hex": "302e33352e300a",
+      "stderr_hex": ""
+    },
+    "dependency-flags": {
+      "status": 0,
+      "stdout_hex": "2d492f616c6b79686f6c2f73646b2f696e636c7564652f64656d6f202d4444454d4f3d31202d492f616c6b79686f6c2f73646b2f696e636c7564652f62617365202d44424153453d31202d4c2f616c6b79686f6c2f73646b2f6c6962202d6c64656d6f202d6c626173650a",
+      "stderr_hex": ""
+    },
+    "static-private-dependencies": {
+      "status": 0,
+      "stdout_hex": "2d4c2f616c6b79686f6c2f73646b2f6c6962202d6c64656d6f202d6c6d202d6c62617365202d6c707269766174650a",
+      "stderr_hex": ""
+    },
+    "module-version": {
+      "status": 0,
+      "stdout_hex": "322e342e300a",
+      "stderr_hex": ""
+    },
+    "quoted-unicode-variable": {
+      "status": 0,
+      "stdout_hex": "cebbf09f8cb82071756f746564202276616c756522207461696c5c0a",
+      "stderr_hex": ""
+    },
+    "empty-variable": {
+      "status": 0,
+      "stdout_hex": "0a",
+      "stderr_hex": ""
+    },
+    "version-requirement-success": {
+      "status": 0,
+      "stdout_hex": "",
+      "stderr_hex": ""
+    },
+    "version-requirement-failure": {
+      "status": 1,
+      "stdout_hex": "",
+      "stderr_hex": ""
+    },
+    "missing-package": {
+      "status": 1,
+      "stdout_hex": "",
+      "stderr_hex": "706b672d636f6e6669673a20636f756c64206e6f742066696e64207061636b6167652027616273656e742d7061636b616765270a"
+    },
+    "listing": {
+      "status": 0,
+      "stdout_hex": "616c6b79686f6c2d626173650a616c6b79686f6c2d64656d6f0a616c6b79686f6c2d707269766174650a",
+      "stderr_hex": ""
+    },
+    "validate": {
+      "status": 0,
+      "stdout_hex": "",
+      "stderr_hex": ""
+    }
+  },
+  "forced_rebase_observations": null,
+  "raw_observations": {
+    "version": {
+      "stdout_hex": "302e33352e300a",
+      "stderr_hex": ""
+    },
+    "dependency-flags": {
+      "stdout_hex": "2d492f616c6b79686f6c2f73646b2f696e636c7564652f64656d6f202d4444454d4f3d31202d492f616c6b79686f6c2f73646b2f696e636c7564652f62617365202d44424153453d31202d4c2f616c6b79686f6c2f73646b2f6c6962202d6c64656d6f202d6c626173650a",
+      "stderr_hex": ""
+    },
+    "static-private-dependencies": {
+      "stdout_hex": "2d4c2f616c6b79686f6c2f73646b2f6c6962202d6c64656d6f202d6c6d202d6c62617365202d6c707269766174650a",
+      "stderr_hex": ""
+    },
+    "module-version": {
+      "stdout_hex": "322e342e300a",
+      "stderr_hex": ""
+    },
+    "quoted-unicode-variable": {
+      "stdout_hex": "cebbf09f8cb82071756f746564202276616c756522207461696c5c0a",
+      "stderr_hex": ""
+    },
+    "empty-variable": {
+      "stdout_hex": "0a",
+      "stderr_hex": ""
+    },
+    "version-requirement-success": {
+      "stdout_hex": "",
+      "stderr_hex": ""
+    },
+    "version-requirement-failure": {
+      "stdout_hex": "",
+      "stderr_hex": ""
+    },
+    "missing-package": {
+      "stdout_hex": "",
+      "stderr_hex": "706b672d636f6e6669673a20636f756c64206e6f742066696e64207061636b6167652027616273656e742d7061636b616765270a"
+    },
+    "listing": {
+      "stdout_hex": "616c6b79686f6c2d626173650a616c6b79686f6c2d64656d6f0a616c6b79686f6c2d707269766174650a",
+      "stderr_hex": ""
+    },
+    "validate": {
+      "stdout_hex": "",
+      "stderr_hex": ""
+    }
+  },
+  "raw_forced_rebase_observations": null,
+  "revision": "1ccfd876c7d9493b130f94818d437ceaa1b95abe",
+  "tracked_tree_clean": true
+}
