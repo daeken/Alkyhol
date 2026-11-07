@@ -18,7 +18,7 @@ attributes. The unused rotation matrix in BuildTreeGeometry is not applied.
 The first complete target is the existing SORTMODE_OFF path: ray generation,
 closest triangle intersection, floor reflections, trunk triplanar texturing,
 three petal colors, textured bushes, reflective cubes and the 200×50 Star Nest
-sky. Native Metal triangle BLAS/TLAS and intersectors will use the M4's ray-tracing
+sky. Native Metal triangle BLAS/TLAS and intersectors use the M4's ray-tracing
 hardware. Explicit DirectX HitObject/MaybeReorderThread scheduling is a separate
 capability, not automatically supplied by a successful ray intersection. Report
 SER support honestly and do not present an ignored hint as supported hardware SER.
@@ -29,7 +29,7 @@ shader uses cube indices with VerticesTrunk normals. Do not silently replace the
 with matching mesh buffers and call the result exact upstream behavior. Native DXR
 rendering of this full sample has not been measured here.
 
-Implementation sequence:
+Implemented milestones (see executed validation below and in validation.md):
 
 1. Replace the graphics crate's wgpu dependency with direct Metal Rust bindings;
    keep existing command/state tests and the unchanged native D3D12 pixel oracle.
@@ -112,7 +112,7 @@ CI also compiles an independent C++ placement adaptation on native MSVC and
 compares all 13,525 records (material IDs and every scale/position float bit) with
 Rust. This tests CPU placement, not native DXR rendering. The standard distribution
 implementation can change across MSVC versions: this port targets current MSVC's
-24-bit `generate_canonical<float>` conversion and seed/draw order.
+24-bit [`generate_canonical<float>` conversion](https://github.com/microsoft/STL/blob/main/stl/inc/random) and seed/draw order.
 
 The trunk JPEG has EXIF ColorSpace=1, so the upstream WIC default creates an sRGB
 texture; the bush JPEG has no sRGB marker and remains linear UNORM. The port uses

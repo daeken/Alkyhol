@@ -261,3 +261,53 @@ RGBA8 bytes between independent native Windows SDK D3D12 WARP and hosted direct
 Metal. The hosted Apple Paravirtual device reports ray tracing **false**; it does
 not validate Sakura ray tracing. Physical M4 ray-tracing tests are separate and
 require an explicit `--include-ignored` invocation; absence is not a passing ray test.
+
+## Running Sakura Forest on physical Metal, 2026-11-07
+
+Code revision `b72e0790ee8b785d0399ad044cf820d62b8901eb` runs the complete
+SORTMODE_OFF rendering port in Rust/MSL. All five public sample assets are pinned
+and hash-verified; four BLAS contain 33,983 original triangles, instanced 13,525
+times through a native Metal TLAS. The code retains original scene, texture color
+spaces, material quirks, two-level reflections and 200×50 fractal sky iterations.
+
+On physical Apple M4, macOS 27.0.1 ARM64 and Rust 1.99.1:
+
+- Eight graphics integration tests passed with `--include-ignored`, including real
+  native ray hits/misses, scaled/translated instances, barycentrics and masks.
+- Seven Sakura integration tests passed with `--include-ignored`: five CPU/asset
+  tests, CLI rejection/help and the actual full-scene rendering test. Repeated PNG
+  pixels matched exactly at fixed camera/light; moving the light changed pixels;
+  the close camera observed 1,359 primary reflective-cube hits and reflection rays.
+- The 129×73 default test observed 687 floor reflection rays, 663 secondary hits and
+  24 secondary misses. All primary rays were accounted for and floor output alpha
+  stayed opaque; 257×257 close-camera testing exercised cube attenuation/recursion.
+- A release 960×540/time-zero capture observed primary counts
+  `[151825, 0, 153240, 135415, 60987, 16933]` for floor, reflective cubes, trunks,
+  leaves, bushes and sky; 37,272 floor reflections led to 35,837 secondary hits and
+  1,435 misses. The initial view has no primary reflective-cube hits; the dedicated
+  camera test covers them instead. PNG SHA-256:
+  `118e5c5ba39d3488bd0810b71716db06842244bd0ce4c17e7990e7db6b1e225d`.
+- The native app window visibly displayed the forest. Held Right/W keys changed
+  the camera view. A final release build with correct trunk sRGB handling was
+  observed at about 16 FPS at 960×540. This is an observed UI rate under current
+  machine load, not a controlled performance benchmark.
+
+Raw logs, source/asset/executable hashes and the capture stay in ignored
+`local/sakura/physical-metal-report.json` and `local/sakura/metal-sakura.png`.
+Use [the launch/test instructions](sakura.md#running-the-port) to reproduce.
+
+CI run [42335656952](https://github.com/daeken/Alkyhol/actions/runs/42335656952)
+passed all eight jobs on that code revision. Native MSVC and hosted macOS Rust
+produced identical 662,725-byte placement observations: every material/mesh ID and
+scale/position float bit across all 13,525 instances. Both artifact SHA-256 values
+are `0e9cfe7ea4a45fd374fb20ef10ba3df8b6e83f365e9beafe06170e009a03a6a3`.
+The same run also passed all three hosts' root/kernel sample comparisons, 28 Python
+tests and exact native D3D12 WARP/direct Metal checker-copy pixels. Hosted Metal
+CPU/asset tests passed; its RT integration test was explicitly ignored because
+that device reports no ray-tracing support. This is not hosted Sakura GPU evidence.
+
+No full Sakura native DXR capture has been measured, so there is no claim of
+Windows/Metal full-frame pixel equivalence. WIC/Rust JPEG rounding and cross-GPU
+floating-point behavior remain comparison work. DirectX SER scheduling modes are
+not implemented; the UI says SER off. This source-level application port does not
+run original Windows/game binaries and is not evidence of game compatibility.
