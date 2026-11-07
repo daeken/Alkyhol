@@ -801,8 +801,8 @@ to 512 MiB. Unknown operations, handlers, chaining, frame pointers, context-poin
 outputs and other control points terminate with diagnostic/status 78. No missing
 operation returns a fake successful no-handler result. Explicit integer/vector
 slot-save and registered static EXE metadata support are described below.
-Static DLL metadata, RtlUnwindEx, SEH dispatch and actual stack resumption remain
-separate work.
+Static DLL metadata uses the isolated [RegisteredLibrary API](registered-dll.md).
+RtlUnwindEx, SEH dispatch and actual stack resumption remain separate work.
 
 The implementation reads only required fields, plans restorations before changing
 CONTEXT, restores saved GPRs/RSP/RIP, and writes the original body RSP as the
@@ -886,6 +886,7 @@ registers supported static `.pdata`/`.xdata` before entry and removes its record
 before unmapping. The type borrows ProcessContext through its lifetime. Pure
 `Image::runtime_functions` and `check_registered_startup` inspect/preflight the
 bounded v1 subset. Ordinary LoadedImage/DLL constructors keep their previous gate;
-static DLL lifecycle and exception dispatch remain separate. Details, the
+static DLL lifecycle uses [RegisteredLibrary](registered-dll.md), while exception
+dispatch remains separate. Details, the
 assembler-generated identical-PE observer and evidence scopes are in
 [static-functions.md](static-functions.md).

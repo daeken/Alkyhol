@@ -42,3 +42,4 @@ pe/fixtures/peports/* text eol=lf
 pe/fixtures/text-conversion/* text eol=lf
 pe/fixtures/static-functions/* text eol=lf
 pe/fixtures/unwind-prologue/* text eol=lf
+pe/fixtures/registered-dll/* text eol=lf

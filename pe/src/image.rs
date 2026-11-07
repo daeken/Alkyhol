@@ -595,6 +595,17 @@ impl<'a> Image<'a> {
         self.runtime_functions()?;
         Ok(())
     }
+    /// Preflight an isolated DLL for RegisteredLibrary, including static records.
+    /// This inspects metadata only; imports/forwarders are resolved before attach.
+    pub fn check_registered_library_startup(&self) -> Result<()> {
+        if !self.is_dll {
+            return Err("registered library API requires a DLL".into());
+        }
+        self.check_auxiliary_startup_except_static()?;
+        self.runtime_functions()?;
+        self.exports()?;
+        Ok(())
+    }
     /// Startup gates are deliberately conservative; no silent TLS/CFG/unwind omission.
     pub fn check_startup(&self) -> Result<()> {
         if self.is_dll {

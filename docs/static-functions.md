@@ -29,8 +29,10 @@ cleans up the mapping and preserves prior entries. The shared registry bounds of
 64 tables/65,536 aggregate entries still apply. No Mach-O OS unwind registration
 or guest-thread support is implied.
 
-The older `LoadedImage::load`, `LinkedImage` and DLL/library APIs retain their original `.pdata`
-startup gate. Static DLL registration/detach integration remains separate. The
+The older `LoadedImage::load`, `LinkedImage`, `LoadedLibrary`, `LinkedLibrary` and
+`LibrarySet` APIs retain their original `.pdata` startup gate. Isolated DLLs can
+use the context-borrowing [RegisteredLibrary API](registered-dll.md) for static
+records throughout attach/detach. The
 standalone launcher selects RegisteredImage automatically for EXEs, including
 those without static records; those existing programs retain their exact output
 and calling contracts.

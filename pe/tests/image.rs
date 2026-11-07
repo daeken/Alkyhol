@@ -347,6 +347,52 @@ fn static_runtime_records_are_original_rvas_and_require_explicit_registered_pref
     assert!(p.check_registered_startup().is_err());
 }
 #[test]
+fn registered_dll_preflight_preserves_kind_exports_static_recipe_and_other_startup_gates() {
+    assert!(
+        Image::parse(&static_fixture())
+            .unwrap()
+            .check_registered_library_startup()
+            .is_err()
+    );
+    let mut dll = static_fixture();
+    put16(&mut dll, 0x96, 0x2022);
+    Image::parse_dll(&dll)
+        .unwrap()
+        .check_registered_library_startup()
+        .unwrap();
+    put32(&mut dll, OPT + 16, 0);
+    Image::parse_dll(&dll)
+        .unwrap()
+        .check_registered_library_startup()
+        .unwrap();
+    for dir in [7, 8, 9, 10, 11, 13, 14, 15] {
+        let mut bad = dll.clone();
+        directory(&mut bad, dir, 0x2100, 4);
+        assert!(
+            Image::parse_dll(&bad)
+                .unwrap()
+                .check_registered_library_startup()
+                .is_err()
+        );
+    }
+    let mut bad = dll.clone();
+    bad[0x4c0] = 9;
+    assert!(
+        Image::parse_dll(&bad)
+            .unwrap()
+            .check_registered_library_startup()
+            .is_err()
+    );
+    let mut bad = dll;
+    directory(&mut bad, 0, 0x2100, 4);
+    assert!(
+        Image::parse_dll(&bad)
+            .unwrap()
+            .check_registered_library_startup()
+            .is_err()
+    );
+}
+#[test]
 fn static_table_shapes_permissions_ranges_and_recipe_operands_are_checked() {
     for (offset, value) in [
         (OPT + 112 + 3 * 8, 0x2081),

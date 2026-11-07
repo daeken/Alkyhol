@@ -133,6 +133,21 @@ jobs:
         with:
           name: pe-virtual-unwind-alkyhol
           path: local/pe/virtual-unwind-alkyhol.json
+      - name: Observe static DLL metadata throughout successful and rejected initialization
+        run: |
+          python tools/build_pe_registered_dll.py
+          python tools/run_pe_registered_dll.py --directory local/pe/registered-dll --output local/pe/registered-dll-alkyhol.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe-registered-dll-fixture
+          path: |
+            local/pe/registered-dll/accepted.dll
+            local/pe/registered-dll/rejected.dll
+            local/pe/registered-dll/registered-dll-fixture.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe-registered-dll-alkyhol
+          path: local/pe/registered-dll-alkyhol.json
       - name: Observe assembler-generated static metadata and actual caller restoration
         run: |
           python tools/build_pe_static_functions.py
@@ -438,6 +453,16 @@ jobs:
           path: local/pe/virtual-unwind-windows.json
       - uses: actions/download-artifact@v4
         with:
+          name: pe-registered-dll-fixture
+          path: local/pe/registered-dll
+      - name: Observe native DLL static tables during normal and failed attach/detach
+        run: python tools/run_pe_registered_dll.py --directory local/pe/registered-dll --output local/pe/registered-dll-windows.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe-registered-dll-windows
+          path: local/pe/registered-dll-windows.json
+      - uses: actions/download-artifact@v4
+        with:
           name: pe-static-functions-fixture
           path: local/pe/static-functions
       - name: Observe native module static lookup deletion rejection and caller restoration
@@ -729,3 +754,12 @@ jobs:
           name: pe-unwind-prologue-windows
           path: local/pe/observations
       - run: python tools/compare_pe_unwind_prologue.py local/pe/observations/unwind-prologue-windows.json local/pe/observations/unwind-prologue-alkyhol.json
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe-registered-dll-alkyhol
+          path: local/pe/observations
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe-registered-dll-windows
+          path: local/pe/observations
+      - run: python tools/compare_pe_registered_dll.py local/pe/observations/registered-dll-windows.json local/pe/observations/registered-dll-alkyhol.json

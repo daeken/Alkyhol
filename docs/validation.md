@@ -4,6 +4,23 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## Registered static DLL lifecycle: physical M4 development
+
+Two new owned unchanged DLLs expose original static function-table pointers during
+ATTACH/DETACH, reject guest deletion and retain lookup. Physical M4/Rosetta normal
+and forced-rebase development runs agree on all 40 raw DWORDs, actual exported
+Probe result/name-ordinal alias, successful dynamic lifecycle and rejected-attach
+cleanup. The new context-borrowing RegisteredLibrary registers before attach,
+keeps metadata through cleanup and removes entries before unmapping. Independent
+native Windows execution is pending; no native parity claim is made yet.
+All 92 PE host tests/11 compiler checks, 28 portable tests, 245 Python tests and
+Clippy pass locally.
+Existing loader APIs retain their old static-table gate. Host tests separately
+check failure/capacity rollback before initialization, visibility after drop,
+ordinary/no-entry DLLs, export views and scope lifetime. No guest module loader,
+TLS, exception dispatch or game support is added. See
+[registered DLL lifecycle](registered-dll.md) for exact contracts and provenance.
+
 ## Partial-prologue manual restoration: native Windows and physical M4
 
 All 27 CI jobs pass at strict-reference revision `b2ab1e3`: three

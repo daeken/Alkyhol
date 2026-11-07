@@ -227,7 +227,7 @@ impl Drop for LoadedImage {
 
 /// Executable whose validated static function records are registered until drop.
 /// The borrowed process guard must remain alive through registry cleanup/unmapping.
-/// Exception dispatch, epilogue unwinding and DLL static tables remain unsupported.
+/// Exception dispatch and epilogue unwinding remain unsupported; DLLs use RegisteredLibrary.
 ///
 /// ```compile_fail,E0505
 /// # use alkyhol_pe::{ProcessContext,RegisteredImage};
@@ -243,6 +243,38 @@ pub struct RegisteredImage<'a> {
     table: Option<*const crate::RuntimeFunction>,
     _process: &'a crate::ProcessContext,
 }
+fn register_static_functions(
+    image: &LoadedImage,
+    functions: Option<crate::RuntimeFunctionTable>,
+) -> Result<Option<*const crate::RuntimeFunction>> {
+    let Some(functions) = functions else {
+        return Ok(None);
+    };
+    let records = unsafe {
+        image
+            .base
+            .add(functions.rva)
+            .cast::<crate::RuntimeFunction>()
+    };
+    let added = crate::process::with_function_tables(|registry| {
+        registry.map(|r| unsafe {
+            r.add_static(records, functions.entries.len() as u32, image.base as u64)
+        })
+    });
+    if added != Some(1) {
+        return Err("static function registration requires an active process scope and available table capacity".into());
+    }
+    Ok(Some(records))
+}
+fn unregister_static_functions(table: &mut Option<*const crate::RuntimeFunction>) {
+    if let Some(table) = table.take() {
+        crate::process::with_function_tables(|registry| {
+            if let Some(r) = registry {
+                r.delete_static(table);
+            }
+        });
+    }
+}
 impl<'a> RegisteredImage<'a> {
     /// Check/map an EXE and register its supported static table before entry.
     /// Unknown recipes/startup features/imports fail before guest code executes.
@@ -251,25 +283,7 @@ impl<'a> RegisteredImage<'a> {
         parsed.check_registered_startup()?;
         let functions = parsed.runtime_functions()?;
         let image = LoadedImage::map(&parsed, rebase, &resolve_builtin)?;
-        let table = if let Some(functions) = functions {
-            let records = unsafe {
-                image
-                    .base
-                    .add(functions.rva)
-                    .cast::<crate::RuntimeFunction>()
-            };
-            let added = crate::process::with_function_tables(|registry| {
-                registry.map(|r| unsafe {
-                    r.add_static(records, functions.entries.len() as u32, image.base as u64)
-                })
-            });
-            if added != Some(1) {
-                return Err("static function registration requires an active process scope and available table capacity".into());
-            }
-            Some(records as *const _)
-        } else {
-            None
-        };
+        let table = register_static_functions(&image, functions)?;
         Ok(Self {
             image,
             table,
@@ -291,13 +305,7 @@ impl<'a> RegisteredImage<'a> {
 }
 impl Drop for RegisteredImage<'_> {
     fn drop(&mut self) {
-        if let Some(table) = self.table.take() {
-            crate::process::with_function_tables(|registry| {
-                if let Some(r) = registry {
-                    r.delete_static(table);
-                }
-            });
-        }
+        unregister_static_functions(&mut self.table);
         // image field drops/unmaps only after its registry entry has been removed.
     }
 }
@@ -392,6 +400,18 @@ impl LoadedLibrary {
     ) -> Result<Self> {
         let image = Image::parse_dll(bytes)?;
         image.check_library_startup()?;
+        let mut library = Self::map_preflighted(&image, rebase, resolve)?;
+        unsafe {
+            library.attach()?;
+        }
+        Ok(library)
+    }
+    // All constructor-specific startup gates must pass before this mapping step.
+    fn map_preflighted(
+        image: &Image<'_>,
+        rebase: bool,
+        resolve: &impl Fn(&str, &ImportSymbol) -> Option<usize>,
+    ) -> Result<Self> {
         let exports = image.exports()?.map(|t| t.entries).unwrap_or_default();
         // Resolve every forwarder before any guest initializer can run.
         let mut pending = Vec::new();
@@ -402,7 +422,7 @@ impl LoadedLibrary {
             };
             pending.push((export, external));
         }
-        let mapping = LoadedImage::map(&image, rebase, resolve)?;
+        let mapping = LoadedImage::map(image, rebase, resolve)?;
         let symbols = pending
             .into_iter()
             .map(|(e, external)| {
@@ -413,23 +433,33 @@ impl LoadedLibrary {
                 (e.ordinal, e.names, address)
             })
             .collect();
-        let mut library = Self {
+        Ok(Self {
             mapping,
             symbols,
             attached: false,
-        };
-        if library.mapping.entry != 0 {
-            if unsafe { library.entry(1) } == 0 {
+        })
+    }
+    unsafe fn attach(&mut self) -> Result<()> {
+        if self.mapping.entry != 0 {
+            if unsafe { self.entry(1) } == 0 {
                 // Windows calls DETACH after a failed dynamic ATTACH. The
                 // attached flag stays false, so Drop cannot call it twice.
                 unsafe {
-                    library.entry(0);
+                    self.entry(0);
                 }
                 return Err("DLL PROCESS_ATTACH returned FALSE".into());
             }
-            library.attached = true;
+            self.attached = true;
         }
-        Ok(library)
+        Ok(())
+    }
+    fn detach(&mut self) {
+        if self.attached {
+            self.attached = false;
+            unsafe {
+                self.entry(0);
+            }
+        }
     }
     unsafe fn entry(&self, reason: u32) -> i32 {
         let entry: unsafe extern "win64" fn(*mut c_void, u32, *mut c_void) -> i32 =
@@ -467,13 +497,77 @@ impl LoadedLibrary {
 }
 impl Drop for LoadedLibrary {
     fn drop(&mut self) {
-        if self.attached {
-            self.attached = false;
-            unsafe {
-                self.entry(0);
-            }
-        }
+        self.detach();
         // The owned mapping drops after DETACH returns.
+    }
+}
+/// Isolated DLL with static function records available throughout attach/detach.
+/// Borrows the process scope through detach, registry removal and unmapping.
+///
+/// ```compile_fail,E0505
+/// # use alkyhol_pe::{ProcessContext,RegisteredLibrary};
+/// # fn example(bytes:&[u8])->alkyhol_pe::Result<()> {
+/// let process=ProcessContext::install(&["host".into()],&[])?;
+/// let dll=unsafe { RegisteredLibrary::load(bytes,false,&process) }?;
+/// drop(process);
+/// drop(dll);
+/// # Ok(()) }
+/// ```
+/// ```no_run
+/// # use alkyhol_pe::{ProcessContext,RegisteredLibrary};
+/// # fn example(bytes:&[u8])->alkyhol_pe::Result<()> {
+/// let process=ProcessContext::install(&["host".into()],&[])?;
+/// let dll=unsafe { RegisteredLibrary::load(bytes,false,&process) }?;
+/// let _export=dll.library().get_name("Probe");
+/// drop(dll);
+/// drop(process);
+/// # Ok(()) }
+/// ```
+pub struct RegisteredLibrary<'a> {
+    library: Option<LoadedLibrary>,
+    table: Option<*const crate::RuntimeFunction>,
+    _process: &'a crate::ProcessContext,
+}
+impl<'a> RegisteredLibrary<'a> {
+    /// Preflight/map/register an isolated DLL, then call dynamic PROCESS_ATTACH.
+    ///
+    /// # Safety
+    /// LoadedLibrary's trusted-code contract applies. Only builtin imports and
+    /// forwarders are supported. No guest threads, reentrancy, TLS or SEH dispatch.
+    pub unsafe fn load(
+        bytes: &[u8],
+        rebase: bool,
+        process: &'a crate::ProcessContext,
+    ) -> Result<Self> {
+        let image = Image::parse_dll(bytes)?;
+        image.check_registered_library_startup()?;
+        let functions = image.runtime_functions()?;
+        let library = LoadedLibrary::map_preflighted(&image, rebase, &resolve_builtin)?;
+        let table = register_static_functions(&library.mapping, functions)?;
+        let mut registered = Self {
+            library: Some(library),
+            table,
+            _process: process,
+        };
+        // On failed attach, its cleanup DETACH runs while static entries remain
+        // registered. The local owner's Drop then removes them before unmapping.
+        unsafe {
+            registered.library.as_mut().unwrap().attach()?;
+        }
+        Ok(registered)
+    }
+    /// Borrow exports/base/rebase information; this view cannot outlive its owner.
+    pub fn library(&self) -> &LoadedLibrary {
+        self.library.as_ref().unwrap()
+    }
+}
+impl Drop for RegisteredLibrary<'_> {
+    fn drop(&mut self) {
+        if let Some(mut library) = self.library.take() {
+            library.detach();
+            unregister_static_functions(&mut self.table);
+            drop(library);
+        }
     }
 }
 /// One trusted DLL linked against explicitly supplied, already attached DLLs.
@@ -870,6 +964,204 @@ mod tests {
             b[0x6f0 + text.len()] = 0;
         }
         b
+    }
+    struct RegisteredLog {
+        calls: u32,
+        module: usize,
+        visible: [bool; 2],
+        accept: bool,
+    }
+    unsafe extern "win64" fn registered_lifecycle(
+        module: usize,
+        reason: u32,
+        reserved: usize,
+        log: *mut RegisteredLog,
+    ) -> i32 {
+        let log = unsafe { &mut *log };
+        log.calls += 1;
+        log.module = module;
+        let lookup: unsafe extern "win64" fn(
+            u64,
+            *mut u64,
+            *mut c_void,
+        ) -> *const crate::RuntimeFunction = unsafe {
+            std::mem::transmute(abi::resolve("kernel32.dll", "RtlLookupFunctionEntry").unwrap())
+        };
+        let delete: unsafe extern "win64" fn(*const crate::RuntimeFunction) -> u8 = unsafe {
+            std::mem::transmute(abi::resolve("kernel32.dll", "RtlDeleteFunctionTable").unwrap())
+        };
+        let mut base = 0;
+        let row = unsafe { lookup(module as u64 + 0x1000, &mut base, ptr::null_mut()) };
+        let retained = unsafe { delete(row) } == 0
+            && unsafe { lookup(module as u64 + 0x1000, &mut base, ptr::null_mut()) } == row;
+        if reason <= 1 {
+            log.visible[(reason == 0) as usize] = reserved == 0
+                && base == module as u64
+                && row as usize == module + 0x2040
+                && retained;
+        }
+        i32::from(reason != 1 || log.accept)
+    }
+    fn registered_library_fixture(log: *mut RegisteredLog) -> Vec<u8> {
+        let mut bytes = lifecycle_fixture(ptr::null_mut(), true, None);
+        let template = static_fixture();
+        bytes[0x98 + 136..0x98 + 144].copy_from_slice(&template[0x98 + 136..0x98 + 144]);
+        bytes[0x640..0x668].copy_from_slice(&template[0x640..0x668]);
+        bytes[0x644..0x648].copy_from_slice(&0x1016u32.to_le_bytes());
+        bytes[0x660..0x668].copy_from_slice(&[1, 4, 1, 0, 4, 0x42, 0, 0]);
+        bytes[0x810..0x818].copy_from_slice(&(log as usize as u64).to_le_bytes());
+        bytes[0x818..0x820]
+            .copy_from_slice(&(registered_lifecycle as *const () as u64).to_le_bytes());
+        bytes[0x400..0x416].copy_from_slice(&[
+            0x48, 0x83, 0xec, 40, // sub rsp,40
+            0x4c, 0x8b, 0x0d, 5, 0x20, 0, 0, // mov r9,[rip+0x2005]
+            0xff, 0x15, 7, 0x20, 0, 0, // call [rip+0x2007]
+            0x48, 0x83, 0xc4, 40, 0xc3,
+        ]);
+        bytes
+    }
+    #[test]
+    fn registered_library_tables_survive_attach_detach_and_are_removed_before_unmapping() {
+        let process = crate::ProcessContext::install(&["registered-dll-unit".into()], &[]).unwrap();
+        let mut log = RegisteredLog {
+            calls: 0,
+            module: 0,
+            visible: [false; 2],
+            accept: true,
+        };
+        let bytes = registered_library_fixture(&mut log);
+        assert!(unsafe { LoadedLibrary::load(&bytes, true) }.is_err());
+        let dll = unsafe { RegisteredLibrary::load(&bytes, true, &process) }.unwrap();
+        assert!(dll.library().relocated());
+        assert_eq!(log.calls, 1);
+        assert!(log.visible[0]);
+        let base = dll.library().base_address();
+        assert_eq!(
+            dll.library().get_name("Entry"),
+            dll.library().get_ordinal(17)
+        );
+        assert_eq!(
+            dll.library().get_name("Entry").unwrap() as usize,
+            base + 0x1000
+        );
+        drop(dll);
+        assert_eq!(log.calls, 2);
+        assert_eq!(log.visible, [true, true]);
+        assert_eq!(
+            crate::process::with_function_tables(|r| r.map(|r| r.entry_count_for_test())),
+            Some(0)
+        );
+        // Lookup after drop must not dereference stale unmapped records.
+        let lookup: unsafe extern "win64" fn(u64, *mut u64, *mut c_void) -> usize = unsafe {
+            std::mem::transmute(abi::resolve("kernel32.dll", "RtlLookupFunctionEntry").unwrap())
+        };
+        let mut returned = 0;
+        assert_eq!(
+            unsafe { lookup(base as u64 + 0x1000, &mut returned, ptr::null_mut()) },
+            0
+        );
+        // A table-bearing DLL with no DllMain still owns lookup until drop.
+        log.calls = 0;
+        let mut bytes = bytes.clone();
+        bytes[0x98 + 16..0x98 + 20].fill(0);
+        let dll = unsafe { RegisteredLibrary::load(&bytes, true, &process) }.unwrap();
+        assert_eq!(log.calls, 0);
+        assert_eq!(
+            crate::process::with_function_tables(|r| r.map(|r| r.entry_count_for_test())),
+            Some(1)
+        );
+        drop(dll);
+        assert_eq!(log.calls, 0);
+        assert_eq!(
+            crate::process::with_function_tables(|r| r.map(|r| r.entry_count_for_test())),
+            Some(0)
+        );
+        // DLLs without static tables retain the same attach/detach semantics.
+        let ordinary_log = lifecycle_log();
+        let dll = unsafe {
+            RegisteredLibrary::load(
+                &lifecycle_fixture(ordinary_log.get(), true, None),
+                true,
+                &process,
+            )
+        }
+        .unwrap();
+        drop(dll);
+        assert_eq!(unsafe { (*ordinary_log.get()).calls }, 2);
+    }
+    #[test]
+    fn rejected_registered_library_cleans_up_with_live_metadata_and_preflight_failure_never_attaches()
+     {
+        let process =
+            crate::ProcessContext::install(&["registered-dll-failure".into()], &[]).unwrap();
+        let mut log = RegisteredLog {
+            calls: 0,
+            module: 0,
+            visible: [false; 2],
+            accept: false,
+        };
+        let bytes = registered_library_fixture(&mut log);
+        let error = unsafe { RegisteredLibrary::load(&bytes, true, &process) }
+            .err()
+            .unwrap();
+        assert!(error.contains("PROCESS_ATTACH returned FALSE"));
+        assert_eq!(log.calls, 2);
+        assert_eq!(log.visible, [true, true]);
+        assert_eq!(
+            crate::process::with_function_tables(|r| r.map(|r| r.entry_count_for_test())),
+            Some(0)
+        );
+        for change in [0, 1, 2] {
+            log.calls = 0;
+            let mut bad = bytes.clone();
+            match change {
+                0 => bad[0x660] = 9, // unsupported handler recipe
+                1 => bad[0x98 + 112 + 9 * 8..0x98 + 116 + 9 * 8]
+                    .copy_from_slice(&0x2000u32.to_le_bytes()),
+                _ => {
+                    // unresolved forwarder
+                    bad[0x6d0..0x6d4].copy_from_slice(&0x20f0u32.to_le_bytes());
+                    bad[0x6f0..0x6fb].copy_from_slice(b"bad.Entry\0\0");
+                }
+            }
+            assert!(unsafe { RegisteredLibrary::load(&bad, true, &process) }.is_err());
+            assert_eq!(log.calls, 0);
+            assert_eq!(
+                crate::process::with_function_tables(|r| r.map(|r| r.entry_count_for_test())),
+                Some(0)
+            );
+        }
+        // Registration capacity must be checked BEFORE the first initializer.
+        log.calls = 0;
+        let rows = vec![
+            crate::RuntimeFunction {
+                begin: 16,
+                end: 32,
+                unwind: 256
+            };
+            64
+        ];
+        let add: unsafe extern "win64" fn(*const crate::RuntimeFunction, u32, u64) -> u8 = unsafe {
+            std::mem::transmute(abi::resolve("kernel32.dll", "RtlAddFunctionTable").unwrap())
+        };
+        let delete: unsafe extern "win64" fn(*const crate::RuntimeFunction) -> u8 = unsafe {
+            std::mem::transmute(abi::resolve("kernel32.dll", "RtlDeleteFunctionTable").unwrap())
+        };
+        for i in 0..64 {
+            assert_eq!(
+                unsafe { add(rows.as_ptr().add(i), 1, 0x123400000000 + i as u64 * 0x10000) },
+                1
+            );
+        }
+        assert!(unsafe { RegisteredLibrary::load(&bytes, true, &process) }.is_err());
+        assert_eq!(log.calls, 0);
+        assert_eq!(
+            crate::process::with_function_tables(|r| r.map(|r| r.entry_count_for_test())),
+            Some(64)
+        );
+        for i in 0..64 {
+            assert_eq!(unsafe { delete(rows.as_ptr().add(i)) }, 1);
+        }
     }
     #[test]
     fn library_attach_lookup_detach_and_win64_arguments_are_real() {
