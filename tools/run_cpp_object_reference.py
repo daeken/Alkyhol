@@ -46,6 +46,13 @@ def parse_observation(text):
     return observation
 
 
+def compare_frozen(observation,source_sha256,reference):
+    if source_sha256!=reference['artifacts']['cpp/tests/object_private_data.cpp']:
+        raise ValueError('reference C++ source changed; a separately measured contract version is required')
+    if observation!=reference['observation']:
+        raise ValueError('native object metadata differs from frozen measured contract')
+
+
 def run(output):
     if os.name!='nt':raise RuntimeError('native Windows SDK reference required; no emulated observation is accepted')
     source=ROOT/'cpp/tests/object_private_data.cpp'
@@ -69,6 +76,9 @@ def run(output):
                 'compiler':compiler.stdout+compiler.stderr,'windows_sdk':os.environ.get('WindowsSDKVersion'),
                 'host':platform.platform(),'machine':platform.machine(),'build_command':command,
                 'adapter':adapters[0],'artifacts':before,'executable_sha256':digest,'observation':observation}
+    reference=json.loads((ROOT/'cpp/reference/object-private-data-windows-v1.json').read_text())
+    compare_frozen(observation,before['cpp/tests/object_private_data.cpp'],reference)
+    report['matches_frozen_contract']=True
     output.write_text(json.dumps(report,indent=2)+'\n');return report
 
 if __name__=='__main__':

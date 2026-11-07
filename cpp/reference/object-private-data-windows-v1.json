@@ -1,0 +1,380 @@
+{
+  "schema_version": 1,
+  "backend": "native Windows SDK D3D12 WARP object metadata",
+  "source_revision": "e3218ee00313a938575d210a471a09972a5aa9b2",
+  "tracked_tree_clean": true,
+  "compiler": "usage: cl [ option... ] filename... [ /link linkoption... ]\nMicrosoft (R) C/C++ Optimizing Compiler Version 19.51.36260 for x64\nCopyright (C) Microsoft Corporation.  All rights reserved.\n\n",
+  "windows_sdk": "10.0.26100.0\\",
+  "host": "Windows-2025Server-10.0.26100-SP0",
+  "machine": "AMD64",
+  "build_command": [
+    "cl",
+    "/nologo",
+    "/W4",
+    "/WX",
+    "/EHsc",
+    "/std:c++17",
+    "D:\\a\\Alkyhol\\Alkyhol\\cpp\\tests\\object_private_data.cpp",
+    "/Fe:C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\alkyhol-object-reference-difkkkz3\\object_private_data.exe",
+    "/link",
+    "d3d12.lib",
+    "dxgi.lib",
+    "dxguid.lib"
+  ],
+  "adapter": "adapter: D3D12 WARP vendor=5140 device=140 flags=2",
+  "artifacts": {
+    "cpp/tests/object_private_data.cpp": "6849ce362f9f8d28a732729fd36c3581ea8f29405feafe7ced7b874715dc592e",
+    "tools/run_cpp_object_reference.py": "0026cef833dd964fbc25a6c27db5bda09cc14ed589530f6339b31c4162bea66d"
+  },
+  "executable_sha256": "37dd24e7a28d84171187f49a84ea22085bf2504c6fe78440ea82d4ac6097e04c",
+  "observation": {
+    "scenario": "d3d12-object-private-data-v1",
+    "records": [
+      {
+        "case": "bytes.missing",
+        "hr": 2289696770,
+        "size": 0,
+        "data": "a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
+        "refs": 0,
+        "adds": 0,
+        "releases": 0,
+        "destroyed": 0
+      },
+      {
+        "case": "bytes.set",
+        "hr": 0,
+        "size": 0,
+        "data": "",
+        "refs": 0,
+        "adds": 0,
+        "releases": 0,
+        "destroyed": 0
+      },
+      {
+        "case": "bytes.size",
+        "hr": 0,
+        "size": 4,
+        "data": "",
+        "refs": 0,
+        "adds": 0,
+        "releases": 0,
+        "destroyed": 0
+      },
+      {
+        "case": "bytes.small",
+        "hr": 2289696771,
+        "size": 4,
+        "data": "a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
+        "refs": 0,
+        "adds": 0,
+        "releases": 0,
+        "destroyed": 0
+      },
+      {
+        "case": "bytes.exact",
+        "hr": 0,
+        "size": 4,
+        "data": "00ff4180a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
+        "refs": 0,
+        "adds": 0,
+        "releases": 0,
+        "destroyed": 0
+      },
+      {
+        "case": "bytes.large",
+        "hr": 0,
+        "size": 4,
+        "data": "00ff4180a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
+        "refs": 0,
+        "adds": 0,
+        "releases": 0,
+        "destroyed": 0
+      },
+      {
+        "case": "bytes.replace",
+        "hr": 0,
+        "size": 0,
+        "data": "",
+        "refs": 0,
+        "adds": 0,
+        "releases": 0,
+        "destroyed": 0
+      },
+      {
+        "case": "bytes.replaced",
+        "hr": 0,
+        "size": 2,
+        "data": "7300a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
+        "refs": 0,
+        "adds": 0,
+        "releases": 0,
+        "destroyed": 0
+      },
+      {
+        "case": "bytes.remove",
+        "hr": 0,
+        "size": 0,
+        "data": "",
+        "refs": 0,
+        "adds": 0,
+        "releases": 0,
+        "destroyed": 0
+      },
+      {
+        "case": "bytes.removed",
+        "hr": 2289696770,
+        "size": 0,
+        "data": "",
+        "refs": 0,
+        "adds": 0,
+        "releases": 0,
+        "destroyed": 0
+      },
+      {
+        "case": "bytes.remove_missing",
+        "hr": 1,
+        "size": 0,
+        "data": "",
+        "refs": 0,
+        "adds": 0,
+        "releases": 0,
+        "destroyed": 0
+      },
+      {
+        "case": "bytes.zero_nonnull",
+        "hr": 0,
+        "size": 0,
+        "data": "",
+        "refs": 0,
+        "adds": 0,
+        "releases": 0,
+        "destroyed": 0
+      },
+      {
+        "case": "bytes.zero_size",
+        "hr": 0,
+        "size": 0,
+        "data": "",
+        "refs": 0,
+        "adds": 0,
+        "releases": 0,
+        "destroyed": 0
+      },
+      {
+        "case": "bytes.zero_read",
+        "hr": 0,
+        "size": 0,
+        "data": "a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
+        "refs": 0,
+        "adds": 0,
+        "releases": 0,
+        "destroyed": 0
+      },
+      {
+        "case": "interface.set",
+        "hr": 0,
+        "size": 0,
+        "data": "",
+        "refs": 2,
+        "adds": 1,
+        "releases": 0,
+        "destroyed": 0
+      },
+      {
+        "case": "interface.size",
+        "hr": 0,
+        "size": 8,
+        "data": "",
+        "refs": 2,
+        "adds": 1,
+        "releases": 0,
+        "destroyed": 0
+      },
+      {
+        "case": "interface.small",
+        "hr": 2289696771,
+        "size": 8,
+        "data": "a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
+        "refs": 2,
+        "adds": 1,
+        "releases": 0,
+        "destroyed": 0
+      },
+      {
+        "case": "interface.get",
+        "hr": 0,
+        "size": 8,
+        "data": "01",
+        "refs": 3,
+        "adds": 2,
+        "releases": 0,
+        "destroyed": 0
+      },
+      {
+        "case": "interface.release_copy",
+        "hr": null,
+        "size": 0,
+        "data": "",
+        "refs": 2,
+        "adds": 2,
+        "releases": 1,
+        "destroyed": 0
+      },
+      {
+        "case": "interface.replace_same",
+        "hr": 0,
+        "size": 0,
+        "data": "",
+        "refs": 2,
+        "adds": 3,
+        "releases": 2,
+        "destroyed": 0
+      },
+      {
+        "case": "interface.replace_bytes",
+        "hr": 0,
+        "size": 0,
+        "data": "",
+        "refs": 1,
+        "adds": 3,
+        "releases": 3,
+        "destroyed": 0
+      },
+      {
+        "case": "interface.bytes",
+        "hr": 0,
+        "size": 2,
+        "data": "7300a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
+        "refs": 1,
+        "adds": 3,
+        "releases": 3,
+        "destroyed": 0
+      },
+      {
+        "case": "interface.restore",
+        "hr": 0,
+        "size": 0,
+        "data": "",
+        "refs": 2,
+        "adds": 4,
+        "releases": 3,
+        "destroyed": 0
+      },
+      {
+        "case": "interface.clear",
+        "hr": 0,
+        "size": 0,
+        "data": "",
+        "refs": 1,
+        "adds": 4,
+        "releases": 4,
+        "destroyed": 0
+      },
+      {
+        "case": "interface.cleared",
+        "hr": 0,
+        "size": 8,
+        "data": "",
+        "refs": 1,
+        "adds": 4,
+        "releases": 4,
+        "destroyed": 0
+      },
+      {
+        "case": "interface.clear_missing",
+        "hr": 0,
+        "size": 0,
+        "data": "",
+        "refs": 1,
+        "adds": 4,
+        "releases": 4,
+        "destroyed": 0
+      },
+      {
+        "case": "interface.retained_until_destroy",
+        "hr": 0,
+        "size": 0,
+        "data": "",
+        "refs": 2,
+        "adds": 5,
+        "releases": 4,
+        "destroyed": 0
+      },
+      {
+        "case": "interface.release_caller",
+        "hr": null,
+        "size": 0,
+        "data": "",
+        "refs": 1,
+        "adds": 5,
+        "releases": 5,
+        "destroyed": 0
+      },
+      {
+        "case": "name.set",
+        "hr": 0,
+        "size": 0,
+        "data": "",
+        "refs": 1,
+        "adds": 5,
+        "releases": 5,
+        "destroyed": 0
+      },
+      {
+        "case": "name.size",
+        "hr": 0,
+        "size": 28,
+        "data": "",
+        "refs": 1,
+        "adds": 5,
+        "releases": 5,
+        "destroyed": 0
+      },
+      {
+        "case": "name.read",
+        "hr": 0,
+        "size": 28,
+        "data": "6d0065007400610064006100740061002000bb0320003cd838df0000a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
+        "refs": 1,
+        "adds": 5,
+        "releases": 5,
+        "destroyed": 0
+      },
+      {
+        "case": "name.empty",
+        "hr": 0,
+        "size": 0,
+        "data": "",
+        "refs": 1,
+        "adds": 5,
+        "releases": 5,
+        "destroyed": 0
+      },
+      {
+        "case": "name.empty_size",
+        "hr": 0,
+        "size": 2,
+        "data": "",
+        "refs": 1,
+        "adds": 5,
+        "releases": 5,
+        "destroyed": 0
+      },
+      {
+        "case": "object.destroyed",
+        "hr": null,
+        "size": 0,
+        "data": "",
+        "refs": 0,
+        "adds": 5,
+        "releases": 6,
+        "destroyed": 1
+      }
+    ]
+  },
+  "evidence": {
+    "workflow_run": "https://github.com/daeken/Alkyhol/actions/runs/42356150734",
+    "artifact_id": 13567691991,
+    "scope": "Native WARP fence ID3D12Object metadata only; no Alkyhol metadata implementation or Metal/GPU submission comparison."
+  }
+}

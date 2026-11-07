@@ -4,21 +4,33 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
-## Next COM runtime contract: native reference observer (pending execution)
+## Native ID3D12Object metadata reference: COM runtime preparation
 
-The original C++ application's device-creation boundary is unchanged. A new
-independent Windows SDK/WARP observer measures ID3D12Object private bytes,
-size queries/undersized buffers, replacement/removal/zero-size entries, stored
-IUnknown AddRef/Release lifetimes and Unicode debug names on a real fence.
-It records actual HRESULTs, returned sizes, exact output/sentinel bytes and an
-instrumented caller-owned IUnknown's reference events. Diagnostic lifecycle
-snapshots carry no manufactured HRESULT. Missing/reordered records or malformed
-transport fail validation; no predetermined success values stand in for native
-behavior. This establishes a reference contract before its Rust implementation.
+[CI 42356150734](https://github.com/daeken/Alkyhol/actions/runs/42356150734)
+executed the independent SDK observer on `e3218ee`, using a real native WARP
+fence (vendor 5140/device 140/software flag 2), Windows SDK 10.0.26100.0 and
+MSVC 19.51.36260. Its 34 records capture actual private-data HRESULTs/sizes,
+exact output/sentinel bytes, caller-owned IUnknown reference events and Unicode
+debug-name bytes. The report identifies clean source, actual compiler/adapter,
+source/executable hashes and build command. Diagnostic lifecycle events have no
+manufactured HRESULT. The frozen observation canonical JSON SHA-256 is
+`cbd399983e710289abfe8925243a08c2b75a6c93434e28aa0288831be572b035`.
 
-The observer compiles to an object against the current host headers, and all
-48 Python tests pass locally. Actual native execution is pending the new CI step;
-these host checks are not native behavior, a Metal fence or original C++ rendering.
+Measured details include S_FALSE removing absent bytes, a present zero-byte entry
+for non-null zero-length data, and a present pointer-sized entry for a null
+interface assignment. Size queries do not AddRef; successful interface reads do.
+Insufficient buffers remain unchanged, same-interface replacement performs both
+reference calls, and final object destruction releases the retained IUnknown.
+SetName preserves UTF-16 bytes including a terminator, including empty names.
+These observations are frozen separately from a future Rust implementation;
+subsequent native runs must match all records and the unchanged observer source.
+See [reference contract](../cpp/reference/README.md) for the full report and limits.
+
+The observer also compiles to a host object, and all 50 Python tests pass locally.
+Those host transport/comparator tests are synthetic checks, not native API evidence.
+The original C++ device-creation boundary and working sample apps are unchanged.
+No Rust object metadata implementation, Metal fence, C++ initialization or original
+C++ rendering is established by this new native reference.
 
 ## Complete original MiniEngine C++ compile/link: local source ABI evidence
 
