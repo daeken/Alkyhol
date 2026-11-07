@@ -59,7 +59,16 @@ Rust now exposes the real backing GPU address for CPU-only heaps as well; it
 does not infer visibility or binding permission from those bits. This corrects
 the mismatch rather than excluding it from comparison. The unchanged observer's
 invariants now match locally, and future live pairs must also match the frozen
-native invariants. Native remeasurement of this fix remains pending. The Python
+native invariants. Fresh native SDK/WARP and hosted Metal execution and the strict
+invariant comparison passed on `2aaf073` in
+[42370246611](https://github.com/daeken/Alkyhol/actions/runs/42370246611).
+All twenty jobs passed, retaining the existing SDK, shader, graphics, geometry
+and prior COM/resource comparisons.
+Downloaded reports also match the clean physical M4 observation from that same
+revision. The native observation's full canonical SHA-256, including its actual
+strides, is `f492c53e6077155086010c76cf09953aa8ee48561e3073093d6b08cc69efa9c0`.
+Only the opaque stride bytes differ between backends; the observed handle-state
+mismatch was corrected and remains a comparison field. The Python
 suite now has 99 passing tests. No initialized descriptor or native shader use
 is established by this allocation reference.
 

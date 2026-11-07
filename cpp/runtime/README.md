@@ -319,3 +319,13 @@ Local GPU storage tests and original MiniEngine DescriptorAllocator/DescriptorHe
 execution cover allocation, rollover, exhaustion and validation, not initialized
 descriptors or native shader consumption. The subsystem caller's v4 observation
 links three verified unchanged original implementation objects.
+
+The corrected heap invariants agree on clean `2aaf073` between native WARP,
+hosted Metal and the separate physical M4 observation in
+[CI 42370246611](https://github.com/daeken/Alkyhol/actions/runs/42370246611).
+All twenty jobs passed, including the previous SDK/shader/graphics comparisons.
+The native observation/source identity is preserved at
+`cpp/reference/descriptor-heaps-windows-v1.json`. WARP reports GPU-handle bits for
+CPU-only heaps too; the runtime matches that observation with actual backing GPU
+addresses while retaining flags as the visibility contract. It does not initialize
+or bind any descriptor view.

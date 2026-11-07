@@ -46,3 +46,4 @@ class DescriptorHeapReportTests(unittest.TestCase):
         self.assertEqual(report['artifacts'][SOURCE],hashlib.sha256((ROOT/SOURCE).read_bytes()).hexdigest())
         self.assertEqual(report['observation']['strides'],[64,64,32,8])
         self.assertTrue(all(row['gpu_present'] and not row['gpu_invalid_sentinel'] for row in report['observation']['heaps']))
+        self.assertEqual(hashlib.sha256(json.dumps(report['observation'],sort_keys=True,separators=(',',':')).encode()).hexdigest(),'f492c53e6077155086010c76cf09953aa8ee48561e3073093d6b08cc69efa9c0')

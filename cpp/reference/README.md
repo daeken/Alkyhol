@@ -150,3 +150,10 @@ and requires exact returned descriptions, handle presence/sentinel state,
 indices computed using each actual stride and parent identity. Future live pairs
 must also match this unchanged native invariant snapshot. This finite allocation
 reference does not initialize descriptor views or establish shader binding/use.
+
+Fresh native WARP, hosted Metal and physical M4 records agree on all preserved
+invariants at clean `2aaf073` in CI 42370246611. The frozen native observation's
+full canonical SHA-256, including its raw strides, is
+`f492c53e6077155086010c76cf09953aa8ee48561e3073093d6b08cc69efa9c0`.
+The GPU-handle presence/sentinel fields are still compared, not excluded to make
+the implementation pass. Heap flags remain the authority for binding permission.
