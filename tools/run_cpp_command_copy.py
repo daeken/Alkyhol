@@ -4,9 +4,9 @@ import argparse
 import json
 from pathlib import Path
 if __package__:
-    from .run_cpp_device_buffers import run_probe
+    from .run_cpp_device_buffers import ROOT,run_probe
 else:
-    from run_cpp_device_buffers import run_probe
+    from run_cpp_device_buffers import ROOT,run_probe
 
 SOURCE='cpp/tests/command_copy.cpp'
 def validate_observation(text):
@@ -37,6 +37,9 @@ def compare_reports(reports,revision):
         raise ValueError('command-copy probe source bytes differ')
     if reports[0]['observation']!=reports[1]['observation']:
         raise ValueError('native and Metal command-list GPU-copy observations differ')
+    frozen=json.loads((ROOT/'cpp/reference/command-copy-windows-v1.json').read_text())
+    if reports[0]['observation']!=frozen['observation']:
+        raise ValueError('live command-copy behavior differs from frozen native contract')
 
 def run(output):
     return run_probe(output,'command_copy','command copies',validate_observation,

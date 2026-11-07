@@ -43,9 +43,18 @@ This is physical original-subsystem execution, not the original app initializati
 or original rendering. The complete unchanged app relinks and still exits 78 at
 the production D3D12CreateDevice gate. Existing shader/asset quality is unchanged.
 
-CI now executes the exact same C++ copy probe through native SDK/WARP and hosted
+CI executes the exact same C++ copy probe through native SDK/WARP and hosted
 Metal constructors and compares all bytes/state results at a clean identical
-revision. That new native workload comparison remains pending. Earlier queue,
+revision. Native and hosted execution and their exact comparison passed in
+[42364640363](https://github.com/daeken/Alkyhol/actions/runs/42364640363) on `ffc1ec5`.
+All seventeen jobs passed, preserving the prior shader/native compute, Windows
+SDK, metadata, buffer, queue, geometry and graphics comparisons as well.
+Downloaded reports also match the clean physical M4 record from that revision:
+all 2048 observed bytes and eleven state results agree. The native observation is
+preserved at `cpp/reference/command-copy-windows-v1.json`, canonical observation
+SHA-256 `419bf280bdeb59498bc05837f3a367ebe90ead351a8a799aa0962be6f067edcc`.
+Future live comparisons must match that unchanged native snapshot as well.
+The Python suite now has 81 passing tests. Earlier queue,
 buffer, metadata, Windows SDK, shader and geometry comparisons all passed in
 [42363716768](https://github.com/daeken/Alkyhol/actions/runs/42363716768) on `357f72f`.
 

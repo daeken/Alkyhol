@@ -194,3 +194,12 @@ The original queue-manager caller now runs actual allocator creation/reuse and
 COM GPU copies on all three original queues (v2 observation). Its original C++
 implementation objects remain verbatim. This does not enable production device
 creation, full original initialization or rendering.
+
+Independent native WARP and hosted Metal copy observations agree byte-for-byte
+on clean `ffc1ec5` in [CI 42364640363](https://github.com/daeken/Alkyhol/actions/runs/42364640363).
+All seventeen jobs passed, including the existing native shader/SDK comparisons.
+The separate physical M4 observation from that same revision also matches.
+All 2048 destination/sentinel bytes and eleven state results are preserved in
+`cpp/reference/command-copy-windows-v1.json`; the parser/comparator cannot replace
+or normalize them to manufacture agreement. Other effects and fault semantics
+remain outside this finite comparison.

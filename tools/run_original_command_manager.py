@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Run unchanged original MiniEngine queue-management objects on restricted Metal.
 
-Requires a complete, current original C++ build. This bypasses neither the
-original application's startup gate nor unsupported COM command-list execution:
-it is a separate subsystem caller, not the original application entry point.
+Requires a complete, current original C++ build. This separate subsystem caller
+exercises original allocator/queue management and supported COM buffer copies.
+The original application's startup gate and unsupported rendering remain intact.
 """
 import argparse
 import hashlib

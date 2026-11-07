@@ -1,13 +1,13 @@
 """Synthetic report validation, separate from actual native/Metal GPU execution."""
 import copy
+import hashlib
 import json
 import unittest
-from tools.run_cpp_command_copy import SOURCE,compare_reports,validate_observation
+from tools.run_cpp_command_copy import ROOT,SOURCE,compare_reports,validate_observation
 
 class CommandCopyReportTests(unittest.TestCase):
     def reports(self):
-        observation={'scenario':'command-copy-v1','results':[0x80004005]*2+[0]*9,
-                     'buffers':['a5'*1024,'07'*1024],'deferred':True,'parent_lifetime':True}
+        observation=json.loads((ROOT/'cpp/reference/command-copy-windows-v1.json').read_text())['observation']
         native={'schema_version':1,'backend':'native Windows SDK WARP command copies',
                 'source_revision':'current','tracked_tree_clean':True,
                 'artifacts':{SOURCE:'source'},'observation':observation}
@@ -35,5 +35,17 @@ class CommandCopyReportTests(unittest.TestCase):
         for buffer in range(2):
             for byte in range(1024):
                 reports=self.reports();text=reports[1]['observation']['buffers'][buffer]
-                reports[1]['observation']['buffers'][buffer]=text[:byte*2]+'ff'+text[byte*2+2:]
+                reports[1]['observation']['buffers'][buffer]=text[:byte*2]+format(int(text[byte*2:byte*2+2],16)^1,'02x')+text[byte*2+2:]
                 with self.assertRaises(ValueError):compare_reports(reports,'current')
+
+    def test_joint_backend_drift_cannot_replace_the_native_snapshot(self):
+        reports=self.reports()
+        for report in reports:report['observation']['results'][0]=0
+        with self.assertRaises(ValueError):compare_reports(reports,'current')
+    def test_frozen_native_source_and_observation_identity_are_preserved(self):
+        report=json.loads((ROOT/'cpp/reference/command-copy-windows-v1.json').read_text())
+        self.assertEqual(report['backend'],'native Windows SDK WARP command copies')
+        self.assertIs(report['tracked_tree_clean'],True)
+        self.assertEqual(report['source_revision'],'ffc1ec510d345ff8b067966f35b9c4970480fe5d')
+        self.assertEqual(report['artifacts'][SOURCE],hashlib.sha256((ROOT/SOURCE).read_bytes()).hexdigest())
+        self.assertEqual(hashlib.sha256(json.dumps(report['observation'],sort_keys=True,separators=(',',':')).encode()).hexdigest(),'419bf280bdeb59498bc05837f3a367ebe90ead351a8a799aa0962be6f067edcc')

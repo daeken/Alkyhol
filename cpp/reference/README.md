@@ -78,3 +78,22 @@ The queue signal sequence contains no command lists or shader workloads. Native
 WARP execution and actual empty Metal command-buffer completion support this
 finite synchronization contract, not arbitrary GPU work, fault recovery,
 cross-queue GPU waits, feature-level conformance or original C++ rendering.
+
+## Native COM command-list copy reference
+
+`command-copy-windows-v1.json` preserves actual native WARP execution on
+`ffc1ec5` in CI 42364640363. It records all 2048 bytes from two real GPU-written
+readback buffers, including untouched a5 sentinels, and eleven HRESULT/state
+observations. The shared probe changes upload contents after recording, submits
+one list, immediately resets that recording with another allocator, submits a
+two-list batch and waits on a queue fence. CopyBufferRegion and CopyResource are
+both exercised. The source hash and canonical observation SHA-256 are checked
+separately from the implementation; all future live comparisons must also match
+this unchanged native snapshot.
+
+Downloaded native WARP, hosted Metal and physical M4 observations agree at the
+same clean `ffc1ec5` revision. This is finite COM GPU-copy/state evidence, without
+shaders, textures, barriers, native removal/fault handling, byte-granular copies,
+feature-level conformance or an original rendered frame. The separate original
+queue-manager subsystem caller runs locally on physical Metal and is not itself
+a native Windows subsystem comparison.
