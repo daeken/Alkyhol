@@ -61,9 +61,9 @@ port of Microsoft's multi-adapter sample and has no native D3D12 comparison yet.
 
 Shaders use explicit original WGSL with `vs_main` and `fs_main`, no vertex buffers
 or bindings. Only three vertices and one instance are currently accepted. This
-does not translate HLSL/DXIL. Raster tests establish the sample's behavior only;
-there is no native D3D12 differential graphics reference yet. The graphics workflow
-must actually build and execute before any backend is described as validated.
+does not translate HLSL/DXIL. The existing triangle example has no matching native
+D3D12 scenario; its raster assertions establish only its tested behavior. The
+separate checkerboard reference below supplies a measured D3D12 comparison.
 
 The new [native D3D12 reference scenario](graphics-reference.md) separately defines
 a full-pixel checkerboard render/copy comparison against Windows WARP, Metal and

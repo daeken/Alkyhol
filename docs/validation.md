@@ -194,6 +194,39 @@ their complete observations agreed. Downloaded reports bind this exact revision
 and clean tracked trees, as does a matching local C/C++ report. Those kernel
 comparisons do not validate the new GPU copy operation against D3D12.
 
+## First native D3D12 pixel comparison
+
+[Conformance run 42332990445](https://github.com/daeken/Alkyhol/actions/runs/42332990445)
+on revision `ac4dfd463c7572912fdf31d5f407b10c52163e83` completed with all eight jobs
+passing, including the new native Windows reference and graphics comparison jobs.
+The independent Windows SDK program used D3D12 COM calls with explicit WARP,
+compiled original HLSL through D3DCompile, rendered a 65×4 multichannel checkerboard,
+called CopyResource and read both surfaces after a queue fence. It did not link
+Alkyhol. Every one of the 1,040 source and 1,040 destination RGBA8 bytes agreed with
+Alkyhol Metal and explicit software Vulkan, as well as the fixed scenario contract.
+
+| Execution | Observed identity |
+| --- | --- |
+| Native Windows D3D12 | Windows Server 2025 build 26100; WARP vendor 5140, device 140, software flags 2; MSVC 19.51.36260 x64; Windows SDK 10.0.26100.0 |
+| Hosted Metal | macOS 26.7.2 ARM64; Apple Paravirtual device, IntegratedGpu; Rust 1.99.1 |
+| Explicit software Vulkan | Linux x86_64/glibc 2.43; llvmpipe LLVM 21.1.8, Mesa 26.0.8, Cpu; Rust 1.99.1 |
+| Local physical Metal | macOS 27.0.1 ARM64; Apple M4, IntegratedGpu; Rust 1.99.1 |
+
+Downloaded reports bind the exact revision, clean tracked trees, compiler/SDK and
+adapter context, source hashes and executed-program hashes; the clean local
+report agreed too. The actual full observations were compared, without reducing
+pixels to checksums. All 55 root Rust tests, 26 Python tests and six GPU integration
+tests passed on their applicable CI hosts; the two earlier graphics examples and
+six existing kernel samples also passed. Eight new Python tests include exhaustive
+single-channel perturbation of these two finite surfaces and synthetic process
+faults; those tests are not GPU evidence.
+
+This establishes agreement for the fixed [checkerboard render/copy scenario](graphics-reference.md),
+using different handwritten HLSL and WGSL frontends and the labeled backends. It
+does not establish HLSL/DXIL translation, general raster/copy equivalence, COM facade
+compatibility, native invalid-command behavior or game compatibility. WARP and
+llvmpipe are software renderers; runtime DLLs and driver binaries are not pinned.
+
 ## Reproduce
 
 ```sh
