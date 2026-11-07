@@ -19,7 +19,7 @@ def compare(reports,reference=None):
         if r['input_sha256']!=inputs or r['observations']!=wanted or any(type(x['status']) is not int for x in r['observations'].values()):raise ValueError('changed actual corpus bytes or results')
     if native['revision']!=host['revision']:raise ValueError('different executed revisions')
     if native['forced_rebase_observations'] is not None or host['forced_rebase_observations']!=wanted or any(type(x['status']) is not int for x in host['forced_rebase_observations'].values()):raise ValueError('missing exact forced-rebase execution')
-    if reference is None and REFERENCE.exists():reference=json.loads(REFERENCE.read_text(encoding='utf-8'))
+    if reference is None:reference=json.loads(REFERENCE.read_text(encoding='utf-8'))
     if reference is not None:
         if reference['backend']!=NATIVE or reference['tracked_tree_clean'] is not True or type(reference['schema_version']) is not int or reference['schema_version']!=1:raise ValueError('invalid frozen native record')
         for key in ['program','pe_sha256','executed_pe_sha256','upstream_source_sha256','upstream_license_sha256','input_sha256','observations']:

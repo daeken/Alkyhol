@@ -69,5 +69,17 @@ class PeportsProtocolTests(unittest.TestCase):
             with mock.patch.object(runner,'ROOT',root):
                 with self.assertRaises(ValueError):runner.fixture_bytes()
 
+    def test_required_frozen_native_record_rejects_joint_corpus_drift(self):
+        native=json.loads(runner.REFERENCE.read_text(encoding='utf-8'))
+        host=copy.deepcopy(native);host.update(backend=runner.HOST,forced_rebase_observations=copy.deepcopy(native['observations']))
+        self.assertEqual(comparator.compare([native,host]),16)
+        with tempfile.TemporaryDirectory() as directory:
+            with mock.patch.object(comparator,'REFERENCE',Path(directory)/'missing.json'):
+                with self.assertRaises(FileNotFoundError):comparator.compare([native,host])
+            changed=Path(directory)/'changed.json';changed.write_bytes(runner.CORPUS.read_bytes()+b' ')
+            with mock.patch.object(runner,'CORPUS',changed):
+                for record in [native,host]:record['input_sha256']=runner.corpus_hashes()
+                with self.assertRaisesRegex(ValueError,'frozen native evidence'):comparator.compare([native,host])
+
 
 if __name__=='__main__':unittest.main()

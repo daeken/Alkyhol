@@ -85,3 +85,9 @@ claimed.
 
 Primary API contracts: [MultiByteToWideChar](https://learn.microsoft.com/en-us/windows/win32/api/stringapiset/nf-stringapiset-multibytetowidechar)
 and [WideCharToMultiByte](https://learn.microsoft.com/en-us/windows/win32/api/stringapiset/nf-stringapiset-widechartomultibyte).
+
+All 16 cases agree on native Windows, hosted Mac and physical M4 at `64f37ae`.
+The actual native record at `pe/reference/peports-windows-v1.json` is frozen and
+required by default, including release/source/license/corpus and original owned
+PE input identities. This covers the program's valid flag-zero conversion calls;
+host-only conversion boundaries remain explicitly separate.

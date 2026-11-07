@@ -4,7 +4,7 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
-## Third released PE64 application: peports, initial physical evidence
+## Third released PE64 application: peports native Windows and physical M4
 
 The unchanged released w64devkit 2.11.0 x64 peports PE SHA-256 is
 `1a57a02c27cbdd69e1c49ee59a2e84e46684163750700b56d03fad4108c71c3d`.
@@ -14,8 +14,13 @@ exact raw status/stdout/stderr. The original program parses the unchanged frozen
 owned EXE/DLL, reads named/ordinal/forwarded export text and imports, handles
 Unicode/spaced paths and stdin, and recovers from a missing file to process the
 next valid PE. Malformed/truncated inputs execute its actual GCC builtin longjmp
-error paths; this is not Windows SEH support. Native Windows execution is newly
-defined and pending. No binary/source patch, replacement parser or output/path
+error paths; this is not Windows SEH support. All three [PE jobs](https://github.com/daeken/Alkyhol/actions/runs/42419886890)
+pass on `64f37ae`. Downloaded clean native Windows/hosted Mac records and clean
+physical M4 execution at that same revision match release/source/license/corpus/
+input-PE identities and every status/stdout/stderr byte in all 16 cases.
+The actual native record is frozen at `pe/reference/peports-windows-v1.json`;
+future drivers/comparisons require its exact identities/results. A missing-reference/
+joint-corpus-drift guard brings the Python suite to 222. No binary/source patch, replacement parser or output/path
 normalization is used.
 
 Two real 16-bit UTF-16 Win64 conversion imports support valid CP_UTF8 input,
