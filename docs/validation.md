@@ -66,6 +66,33 @@ The physical Apple M4 result above is separate local evidence. Hosted Metal and
 software Vulkan results are labeled as such. No native D3D12 graphics comparison
 or additional game compatibility is established by this run.
 
+## Unnamed counting semaphore milestone
+
+[Conformance run 42330264837](https://github.com/daeken/Alkyhol/actions/runs/42330264837)
+on revision `4da84e503cba3407b7264ce9f4ad77c7947ec19a` completed with all six jobs
+passing. This adds CreateSemaphoreW, ReleaseSemaphore and semaphore waits to the
+restricted kernel contract, plus a pinned adaptation of Microsoft's semaphore
+worker example. All four portable C/C++ samples executed on Windows SDK/kernel32,
+native macOS Alkyhol and native Linux Alkyhol; the complete observations agreed
+exactly. Downloaded reports bind the same revision with clean tracked trees.
+
+The semaphore sample checks ten permits shared by twelve workers, zero-timeout
+acquisition, returned permits, previous counts, invalid creation/release counts
+and maximum-count overflow errors. It asserts an upper bound on active workers,
+not a minimum degree of concurrency, waiter order or fairness. C++ threads/join
+remain harness substitutions for unsupported Win32 thread APIs.
+
+There are now 39 root Rust tests (seven new semaphore tests), 18 Python tests and
+four real-device integration tests. The CI root tests passed on all three hosts;
+GPU tests and the drawing sample passed on hosted Metal and explicit software
+Vulkan. Local macOS 27.0.1 ARM64/Rust 1.99.1 also passed those tests and all four
+portable samples, with GPU execution on physical Apple M4 Metal. Root Clippy with
+warnings denied passed locally; CI root and graphics static checks passed.
+
+Named objects, security descriptors, handle inheritance, cross-process semaphores,
+access masks and closing a semaphore while another thread waits remain unsupported.
+The corpus and these samples do not establish game compatibility.
+
 ## Reproduce
 
 ```sh
