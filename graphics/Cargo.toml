@@ -3,9 +3,10 @@ name = "alkyhol-d3d12"
 version = "0.1.0"
 edition = "2024"
 license = "MIT"
-description = "Restricted D3D12-shaped offscreen API over wgpu"
+description = "Restricted D3D12-shaped graphics and native ray tracing over direct Metal"
 
 [dependencies]
 alkyhol = { path = ".." }
-wgpu = { version = "=27.0.1", default-features = false, features = ["std", "metal", "vulkan", "dx12", "wgsl"] }
+metal = "=0.32.0"
+objc = "=0.2.7"
 pollster = "=0.4.0"

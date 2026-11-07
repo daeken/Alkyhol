@@ -1,7 +1,7 @@
 # Native D3D12 render/copy scenario
 
 `rgba8-checker-copy-v1` compares actual Windows SDK D3D12 execution on explicitly
-selected WARP with Alkyhol on Metal and explicit software Vulkan. This is a finite
+selected WARP with Alkyhol on direct Metal. This is a finite
 offscreen pixel scenario, not a feature-level claim or general D3D12 equivalence.
 Executed results belong in [validation.md](validation.md); adding a workflow or
 reference program alone is not a passing result.
@@ -13,7 +13,7 @@ D3D12 device/direct queue, compiles original HLSL with D3DCompile, creates a bin
 free root signature and pipeline, renders, copies and reads back through native
 COM methods. Explicit barriers and a queue fence/event guard CPU mapping. The
 [Alkyhol probe](../graphics/examples/copy_contract.rs) uses its existing Rust
-facade and original WGSL. These are separate handwritten shader frontends, not
+facade and native MSL. These are separate handwritten shader frontends, not
 HLSL/DXIL translation. The programs are original project code guided by Microsoft
 API documentation, not an unmodified upstream sample.
 
@@ -57,12 +57,6 @@ On macOS with Rust available:
 python3 tools/run_graphics_contract.py --output local/graphics-contract.json
 ```
 
-On Linux with explicitly requested software Vulkan:
-
-```sh
-XDG_RUNTIME_DIR=/tmp python3 tools/run_graphics_contract.py --allow-software --output local/graphics-contract.json
-```
-
 Create `local/` before writing reports there. The runner builds the selected
 program, records host/compiler/SDK/adapter/revision information and source and
 executed-program hashes, verifies input hashes before/after execution, and emits
@@ -70,9 +64,9 @@ the actual full observation. It never substitutes a successful mock for an absen
 GPU or Windows reference. Runtime DLL and driver binaries are not pinned by these
 reports; their OS/adapter context matters. This is not a hermetic runtime proof.
 
-CI has distinct Windows WARP reference and Alkyhol Metal/Vulkan jobs, followed by
-an exact observation comparison requiring all three reports from the same clean
-source revision. WARP and llvmpipe are labeled CPU/software evidence. No swapchain,
+CI has distinct Windows WARP reference and Alkyhol direct Metal jobs, followed by
+an exact observation comparison requiring both reports from the same clean
+source revision. WARP is labeled software evidence. Historical wgpu/Vulkan reports remain attached to their original revisions, not current backend support. No swapchain,
 window, shaders from games, COM facade compatibility, error-path equivalence,
 multisampling, format reinterpretation or universal raster behavior is established.
 The negative GPU state/extent tests remain separate Alkyhol assertions; the native

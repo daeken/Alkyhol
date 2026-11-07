@@ -20,12 +20,12 @@ Private helpers are exercised through their public callers.
 | WinError I/O mapping | `tests/kernel.rs`: common error kinds and unknown-error failure |
 | GraphicsCommandList new/device/record/close/reset/commands | `tests/graphics.rs`: lifecycle errors, reset discards commands, channel-by-channel invalid colors rejected without appending |
 | validate_submission, require_target, require_state | Closed-list/device/token/state checks; sequential transitions, unsupported draws, no partial state commit |
-| CopyResource; copy state/extent validation and GPU encoding | Root tests cover valid chained copies, self/unknown/wrong-state rejection and no transition commit on a late failure. `graphics/tests/copy.rs` compares all pixels after chained actual GPU copies and rejects mismatched extents before a recorded clear or state transition can execute. The `copy_resource` example additionally compares a patterned rendered source against its entire copied destination and checks the source is unchanged. These are Metal/software Vulkan assertions, not native D3D12 comparison. |
+| CopyResource; copy state/extent validation and GPU encoding | Root tests cover valid chained copies, self/unknown/wrong-state rejection and no transition commit on a late failure. `graphics/tests/copy.rs` compares all pixels after chained actual GPU copies and rejects mismatched extents before a recorded clear or state transition can execute. The `copy_resource` example additionally compares a patterned rendered source against its entire copied destination and checks the source is unchanged. These are physical or hosted Metal assertions; the independent native D3D12 comparison is listed separately. |
 | Native D3D12 graphics comparison contract/runner | `tests/test_graphics_contract.py`: exact observation/types/fields, every single-channel mutation of both full surfaces, malformed/duplicate/multiple JSON and actual synthetic process exit/timeout/backend-identity failures. `run_graphics_contract.py` builds and executes separate SDK WARP and Alkyhol probes; CI compares all observed bytes from the same revision. Source/render/copy scope and actual executed evidence are separate in `graphics-reference.md`/`validation.md`. |
 | copy_footprint, GraphicsError display | Zero dimensions, exact alignment boundaries, u32 addition/multiplication rejection, u64 large products; error display |
-| D3D12CreateDevice, adapter_info | Every `graphics/tests/device.rs` test requires a real backend and prints its identity; absence fails, software only via explicit opt-in |
+| D3D12CreateDevice, adapter_info | Every `graphics/tests/device.rs` test requires a real backend and prints its identity; absence fails, software requests explicitly rejected; native device name and ray-tracing capability checked |
 | CreateCommittedResource, CreateCommandList, ExecuteCommandLists | GPU extent checks, open/foreign lists, resource and pipeline ownership, rejected list preserves actual pixels and states |
-| CreateGraphicsPipelineState, backend error conversion | Invalid WGSL produces a backend error; valid pipeline can subsequently be created; foreign pipeline rejected |
+| CreateGraphicsPipelineState, backend error conversion | Invalid MSL produces a backend error; valid pipeline can subsequently be created; foreign pipeline rejected |
 | ReadbackRGBA8 | GPU wrong-state rejection, padded 65-pixel rows match every expected pixel; triangle sample checks draw pixels and replay |
 | PE construction/take/unpack/offset/string/thunks/imports/inventory/CLI | `tests/test_pe_imports.py`: 32/64-bit and normal/delay/legacy import fixtures, ordinal/named imports, fallback lookup, bounds, malformed data, hash identity and CLI success/failure |
 | Sample compile/run/observation/reporting | `tests/test_run_samples.py`: strict booleans/key sets, duplicate/malformed/multiple JSON rejection, actual process failure and timeout, path arguments; actual six-sample runs check compiler/link/library/report integration |
@@ -35,8 +35,7 @@ Run root tests with `cargo test --offline`, Python tests with
 `cargo build --offline && python3 tools/run_samples.py`.
 Run GPU tests with `cargo test --manifest-path graphics/Cargo.toml --locked -- --nocapture`
 and the drawing sample with `cargo run --manifest-path graphics/Cargo.toml --locked --example hello_triangle`.
-Linux software Vulkan requires `ALKYHOL_ALLOW_SOFTWARE=1` for tests and
-`-- --allow-software` for the sample, plus a usable Vulkan adapter.
+The graphics crate requires macOS and Metal; no software or Vulkan path is retained.
 
 Sample reports use schema 2, retain the original kernel `observation` field and
 add all six results under `samples`. CI compares the full `samples` mapping.

@@ -10,6 +10,20 @@ fn device() -> Device {
 }
 
 #[test]
+fn native_backend_access_matches_reported_adapter_and_rejects_software_requests() {
+    let device = device();
+    assert_eq!(device.adapter_info().name, device.metal_device().name());
+    assert_eq!(
+        device.adapter_info().ray_tracing,
+        device.metal_device().supports_raytracing()
+    );
+    assert!(matches!(
+        pollster::block_on(D3D12CreateDevice(true)),
+        Err(GraphicsError::Unsupported)
+    ));
+}
+
+#[test]
 fn resource_creation_rejects_zero_and_oversized_extents() {
     let device = device();
     for (width, height) in [(0, 1), (1, 0), (u32::MAX, 1), (1, u32::MAX)] {
@@ -113,7 +127,7 @@ fn shader_failures_do_not_poison_later_pipeline_creation_or_allow_foreign_tokens
         Err(GraphicsError::Backend(_))
     ));
     let pipeline = a
-        .CreateGraphicsPipelineState(include_str!("../examples/triangle.wgsl"))
+        .CreateGraphicsPipelineState(include_str!("../examples/triangle.metal"))
         .unwrap();
     let target = b
         .CreateCommittedResource(1, 1, ResourceState::RenderTarget)

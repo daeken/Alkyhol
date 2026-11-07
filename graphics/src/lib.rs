@@ -1,22 +1,31 @@
-//! Small native Rust D3D12-shaped facade. Not a COM ABI, DXIL compiler or feature-level claim.
+//! Native Rust D3D12-shaped subset over direct Metal. No COM ABI or DXIL translation.
 #![allow(non_snake_case)]
 pub use alkyhol::graphics::{Command, GraphicsCommandList, GraphicsError, ResourceState, Result};
 use alkyhol::graphics::{copy_footprint, validate_submission};
+use metal::*;
+use objc::rc::autoreleasepool;
 use std::{
     collections::HashMap,
     sync::{
         Mutex,
         atomic::{AtomicU64, Ordering},
     },
-    time::Duration,
 };
 
-const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 static NEXT_DEVICE: AtomicU64 = AtomicU64::new(1);
 static NEXT_OBJECT: AtomicU64 = AtomicU64::new(1);
+#[derive(Debug)]
+pub enum Backend {
+    Metal,
+}
+#[derive(Debug)]
+pub struct AdapterInfo {
+    pub name: String,
+    pub backend: Backend,
+    pub ray_tracing: bool,
+}
 struct Texture {
-    texture: wgpu::Texture,
-    view: wgpu::TextureView,
+    texture: metal::Texture,
     width: u32,
     height: u32,
 }
@@ -24,70 +33,67 @@ struct Texture {
 struct Objects {
     textures: HashMap<u64, Texture>,
     states: HashMap<u64, ResourceState>,
-    pipelines: HashMap<u64, wgpu::RenderPipeline>,
+    pipelines: HashMap<u64, RenderPipelineState>,
 }
-/// Owns a single direct command queue and serializes validation and submission.
 pub struct Device {
     id: u64,
-    device: wgpu::Device,
-    queue: wgpu::Queue,
-    info: wgpu::AdapterInfo,
+    device: metal::Device,
+    queue: CommandQueue,
+    info: AdapterInfo,
     objects: Mutex<Objects>,
 }
-fn backend(e: impl std::fmt::Display) -> GraphicsError {
-    GraphicsError::Backend(e.to_string())
+fn backend(error: impl std::fmt::Display) -> GraphicsError {
+    GraphicsError::Backend(error.to_string())
+}
+/// Commit and check actual completion. The initial source facade blocks here;
+/// asynchronous native Metal access is available to advanced renderers below.
+pub fn complete(command: &CommandBufferRef) -> Result<()> {
+    command.commit();
+    command.wait_until_completed();
+    if command.status() != MTLCommandBufferStatus::Completed {
+        return Err(backend(format!(
+            "Metal command buffer ended with {:?}",
+            command.status()
+        )));
+    }
+    Ok(())
 }
 
-/// Create a real backend device. No noop backend or success-on-absence fallback.
-/// `allow_software` must be explicitly true for a CPU/Vulkan adapter (e.g. CI).
 pub async fn D3D12CreateDevice(allow_software: bool) -> Result<Device> {
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
-        backends: if cfg!(target_os = "macos") {
-            wgpu::Backends::METAL
-        } else if cfg!(target_os = "windows") {
-            wgpu::Backends::DX12
-        } else {
-            wgpu::Backends::VULKAN
-        },
-        ..Default::default()
-    });
-    let adapter = instance
-        .request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            force_fallback_adapter: allow_software,
-            compatible_surface: None,
-        })
-        .await
-        .map_err(backend)?;
-    let info = adapter.get_info();
-    if info.device_type == wgpu::DeviceType::Cpu && !allow_software {
+    if allow_software {
         return Err(GraphicsError::Unsupported);
     }
-    let (device, queue) = adapter
-        .request_device(&wgpu::DeviceDescriptor {
-            label: Some("Alkyhol restricted D3D12"),
-            required_features: wgpu::Features::empty(),
-            required_limits: wgpu::Limits::downlevel_defaults(),
-            ..Default::default()
+    autoreleasepool(|| {
+        let device = metal::Device::system_default().ok_or_else(|| backend("no Metal device"))?;
+        let info = AdapterInfo {
+            name: device.name().to_owned(),
+            backend: Backend::Metal,
+            ray_tracing: device.supports_raytracing(),
+        };
+        let queue = device.new_command_queue();
+        Ok(Device {
+            id: NEXT_DEVICE.fetch_add(1, Ordering::Relaxed),
+            device,
+            queue,
+            info,
+            objects: Mutex::default(),
         })
-        .await
-        .map_err(backend)?;
-    Ok(Device {
-        id: NEXT_DEVICE.fetch_add(1, Ordering::Relaxed),
-        device,
-        queue,
-        info,
-        objects: Mutex::default(),
     })
 }
 impl Device {
-    pub fn adapter_info(&self) -> &wgpu::AdapterInfo {
+    pub fn adapter_info(&self) -> &AdapterInfo {
         &self.info
+    }
+    /// Native compute/presentation/ray-tracing access; host objects only, no COM ABI.
+    pub fn metal_device(&self) -> &metal::DeviceRef {
+        &self.device
+    }
+    pub fn metal_queue(&self) -> &CommandQueueRef {
+        &self.queue
     }
     pub fn CreateCommandList(&self) -> GraphicsCommandList {
         GraphicsCommandList::new(self.id)
     }
-    /// RGBA8, single-sample, single-mip, 2D default-heap resource only.
     pub fn CreateCommittedResource(
         &self,
         width: u32,
@@ -95,97 +101,67 @@ impl Device {
         state: ResourceState,
     ) -> Result<u64> {
         let (_, bytes) = copy_footprint(width, height)?;
-        let limit = self.device.limits().max_texture_dimension_2d;
-        if width > limit || height > limit || bytes > self.device.limits().max_buffer_size {
+        // Conservative supported Metal 2D extent; broader limits need capability contracts.
+        if width > 16384 || height > 16384 || bytes > self.device.max_buffer_length() {
             return Err(GraphicsError::InvalidArgument);
         }
-        let mut objects = self.objects.lock().unwrap();
-        let texture = self.device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("Alkyhol RGBA8 resource"),
-            size: wgpu::Extent3d {
-                width,
-                height,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: FORMAT,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
-                | wgpu::TextureUsages::COPY_SRC
-                | wgpu::TextureUsages::COPY_DST,
-            view_formats: &[],
-        });
-        let view = texture.create_view(&Default::default());
-        let id = NEXT_OBJECT.fetch_add(1, Ordering::Relaxed);
-        objects.textures.insert(
-            id,
-            Texture {
-                texture,
-                view,
-                width,
-                height,
-            },
-        );
-        objects.states.insert(id, state);
-        Ok(id)
-    }
-    /// WGSL with vs_main(vertex_index) and fs_main, no bindings/vertex buffers.
-    /// Shader compilation errors are reported, not substituted with a default shader.
-    pub fn CreateGraphicsPipelineState(&self, wgsl: &str) -> Result<u64> {
-        let mut objects = self.objects.lock().unwrap();
-        self.device.push_error_scope(wgpu::ErrorFilter::Validation);
-        let shader = self
-            .device
-            .create_shader_module(wgpu::ShaderModuleDescriptor {
-                label: Some("Alkyhol translated sample shader"),
-                source: wgpu::ShaderSource::Wgsl(wgsl.into()),
-            });
-        let layout = self
-            .device
-            .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("Alkyhol binding-free root signature"),
-                bind_group_layouts: &[],
-                push_constant_ranges: &[],
-            });
-        let pipeline = self
-            .device
-            .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                label: Some("Alkyhol sample PSO"),
-                layout: Some(&layout),
-                vertex: wgpu::VertexState {
-                    module: &shader,
-                    entry_point: Some("vs_main"),
-                    compilation_options: Default::default(),
-                    buffers: &[],
+        autoreleasepool(|| {
+            let descriptor = TextureDescriptor::new();
+            descriptor.set_texture_type(MTLTextureType::D2);
+            descriptor.set_pixel_format(MTLPixelFormat::RGBA8Unorm);
+            descriptor.set_width(width as u64);
+            descriptor.set_height(height as u64);
+            descriptor.set_mipmap_level_count(1);
+            descriptor.set_sample_count(1);
+            descriptor.set_storage_mode(MTLStorageMode::Private);
+            descriptor.set_usage(MTLTextureUsage::RenderTarget | MTLTextureUsage::ShaderRead);
+            let texture = self.device.new_texture(&descriptor);
+            let id = NEXT_OBJECT.fetch_add(1, Ordering::Relaxed);
+            let mut objects = self.objects.lock().unwrap();
+            objects.textures.insert(
+                id,
+                Texture {
+                    texture,
+                    width,
+                    height,
                 },
-                fragment: Some(wgpu::FragmentState {
-                    module: &shader,
-                    entry_point: Some("fs_main"),
-                    compilation_options: Default::default(),
-                    targets: &[Some(FORMAT.into())],
-                }),
-                primitive: Default::default(),
-                depth_stencil: None,
-                multisample: Default::default(),
-                multiview: None,
-                cache: None,
-            });
-        if let Some(error) = pollster::block_on(self.device.pop_error_scope()) {
-            return Err(backend(error));
-        }
-        let id = NEXT_OBJECT.fetch_add(1, Ordering::Relaxed);
-        objects.pipelines.insert(id, pipeline);
-        Ok(id)
+            );
+            objects.states.insert(id, state);
+            Ok(id)
+        })
     }
-    /// All commands validated before encoding; resource states advance at submission,
-    /// never at recording time. One queue; no allocator/fence/COM lifetime emulation yet.
+    /// Native MSL with vertex vs_main and fragment fs_main, no bindings/buffers.
+    pub fn CreateGraphicsPipelineState(&self, msl: &str) -> Result<u64> {
+        autoreleasepool(|| {
+            let options = CompileOptions::new();
+            options.set_fast_math_enabled(false);
+            let library = self
+                .device
+                .new_library_with_source(msl, &options)
+                .map_err(backend)?;
+            let vertex = library.get_function("vs_main", None).map_err(backend)?;
+            let fragment = library.get_function("fs_main", None).map_err(backend)?;
+            let descriptor = RenderPipelineDescriptor::new();
+            descriptor.set_vertex_function(Some(&vertex));
+            descriptor.set_fragment_function(Some(&fragment));
+            descriptor
+                .color_attachments()
+                .object_at(0)
+                .unwrap()
+                .set_pixel_format(MTLPixelFormat::RGBA8Unorm);
+            let pipeline = self
+                .device
+                .new_render_pipeline_state(&descriptor)
+                .map_err(backend)?;
+            let id = NEXT_OBJECT.fetch_add(1, Ordering::Relaxed);
+            self.objects.lock().unwrap().pipelines.insert(id, pipeline);
+            Ok(id)
+        })
+    }
     pub fn ExecuteCommandLists(&self, list: &GraphicsCommandList) -> Result<()> {
         let mut objects = self.objects.lock().unwrap();
         let pipelines: Vec<_> = objects.pipelines.keys().copied().collect();
         let states = validate_submission(self.id, list, &objects.states, &pipelines)?;
-        // Check every backend-specific copy constraint before encoding any command.
-        // The root validator owns state/identity checks but has no texture extents.
         for command in list.commands()? {
             if let Command::CopyResource {
                 source,
@@ -199,95 +175,77 @@ impl Device {
                 }
             }
         }
-        let mut encoder = self
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("Alkyhol direct list"),
-            });
-        for command in list.commands()? {
-            match command {
-                Command::Transition { .. } => (), // wgpu tracks the physical barriers; states above enforce the declared contract.
-                Command::ClearRenderTargetView { resource, color } => {
-                    let target = &objects.textures[resource];
-                    let _pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                        label: Some("ClearRenderTargetView"),
-                        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                            view: &target.view,
-                            depth_slice: None,
-                            resolve_target: None,
-                            ops: wgpu::Operations {
-                                load: wgpu::LoadOp::Clear(wgpu::Color {
-                                    r: color[0],
-                                    g: color[1],
-                                    b: color[2],
-                                    a: color[3],
-                                }),
-                                store: wgpu::StoreOp::Store,
-                            },
-                        })],
-                        depth_stencil_attachment: None,
-                        timestamp_writes: None,
-                        occlusion_query_set: None,
-                    });
-                }
-                Command::DrawInstanced {
-                    resource,
-                    pipeline,
-                    vertices,
-                    instances,
-                } => {
-                    let target = &objects.textures[resource];
-                    let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                        label: Some("DrawInstanced"),
-                        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                            view: &target.view,
-                            depth_slice: None,
-                            resolve_target: None,
-                            ops: wgpu::Operations {
-                                load: wgpu::LoadOp::Load,
-                                store: wgpu::StoreOp::Store,
-                            },
-                        })],
-                        depth_stencil_attachment: None,
-                        timestamp_writes: None,
-                        occlusion_query_set: None,
-                    });
-                    pass.set_pipeline(&objects.pipelines[pipeline]);
-                    pass.draw(0..*vertices, 0..*instances);
-                }
-                Command::CopyResource {
-                    source,
-                    destination,
-                } => {
-                    let source = &objects.textures[source];
-                    let destination = &objects.textures[destination];
-                    encoder.copy_texture_to_texture(
-                        wgpu::TexelCopyTextureInfo {
-                            texture: &source.texture,
-                            mip_level: 0,
-                            origin: wgpu::Origin3d::ZERO,
-                            aspect: wgpu::TextureAspect::All,
-                        },
-                        wgpu::TexelCopyTextureInfo {
-                            texture: &destination.texture,
-                            mip_level: 0,
-                            origin: wgpu::Origin3d::ZERO,
-                            aspect: wgpu::TextureAspect::All,
-                        },
-                        wgpu::Extent3d {
-                            width: source.width,
-                            height: source.height,
-                            depth_or_array_layers: 1,
-                        },
-                    );
+        autoreleasepool(|| {
+            let command_buffer = self.queue.new_command_buffer();
+            for command in list.commands()? {
+                match command {
+                    Command::Transition { .. } => (), // Logical states above; Metal tracks physical hazards.
+                    Command::ClearRenderTargetView { resource, color } => {
+                        let target = &objects.textures[resource];
+                        let descriptor = RenderPassDescriptor::new();
+                        let attachment = descriptor.color_attachments().object_at(0).unwrap();
+                        attachment.set_texture(Some(&target.texture));
+                        attachment.set_load_action(MTLLoadAction::Clear);
+                        attachment.set_store_action(MTLStoreAction::Store);
+                        attachment.set_clear_color(MTLClearColor::new(
+                            color[0], color[1], color[2], color[3],
+                        ));
+                        let encoder = command_buffer.new_render_command_encoder(descriptor);
+                        encoder.end_encoding();
+                    }
+                    Command::DrawInstanced {
+                        resource,
+                        pipeline,
+                        vertices,
+                        instances: _,
+                    } => {
+                        let target = &objects.textures[resource];
+                        let descriptor = RenderPassDescriptor::new();
+                        let attachment = descriptor.color_attachments().object_at(0).unwrap();
+                        attachment.set_texture(Some(&target.texture));
+                        attachment.set_load_action(MTLLoadAction::Load);
+                        attachment.set_store_action(MTLStoreAction::Store);
+                        let encoder = command_buffer.new_render_command_encoder(descriptor);
+                        encoder.set_render_pipeline_state(&objects.pipelines[pipeline]);
+                        encoder.set_cull_mode(MTLCullMode::None);
+                        encoder.set_viewport(MTLViewport {
+                            originX: 0.0,
+                            originY: 0.0,
+                            width: target.width as f64,
+                            height: target.height as f64,
+                            znear: 0.0,
+                            zfar: 1.0,
+                        });
+                        encoder.draw_primitives(MTLPrimitiveType::Triangle, 0, *vertices as u64);
+                        encoder.end_encoding();
+                    }
+                    Command::CopyResource {
+                        source,
+                        destination,
+                    } => {
+                        let source = &objects.textures[source];
+                        let destination = &objects.textures[destination];
+                        let encoder = command_buffer.new_blit_command_encoder();
+                        encoder.copy_from_texture(
+                            &source.texture,
+                            0,
+                            0,
+                            MTLOrigin::default(),
+                            MTLSize::new(source.width as u64, source.height as u64, 1),
+                            &destination.texture,
+                            0,
+                            0,
+                            MTLOrigin::default(),
+                        );
+                        encoder.end_encoding();
+                    }
                 }
             }
-        }
-        self.queue.submit([encoder.finish()]);
-        objects.states = states;
-        Ok(())
+            complete(command_buffer)?;
+            objects.states = states;
+            Ok(())
+        })
     }
-    /// Blocking CPU readback is an explicit sample helper, not an ID3D12Resource::Map implementation.
     pub fn ReadbackRGBA8(&self, resource: u64) -> Result<Vec<u8>> {
         let objects = self.objects.lock().unwrap();
         if objects.states.get(&resource) != Some(&ResourceState::CopySource) {
@@ -298,61 +256,38 @@ impl Device {
             .get(&resource)
             .ok_or(GraphicsError::InvalidArgument)?;
         let (pitch, bytes) = copy_footprint(texture.width, texture.height)?;
-        let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Alkyhol readback"),
-            size: bytes,
-            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
-            mapped_at_creation: false,
-        });
-        let mut encoder = self.device.create_command_encoder(&Default::default());
-        encoder.copy_texture_to_buffer(
-            wgpu::TexelCopyTextureInfo {
-                texture: &texture.texture,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
-            wgpu::TexelCopyBufferInfo {
-                buffer: &buffer,
-                layout: wgpu::TexelCopyBufferLayout {
-                    offset: 0,
-                    bytes_per_row: Some(pitch),
-                    rows_per_image: Some(texture.height),
-                },
-            },
-            wgpu::Extent3d {
-                width: texture.width,
-                height: texture.height,
-                depth_or_array_layers: 1,
-            },
-        );
-        let submission = self.queue.submit([encoder.finish()]);
-        let (tx, rx) = std::sync::mpsc::channel();
-        buffer
-            .slice(..)
-            .map_async(wgpu::MapMode::Read, move |result| {
-                let _ = tx.send(result);
-            });
-        self.device
-            .poll(wgpu::PollType::Wait {
-                submission_index: Some(submission),
-                timeout: Some(Duration::from_secs(10)),
-            })
-            .map_err(backend)?;
-        rx.recv_timeout(Duration::from_secs(10))
-            .map_err(backend)?
-            .map_err(backend)?;
-        let data = buffer.slice(..).get_mapped_range();
-        let mut tight =
-            Vec::with_capacity((texture.width as usize) * 4 * (texture.height as usize));
-        for row in data
-            .chunks_exact(pitch as usize)
-            .take(texture.height as usize)
-        {
-            tight.extend_from_slice(&row[..texture.width as usize * 4]);
-        }
-        drop(data);
-        buffer.unmap();
-        Ok(tight)
+        autoreleasepool(|| {
+            let buffer = self
+                .device
+                .new_buffer(bytes, MTLResourceOptions::StorageModeShared);
+            let command = self.queue.new_command_buffer();
+            let encoder = command.new_blit_command_encoder();
+            encoder.copy_from_texture_to_buffer(
+                &texture.texture,
+                0,
+                0,
+                MTLOrigin::default(),
+                MTLSize::new(texture.width as u64, texture.height as u64, 1),
+                &buffer,
+                0,
+                pitch as u64,
+                bytes,
+                MTLBlitOption::None,
+            );
+            encoder.end_encoding();
+            complete(command)?;
+            let data = unsafe {
+                std::slice::from_raw_parts(buffer.contents().cast::<u8>(), bytes as usize)
+            };
+            let mut tight =
+                Vec::with_capacity(texture.width as usize * texture.height as usize * 4);
+            for row in data
+                .chunks_exact(pitch as usize)
+                .take(texture.height as usize)
+            {
+                tight.extend_from_slice(&row[..texture.width as usize * 4]);
+            }
+            Ok(tight)
+        })
     }
 }

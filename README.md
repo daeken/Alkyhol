@@ -1,7 +1,7 @@
 # Alkyhol
 
 A Windows **source compatibility** layer in Rust, with a D3D12-shaped graphics
-subset targeting wgpu/Metal. The first consumers are small, portable Win32 sample
+subset using direct Metal from Rust. The first consumers are small, portable Win32 sample
 programs, eventually followed by recompiled/decompiled application code.
 
 This is an early implementation, not a PE loader, Wine replacement or a claim
@@ -50,8 +50,12 @@ See the [test map](docs/testing.md) for function and logical-unit coverage.
 
 ## Graphics
 
+[Sakura Forest](docs/sakura.md) is the concrete application target: a faithful
+Rust/Metal port of Microsoft’s ray-traced sample using its original scene and
+assets. The graphics crate no longer depends on wgpu.
+
 The [offscreen graphics milestone](docs/graphics.md) provides a restricted
-D3D12-shaped Rust API over wgpu with a clear/triangle/readback sample:
+D3D12-shaped Rust API over direct Metal with a clear/triangle/readback sample:
 
 ```sh
 cargo run --manifest-path graphics/Cargo.toml --locked --example hello_triangle

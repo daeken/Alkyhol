@@ -1,77 +1,57 @@
-# Graphics subset: offscreen clear, triangle and resource copy
+# Graphics subset over direct Metal
 
-`alkyhol-d3d12` is a separate Rust crate using pinned wgpu 27.0.1 and pollster
-0.4.0, with the CI-resolved transitive dependency lock checked in. It translates a restricted D3D12-shaped command sequence into real GPU
-commands. macOS selects Metal, Windows selects DX12, Linux selects Vulkan. There
-is no noop backend. A software adapter must be explicitly requested and is labeled
-in the sample output; software Vulkan results are not Metal evidence.
+The graphics crate is Rust over Apple's Metal API using pinned metal-rs 0.32.0.
+wgpu, Naga, WGSL and the Vulkan backend are no longer dependencies. Historical
+wgpu/Metal/Vulkan measurements remain bound to their original Git revisions in
+the validation log. Current graphics execution requires macOS with a real Metal
+device; Windows SDK reference programs remain independent.
 
-```sh
-cargo run --manifest-path graphics/Cargo.toml --locked --example hello_triangle
-cargo run --manifest-path graphics/Cargo.toml --locked --example copy_resource
-# Linux CI without a physical GPU:
-cargo run --manifest-path graphics/Cargo.toml --locked --example hello_triangle -- --allow-software
-# Optional RGB image output:
-ALKYHOL_PPM=triangle.ppm cargo run --manifest-path graphics/Cargo.toml --locked --example hello_triangle
-```
+    cargo run --manifest-path graphics/Cargo.toml --locked --example hello_triangle
+    cargo run --manifest-path graphics/Cargo.toml --locked --example copy_resource
+    cargo test --manifest-path graphics/Cargo.toml --locked -- --nocapture
+    python3 tools/run_graphics_contract.py --output local/graphics-contract.json
 
-The Rust facade exposes `D3D12CreateDevice`, `CreateCommittedResource`,
-`CreateGraphicsPipelineState`, `CreateCommandList`, `ExecuteCommandLists`, and
-`ReadbackRGBA8`. Command lists record transitions, ClearRenderTargetView,
-DrawInstanced and CopyResource. This is a source API adapted to Rust; it does not export D3D12 COM
-vtables or accept original D3D12 descriptors. Resource and pipeline tokens belong
-to their device and remain allocated until the device drops. Future work should
-add explicit destruction and native C/COM facades after contracts settle.
+The Rust source facade retains D3D12CreateDevice, CreateCommittedResource,
+CreateGraphicsPipelineState, CreateCommandList, ExecuteCommandLists and
+ReadbackRGBA8. Shader source is now native MSL with vertex vs_main and fragment
+fs_main. No COM descriptors, guest calling conventions or HLSL/DXIL translator
+are implied. The compatibility constructor retains its old boolean argument but
+rejects software-backend requests. Native Metal device/queue accessors support
+compute, presentation and hardware ray-tracing extensions for the Sakura target.
 
-The supported resources are single-mip, single-sample, RGBA8 UNORM 2D render
-targets. There is one direct queue. States advance at submission after validating
-the entire list, including before-states and resource/pipeline ownership.
-wgpu inserts physical barriers. The command-state validator and copy-footprint
-calculation have dependency-free tests in the root crate.
+The supported source-facade resources are single-mip, single-sample RGBA8 UNORM 2D
+textures, conservatively capped at 16,384 pixels per axis and the device's maximum
+buffer length. Resource/pipeline tokens belong to one device and stay alive until
+it drops. States are explicit RenderTarget, CopySource and CopyDest. The root
+validator checks whole lists, IDs, before-states and supported draw shape before
+any GPU work is encoded. Every copy extent is also checked in advance. A late
+invalid command cannot run earlier clears or commit logical transitions.
 
-Whole-resource copying supports distinct same-device RGBA8 2D textures with
-identical width/height, one mip and one sample. Source must be CopySource and
-destination CopyDest, with explicit transitions before later render/readback use.
-Callers initialize source pixels through clear/draw/copy before observing them;
-newly allocated texture contents have no promised value in this contract.
-The copy preserves states and source pixels. Unsupported type/format reinterpretation,
-resizing, partial/subresource copies, buffers, multi-adapter sharing and compressed,
-depth or multisampled resources are not implemented. Resources are created with
-real COPY_SRC/COPY_DST usage and the backend records a wgpu texture-to-texture copy;
-there is no CPU copy substitute. All identity/state/extent checks run before any
-list command is encoded or submitted, so a late invalid copy cannot execute earlier
-clears or commit their logical transitions. These are the Rust facade's deliberate
-rejection semantics; D3D12's void COM method and debug-layer errors are not emulated.
-The contract follows the restricted valid subset of Microsoft's
-[CopyResource documentation](https://learn.microsoft.com/en-us/windows/win32/api/d3d12/nf-d3d12-id3d12graphicscommandlist-copyresource).
+Metal render encoders implement clear and triangle draw; blit encoders implement
+whole-resource texture copies and padded readback to a shared buffer. There is no
+CPU pixel-copy substitute. Metal tracks physical resource hazards. The initial
+source-facade submission blocks for actual GPU completion, checks command-buffer
+status, then commits logical states. This conservative behavior has extra latency;
+it does not emulate D3D12 asynchronous queues/fences. Native backend access allows
+the dedicated ray-tracing renderer to manage its own asynchronous frame commands.
 
-The sample first clears a 65×65 target blue and reads back **every** pixel. It
-then draws a solid red triangle, checks center/corners and the allowed color set,
-replays the list, and checks that rejected commands have no effect. Invalid shader
-source must fail pipeline creation. Readback strips 256-byte row padding. Pixel
-checks use exact endpoint colors away from edges, avoiding a global tolerance.
+CopyResource accepts distinct, same-device textures of matching width/height.
+Source must be CopySource and destination CopyDest; source pixels and both states
+are preserved by the copy. Callers initialize source pixels before observing them;
+newly allocated pixels have no promised value. Type/format reinterpretation,
+resizing, partial/subresource copies, buffers, multisampling, compressed/depth
+formats and cross-adapter sharing are unsupported. The deliberate Rust error
+results are distinct from D3D12's void COM methods and debug-layer errors.
 
-The `copy_resource` example separately renders a patterned 65×65 red triangle on
-blue, captures its bytes, copies to a second texture, and compares every source
-and destination byte. Real-device tests additionally chain two copies across
-padded-width resources and reject a dimension mismatch after an earlier recorded
-clear, verifying both actual pixels and destination state remain unchanged.
-This sample is original project code guided by API documentation. It is not a
-port of Microsoft's multi-adapter sample and has no native D3D12 comparison yet.
+The unchanged finite [native D3D12 pixel contract](graphics-reference.md) compares
+actual Windows WARP with direct Metal. Each surface contributes all 1,040 RGBA8
+bytes of a 65x4 multichannel pattern, without tolerance or checksums. Separate GPU
+tests cover ownership, rejected lists, width/height mismatch and chained copies.
+The earlier triangle and copy_resource examples still have their own host
+assertions; the checkerboard comparison does not certify every raster scenario.
 
-Shaders use explicit original WGSL with `vs_main` and `fs_main`, no vertex buffers
-or bindings. Only three vertices and one instance are currently accepted. This
-does not translate HLSL/DXIL. The existing triangle example has no matching native
-D3D12 scenario; its raster assertions establish only its tested behavior. The
-separate checkerboard reference below supplies a measured D3D12 comparison.
-
-The new [native D3D12 reference scenario](graphics-reference.md) separately defines
-a full-pixel checkerboard render/copy comparison against Windows WARP, Metal and
-software Vulkan. Its executed results are recorded in the validation log. It does
-not make the existing triangle example a native D3D12 differential reference.
-
-Still missing: swapchains/presentation, windows, buffers/upload heaps, descriptors,
-root signatures, fences, multiple queues, general shaders, compute, indirect draws,
-resource lifetime APIs, residency, DXR and vendor features. No D3D feature level is
-advertised. Backend allocation/device-loss errors can terminate a sample; they do
-not become a successful compatibility result.
+[Sakura Forest](sakura.md) is the next complete application target: faithful
+upstream meshes, textures, instances and shading, native Metal acceleration
+structures and ray intersectors, then an interactive window. Explicit SER support
+is a separate capability. No D3D feature level, general DXR compatibility or game
+compatibility is advertised. Allocation/device/command failures remain failures.

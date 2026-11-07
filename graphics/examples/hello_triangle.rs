@@ -6,7 +6,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     // Nonaligned width exercises 256-byte padded row removal on readback.
     let (width, height) = (65_u32, 65_u32);
     let target = device.CreateCommittedResource(width, height, ResourceState::RenderTarget)?;
-    let pipeline = device.CreateGraphicsPipelineState(include_str!("triangle.wgsl"))?;
+    let pipeline = device.CreateGraphicsPipelineState(include_str!("triangle.metal"))?;
     let mut list = device.CreateCommandList();
     list.record(Command::ClearRenderTargetView {
         resource: target,

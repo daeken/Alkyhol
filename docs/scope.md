@@ -16,16 +16,17 @@ assuming that exported D3D12/DXGI symbols represent the complete graphics surfac
    performance counters and Sleep. Portable C samples use the same source with
    Windows headers on Windows and Alkyhol's native header on macOS/Linux.
 2. D3D12-shaped device, resources, command recording, submission and readback on
-   wgpu. First sample: offscreen clear/copy and triangle. WGSL shaders are explicit
-   replacements, not a DXIL translator. Validate pixels and lifecycle failures.
-3. USER32 window/message/input substrate (winit), DXGI presentation, device and
+   direct Metal from Rust. Initial samples cover offscreen clear/copy and triangle.
+   Native MSL shaders are explicit ports, not a DXIL translator. Validate pixels and lifecycle failures.
+3. Faithful Sakura Forest Rust/Metal port with native triangle BLAS/TLAS, ray
+   intersectors, actual upstream assets/materials and a live window. Add device and
    resource capability queries. No window API should fake a successful result.
 4. Expand from sample evidence: memory mappings, synchronization, allocation,
    threads/TLS, overlapped files, timing, input/XInput, sockets, COM and audio.
 5. D3D12 descriptor/root-signature translation, barriers, fences, indirect draws,
    compute, shader translation and explicit unsupported-capability reporting.
 
-D3D12's entire feature surface cannot be assumed to map to wgpu. DXR, vendor
+D3D12's entire feature surface cannot be assumed to map directly to Metal. DXR, vendor
 extensions and game shaders require investigation. Keep feature support separate
 from symbol export coverage. Media, physics, platform and vendor libraries in the
 import inventory are dependencies, not automatically Windows API work.
@@ -50,4 +51,4 @@ import inventory are dependencies, not automatically Windows API work.
 - https://learn.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-createeventw
 - https://learn.microsoft.com/en-us/samples/microsoft/directx-graphics-samples/d3d12-hello-world-samples-win32/
 - https://github.com/microsoft/DirectX-Graphics-Samples (MIT; inspiration, no copied implementation)
-- https://docs.rs/crate/wgpu/27.0.1
+- https://docs.rs/metal/0.32.0/metal/

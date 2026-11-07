@@ -30,12 +30,8 @@ def execute_probe(command, cwd, backend, timeout=30):
     adapter = adapters[0]
     if backend == 'native D3D12 WARP':
         valid = adapter.startswith('adapter: D3D12 WARP ')
-    elif backend == 'Alkyhol Metal':
-        valid = 'backend: Metal' in adapter
-    elif backend == 'Alkyhol software Vulkan':
-        valid = 'backend: Vulkan' in adapter and 'device_type: Cpu' in adapter
-    elif backend == 'Alkyhol Vulkan':
-        valid = 'backend: Vulkan' in adapter and 'device_type: Cpu' not in adapter
+    elif backend == 'Alkyhol direct Metal':
+        valid = 'backend: Metal' in adapter and 'device_type: Cpu' not in adapter
     else:
         raise ValueError(f'unknown graphics backend: {backend}')
     if not valid:
@@ -43,12 +39,10 @@ def execute_probe(command, cwd, backend, timeout=30):
     return observation, adapter, result.stderr
 
 
-def run(output=None, allow_software=False):
+def run(output=None):
     with tempfile.TemporaryDirectory(prefix='alkyhol-graphics-reference-') as scratch:
         inputs = [ROOT / 'tools/graphics_contract.py', Path(__file__).resolve()]
         if os.name == 'nt':
-            if allow_software:
-                raise ValueError('Windows reference already explicitly selects WARP; omit --allow-software')
             source = ROOT / 'graphics/reference/d3d12_copy_contract.cpp'
             executable = Path(scratch) / 'd3d12_copy_contract.exe'
             build = ['cl', '/nologo', '/W4', '/WX', '/EHsc', '/std:c++17', str(source), '/Fe:' + str(executable),
@@ -58,14 +52,16 @@ def run(output=None, allow_software=False):
             backend = 'native D3D12 WARP'
             command = [str(executable)]
         else:
+            if platform.system() != 'Darwin':
+                raise RuntimeError('Alkyhol now uses direct Metal; this probe requires macOS or the Windows D3D12 reference')
             build = ['cargo', 'build', '--manifest-path', str(ROOT / 'graphics/Cargo.toml'), '--locked', '--example', 'copy_contract']
             identity = subprocess.run(['rustc', '--version', '--verbose'], check=True, capture_output=True, text=True, timeout=30)
             inputs.extend([ROOT / 'Cargo.toml', ROOT / 'Cargo.lock', ROOT / 'graphics/Cargo.toml', ROOT / 'graphics/Cargo.lock',
-                           ROOT / 'graphics/src/lib.rs', ROOT / 'graphics/examples/copy_contract.rs', ROOT / 'graphics/examples/checker.wgsl',
+                           ROOT / 'graphics/src/lib.rs', ROOT / 'graphics/examples/copy_contract.rs', ROOT / 'graphics/examples/checker.metal',
                            *sorted((ROOT / 'src').glob('*.rs'))])
             executable = ROOT / 'graphics/target/debug/examples/copy_contract'
-            command = [str(executable), *(['--allow-software'] if allow_software else [])]
-            backend = 'Alkyhol Metal' if platform.system() == 'Darwin' else ('Alkyhol software Vulkan' if allow_software else 'Alkyhol Vulkan')
+            command = [str(executable)]
+            backend = 'Alkyhol direct Metal'
         subprocess.run(build, check=True, cwd=ROOT if os.name != 'nt' else scratch, timeout=300)
         before = hashes(inputs)
         executable_hash = hashlib.sha256(executable.read_bytes()).hexdigest()
@@ -91,6 +87,5 @@ def run(output=None, allow_software=False):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', type=Path)
-    parser.add_argument('--allow-software', action='store_true')
     args = parser.parse_args()
-    run(args.output, args.allow_software)
+    run(args.output)

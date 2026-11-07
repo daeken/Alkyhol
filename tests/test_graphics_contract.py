@@ -53,31 +53,32 @@ class GraphicsProcessTests(unittest.TestCase):
         return [sys.executable, '-c', 'import sys; print(' + repr(json.dumps(expected_observation())) + '); sys.stderr.write(' + repr(adapter) + '); ' + extra]
 
     def test_accepts_exact_pixels_with_one_matching_backend_identity(self):
-        adapter = 'adapter: synthetic device_type: Cpu backend: Vulkan\n'
+        adapter = 'adapter: synthetic device_type: IntegratedGpu backend: Metal\n'
         with tempfile.TemporaryDirectory() as directory:
-            observed, identity, _ = execute_probe(self.command(adapter), directory, 'Alkyhol software Vulkan')
+            observed, identity, _ = execute_probe(self.command(adapter), directory, 'Alkyhol direct Metal')
         self.assertEqual(observed, expected_observation())
         self.assertEqual(identity, adapter.strip())
 
     def test_missing_duplicate_wrong_or_silent_software_adapter_cannot_pass(self):
         for adapter, backend in [
-            ('', 'Alkyhol Metal'),
-            ('adapter: backend: Metal\nadapter: backend: Metal\n', 'Alkyhol Metal'),
-            ('adapter: backend: Vulkan\n', 'Alkyhol Metal'),
-            ('adapter: device_type: IntegratedGpu backend: Vulkan\n', 'Alkyhol software Vulkan'),
+            ('', 'Alkyhol direct Metal'),
+            ('adapter: backend: Metal\nadapter: backend: Metal\n', 'Alkyhol direct Metal'),
+            ('adapter: backend: Vulkan\n', 'Alkyhol direct Metal'),
+            ('adapter: device_type: IntegratedGpu backend: Vulkan\n', 'Alkyhol direct Metal'),
             ('adapter: device_type: Cpu backend: Vulkan\n', 'Alkyhol Vulkan'),
+            ('adapter: device_type: Cpu backend: Metal\n', 'Alkyhol direct Metal'),
             ('adapter: backend: Metal\n', 'native D3D12 WARP'),
         ]:
-            with self.subTest(adapter=adapter, backend=backend), tempfile.TemporaryDirectory() as directory, self.assertRaises(RuntimeError):
+            with self.subTest(adapter=adapter, backend=backend), tempfile.TemporaryDirectory() as directory, self.assertRaises((RuntimeError, ValueError)):
                 execute_probe(self.command(adapter), directory, backend)
 
     def test_nonzero_exit_cannot_pass_despite_valid_pixels_and_adapter(self):
         with tempfile.TemporaryDirectory() as directory, self.assertRaises(subprocess.CalledProcessError):
-            execute_probe(self.command('adapter: backend: Metal\n', 'raise SystemExit(1)'), directory, 'Alkyhol Metal')
+            execute_probe(self.command('adapter: backend: Metal\n', 'raise SystemExit(1)'), directory, 'Alkyhol direct Metal')
 
     def test_timeout_cannot_pass_despite_already_printed_valid_pixels(self):
         with tempfile.TemporaryDirectory() as directory, self.assertRaises(subprocess.TimeoutExpired):
-            execute_probe(self.command('adapter: backend: Metal\n', 'sys.stdout.flush(); import time; time.sleep(30)'), directory, 'Alkyhol Metal', timeout=0.1)
+            execute_probe(self.command('adapter: backend: Metal\n', 'sys.stdout.flush(); import time; time.sleep(30)'), directory, 'Alkyhol direct Metal', timeout=0.1)
 
 
 if __name__ == '__main__':

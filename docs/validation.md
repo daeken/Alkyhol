@@ -1,5 +1,9 @@
 # Executed validation
 
+Current graphics development uses direct Metal from Rust. The historical records
+below describe their exact revisions, including the retired wgpu/Vulkan backend.
+See the latest direct-Metal record for current implementation evidence.
+
 ## First complete milestone
 
 [Conformance run 42326374803](https://github.com/daeken/Alkyhol/actions/runs/42326374803)

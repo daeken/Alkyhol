@@ -16,7 +16,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     let (width, height) = (65_u32, 4_u32);
     let source = device.CreateCommittedResource(width, height, ResourceState::RenderTarget)?;
     let destination = device.CreateCommittedResource(width, height, ResourceState::CopyDest)?;
-    let pipeline = device.CreateGraphicsPipelineState(include_str!("checker.wgsl"))?;
+    let pipeline = device.CreateGraphicsPipelineState(include_str!("checker.metal"))?;
     let mut list = device.CreateCommandList();
     list.record(Command::ClearRenderTargetView {
         resource: source,
