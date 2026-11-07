@@ -33,6 +33,15 @@ intact. The shared token allocator changes ownership plumbing, not object API
 semantics; it now reserves unique positive 32-bit-compatible tokens for companion
 streams/searches as well as kernel objects.
 
+Initial run 42385649794 on `13ec88b` executes all eleven cases successfully on
+hosted macOS and native Windows, and retains the earlier frozen PE comparison.
+Its new comparison step rejects input identity *labels*: native Path strings
+used backslashes while macOS used slashes. Report keys now use `as_posix()`;
+actual input hashes and every guest-output predicate remain unchanged. Normal
+launcher execution is now quiet; observers explicitly request `--loader-info`
+when checking the mapping diagnostic. This changes host reporting, not the
+embedded upstream bytes or successful API semantics.
+
 ## PE64 binary execution: first physical Rosetta milestone
 
 The strict-reference revision `14c009d` passes all 27 CI jobs: the three

@@ -18,7 +18,7 @@ EXPECTED_FILE = struct.pack('<III', 0x12345678, 0x90abcdef, 0x31415926)
 
 def observe(executable, rebase=False):
     with tempfile.TemporaryDirectory(prefix='alkyhol-pe-observation-') as directory:
-        args = [str(executable.resolve())] + (['--rebase'] if rebase else [])
+        args = [str(executable.resolve())] + (['--loader-info'] if platform.system() == 'Darwin' else []) + (['--rebase'] if rebase else [])
         result = subprocess.run(args, cwd=directory, capture_output=True, timeout=30)
         if result.returncode != 0:
             raise RuntimeError(f'PE execution failed ({result.returncode}): {result.stderr.decode(errors="replace")}')

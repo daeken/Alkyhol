@@ -38,7 +38,7 @@ def observe(executable, spec, host, rebase=False):
         for case in spec['cases']:
             args = [str(executable)]
             if host:
-                args += (['--rebase'] if rebase else []) + ['--']
+                args += ['--loader-info'] + (['--rebase'] if rebase else []) + ['--']
             args += case['args']
             run = subprocess.run(args, cwd=work, env=environment, capture_output=True, timeout=30)
             stderr = guest_stderr(run.stderr, rebase) if host else run.stderr
@@ -86,7 +86,7 @@ def main():
     rebased, raw_rebase = observe(executable, spec, host, True) if host else (None, None)
     if host and normal != rebased:
         raise ValueError('forced-rebase guest behavior differs')
-    sources = {str(p.relative_to(ROOT)): digest(p) for p in sorted(CORPUS.rglob('*')) if p.is_file()}
+    sources = {p.relative_to(ROOT).as_posix(): digest(p) for p in sorted(CORPUS.rglob('*')) if p.is_file()}
     report = {'schema_version': 1, 'backend': backend, 'program': 'u-config 0.35.0 / w64devkit 2.11.0',
               'pe_sha256': PE_SHA256, 'executed_pe_sha256': executed_hash,
               'upstream_source_sha256': SOURCE_SHA256, 'upstream_license_sha256': LICENSE_SHA256,

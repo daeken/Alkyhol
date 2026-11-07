@@ -21,6 +21,8 @@ python3 tools/run_uconfig_binary.py --binary local/pe/u-config/pkg-config.exe --
 The version is `0.35.0`. The example package query emits compiler and linker flags
 for the owned demo/base dependency fixtures. `--` separates host loader options
 from guest arguments; `--rebase --` additionally exercises a different image base.
+Normal execution preserves guest stdout/stderr without host chatter. Tests opt
+into `--loader-info` to validate the exact mapping/entry diagnostic prefix.
 The host creates a UTF-16 Windows command line, with distinct argv[0] and regular
 argument quoting, rather than handing guest code a Unix argv pointer. It snapshots
 the host environment, maps standard streams to real duplicated descriptors, and

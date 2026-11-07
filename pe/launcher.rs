@@ -51,9 +51,11 @@ fn main() {
     let args = &raw[..split];
     if args
         .iter()
-        .any(|a| !["--inspect", "--rebase"].contains(&a.as_str()))
+        .any(|a| !["--inspect", "--rebase", "--loader-info"].contains(&a.as_str()))
     {
-        eprintln!("usage: translated-program [--inspect] [--rebase] [-- guest-arguments...]");
+        eprintln!(
+            "usage: translated-program [--inspect] [--rebase] [--loader-info] [-- guest-arguments...]"
+        );
         process::exit(64);
     }
     let mut guest_args = vec![
@@ -63,6 +65,9 @@ fn main() {
             .into_owned(),
     ];
     guest_args.extend(raw.iter().skip(split + 1).cloned());
+    let info = args
+        .iter()
+        .any(|a| ["--inspect", "--loader-info"].contains(&a.as_str()));
     let bytes = embedded_pe();
     let result = (|| -> alkyhol_pe::Result<()> {
         let environment = std::env::vars_os()
@@ -80,12 +85,14 @@ fn main() {
         image.check_startup()?;
         let imports = image.imports()?;
         let relocs = image.relocations()?;
-        eprintln!(
-            "PE64: {} sections, {} named imports, {} DIR64 fixups",
-            image.sections.len(),
-            imports.len(),
-            relocs.len()
-        );
+        if info {
+            eprintln!(
+                "PE64: {} sections, {} named imports, {} DIR64 fixups",
+                image.sections.len(),
+                imports.len(),
+                relocs.len()
+            );
+        }
         if args.iter().any(|a| a == "--inspect") {
             // load() also preflights exact import resolution before mapping.
             let mapped =
@@ -94,7 +101,9 @@ fn main() {
             return Ok(());
         }
         let mapped = alkyhol_pe::LoadedImage::load(bytes, args.iter().any(|a| a == "--rebase"))?;
-        eprintln!("entering Win64 code; relocated={}", mapped.relocated());
+        if info {
+            eprintln!("entering Win64 code; relocated={}", mapped.relocated());
+        }
         // SAFETY: user explicitly requested execution of this trusted PE program.
         let status = unsafe { mapped.enter() };
         if status > 255 {
