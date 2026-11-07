@@ -4,6 +4,7 @@ use super::*;
 use alkyhol::com::E_OUTOFMEMORY;
 use alkyhol::com_object::IID_ID3D12OBJECT;
 use metal::foreign_types::ForeignType;
+use std::sync::{Arc, Mutex};
 const DEVICE: Guid = guid!(
     0x189819f1, 0x1db6, 0x4b57, 0xbe, 0x54, 0x18, 0x21, 0x33, 0x9b, 0x85, 0xf7
 );
@@ -67,6 +68,15 @@ impl Drop for Parent {
         }
     }
 }
+struct BufferUsage {
+    current: u32,
+    pending: usize,
+    owner: Option<Arc<()>>,
+    failed: bool,
+}
+fn valid_default_state(state: u32) -> bool {
+    state == 0x400 || state & !0xac3 == 0
+}
 #[repr(C)]
 pub struct Resource {
     vtable: *const ResourceVtable,
@@ -76,6 +86,7 @@ pub struct Resource {
     offset: usize,
     desc: ResourceDesc,
     heap: HeapProperties,
+    usage: Arc<Mutex<BufferUsage>>,
     parent: Parent,
 }
 unsafe extern "C" fn device_query(
@@ -203,7 +214,7 @@ fn valid_buffer(
     {
         return Err(E_NOTIMPL);
     }
-    if heap.kind != 2 && heap.kind != 3 {
+    if ![1, 2, 3].contains(&heap.kind) {
         return Err(E_NOTIMPL);
     }
     if heap.page != 0 || heap.pool != 0 || heap.creation != 1 || heap.visible != 1 {
@@ -219,6 +230,9 @@ fn valid_buffer(
         || desc.layout != 1
     {
         return Err(E_INVALIDARG);
+    }
+    if heap.kind == 1 && !valid_default_state(state) {
+        return Err(E_NOTIMPL);
     }
     if (heap.kind == 2 && state != 0xac3) || (heap.kind == 3 && state != 0x400) {
         return Err(E_INVALIDARG);
@@ -261,10 +275,16 @@ unsafe extern "C" fn committed(
         return 1;
     }
     autoreleasepool(|| {
+        let storage = if heap.kind == 1 {
+            metal::MTLResourceOptions::StorageModePrivate
+        } else {
+            metal::MTLResourceOptions::StorageModeShared
+        };
         let buffer = unsafe {
-            (*this)
-                .metal
-                .new_buffer(length, metal::MTLResourceOptions::StorageModeShared)
+            (*this).metal.new_buffer(
+                length,
+                storage | metal::MTLResourceOptions::HazardTrackingModeTracked,
+            )
         };
         if buffer.as_ptr().is_null() {
             return E_OUTOFMEMORY;
@@ -288,6 +308,12 @@ unsafe extern "C" fn committed(
             offset,
             desc,
             heap,
+            usage: Arc::new(Mutex::new(BufferUsage {
+                current: state,
+                pending: 0,
+                owner: None,
+                failed: false,
+            })),
             parent: Parent(this),
         });
         unsafe {
@@ -316,6 +342,9 @@ unsafe extern "C" fn map(
             return E_INVALIDARG;
         }
     }
+    if unsafe { (*this).heap.kind } == 1 {
+        return E_INVALIDARG;
+    }
     let contents = unsafe { (*this).buffer.contents() };
     if contents.is_null() {
         return E_NOTIMPL;
@@ -328,6 +357,9 @@ unsafe extern "C" fn map(
     S_OK
 }
 unsafe extern "C" fn unmap(this: *mut Resource, subresource: u32, range: *const Range) {
+    if unsafe { (*this).heap.kind } == 1 {
+        unsupported_void("Unmap of non-CPU-accessible DEFAULT buffer");
+    }
     if subresource != 0 {
         unsupported_void("invalid buffer subresource in Unmap");
     }
@@ -816,7 +848,9 @@ mod tests {
         );
         let mut other = h;
         other.kind = 1;
-        assert_eq!(valid_buffer(&other, 0, &d, 0, ptr::null()), Err(E_NOTIMPL));
+        assert_eq!(valid_buffer(&other, 0, &d, 0, ptr::null()), Ok(()));
+        assert_eq!(valid_buffer(&other, 0, &d, 0x400, ptr::null()), Ok(()));
+        assert_eq!(valid_buffer(&other, 0, &d, 8, ptr::null()), Err(E_NOTIMPL));
         assert_eq!(
             valid_buffer(&h, 0, &d, 0x400, ptr::null()),
             Err(E_INVALIDARG)

@@ -1,5 +1,5 @@
 //! Real queue-ordered Metal completion and CPU-signaled D3D fence subset.
-//! Queue.Wait/command lists/timestamps remain explicit unsupported operations.
+//! Queue.Wait/timestamps remain explicit unsupported operations.
 use super::*;
 use alkyhol::kernel::{EventNotifier, kernel};
 use std::{
@@ -103,6 +103,7 @@ struct Queue {
     desc: QueueDesc,
     order: Arc<Mutex<Order>>,
     submit: Mutex<()>,
+    identity: Arc<()>,
     parent: Parent,
 }
 struct Action {
@@ -234,7 +235,13 @@ unsafe fn submit(
         let _submission = unsafe { (*this).submit.lock().unwrap() };
         let batches = if let Some((count, lists)) = lists {
             match unsafe {
-                super::commands::prepare((*this).parent.0, (*this).desc.kind, count, lists)
+                super::commands::prepare(
+                    (*this).parent.0,
+                    (*this).desc.kind,
+                    count,
+                    lists,
+                    &(*this).identity,
+                )
             } {
                 Ok(batches) => batches,
                 Err(e) => return e,
@@ -263,6 +270,9 @@ unsafe fn submit(
             }
             encoder.end_encoding();
         }
+        for batch in &batches {
+            batch.commit();
+        }
         let callback_order = Arc::clone(&order);
         let handler = block::ConcreteBlock::new(move |buffer: &metal::CommandBufferRef| {
             let failed = buffer.status() != metal::MTLCommandBufferStatus::Completed;
@@ -273,7 +283,7 @@ unsafe fn submit(
                 );
             }
             for batch in &batches {
-                batch.complete();
+                batch.finish(failed);
             }
             callback_order.lock().unwrap().complete(id, failed);
         })
@@ -479,6 +489,7 @@ pub(super) unsafe extern "C" fn create_queue(
             desc,
             order: Arc::new(Mutex::new(Order::default())),
             submit: Mutex::new(()),
+            identity: Arc::new(()),
             parent: Parent(this),
         });
         unsafe {

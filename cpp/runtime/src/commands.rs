@@ -33,13 +33,26 @@ struct Copy {
     source_offset: u64,
     destination_offset: u64,
     length: u64,
+    source_usage: Option<Arc<Mutex<BufferUsage>>>,
+    destination_usage: Option<Arc<Mutex<BufferUsage>>>,
+}
+#[derive(Clone)]
+struct Transition {
+    usage: Arc<Mutex<BufferUsage>>,
+    before: u32,
+    after: u32,
+}
+#[derive(Clone)]
+enum Command {
+    Copy(Copy),
+    Transition(Transition),
 }
 struct Recording {
     allocation: Arc<Mutex<Allocation>>,
     epoch: u64,
     open: bool,
     error: Option<i32>,
-    commands: Vec<Copy>,
+    commands: Vec<Command>,
     executing: Arc<AtomicBool>,
 }
 impl Drop for Recording {
@@ -61,21 +74,37 @@ struct List {
 // The immutable native buffers and allocator epoch outlive COM caller handles.
 // Completion releases the execution reservation before later fence events fire.
 pub(super) struct Submission {
-    commands: Vec<Copy>,
+    commands: Vec<Command>,
     allocation: Arc<Mutex<Allocation>>,
     executing: Arc<AtomicBool>,
     finished: AtomicBool,
+    access: Option<Arc<states::Access>>,
 }
 impl Submission {
+    pub(super) fn commit(&self) {
+        if let Some(access) = &self.access {
+            access.commit();
+        }
+    }
     pub(super) fn complete(&self) {
+        self.finish(false);
+    }
+    pub(super) fn finish(&self, failed: bool) {
         if !self.finished.swap(true, Ordering::AcqRel) {
+            if let Some(access) = &self.access {
+                access.complete_member(failed);
+            }
             self.allocation.lock().unwrap().in_flight -= 1;
             self.executing.store(false, Ordering::Release);
         }
     }
     pub(super) fn encode(&self, encoder: &metal::BlitCommandEncoderRef) {
-        for c in &self.commands {
-            if c.length != 0 {
+        for command in &self.commands {
+            // Metal tracks hazards for these serial blits. Transition entries
+            // validate the D3D state contract; they do not need a second encoder.
+            if let Command::Copy(c) = command
+                && c.length != 0
+            {
                 encoder.copy_from_buffer(
                     &c.source,
                     c.source_offset,
@@ -240,7 +269,10 @@ unsafe fn copy_command(
     if d.parent.0 != device || s.parent.0 != device {
         return Err(E_INVALIDARG);
     }
-    if d.heap.kind != 3 || s.heap.kind != 2 {
+    if ![1, 3].contains(&d.heap.kind)
+        || ![1, 2].contains(&s.heap.kind)
+        || Arc::ptr_eq(&d.usage, &s.usage)
+    {
         return Err(E_NOTIMPL);
     }
     let length = match length {
@@ -252,6 +284,9 @@ unsafe fn copy_command(
             s.desc.width
         }
     };
+    if length == 0 && (d.heap.kind == 1 || s.heap.kind == 1) {
+        return Err(E_NOTIMPL);
+    }
     extent(dst_offset, length, d.desc.width)?;
     extent(src_offset, length, s.desc.width)?;
     Ok(Copy {
@@ -260,6 +295,8 @@ unsafe fn copy_command(
         source_offset: s.offset as u64 + src_offset,
         destination_offset: d.offset as u64 + dst_offset,
         length,
+        source_usage: (s.heap.kind == 1).then(|| Arc::clone(&s.usage)),
+        destination_usage: (d.heap.kind == 1).then(|| Arc::clone(&d.usage)),
     })
 }
 unsafe fn record_copy(
@@ -285,7 +322,7 @@ unsafe fn record_copy(
             if r.commands.try_reserve(1).is_err() {
                 r.error = Some(E_OUTOFMEMORY);
             } else {
-                r.commands.push(command);
+                r.commands.push(Command::Copy(command));
             }
         }
         Err(e) => r.error = Some(e),
@@ -308,6 +345,75 @@ unsafe extern "C" fn copy_resource(this: *mut List, dst: *mut Resource, src: *mu
         record_copy(this, dst, 0, src, 0, None);
     }
 }
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct Barrier {
+    kind: i32,
+    flags: i32,
+    resource: *mut Resource,
+    subresource: u32,
+    before: u32,
+    after: u32,
+}
+unsafe fn transition(device: *mut Device, kind: i32, b: Barrier) -> Result<Transition, i32> {
+    if kind != 0 || b.kind != 0 || b.flags != 0 {
+        return Err(E_NOTIMPL);
+    }
+    if b.resource.is_null() {
+        return Err(E_POINTER);
+    }
+    if unsafe { (*b.resource).vtable } != &RESOURCE_VTABLE {
+        return Err(E_INVALIDARG);
+    }
+    let resource = unsafe { &*b.resource };
+    if resource.parent.0 != device
+        || resource.heap.kind != 1
+        || ![0, u32::MAX].contains(&b.subresource)
+    {
+        return Err(E_INVALIDARG);
+    }
+    if !valid_default_state(b.before) || !valid_default_state(b.after) {
+        return Err(E_NOTIMPL);
+    }
+    if b.before == b.after {
+        return Err(E_NOTIMPL);
+    }
+    Ok(Transition {
+        usage: Arc::clone(&resource.usage),
+        before: b.before,
+        after: b.after,
+    })
+}
+unsafe extern "C" fn barriers(this: *mut List, count: u32, data: usize) {
+    if count == 0 {
+        unsupported_void("zero-count resource barrier");
+    }
+    let mut r = unsafe { (*this).recording.lock().unwrap() };
+    if r.error.is_some() {
+        return;
+    }
+    if !r.open {
+        r.error = Some(E_FAIL);
+        return;
+    }
+    if data == 0 {
+        r.error = Some(E_POINTER);
+        return;
+    }
+    if r.commands.try_reserve(count as usize).is_err() {
+        r.error = Some(E_OUTOFMEMORY);
+        return;
+    }
+    for &b in unsafe { std::slice::from_raw_parts(data as *const Barrier, count as usize) } {
+        match unsafe { transition((*this).parent.0, (*this).kind, b) } {
+            Ok(t) => r.commands.push(Command::Transition(t)),
+            Err(e) => {
+                r.error = Some(e);
+                return;
+            }
+        }
+    }
+}
 // No queue state/native work is mutated until every list has been validated.
 // Reserving an execution is rolled back by Submission::drop on any later error.
 pub(super) unsafe fn prepare(
@@ -315,6 +421,7 @@ pub(super) unsafe fn prepare(
     kind: i32,
     count: u32,
     lists: usize,
+    owner: &Arc<()>,
 ) -> Result<Vec<Arc<Submission>>, i32> {
     if count == 0 {
         return Err(E_NOTIMPL);
@@ -358,10 +465,18 @@ pub(super) unsafe fn prepare(
             allocation: Arc::clone(&r.allocation),
             executing: Arc::clone(&r.executing),
             finished: AtomicBool::new(false),
+            access: None,
         }));
+    }
+    if let Some(access) = states::reserve(&batches, owner)? {
+        for batch in &mut batches {
+            Arc::get_mut(batch).unwrap().access = Some(Arc::clone(&access));
+        }
     }
     Ok(batches)
 }
+#[path = "buffer_states.rs"]
+mod states;
 #[repr(C)]
 struct AllocatorVtable {
     query: unsafe extern "C" fn(*mut Allocator, *const Guid, *mut *mut c_void) -> i32,
@@ -489,7 +604,7 @@ RSSetScissorRects(u32,usize);
 OMSetBlendFactor(usize);
 OMSetStencilRef(u32);
 SetPipelineState(usize);
-ResourceBarrier(u32,usize);
+
 ExecuteBundle(usize);
 SetDescriptorHeaps(u32,usize);
 SetComputeRootSignature(usize);
@@ -616,7 +731,7 @@ static LIST_VTABLE: ListVtable = ListVtable {
     OMSetBlendFactor,
     OMSetStencilRef,
     SetPipelineState,
-    ResourceBarrier,
+    ResourceBarrier: barriers,
     ExecuteBundle,
     SetDescriptorHeaps,
     SetComputeRootSignature,

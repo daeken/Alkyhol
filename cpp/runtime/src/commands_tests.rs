@@ -1,4 +1,18 @@
 use super::*;
+unsafe fn prepare(
+    d: *mut Device,
+    kind: i32,
+    count: u32,
+    lists: usize,
+) -> Result<Vec<Arc<Submission>>, i32> {
+    unsafe { super::prepare(d, kind, count, lists, &Arc::new(())) }
+}
+fn copy_length(command: &Command) -> u64 {
+    match command {
+        Command::Copy(c) => c.length,
+        Command::Transition(_) => panic!("expected copy"),
+    }
+}
 unsafe fn device() -> *mut Device {
     let mut raw = ptr::null_mut();
     assert_eq!(
@@ -302,8 +316,8 @@ fn resetting_list_preserves_pending_snapshot_and_finishes_reservations_exactly_o
         assert_eq!(reset(l, second, 0), S_OK);
         copy_buffer(l, dst, 0, src, 0, 16);
         assert_eq!(batches[0].commands.len(), 1);
-        assert_eq!(batches[0].commands[0].length, 256);
-        assert_eq!((*l).recording.lock().unwrap().commands[0].length, 16);
+        assert_eq!(copy_length(&batches[0].commands[0]), 256);
+        assert_eq!(copy_length(&(*l).recording.lock().unwrap().commands[0]), 16);
         assert_eq!(allocator_reset(a), E_FAIL);
         batches[0].complete();
         batches[0].complete();
@@ -383,6 +397,222 @@ fn immutable_full_copy_encodes_actual_metal_work_and_retains_released_com_buffer
         for (i, &b) in actual.iter().enumerate() {
             assert_eq!(b, (i * 29 + 7) as u8);
         }
+        assert_eq!(device_release(d), 0);
+    });
+}
+
+#[test]
+fn default_storage_is_private_and_cpu_mapping_fails_without_exposing_contents() {
+    autoreleasepool(|| unsafe {
+        let d = device();
+        let resource = buffer(d, 1, 512);
+        assert_eq!(
+            (*resource).buffer.storage_mode(),
+            metal::MTLStorageMode::Private
+        );
+        assert_eq!(
+            (*resource).buffer.hazard_tracking_mode(),
+            metal::MTLHazardTrackingMode::Tracked
+        );
+        let mut mapped = ptr::dangling_mut();
+        assert_eq!(map(resource, 0, ptr::null(), &mut mapped), E_INVALIDARG);
+        assert!(mapped.is_null());
+        assert_eq!(gpu_address(resource) & 65535, 0);
+        assert_ne!(gpu_address(resource), 0);
+        assert_eq!((*resource).usage.lock().unwrap().current, 0x400);
+        resource_release(resource);
+        assert_eq!(device_release(d), 0);
+    });
+}
+#[test]
+fn transition_layouts_and_unsupported_barriers_never_succeed() {
+    assert_eq!(std::mem::size_of::<Barrier>(), 32);
+    assert_eq!(std::mem::offset_of!(Barrier, resource), 8);
+    assert_eq!(std::mem::offset_of!(Barrier, after), 24);
+    autoreleasepool(|| unsafe {
+        let d = device();
+        let resource = buffer(d, 1, 512);
+        let a = allocator(d, 0);
+        let l = list(d, a, 0);
+        let valid = Barrier {
+            kind: 0,
+            flags: 0,
+            resource,
+            subresource: u32::MAX,
+            before: 0x400,
+            after: 0x800,
+        };
+        assert!(transition(d, 0, valid).is_ok());
+        for (b, expected) in [
+            (Barrier { flags: 1, ..valid }, E_NOTIMPL),
+            (Barrier { kind: 2, ..valid }, E_NOTIMPL),
+            (
+                Barrier {
+                    subresource: 1,
+                    ..valid
+                },
+                E_INVALIDARG,
+            ),
+            (Barrier { after: 8, ..valid }, E_NOTIMPL),
+            (
+                Barrier {
+                    resource: ptr::null_mut(),
+                    ..valid
+                },
+                E_POINTER,
+            ),
+        ] {
+            assert!(matches!(transition(d,0,b),Err(error) if error==expected));
+        }
+        assert!(matches!(transition(d, 3, valid), Err(E_NOTIMPL)));
+        let invalid = Barrier { flags: 1, ..valid };
+        barriers(l, 1, (&invalid as *const Barrier) as usize);
+        assert_eq!(close(l), E_NOTIMPL);
+        assert_eq!(reset(l, a, 0), E_NOTIMPL);
+        assert_eq!((*resource).usage.lock().unwrap().current, 0x400);
+        list_release(l);
+        allocator_release(a);
+        resource_release(resource);
+        assert_eq!(device_release(d), 0);
+    });
+}
+#[test]
+fn private_state_reservations_roll_back_uncommitted_work_and_reject_cross_queue_overlap() {
+    autoreleasepool(|| unsafe {
+        let d = device();
+        let a = allocator(d, 0);
+        let l = list(d, a, 0);
+        let src = buffer(d, 2, 512);
+        let dst = buffer(d, 1, 512);
+        copy_resource(l, dst, src);
+        assert_eq!(close(l), S_OK);
+        let owner = Arc::new(());
+        let other_owner = Arc::new(());
+        let lists = [l];
+        let batches = super::prepare(d, 0, 1, lists.as_ptr() as usize, &owner).unwrap();
+        {
+            let usage = (*dst).usage.lock().unwrap();
+            assert_eq!(usage.current, 0);
+            assert_eq!(usage.pending, 1);
+            assert!(Arc::ptr_eq(usage.owner.as_ref().unwrap(), &owner));
+        }
+        // A second queue is rejected before any buffer state can change.
+        let other_a = allocator(d, 0);
+        let other_l = list(d, other_a, 0);
+        copy_resource(other_l, dst, src);
+        assert_eq!(close(other_l), S_OK);
+        let others = [other_l];
+        assert!(matches!(
+            super::prepare(d, 0, 1, others.as_ptr() as usize, &other_owner),
+            Err(E_NOTIMPL)
+        ));
+        drop(batches);
+        {
+            let usage = (*dst).usage.lock().unwrap();
+            assert_eq!(usage.current, 0x400);
+            assert_eq!(usage.pending, 0);
+            assert!(usage.owner.is_none());
+        }
+        let accepted = super::prepare(d, 0, 1, others.as_ptr() as usize, &other_owner).unwrap();
+        for batch in &accepted {
+            batch.commit();
+            batch.complete();
+        }
+        drop(accepted);
+        assert_eq!((*dst).usage.lock().unwrap().current, 0);
+        list_release(l);
+        list_release(other_l);
+        allocator_release(a);
+        allocator_release(other_a);
+        resource_release(src);
+        resource_release(dst);
+        assert_eq!(device_release(d), 0);
+    });
+}
+#[test]
+fn a_batch_never_decays_between_lists_and_failed_validation_changes_no_resource_state() {
+    autoreleasepool(|| unsafe {
+        let d = device();
+        let a = allocator(d, 0);
+        let second = allocator(d, 0);
+        let l = list(d, a, 0);
+        let tail = list(d, second, 0);
+        let src = buffer(d, 2, 512);
+        let private = buffer(d, 1, 512);
+        let dst = buffer(d, 3, 512);
+        copy_resource(l, private, src);
+        assert_eq!(close(l), S_OK);
+        copy_resource(tail, dst, private);
+        assert_eq!(close(tail), S_OK);
+        let batch = [l, tail];
+        let owner = Arc::new(());
+        assert!(matches!(
+            super::prepare(d, 0, 2, batch.as_ptr() as usize, &owner),
+            Err(E_INVALIDARG)
+        ));
+        {
+            let usage = (*private).usage.lock().unwrap();
+            assert_eq!(usage.current, 0x400);
+            assert_eq!(usage.pending, 0);
+        }
+        // Reset only the second list and insert the missing transition.
+        assert_eq!(reset(tail, second, 0), S_OK);
+        let barrier = Barrier {
+            kind: 0,
+            flags: 0,
+            resource: private,
+            subresource: 0,
+            before: 0x400,
+            after: 0x800,
+        };
+        barriers(tail, 1, (&barrier as *const Barrier) as usize);
+        copy_resource(tail, dst, private);
+        assert_eq!(close(tail), S_OK);
+        let accepted = super::prepare(d, 0, 2, batch.as_ptr() as usize, &owner).unwrap();
+        for member in &accepted {
+            member.commit();
+        }
+        accepted[0].complete();
+        assert_eq!((*private).usage.lock().unwrap().pending, 1);
+        accepted[1].complete();
+        assert_eq!((*private).usage.lock().unwrap().pending, 0);
+        drop(accepted);
+        assert_eq!((*private).usage.lock().unwrap().current, 0);
+        list_release(l);
+        list_release(tail);
+        allocator_release(a);
+        allocator_release(second);
+        resource_release(src);
+        resource_release(private);
+        resource_release(dst);
+        assert_eq!(device_release(d), 0);
+    });
+}
+#[test]
+fn failed_gpu_completion_poison_is_retained_and_cannot_be_reused_by_another_queue() {
+    autoreleasepool(|| unsafe {
+        let d = device();
+        let a = allocator(d, 0);
+        let l = list(d, a, 0);
+        let src = buffer(d, 2, 512);
+        let dst = buffer(d, 1, 512);
+        copy_resource(l, dst, src);
+        assert_eq!(close(l), S_OK);
+        let lists = [l];
+        let owner = Arc::new(());
+        let batches = super::prepare(d, 0, 1, lists.as_ptr() as usize, &owner).unwrap();
+        batches[0].commit();
+        batches[0].finish(true);
+        drop(batches);
+        assert_eq!((*dst).usage.lock().unwrap().pending, 0);
+        assert!((*dst).usage.lock().unwrap().failed);
+        assert!(
+            matches!(super::prepare(d,0,1,lists.as_ptr() as usize,&Arc::new(())),Err(error) if error==0x887a0005u32 as i32)
+        );
+        list_release(l);
+        allocator_release(a);
+        resource_release(src);
+        resource_release(dst);
         assert_eq!(device_release(d), 0);
     });
 }

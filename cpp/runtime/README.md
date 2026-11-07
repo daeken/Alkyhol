@@ -72,7 +72,8 @@ UPLOAD/READBACK committed buffers (normal properties, node masks 1, flags zero,
 row-major, one subresource, initial GENERIC_READ/COPY_DEST respectively), coherent
 Shared-storage Map/Unmap, by-value GetDesc, actual Metal GPU addresses, heap
 properties and retained parent-device lifetime. Zero-width and invalid scalar
-buffer shapes fail; other resource types/flags/heaps/alignment are unsupported.
+buffer shapes fail. The DEFAULT-buffer extension is described below; other
+resource types/flags/custom heaps/alignment remain unsupported.
 
 HRESULT operations that are unimplemented fail and clear interface outputs.
 Unsupported void/struct getters with no meaningful error result abort with a
@@ -167,11 +168,12 @@ CopyBufferRegion and CopyResource. Queue execution accepts matching closed lists
 and encodes real native Metal blits. Signals share that submission order and
 cannot report completion before prior workload callbacks retire.
 
-The initial copy path is explicitly limited to UPLOAD sources and READBACK
-destinations, with four-byte-aligned offsets/lengths. Full-resource copies require
-matching buffer widths. It neither rounds nor drops byte-granular requests;
+Copies accept UPLOAD/DEFAULT sources and DEFAULT/READBACK destinations, with
+four-byte-aligned offsets/lengths. DEFAULT state constraints are described below.
+Full-resource copies require matching buffer widths. It neither rounds nor drops byte-granular requests;
 unsupported copies fail at Close and remain failed on Reset. No rendering state,
-draw, dispatch, barrier, texture copy, bundle or indirect command is supported.
+draw, dispatch, texture copy, bundle or indirect command is supported. The only
+supported barriers are the bounded DEFAULT-buffer transitions described below.
 Their void methods abort with a named diagnostic. Zero-list execution remains
 explicit unsupported. Invalid/open/stale/duplicate submissions also abort,
 rather than silently dropping work or claiming native device-removal behavior.
@@ -203,3 +205,41 @@ All 2048 destination/sentinel bytes and eleven state results are preserved in
 `cpp/reference/command-copy-windows-v1.json`; the parser/comparator cannot replace
 or normalize them to manufacture agreement. Other effects and fault semantics
 remain outside this finite comparison.
+
+## DEFAULT buffers and transition lowering
+
+The subset also creates DEFAULT buffers in native Metal Private storage, with
+tracked hazards and no CPU mapping. UPLOAD/READBACK retain coherent Shared storage.
+Private buffers preserve the same actual 64-KiB-aligned GPU subspan and normalized
+buffer descriptors. Map returns an error and clears its pointer; Unmap on DEFAULT
+aborts instead of exposing Private contents or pretending a CPU map exists.
+
+DIRECT lists accept complete transition barriers for DEFAULT buffers (subresource
+0 or ALL_SUBRESOURCES). The supported state set is COMMON, COPY_DEST and read-only
+subsets of GENERIC_READ. Split, aliasing, UAV, other resource classes and explicit
+barriers on other queue types remain unsupported. Four-byte copy alignment still
+applies; zero-byte DEFAULT copies are unsupported. Shared-heap states are immutable.
+
+State checks cover the entire ExecuteCommandLists batch atomically. COMMON can
+promote for a copy; DEFAULT buffers decay at the batch boundary, never between
+lists in one batch. A promotable BeforeState is accepted after decay, following
+the [D3D12 buffer rules](https://learn.microsoft.com/windows/win32/direct3d12/using-resource-barriers-to-synchronize-resource-states-in-direct3d-12).
+Failed preparation changes no scheduled state, and uncommitted reservations roll
+back. Pending private-buffer ownership blocks overlapping work on another queue;
+CPU fence completion allows handoff. GPU queue Wait remains unavailable.
+
+Transition entries validate the D3D contract; native copy hazards are resolved by
+the tracked-resource, directly bound `MTLCommandQueue`/blit path, as described by
+[Metal resource synchronization](https://developer.apple.com/documentation/metal/resource-synchronization).
+This uses the classic Metal queue API, whose synchronization contract differs
+from MTL4CommandQueue. State validation is not a substitute for native GPU copies.
+
+```sh
+python3 tools/run_cpp_default_buffers.py --output local/cpp-default-buffers.json
+```
+
+The shared probe covers two private buffers, chained copies and transitions,
+implicit promotion/decay, a CPU-fenced DIRECT→COPY→DIRECT handoff, and a two-list
+batch. It checks all 4096 readback/sentinel bytes and records native returned
+descriptors, mapping failure and fence values. Local failure injection and
+cross-queue rejection are defensive host contracts, not native fault evidence.

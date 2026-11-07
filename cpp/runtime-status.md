@@ -19,9 +19,10 @@ renderer or a feature-level claim.
 | Wide printf | Windows wide string/character conventions used by original helpers, including `%s`, `%S`, `%ws`; bounded formats, not all MSVC printf extensions |
 | DirectInput public tables | 256 keyboard and 11 mouse object descriptors with public GUIDs; metadata only |
 | DXGI discovery | Real Metal factory through IDXGIFactory6 and adapter through IDXGIAdapter1; retained devices, parent ownership, descriptors, metadata and LUID lookup; no swap chains/outputs/device capability |
-| Restricted device/resource constructor | Explicit non-feature-level Metal-backed subset; real shared UPLOAD/READBACK buffers, Map/Unmap/descriptors/parent ownership/GPU addresses; not used by D3D12CreateDevice |
+| Restricted device/resource constructor | Explicit non-feature-level Metal-backed subset; real Shared UPLOAD/READBACK and Private DEFAULT buffers, descriptors/parent ownership/actual aligned GPU addresses. DEFAULT is not CPU-mappable. Not used by D3D12CreateDevice |
 | Restricted queues/fences | Real DIRECT/COMPUTE/COPY Metal queues, CPU fence signals/rewinds, event/null-event waits and ordered native completion callbacks. Finite native WARP fence comparison passes. GPU queue waits/timestamps remain unavailable |
-| Restricted allocators/command lists | Real state/epoch/snapshot ownership and COM submission of aligned UPLOAD→READBACK Metal blits. All 2048 bytes/eleven state results match native WARP, hosted Metal and physical M4. Drawing, dispatch, barriers, textures and byte-granular copies remain unsupported |
+| Restricted allocators/command lists | Real state/epoch/snapshot ownership and COM submission of aligned buffer blits. The Shared-copy probe's 2048 bytes/eleven state results match native WARP, hosted Metal and physical M4. Drawing, dispatch, textures and byte-granular copies remain unsupported; bounded buffer barriers are below |
+| DEFAULT transitions | DIRECT-list buffer transitions, bounded COMMON/read/COPY promotion/decay and atomic batch state validation; actual Private-buffer copy chains and CPU-fenced queue handoff pass locally on 4096 bytes. Native comparison pending. Split/alias/UAV barriers and GPU queue waits remain unavailable |
 | Original queue-management subsystem | Unchanged CommandListManager and CommandAllocatorPool objects execute creation, allocator allocation/deferred reuse/reset, three-queue COM copies, high-bit fences/waits, idle and shutdown on physical Metal through a separate caller |
 | D3D12 creation | Explicit E_NOTIMPL and cleared interface outputs; no device, resource or command capability success |
 | D3D12 root serialization/debug/experiments | Explicit failures; no serialized blob or debug interface |
@@ -43,6 +44,7 @@ The inherited metadata unit now has a real CPU Rust implementation and an explic
 ABI-test constructor. [ID3D12Object metadata](reference/README.md) preserves its
 independent native contract. Restricted derived device/resource/queue/fence
 interfaces now compose that implementation. Restricted command-list GPU copies
-also work. The next runtime steps include default-buffer/state transitions,
-descriptor/root-signature and pipeline support. Neither restricted nor metadata constructors substitute for
+also work, as do bounded Private-buffer transitions. The next runtime steps
+include byte-granular copies, descriptor/root-signature and pipeline support.
+Neither restricted nor metadata constructors substitute for
 production device creation or original application initialization.

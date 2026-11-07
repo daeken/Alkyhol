@@ -4,6 +4,42 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## DEFAULT-buffer transitions: physical GPU evidence
+
+The explicit Metal subset now allocates DEFAULT buffers in genuine Private
+storage with tracked hazards, preserving actual aligned GPU addresses and buffer
+descriptors. CPU Map fails; invalid DEFAULT Unmap aborts. DIRECT lists record
+complete buffer transitions over the bounded COMMON/COPY/read-only state set.
+UPLOAD/READBACK states remain immutable. Byte-granular copies, split/alias/UAV
+barriers, textures, descriptor/pipeline rendering and production device creation
+remain unavailable.
+
+On physical M4/x86-64, two DEFAULT buffers execute upload/private/private/readback
+chains with explicit transitions, COMMON promotion/decay, a CPU-fenced direct-to-
+copy-to-direct queue handoff, and a final two-list batch. All 4096 readback bytes,
+including untouched a5 sentinels and later partial overwrites, match the finite
+workload. Actual fence values are `[1,2,3]`. The workload maps only Shared buffers;
+Private storage is not exposed through a CPU fallback. Transition entries validate
+D3D state while the classic Metal queue resolves hazards on directly bound tracked
+resources; no unsupported rendering command returns successful empty work.
+
+Seven new runtime units pass (34 total), covering state promotion/read combinations,
+before-state checks, physical Private storage/map rejection, barrier layouts and
+unsupported forms, transactional rollback/cross-queue reservations, no decay between
+lists, member retirement, and persistent injected failure. These defensive invalid/
+injected cases are local assertions, not native device-removal or synchronization
+parity. All 85 Python tests and runtime Clippy pass locally. The prior frozen COM
+copy observation still matches exactly, and the unchanged original queue-manager
+caller still completes its three-queue copies and allocator reuse. The complete
+original sample relinks and still exits 78 at the honest D3D12CreateDevice gate.
+No original source, shader, asset or reference expectation is modified.
+
+A new native WARP/hosted Metal CI probe compares every byte plus returned DEFAULT
+descriptors, heap properties, Map failure and fence values, using identical source
+and clean revisions. Native evidence for this new workload remains pending. The
+prior frozen-copy/comparison code passed all seventeen jobs on `c9ef6a6` in
+[42365022565](https://github.com/daeken/Alkyhol/actions/runs/42365022565).
+
 ## COM command-list buffer copies: physical GPU execution
 
 The restricted Metal constructor now creates actual 9-slot command allocators
