@@ -27,6 +27,12 @@ These observations are frozen separately from a future Rust implementation;
 subsequent native runs must match all records and the unchanged observer source.
 See [reference contract](../cpp/reference/README.md) for the full report and limits.
 
+The unchanged observer subsequently matched the full frozen observation in
+[42356681229](https://github.com/daeken/Alkyhol/actions/runs/42356681229) on `dbb9264`
+and [42356731682](https://github.com/daeken/Alkyhol/actions/runs/42356731682) on
+`e2bda90`; all twelve jobs passed in each run, including existing shader/graphics
+and Windows SDK comparisons. No expected data was loosened for these reruns.
+
 The observer also compiles to a host object, and all 50 Python tests pass locally.
 Those host transport/comparator tests are synthetic checks, not native API evidence.
 The original C++ device-creation boundary and working sample apps are unchanged.

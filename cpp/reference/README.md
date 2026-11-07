@@ -19,6 +19,13 @@ Important measured distinctions for the upcoming Rust object implementation:
 - SetName stores UTF-16 debug-name bytes including NUL; an empty name has a
   measured entry size of two bytes. Its post-clear contents were not read back.
 
+The historical row label `interface.clear_missing` is a repeated null assignment
+to an existing null-interface entry; the measured size query establishes that it
+was not a missing key. The label is retained with the frozen source identity.
+
+The unchanged observer also matched this entire frozen contract in CI
+42356681229 and 42356731682; all twelve jobs passed in each run.
+
 This is finite evidence on this SDK/runtime, not all COM behavior. Callback
 reentrancy, concurrent setters/getters, allocation failures, invalid pointers,
 DXGI object metadata and arbitrary object types remain separate questions.

@@ -30,3 +30,9 @@ Metal backend is not yet connected through the original application's COM device
 command lists, descriptors, swap chain and DXR shader tables. Those are the next
 runtime milestones. Full original shader library lowering is also still separate
 from compiling the original libraries to DXIL.
+
+The next inherited COM unit has a separately frozen native reference:
+[ID3D12Object metadata](reference/README.md). Implement its real ownership,
+private-data and naming behavior before using the common object prefix in
+Metal-backed device/resource interfaces. The reference observer itself does not
+implement that object in Rust or advance the original application's startup.
