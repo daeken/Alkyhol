@@ -93,6 +93,36 @@ Named objects, security descriptors, handle inheritance, cross-process semaphore
 access masks and closing a semaphore while another thread waits remain unsupported.
 The corpus and these samples do not establish game compatibility.
 
+## Dynamic thread-local storage milestone
+
+[Conformance run 42330786584](https://github.com/daeken/Alkyhol/actions/runs/42330786584)
+on revision `e231f9e77f7336d1612b3c71400d07ef76a259dc` completed with all six jobs
+passing. The four new exports are TlsAlloc, TlsFree, TlsSetValue and TlsGetValue.
+The Microsoft TLS adaptation verifies four workers' separate 256-byte payloads
+through a common retrieval function, null initialization, valid null values,
+TlsGetValue clearing last-error, main-thread isolation and out-of-range errors.
+
+All five portable samples executed against Windows SDK/kernel32 on Windows Server
+2025 build 26100 AMD64, Alkyhol on macOS 26.7.2 ARM64, and Alkyhol on Linux
+x86_64/glibc 2.43. Their complete observations agreed exactly. Downloaded reports
+bind the same source revision and clean tracked trees. A clean local report on
+macOS 27.0.1 ARM64 also matched those observations.
+
+There are now 43 root Rust tests, 18 Python tests and four GPU integration tests.
+Root tests and style/static checks passed on all three CI hosts. The GPU tests
+and drawing sample passed on hosted Metal and explicit software Vulkan, and
+locally on physical Apple M4 Metal. Local Rust was 1.99.1 and C/C++ used Apple
+Clang 21.0.0. The four new host assertion tests additionally cover pool exhaustion,
+forced slot reuse in an existing thread, opaque address bits and stricter rejection
+of unallocated indices. These are separate from native Windows sample evidence:
+the portable sample does not compare exhaustion capacity/error, allocation order,
+in-range unallocated reads, or forced index reuse.
+
+Dynamic TLS does not implement PE static TLS, DLL initialization/teardown, FLS,
+thread creation, memory allocation or pointer ownership. Stored addresses remain
+caller-owned host values. Full slot-lifetime rules and deliberate limits are in
+[the kernel contracts](contracts.md). No game compatibility is established.
+
 ## Reproduce
 
 ```sh
