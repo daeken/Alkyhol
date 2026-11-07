@@ -38,7 +38,9 @@ int main(int argc,char** argv){
 #endif
     assert(device->GetNodeCount()==1);assert(device->SetName(L"buffer test device")==S_OK);
     const LUID luid=device->GetAdapterLuid();assert(luid.LowPart==adapter_desc.AdapterLuid.LowPart&&luid.HighPart==adapter_desc.AdapterLuid.HighPart);
-    ComPtr<IUnknown> canonical;assert(device.As(&canonical)==S_OK&&canonical.Get()==device.Get());canonical.Reset();factory.Reset();adapter.Reset();
+    ComPtr<IUnknown> canonical;assert(device.As(&canonical)==S_OK);
+    ComPtr<ID3D12Device> via_unknown;assert(canonical.As(&via_unknown)==S_OK);ComPtr<IUnknown> roundtrip_unknown;assert(via_unknown.As(&roundtrip_unknown)==S_OK&&roundtrip_unknown.Get()==canonical.Get());
+    IUnknown* device_identity=canonical.Get();roundtrip_unknown.Reset();via_unknown.Reset();canonical.Reset();factory.Reset();adapter.Reset();
 #ifndef _WIN32
     if(argc==2){const std::string mode=argv[1];
         if(mode=="trap-view")device->CreateConstantBufferView(nullptr,{0});
@@ -59,8 +61,10 @@ int main(int argc,char** argv){
         D3D12_RESOURCE_DESC desc={D3D12_RESOURCE_DIMENSION_BUFFER,0,width,1,1,1,DXGI_FORMAT_UNKNOWN,{1,0},D3D12_TEXTURE_LAYOUT_ROW_MAJOR,D3D12_RESOURCE_FLAG_NONE};
         D3D12_RESOURCE_STATES state=type==D3D12_HEAP_TYPE_UPLOAD?D3D12_RESOURCE_STATE_GENERIC_READ:D3D12_RESOURCE_STATE_COPY_DEST;
         ComPtr<ID3D12Resource> resource;assert(device->CreateCommittedResource(&heap,D3D12_HEAP_FLAG_NONE,&desc,state,nullptr,IID_PPV_ARGS(&resource))==S_OK);
-        ComPtr<ID3D12Device> parent;assert(resource->GetDevice(IID_PPV_ARGS(&parent))==S_OK&&parent.Get()==device.Get());
-        ComPtr<ID3D12DeviceChild> child;ComPtr<ID3D12Pageable> pageable;assert(resource.As(&child)==S_OK&&resource.As(&pageable)==S_OK&&child.Get()==resource.Get()&&pageable.Get()==resource.Get());
+        ComPtr<ID3D12Device> parent;assert(resource->GetDevice(IID_PPV_ARGS(&parent))==S_OK);ComPtr<IUnknown> parent_identity;assert(parent.As(&parent_identity)==S_OK&&parent_identity.Get()==device_identity);
+        ComPtr<ID3D12DeviceChild> child;ComPtr<ID3D12Pageable> pageable;assert(resource.As(&child)==S_OK&&resource.As(&pageable)==S_OK);
+        ComPtr<IUnknown> resource_identity,child_identity,pageable_identity;assert(resource.As(&resource_identity)==S_OK&&child.As(&child_identity)==S_OK&&pageable.As(&pageable_identity)==S_OK);
+        assert(resource_identity.Get()==child_identity.Get()&&resource_identity.Get()==pageable_identity.Get());
         assert(resource->SetName(L"shared buffer")==S_OK);
         const auto actual=resource->GetDesc();assert(actual.Width==width&&actual.Dimension==D3D12_RESOURCE_DIMENSION_BUFFER);
         D3D12_HEAP_PROPERTIES properties{};D3D12_HEAP_FLAGS flags{};assert(resource->GetHeapProperties(&properties,&flags)==S_OK);
@@ -73,6 +77,6 @@ int main(int argc,char** argv){
         std::printf("{\"heap\":[%u,%u,%u,%u,%u],\"heap_flags\":%u,\"desc\":[%u,%llu,%llu,%u,%u,%u,%u,%u,%u,%u,%u],\"checksum\":%u}",unsigned(properties.Type),unsigned(properties.CPUPageProperty),unsigned(properties.MemoryPoolPreference),unsigned(properties.CreationNodeMask),unsigned(properties.VisibleNodeMask),unsigned(flags),unsigned(actual.Dimension),static_cast<unsigned long long>(actual.Alignment),static_cast<unsigned long long>(actual.Width),unsigned(actual.Height),unsigned(actual.DepthOrArraySize),unsigned(actual.MipLevels),unsigned(actual.Format),unsigned(actual.SampleDesc.Count),unsigned(actual.SampleDesc.Quality),unsigned(actual.Layout),unsigned(actual.Flags),unsigned(checksum));
         retained=resource;
     }
-    ID3D12Device* saved=device.Get();device.Reset();ComPtr<ID3D12Device> parent;assert(retained->GetDevice(IID_PPV_ARGS(&parent))==S_OK&&parent.Get()==saved);retained.Reset();
+    device.Reset();ComPtr<ID3D12Device> parent;assert(retained->GetDevice(IID_PPV_ARGS(&parent))==S_OK);ComPtr<IUnknown> final_identity;assert(parent.As(&final_identity)==S_OK&&final_identity.Get()==device_identity);retained.Reset();
     std::puts("],\"parent_lifetime\":true,\"gpu_addresses_nonzero\":true}");
 }
