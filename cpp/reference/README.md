@@ -277,8 +277,12 @@ Clean physical M4/API-validation execution at that revision matches every word,
 state-sequence assertion and shared source/fixture identity. Future live pairs
 must also match the frozen native payload; host-only negative/state/lifetime
 extension tests cannot redefine it. The report retains SDK/compiler, executable,
-source/fixture hashes, commands and diagnostics. Hosted comparison and complete
-CI for this new reference remain pending.
+source/fixture hashes, commands and diagnostics. Hosted Rust/Metal agrees as well. The initial run 42379450367 passed all
+twenty-four jobs on `8e4c6b2`; the strict-reference run 42379882478 passed all
+twenty-four on `667c15d`. Fresh downloaded native/hosted records and clean
+physical M4/API-validation execution at that latter revision match all 624 words
+and the frozen payload. The unchanged original subsystem caller also passes
+cleanly at that same revision.
 
 This is native WARP / physical Metal COM-dispatch evidence with an owned test
 shader, not original MiniEngine HLSL or a full Sponza frame. The probe does not

@@ -31,11 +31,12 @@ unavailable until their complete size/packing contract is implemented. Resource
 arrays, texture/sampler bindings and other unsupported lowering fail instead of
 silently losing bindings. Unused root parameters remain owned metadata.
 
-Command-list SetPipelineState, shader root bindings, initial PSOs on list
-creation/reset, and D3D12 Dispatch still fail explicitly. This milestone does not
-advertise a D3D12 feature level, enable production D3D12CreateDevice, implement
-root tables at submission time or add graphics PSOs. The complete original
-application remains compiled/linked and exits 78 before original initialization.
+Bounded [COM compute dispatch](compute-dispatch.md) now supplies SetPipelineState,
+root buffer descriptors and initial/reset PSOs on DIRECT/COMPUTE lists. Descriptor
+tables, root constants and graphics execution remain unavailable. Neither this
+PSO constructor nor that bounded dispatch path advertises a D3D12 feature level
+or enables production D3D12CreateDevice. The complete original application remains
+compiled/linked and exits 78 before original initialization.
 
 ## Fixture and executed evidence
 

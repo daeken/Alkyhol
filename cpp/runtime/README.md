@@ -414,7 +414,10 @@ implemented; unsupported tables/constants/textures/embedded roots and graphics
 remain explicit failures. The shared C++ workload checks all 624 output/guard
 words, matching native WARP and clean physical M4 at `8e4c6b2` in CI 42379450367.
 The full native report is frozen at `cpp/reference/compute-dispatch-windows-v1.json`;
-hosted comparison and fresh full CI remain pending. See
+hosted Metal agrees as well. The strict-reference run on `667c15d` passed all
+twenty-four jobs in [42379882478](https://github.com/daeken/Alkyhol/actions/runs/42379882478).
+Fresh downloaded native/hosted records match clean physical M4 execution and the
+frozen payload at that same revision; the original helper caller also passes. See
 [the exact contract/evidence](../compute-dispatch.md). The complete original app
 remains compiled/linked and gated before initialization; this test shader is not
 an original Sponza frame.

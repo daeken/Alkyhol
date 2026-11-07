@@ -67,9 +67,15 @@ on clean `8e4c6b2`, from native execution in CI 42379450367. The full native
 report is frozen at `cpp/reference/compute-dispatch-windows-v1.json`, canonical
 observation SHA-256
 `263fe289e48e36cfe4745892f83e6b51f513fcf74a3fa79528ccb7a89ecbfaa9`.
-Future live pairs must also match it. Hosted comparison and complete fresh CI
-for this new reference remain pending. Frozen source/readback/joint-drift checks
-bring the local Python suite to 120 passing tests.
+Future live pairs must also match it. Both the initial run
+[42379450367](https://github.com/daeken/Alkyhol/actions/runs/42379450367) on `8e4c6b2`
+and the strict-reference run
+[42379882478](https://github.com/daeken/Alkyhol/actions/runs/42379882478) on `667c15d`
+passed all twenty-four jobs. Fresh downloaded native/hosted reports and a clean
+physical M4/API-validation record at `667c15d` agree on all 624 words, the common
+state sequence and complete shared fixture identity, including the frozen payload.
+The unchanged original helper caller passes cleanly at that same revision.
+Frozen source/readback/joint-drift checks bring the Python suite to 120 passing tests.
 Windows debug-layer validation is not claimed by this probe.
 
 Seven new host/runtime units pass (65 total), covering identity/reset/snapshot

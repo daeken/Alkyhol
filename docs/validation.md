@@ -22,8 +22,15 @@ source/fixture hashes. The full native report is frozen at
 `263fe289e48e36cfe4745892f83e6b51f513fcf74a3fa79528ccb7a89ecbfaa9`.
 Future live pairs must also match this native payload. Frozen readback/source/
 joint-drift protocol tests bring the local Python suite to 120 passing tests.
-Hosted comparison and a complete fresh CI result for this new reference remain
-pending; Windows debug-layer and native negative-HRESULT parity are not claimed.
+The initial run [42379450367](https://github.com/daeken/Alkyhol/actions/runs/42379450367)
+passed all twenty-four jobs on `8e4c6b2`. The strict-reference run
+[42379882478](https://github.com/daeken/Alkyhol/actions/runs/42379882478) then passed
+all twenty-four jobs on `667c15d`, retaining every earlier SDK/shader/graphics/
+resource/descriptor/root/PSO comparison. Downloaded clean native/hosted reports
+and a clean physical M4/API-validation report at that same revision agree on
+all 624 data/guard words and the frozen payload. The original subsystem v6 caller
+also passes cleanly there. Windows debug-layer and native negative-HRESULT or
+extra-lifetime parity remain unclaimed.
 
 Seven new host/runtime units pass (65 total), including private shader-state
 batch validation/rollback and negative binding/identity/reset/flag cases. Runtime

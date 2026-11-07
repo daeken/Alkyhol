@@ -31,9 +31,10 @@ all eight ID3D12RootSignature/IUnknown/Object/DeviceChild vtable slots. It owns 
 parsed layout and retained parent, metadata and atomic interface references.
 Valid null-output capability checks return S_FALSE without retaining anything.
 Embedded/multipart shader containers and noncanonical root encodings are not yet
-accepted; the existing compiled sample DXIL remains untouched. Binding commands
-and compute/graphics PSO construction continue to fail rather than consume no-op
-objects. D3D12CreateDevice remains unavailable.
+accepted; the existing compiled sample DXIL remains untouched. Bounded
+[compute PSOs](compute-pipelines.md) and [root-buffer dispatch](compute-dispatch.md)
+are implemented separately. Graphics PSOs, tables/constants at submission and
+embedded-root DXIL remain unavailable. D3D12CreateDevice remains unavailable.
 
 ## Open provenance
 
