@@ -48,3 +48,35 @@ jobs:
           assert all(r['observation'] == baseline for r in reports), reports
           print('Windows SDK, macOS and Linux sample observations agree')
           PY
+  graphics:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: Install software Vulkan adapter for Linux contract tests
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y mesa-vulkan-drivers libvulkan1
+      - run: cargo fmt --manifest-path graphics/Cargo.toml --check
+      - run: cargo clippy --manifest-path graphics/Cargo.toml --all-targets -- -D warnings
+      - name: Exercise a real Metal device
+        if: runner.os == 'macOS'
+        env:
+          ALKYHOL_PPM: triangle.ppm
+        run: cargo run --manifest-path graphics/Cargo.toml --example hello_triangle
+      - name: Exercise explicit software Vulkan adapter
+        if: runner.os == 'Linux'
+        env:
+          ALKYHOL_PPM: triangle.ppm
+          XDG_RUNTIME_DIR: /tmp
+        run: cargo run --manifest-path graphics/Cargo.toml --example hello_triangle -- --allow-software
+      - uses: actions/upload-artifact@v4
+        with:
+          name: graphics-${{ runner.os }}
+          path: |
+            triangle.ppm
+            graphics/Cargo.lock

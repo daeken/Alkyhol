@@ -39,3 +39,16 @@ C probe against the native shared library. CI also compiles that same source
 against the Windows SDK and compares the observations. Passing portable
 samples demonstrates only those tested contracts, not game compatibility. Native
 Windows comparison results must be labeled separately from host-only assertions.
+
+## Graphics
+
+The [offscreen graphics milestone](docs/graphics.md) provides a restricted
+D3D12-shaped Rust API over wgpu with a clear/triangle/readback sample:
+
+```sh
+cargo run --manifest-path graphics/Cargo.toml --example hello_triangle
+```
+
+The dependency-free root tests validate command lifecycles, state transitions,
+rejected submissions and copy footprints. GPU execution is checked separately;
+no device, missing dependencies or a skipped run is never a passing GPU result.

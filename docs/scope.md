@@ -49,4 +49,4 @@ import inventory are dependencies, not automatically Windows API work.
 - https://learn.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-createeventw
 - https://learn.microsoft.com/en-us/samples/microsoft/directx-graphics-samples/d3d12-hello-world-samples-win32/
 - https://github.com/microsoft/DirectX-Graphics-Samples (MIT; inspiration, no copied implementation)
-- https://docs.rs/wgpu/30.0.0/wgpu/
+- https://docs.rs/crate/wgpu/27.0.1

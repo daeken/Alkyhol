@@ -1,0 +1,11 @@
+[package]
+name = "alkyhol-d3d12"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+description = "Restricted D3D12-shaped offscreen API over wgpu"
+
+[dependencies]
+alkyhol = { path = ".." }
+wgpu = { version = "=27.0.1", default-features = false, features = ["std", "metal", "vulkan", "dx12", "wgsl"] }
+pollster = "=0.4.0"
