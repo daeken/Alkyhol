@@ -184,3 +184,9 @@ release while descriptors remain live is tested only as a local ownership
 extension; the native probe retains resources. Original C++ rendering stays gated.
 This run's producer and descriptor comparison jobs passed; its overall run had an
 unrelated new test's Windows path-spelling failure, corrected in `d2208ed`.
+
+The corrected run 42372084214 on `d2208ed` passed all twenty-one jobs. The strict
+frozen-reference run 42372226929 on `a0ae65a` also passed all twenty-one jobs,
+including every prior SDK/shader/graphics comparison and exact open-DXC fixture
+regeneration. Downloaded native/hosted reports from `a0ae65a` match a fresh clean
+physical M4/API-validation report and the frozen payload on all 72 words.

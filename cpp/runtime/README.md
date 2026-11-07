@@ -355,8 +355,11 @@ consumers compare descriptor contents; they are not identical shader translation
 Native WARP, hosted Metal and physical M4/API-validation readbacks agree on all
 72 data/guard words in CI 42371948288 on `b10a7df`. The native report is frozen in
 `cpp/reference/cbv-copies-windows-v1.json`; future pairs must also match it. That
-run had a separate tooling test path-spelling failure, corrected in `d2208ed`;
-a fully passing fresh CI result is pending. Registries use weak references; initialized records retain
+run had a separate tooling test path-spelling failure, corrected in `d2208ed`.
+The corrected run and the strict frozen-reference run on `a0ae65a` both passed
+all twenty-one jobs; see [42372226929](https://github.com/daeken/Alkyhol/actions/runs/42372226929).
+Fresh downloaded reports also match clean physical M4 execution at that revision.
+Registries use weak references; initialized records retain
 native allocations after their COM resource shell dies (a tested local extension,
 not a native lifetime parity claim).
 

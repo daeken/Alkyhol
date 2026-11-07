@@ -54,8 +54,18 @@ The 4156-byte HLSL consumer's DXIL SHA-256 is
 Future live pairs must also match the frozen native payload; every word remains
 an exact comparison field. The freeze adds source/fixture identity and joint-drift
 protocol tests, bringing the local Python suite to 105 passing tests. Both actual
-native/Metal pairs pass the strict frozen comparator locally. A full fresh CI
-result is still pending for this new reference.
+native/Metal pairs pass the strict frozen comparator locally.
+
+The corrected run [42372084214](https://github.com/daeken/Alkyhol/actions/runs/42372084214)
+passed all twenty-one jobs on `d2208ed`. The strict frozen-reference run
+[42372226929](https://github.com/daeken/Alkyhol/actions/runs/42372226929) then
+passed all twenty-one jobs on `a0ae65a`, including native WARP/hosted Metal CBV
+consumption, frozen payload enforcement, exact open-DXC header regeneration and
+all previous SDK/shader/graphics comparisons. Downloaded clean reports from that
+same revision also match a fresh physical M4/API-validation run on all 72 words
+and the full shared source/fixture identity. Original C++ initialization/rendering
+remains gated; the different bounded consumers do not establish general D3D12
+Dispatch or full native shaded-frame parity.
 
 The preceding frozen allocation record passed all twenty CI jobs on `5ba4baa`
 in [42370649149](https://github.com/daeken/Alkyhol/actions/runs/42370649149).
