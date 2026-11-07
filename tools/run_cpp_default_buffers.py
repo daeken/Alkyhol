@@ -4,9 +4,9 @@ import argparse
 import json
 from pathlib import Path
 if __package__:
-    from .run_cpp_device_buffers import run_probe
+    from .run_cpp_device_buffers import ROOT,run_probe
 else:
-    from run_cpp_device_buffers import run_probe
+    from run_cpp_device_buffers import ROOT,run_probe
 SOURCE='cpp/tests/default_buffers.cpp'
 def validate_observation(text):
     result=json.loads(text)
@@ -27,6 +27,8 @@ def compare_reports(reports,revision):
         validate_observation(json.dumps(report['observation']))
     if not reports[0]['artifacts'].get(SOURCE) or reports[0]['artifacts'][SOURCE]!=reports[1]['artifacts'].get(SOURCE):raise ValueError('DEFAULT-buffer probe source bytes differ')
     if reports[0]['observation']!=reports[1]['observation']:raise ValueError('native and Metal DEFAULT-buffer observations differ')
+    frozen=json.loads((ROOT/'cpp/reference/default-buffer-transitions-windows-v1.json').read_text())
+    if reports[0]['observation']!=frozen['observation']:raise ValueError('live DEFAULT-buffer behavior differs from frozen native contract')
 def run(output):
     return run_probe(output,'default_buffers','DEFAULT buffers',validate_observation,['trap-default-unmap'])
 if __name__=='__main__':

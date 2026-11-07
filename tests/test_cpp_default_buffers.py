@@ -1,13 +1,12 @@
 """Synthetic report gates; real Windows/Metal execution supplies observations."""
 import copy
+import hashlib
 import json
 import unittest
-from tools.run_cpp_default_buffers import SOURCE,compare_reports,validate_observation
+from tools.run_cpp_default_buffers import ROOT,SOURCE,compare_reports,validate_observation
 class DefaultBufferReportTests(unittest.TestCase):
     def reports(self):
-        observation={'scenario':'default-buffer-transitions-v1','map_hr':0x80070057,
-                     'heap':[1,0,0,1,1],'heap_flags':192,'desc':[1,65536,1024,1,1,1,0,1,0,1,0],
-                     'fences':[1,2,3],'buffers':['a5'*1024]*4}
+        observation=json.loads((ROOT/'cpp/reference/default-buffer-transitions-windows-v1.json').read_text())['observation']
         native={'schema_version':1,'backend':'native Windows SDK WARP DEFAULT buffers',
                 'source_revision':'current','tracked_tree_clean':True,'artifacts':{SOURCE:'source'},'observation':observation}
         host=copy.deepcopy(native);host['backend']='Rust restricted Metal COM DEFAULT buffers';return [native,host]
@@ -34,5 +33,17 @@ class DefaultBufferReportTests(unittest.TestCase):
         for buffer in range(4):
             for byte in range(1024):
                 reports=self.reports();text=reports[1]['observation']['buffers'][buffer]
-                reports[1]['observation']['buffers'][buffer]=text[:byte*2]+'00'+text[byte*2+2:]
+                reports[1]['observation']['buffers'][buffer]=text[:byte*2]+format(int(text[byte*2:byte*2+2],16)^1,'02x')+text[byte*2+2:]
                 with self.assertRaises(ValueError):compare_reports(reports,'current')
+
+    def test_live_backends_cannot_jointly_replace_frozen_native_values(self):
+        reports=self.reports()
+        for report in reports:report['observation']['heap_flags']=0
+        with self.assertRaises(ValueError):compare_reports(reports,'current')
+    def test_frozen_native_source_execution_and_observation_hash_are_preserved(self):
+        report=json.loads((ROOT/'cpp/reference/default-buffer-transitions-windows-v1.json').read_text())
+        self.assertEqual(report['backend'],'native Windows SDK WARP DEFAULT buffers')
+        self.assertIs(report['tracked_tree_clean'],True)
+        self.assertEqual(report['source_revision'],'4c09ebcb051f9a2fa8aeb29daa636d2b714f5f8c')
+        self.assertEqual(report['artifacts'][SOURCE],hashlib.sha256((ROOT/SOURCE).read_bytes()).hexdigest())
+        self.assertEqual(hashlib.sha256(json.dumps(report['observation'],sort_keys=True,separators=(',',':')).encode()).hexdigest(),'98868d79e4b04b6e2e76d35c4c06097f59b031622160f7d5860447ed4d081586')

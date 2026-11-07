@@ -97,3 +97,21 @@ shaders, textures, barriers, native removal/fault handling, byte-granular copies
 feature-level conformance or an original rendered frame. The separate original
 queue-manager subsystem caller runs locally on physical Metal and is not itself
 a native Windows subsystem comparison.
+
+## Native DEFAULT-buffer transition reference
+
+`default-buffer-transitions-windows-v1.json` preserves native SDK/WARP execution
+on `4c09ebc` in CI 42366061032. Its two DEFAULT buffers exercise explicit DIRECT
+transitions, COMMON promotion/decay, CPU-fenced DIRECT→COPY→DIRECT handoff and a
+two-list batch. All 4096 readback bytes, descriptor/heap fields, mapping failure
+and three fence values agree with hosted Metal and the physical M4 from that
+same clean revision. The runtime uses native Private storage with tracked blit
+hazards; no CPU map or CPU copy substitutes for the DEFAULT workload.
+
+Source identity and canonical observation SHA-256
+`98868d79e4b04b6e2e76d35c4c06097f59b031622160f7d5860447ed4d081586`
+are checked independently of the implementation. Live comparisons must continue
+matching this unchanged snapshot. Invalid-state rejection, rollback, overlapping
+queue rejection and injected GPU-failure poison remain separate local assertions;
+this native positive workload does not establish those edge semantics, shader
+execution, arbitrary barriers, full feature-level conformance or original frames.

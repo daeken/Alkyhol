@@ -34,10 +34,18 @@ caller still completes its three-queue copies and allocator reuse. The complete
 original sample relinks and still exits 78 at the honest D3D12CreateDevice gate.
 No original source, shader, asset or reference expectation is modified.
 
-A new native WARP/hosted Metal CI probe compares every byte plus returned DEFAULT
+A native WARP/hosted Metal CI probe compares every byte plus returned DEFAULT
 descriptors, heap properties, Map failure and fence values, using identical source
-and clean revisions. Native evidence for this new workload remains pending. The
-prior frozen-copy/comparison code passed all seventeen jobs on `c9ef6a6` in
+and clean revisions. [CI 42366061032](https://github.com/daeken/Alkyhol/actions/runs/42366061032)
+passed all eighteen jobs on `4c09ebc`. Downloaded native WARP and hosted Metal
+reports also match the clean physical M4 observation, including all 4096 bytes.
+The native report is frozen as `cpp/reference/default-buffer-transitions-windows-v1.json`,
+with canonical observation SHA-256
+`98868d79e4b04b6e2e76d35c4c06097f59b031622160f7d5860447ed4d081586`.
+Future live comparisons must also match that unchanged snapshot; 87 Python tests
+now pass locally. This remains finite buffer-workload evidence, not a native
+original-frame comparison. The prior frozen-copy/comparison code passed all
+seventeen jobs on `c9ef6a6` in
 [42365022565](https://github.com/daeken/Alkyhol/actions/runs/42365022565).
 
 ## COM command-list buffer copies: physical GPU execution

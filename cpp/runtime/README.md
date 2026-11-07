@@ -243,3 +243,11 @@ implicit promotion/decay, a CPU-fenced DIRECT→COPY→DIRECT handoff, and a two
 batch. It checks all 4096 readback/sentinel bytes and records native returned
 descriptors, mapping failure and fence values. Local failure injection and
 cross-queue rejection are defensive host contracts, not native fault evidence.
+
+Native WARP and hosted Metal observations match at clean `4c09ebc` in
+[CI 42366061032](https://github.com/daeken/Alkyhol/actions/runs/42366061032), which
+passed all eighteen jobs. The separate physical M4 record from that revision
+matches every observed field and byte. The native snapshot and original source
+hash are preserved under `cpp/reference/default-buffer-transitions-windows-v1.json`;
+future live comparisons must also agree with it. This is buffer-workload evidence,
+without a native rendered-frame, shader or feature-level claim.
