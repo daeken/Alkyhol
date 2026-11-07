@@ -69,6 +69,18 @@ jobs:
       - run: cargo clippy --manifest-path graphics/Cargo.toml --locked --all-targets -- -D warnings
       - name: Test real backend device and submission contracts
         run: cargo test --manifest-path graphics/Cargo.toml --locked -- --nocapture
+      - run: cargo fmt --manifest-path sakura/Cargo.toml --check
+      - run: cargo clippy --manifest-path sakura/Cargo.toml --locked --all-targets -- -D warnings
+      - name: Test Sakura CPU units and verified asset intake (no hosted RT claim)
+        run: |
+          python tools/fetch_sakura.py
+          cargo test --manifest-path sakura/Cargo.toml --locked
+          cargo test --manifest-path sakura/Cargo.toml --locked --test scene -- --include-ignored
+          cargo run --manifest-path sakura/Cargo.toml --locked --example scene_layout -- sakura-layout.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sakura-layout-Metal-host
+          path: sakura-layout.txt
       - name: Exercise a real Metal device
         if: runner.os == 'macOS'
         env:
@@ -98,6 +110,15 @@ jobs:
         with:
           python-version: '3.12'
       - uses: ilammy/msvc-dev-cmd@v1
+      - name: Observe Sakura placement on native MSVC
+        shell: cmd
+        run: |
+          cl /nologo /std:c++20 /EHsc /fp:strict /W4 /WX sakura/reference/scene_layout.cpp /Fe:sakura-layout.exe
+          sakura-layout.exe sakura-layout.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sakura-layout-Windows
+          path: sakura-layout.txt
       - name: Execute actual Windows SDK D3D12 with explicit WARP
         run: python tools/run_graphics_contract.py --output graphics-contract.json
       - uses: actions/upload-artifact@v4
@@ -129,4 +150,25 @@ jobs:
           baseline = next(r['observation'] for r in reports if r['backend'] == 'native D3D12 WARP')
           assert all(r['observation'] == baseline for r in reports)
           print('All 1040 source and 1040 destination RGBA8 bytes agree on D3D12 WARP and direct Metal')
+          PY
+
+  compare-sakura-layout:
+    needs: [graphics, graphics-reference]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: sakura-layout-*
+          path: placements
+      - name: Compare all instance material IDs and float bits with native MSVC
+        run: |
+          python3 - <<'PY'
+          import hashlib
+          from pathlib import Path
+          files=list(Path('placements').glob('*/sakura-layout.txt'))
+          assert len(files)==2,files
+          observed=[p.read_bytes() for p in files]
+          assert all(len(b)==13525*49 and len(b.splitlines())==13525 for b in observed)
+          assert observed[0]==observed[1], 'Sakura instance float bits differ from native MSVC'
+          print('All 13,525 instance records agree, SHA256:',hashlib.sha256(observed[0]).hexdigest())
           PY

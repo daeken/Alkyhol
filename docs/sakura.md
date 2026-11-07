@@ -51,3 +51,84 @@ Upstream code is MIT licensed by Microsoft. Star.hlsli additionally credits Pabl
 Roman Andrioli under MIT. Preserve those notices in adapted shader code and keep
 pinned asset/source hashes with the intake manifest. Public sample assets are
 distinct from proprietary game assets; no game binaries/data are needed here.
+
+## Running the port
+
+Requires macOS, Rust and a ray-tracing-capable Metal device. The physical M4 has
+been exercised. The hosted CI Mac's paravirtual GPU has no RT support and is not a
+Sakura rendering result.
+
+From the repository root:
+
+```sh
+python3 tools/fetch_sakura.py
+cargo run --manifest-path sakura/Cargo.toml --locked --release
+```
+
+The intake fetches only the five public sample assets at the pinned commit,
+verifies every SHA-256 and keeps them in ignored `local/sakura/assets`. Hashes of
+adapted source files are also in `sakura/upstream.json`; attribution is in
+`sakura/licenses/`. No game assets or binaries are involved.
+
+WASD moves; Q/E moves up/down; arrows look; R resets the camera; Space pauses the
+moving light; Escape closes the app. The window title reports measured overall
+frame rate, render resolution, native Metal RT and SER off. Resizing preserves
+camera aspect ratio at the selected render width. The presentation image scales
+to the window. Rendering currently waits for each submitted frame to complete.
+
+```sh
+cargo run --manifest-path sakura/Cargo.toml --locked --release -- \
+  --headless --width 960 --height 540 --time 0 --capture local/sakura/frame.png
+cargo run --manifest-path sakura/Cargo.toml --locked --release -- \
+  --frames 3 --capture local/sakura/live-frame.png
+python3 tools/build_sakura_app.py
+```
+
+The last command builds `local/sakura/Sakura Forest.app`, which can be opened
+normally. It uses this checkout's asset location; this is a local development app,
+not a relocatable distribution. `--assets PATH` accepts another asset directory.
+`--width`/`--height` select resolution without changing geometry, sky iterations or
+recursion depth. The default is 960×540. The sky always performs all 200×50 steps;
+no lower-quality preview substitutes for it.
+
+## Tests and fidelity boundary
+
+```sh
+cargo test --manifest-path sakura/Cargo.toml --locked -- --include-ignored --nocapture
+cargo test --manifest-path graphics/Cargo.toml --locked -- --include-ignored --nocapture
+```
+
+CPU tests cover face/primitive ordering, repeated OBJ sections, attributes,
+malformed indices, original triangle counts, MT19937 outputs, all instance groups,
+paired leaves/trunks, camera basis/motion/clamping and CLI validation. The physical
+GPU test renders the full scene, checks every primary ray is accounted for,
+observes floor and cube reflection rays/hits/misses, compares repeated full PNG
+pixels, changes light/camera, exercises padded readback and checks resize failures.
+Asset and physical GPU tests are explicitly ignored by default; run the command
+above to execute them. CI explicitly runs the asset tests, but its hosted Mac
+cannot run the RT test. Missing capability is an error when launching Sakura.
+
+CI also compiles an independent C++ placement adaptation on native MSVC and
+compares all 13,525 records (material IDs and every scale/position float bit) with
+Rust. This tests CPU placement, not native DXR rendering. The standard distribution
+implementation can change across MSVC versions: this port targets current MSVC's
+24-bit `generate_canonical<float>` conversion and seed/draw order.
+
+The trunk JPEG has EXIF ColorSpace=1, so the upstream WIC default creates an sRGB
+texture; the bush JPEG has no sRGB marker and remains linear UNORM. The port uses
+those respective Metal formats. See Microsoft's
+[WIC loader documentation](https://github.com/microsoft/DirectXTK12/wiki/WICTextureLoader).
+JPEG decoder rounding may differ between WIC and the Rust decoder; full native DXR
+pixel equivalence has not been measured.
+
+The trunk index-read quirk is preserved using explicit zero for indices beyond
+the leaf index SRV's declared bounds. Upstream binds these buffers through a
+descriptor table, not root SRVs. Direct3D documents
+[zero for out-of-bounds resource reads](https://learn.microsoft.com/en-us/windows/win32/direct3d11/direct3d-11-advanced-stages-cs-access).
+Reflective cubes retain the source's trunk normals and 0.5 reflection origin offset.
+Interpolated normals are not silently normalized. The explicit two-level MSL loop
+preserves the source's recursion limit, including floor alpha and cube attenuation.
+
+This is a running source-level rendering port. It does not run the original Windows
+executable, implement DXR shader binaries or provide DirectX SER scheduling modes.
+Its real-device assertions and live UI observations do not establish game compatibility.

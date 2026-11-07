@@ -50,3 +50,8 @@ instances and invalid mesh indices. Run on a physical RT-capable Metal device:
 `cargo test --manifest-path graphics/Cargo.toml --test raytrace -- --include-ignored --nocapture`.
 The test is explicitly ignored in hosted CI because its paravirtual device has no
 ray-tracing capability; an ignored test is not ray-tracing evidence.
+
+Sakura units and the physical full-scene render assertions are described in
+[sakura.md](sakura.md#tests-and-fidelity-boundary). Asset intake tests mock network
+success/corruption and enforce hash/size rejection without replacing existing
+files. Actual public asset downloads are independently SHA-256 verified.

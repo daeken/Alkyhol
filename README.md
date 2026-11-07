@@ -54,6 +54,15 @@ See the [test map](docs/testing.md) for function and logical-unit coverage.
 Rust/Metal port of Microsoft’s ray-traced sample using its original scene and
 assets. The graphics crate no longer depends on wgpu.
 
+```sh
+python3 tools/fetch_sakura.py
+cargo run --manifest-path sakura/Cargo.toml --locked --release
+```
+
+The port requires a Metal ray-tracing device. It runs the complete SER-off scene;
+explicit DirectX SER scheduling is separate. See the Sakura instructions for
+controls, captures, the local app bundle and physical-device tests.
+
 The [offscreen graphics milestone](docs/graphics.md) provides a restricted
 D3D12-shaped Rust API over direct Metal with a clear/triangle/readback sample:
 

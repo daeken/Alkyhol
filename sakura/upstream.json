@@ -1,0 +1,57 @@
+{
+  "repository": "https://github.com/microsoft/DirectX-Graphics-Samples",
+  "revision": "68a2b1e97f71642924e74c7757ca21756ad221b5",
+  "directory": "Samples/Desktop/D3D12Raytracing/src/D3D12RaytracingSakuraForestSER",
+  "assets": {
+    "trunk.obj": {
+      "sha256": "aa0a69bc4a2503f14ef7edc61fb5f1eb6688baaa10d6fc1397778c18f36dbcd8",
+      "bytes": 1935303
+    },
+    "leaves.obj": {
+      "sha256": "e2ce42327adc0aaf526ea55ac0762efd507eb789ab9f46d54bffab339587231a",
+      "bytes": 971455
+    },
+    "bush.obj": {
+      "sha256": "453602bf11d4a65e33e50359c2431f25db37864d0ff41214b7ca2763ef1d0b98",
+      "bytes": 751243
+    },
+    "tree-trunk.jpg": {
+      "sha256": "ef1e85f59b4844488f315a496b3dbc6d2d5c159a5abb2befca5fdf70abc072de",
+      "bytes": 8253343
+    },
+    "bush-texture.jpg": {
+      "sha256": "4d975d7b98c4fc9181b746e5e70b40177c8ff990a2d83dea23ad5247c480992a",
+      "bytes": 83217
+    }
+  },
+  "sources": {
+    "D3D12RaytracingSakuraForestSER.cpp": {
+      "sha256": "cb42f24e2994c9dd3664839ab1bbb72611018f1ff08dd4db4aee14ba1dad92dd",
+      "bytes": 83447
+    },
+    "ObjModelLoader.cpp": {
+      "sha256": "65f0e4324dae2f9ba61e5cec4626dc4da8c4d803b72985e185cbb607e1524a4f",
+      "bytes": 5264
+    },
+    "ObjModelLoader.h": {
+      "sha256": "650081e36e40b8ce08ea79bb28c6e3b795216b35b4ae610117c930bd3e4d03cd",
+      "bytes": 2111
+    },
+    "Raytracing.hlsl": {
+      "sha256": "2a3c730462b47e63c8ede48a61588ff77076bc17443946e64ff79c75ba3ebc8c",
+      "bytes": 15608
+    },
+    "Star.hlsli": {
+      "sha256": "24b9d69faa871ae30133ad2925f5f5b28a82b68a6d883a94c0ddaa803f2d4f24",
+      "bytes": 1614
+    },
+    "SharedCode.h": {
+      "sha256": "c662c4b2c288f2c575753bb6c14cf2fff85f2e20e61afde59c6caa41254775e9",
+      "bytes": 666
+    },
+    "RayTracingHlslCompat.h": {
+      "sha256": "445a80a7e8e51ea7f1a79aebca9a89c25ca4d0c37488a2efd06647715d2f75fa",
+      "bytes": 1273
+    }
+  }
+}
