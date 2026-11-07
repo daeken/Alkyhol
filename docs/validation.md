@@ -6,6 +6,18 @@ See the latest direct-Metal record for current implementation evidence.
 
 ## Direct UTF conversion boundaries: native Windows and physical M4
 
+All 27 CI jobs pass at strict-reference revision `c008de5`: three
+[PE jobs](https://github.com/daeken/Alkyhol/actions/runs/42422663982) and all 24
+[conformance jobs](https://github.com/daeken/Alkyhol/actions/runs/42422663943).
+Downloaded clean native Windows/hosted Mac records and fresh clean physical
+M4/Rosetta execution at that same revision agree on exact executed PE/source
+identities and all 1,832 raw DWORDs. Normal and forced-rebase host runs agree.
+The 81 PE host tests/eight lifetime compiler checks, 22 portable tests, 228 Python
+tests and Clippy pass. Previous frozen binary, SDK/source/COM, shader and Metal
+comparisons remain green. This validates the finite query/successful-write/error-
+status contract below; failed-write buffer contents and other code pages remain
+outside these native observations.
+
 A new owned MIT no-CRT PE SHA-256
 `2563ffb1a26e0202e47bf72e4718e02b6234230c20653e66eec564246ffe3a7f`
 records 76 UTF-8/UTF-16 input/flag query cases, 50 exact-size writes and two short-
@@ -20,6 +32,8 @@ records and clean physical M4 execution at that same revision agree on all 1,832
 raw words and exact executed PE/source identities. The actual native record is
 frozen at `pe/reference/text-conversion-windows-v1.json` and required by default;
 a missing-reference/joint-input-drift guard brings the Python suite to 228.
+Corrected/expanded `c9a974c` also passes all 27 jobs, including all 24 conformance
+jobs in [42422253741](https://github.com/daeken/Alkyhol/actions/runs/42422253741).
 
 The first independent [PE run](https://github.com/daeken/Alkyhol/actions/runs/42421647507)
 on `3aa1eca` correctly failed comparison: native Windows groups `ED A0 80` as two

@@ -61,3 +61,9 @@ and frozen native inputs are preserved.
 Executed evidence, counts and precise revisions are in [validation](validation.md).
 Primary API contracts: [MultiByteToWideChar](https://learn.microsoft.com/en-us/windows/win32/api/stringapiset/nf-stringapiset-multibytetowidechar)
 and [WideCharToMultiByte](https://learn.microsoft.com/en-us/windows/win32/api/stringapiset/nf-stringapiset-widechartomultibyte).
+
+Strict-reference revision `c008de5` passes all 27 CI jobs. Downloaded clean native/
+hosted records and fresh clean physical M4 execution at that same revision agree
+on every one of the 1,832 words and the frozen executed input identities. The
+[validation record](validation.md) retains the original detected mismatch,
+unchanged-first-PE replay, expanded native observations and exact CI links.
