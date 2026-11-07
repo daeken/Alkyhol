@@ -19,8 +19,12 @@ Every one of the 34 records agrees with the independent WARP reference, includin
 buffer sentinel tails, HRESULTs, sizes and foreign IUnknown AddRef/Release/destruction
 events. The native constructor is replaced explicitly in a separate host wrapper;
 no native fence or backend rendering is inferred from the Rust metadata object.
-The new CI comparator requires a fresh native report and a Rust host report from
-the same clean revision; its first run remains pending.
+[CI 42357889974](https://github.com/daeken/Alkyhol/actions/runs/42357889974)
+passed all thirteen jobs on `4ea9957`. The new comparator verified a fresh native
+WARP report against hosted Rust execution from the same clean revision, retaining
+the unchanged observer/source hash and all frozen fields. Downloaded reports also
+match the physical M4 x86-64 observation at that revision. Existing Windows SDK,
+shader execution/regeneration and graphics/geometry comparisons remain passing.
 
 Seven new Rust units cover vtable identity/lifetimes, defensive null outputs,
 copy ownership/empty entries, unaligned interface outputs, UTF-32/UTF-16 names and

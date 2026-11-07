@@ -6,7 +6,7 @@ using a real D3D12 WARP fence. It contains source/executable hashes, command,
 compiler/host/adapter identity and exact output bytes. The custom IUnknown tracks
 its own real AddRef/Release/destruction; it is not an Alkyhol object.
 
-Important measured distinctions for the upcoming Rust object implementation:
+Important measured distinctions for the Rust object metadata implementation:
 
 - Missing byte data returns `887a0002`, sets size zero and leaves output untouched.
 - Insufficient space returns `887a0003`, reports required size and copies no bytes.
@@ -35,3 +35,10 @@ initialization or rendering evidence in this reference.
 The current observer must still match these exact fields and the original source
 hash. Change a contract only with separately measured evidence and an explicit
 version/review; do not change this reference to make a Rust candidate pass.
+
+The Rust CPU metadata vtable now executes this complete sequence through a
+separate C++ host constructor, preserving this reference and its source. Native
+WARP, hosted Rust and physical M4 x86-64 observations agree on `4ea9957`;
+[CI 42357889974](https://github.com/daeken/Alkyhol/actions/runs/42357889974)
+passed all thirteen jobs. This is inherited metadata behavior, not device/fence
+or GPU implementation evidence.

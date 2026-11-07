@@ -38,7 +38,10 @@ The Rust ID3D12Object CPU metadata base also matches the separately frozen 34-re
 native WARP metadata contract through actual C++ virtual calls. Its explicit
 UTF-32 diagnostic constructor is not D3D12CreateDevice and represents no GPU/fence.
 Private-data snapshots preserve foreign COM lifetimes and release outside locks.
-The native reference and its acceptance data remain unchanged.
+The native reference and its acceptance data remain unchanged. All thirteen jobs
+passed on `4ea9957` in [CI 42357889974](https://github.com/daeken/Alkyhol/actions/runs/42357889974),
+including fresh native WARP/hosted Rust comparison. Physical M4 CPU observations
+also agree; this adds no Metal fence or original C++ rendering evidence.
 
 ```sh
 python3 tools/fetch_cpp_deps.py
