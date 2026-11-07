@@ -4,18 +4,31 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
-## Direct UTF conversion boundaries: initial physical evidence
+## Direct UTF conversion boundaries: native discrepancy and correction
 
 A new owned MIT no-CRT PE SHA-256
-`e2fcefadce6eb2cf582ea427cd5b2559ccf8c6a3d93e5291d91c4de5f101e739`
-records 44 UTF-8/UTF-16 input/flag query cases, 30 exact-size writes and two short-
+`2563ffb1a26e0202e47bf72e4718e02b6234230c20653e66eec564246ffe3a7f`
+records 76 UTF-8/UTF-16 input/flag query cases, 50 exact-size writes and two short-
 buffer status/error calls. Physical M4/Rosetta normal and forced-rebase runs agree
-on all 1,064 raw DWORDs. The runtime now performs default U+FFFD replacement for
+on all 1,832 raw DWORDs. The runtime now performs default U+FFFD replacement for
 malformed input; strict flags still fail with error 1113. Cases cover supplementary/
 maximum scalars, embedded/terminated NULs, illegal/truncated/surrogate/overlong/
 out-of-range UTF-8, lone/repeated UTF-16 surrogates and invalid zero input lengths.
 Native Windows execution is newly defined and pending; local replacement results
 alone are not independent native evidence.
+
+The first independent [PE run](https://github.com/daeken/Alkyhol/actions/runs/42421647507)
+on `3aa1eca` correctly failed comparison: native Windows groups `ED A0 80` as two
+U+FFFD units and `F4 90 80 80` as three; Rust's standard lossy decoder produced
+three/four. Six DWORDs differed (query/write counts and resulting sentinel tails).
+The runtime now consumes the rejected leading pair explicitly. A recovered copy
+of the **unchanged original** PE (SHA-256
+`e2fcefadce6eb2cf582ea427cd5b2559ccf8c6a3d93e5291d91c4de5f101e739`)
+then agrees with all 1,064 original actual Windows words under the corrected
+runtime, in normal and forced-rebase development execution. No acceptance was
+relaxed. The new, not-yet-frozen observer was expanded with lower/upper boundary
+neighbors and invalid continuations to test the generalized prefix handling;
+independent native execution of that expanded matrix remains pending.
 
 All successful write bytes/units and destination tails are recorded exactly.
 Strict-invalid and zero-length inputs only make queries, with no failed-query

@@ -13,9 +13,10 @@ from build_pe_text_conversion import ROOT,SOURCES
 
 REFERENCE=ROOT/'pe/reference/text-conversion-windows-v1.json'
 NATIVE,HOST='native Windows PE64 text conversion','Alkyhol PE64 text conversion / Rosetta'
-BYTE_LENGTHS=[-1,3,-1,-1,4,1,3,2,3,2,4,0]
+BYTE_LENGTHS=[-1,3,-1,-1,4,1,3,2,3,2,4,0,3,3,3,3,3,4,4,4,4,4,4,3,4,3,3,3]
+BYTE_VALID={0,1,2,3,4,14,15,19,20}
 WIDE_LENGTHS=[-1,3,-1,-1,2,1,1,3,3,0]
-WORD_COUNT=1064
+WORD_COUNT=1832
 
 
 def validate(observation):
@@ -23,7 +24,7 @@ def validate(observation):
     words=observation['words']
     if type(observation['status']) is not int or observation['status']!=0 or len(words)!=WORD_COUNT or any(type(v) is not int or not 0<=v<=0xffffffff for v in words):raise ValueError('invalid status/word record')
     if observation['stdout_hex']!=struct.pack('<'+str(WORD_COUNT)+'I',*words).hex():raise ValueError('raw output differs from decoded words')
-    if words[:3]!=[0x54584655,24,20] or words[-5:]!=[0,122,0,122,0x454e4421]:raise ValueError('missing complete probe/error evidence')
+    if words[:3]!=[0x54584655,56,20] or words[-5:]!=[0,122,0,122,0x454e4421]:raise ValueError('missing complete probe/error evidence')
     offset=3
     for api,lengths,strict,seed,maximum in [(1,BYTE_LENGTHS,8,0xa55a,0xffff),(2,WIDE_LENGTHS,128,0xa5,0xff)]:
         for index,length in enumerate(lengths):
@@ -31,7 +32,7 @@ def validate(observation):
                 row=words[offset:offset+24];offset+=24
                 if row[:4]!=[api,index,flags,length&0xffffffff]:raise ValueError('changed call identity/order')
                 count=row[4]
-                invalid=length==0 or (flags==strict and index>=5)
+                invalid=length==0 or (flags==strict and (index not in BYTE_VALID if api==1 else index>=5))
                 if (count==0)!=invalid:raise ValueError('valid conversion failed or malformed strict query succeeded')
                 if invalid and row[5]!=(87 if length==0 else 1113):raise ValueError('wrong invalid-input error')
                 if count>16 or any(v>maximum for v in row[8:]):raise ValueError('invalid conversion count/unit width')
@@ -82,7 +83,7 @@ def main():
     report={'schema_version':1,'backend':backend,'pe_sha256':manifest['pe_sha256'],'executed_pe_sha256':executed,'sources':manifest['sources'],'normal':normal,'rebased':rebased,
             'revision':subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),'tracked_tree_clean':not subprocess.check_output(['git','status','--porcelain','--untracked-files=no'],cwd=ROOT,text=True).strip()}
     args.output.parent.mkdir(parents=True,exist_ok=True);args.output.write_text(json.dumps(report,indent=2)+'\n',encoding='utf-8')
-    print('Recorded 44 UTF conversion cases and two buffer-error statuses: '+backend)
+    print('Recorded 76 UTF conversion cases and two buffer-error statuses: '+backend)
 
 
 if __name__=='__main__':main()

@@ -12,8 +12,8 @@ python3 tools/build_pe_text_conversion.py
 python3 tools/run_pe_text_conversion.py --fixture local/pe/text-conversion/text-conversion.exe --output local/pe/text-conversion/observation.json
 ```
 
-The C source defines twelve UTF-8 and ten UTF-16 inputs, each with default and
-strict flags: 44 sizing-query cases, 30 exact-size writes for successful queries,
+The C source defines twenty-eight UTF-8 and ten UTF-16 inputs, each with default and
+strict flags: 76 sizing-query cases, 50 exact-size writes for successful queries,
 and two separate insufficient-buffer calls. Inputs include empty strings,
 explicit embedded NULs, NUL-terminated ASCII/supplementary characters, U+10FFFF,
 illegal bytes, truncated sequences, UTF-8-encoded surrogates, overlong/out-of-range
@@ -27,7 +27,16 @@ they deliberately do not make a write call after that failed query. No conclusio
 about failed conversion write buffers follow from these records. Separate short-
 buffer calls compare return/error only, because their destination contents are
 not part of this observer's contract. The C probe does not record or normalize
-those contents. All 1,064 emitted DWORDs are compared exactly.
+those contents. All 1,832 emitted DWORDs are compared exactly.
+
+The first native comparison exposed a difference from Rust's lossy decoder:
+Windows consumes an invalid leading pair for UTF-8-encoded surrogates and scalars
+above U+10FFFF, producing two replacements for `ED A0 80` and three for
+`F4 90 80 80`. The corrected runtime matches every word of that original probe on
+the unchanged first PE. The expanded matrix adds valid neighboring boundaries,
+overlong lower prefixes, illegal leaders, invalid continuations and valid suffixes
+to check the streaming adapter. See the executed validation record for which
+native observations have completed; added host hypotheses are not native evidence.
 
 The producer validates every call identity/order, valid-query success, strict/
 zero-length errors, query/write count agreement, output-unit width, preserved

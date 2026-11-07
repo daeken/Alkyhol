@@ -51,6 +51,36 @@ unsafe fn output<T: Copy>(value: &[T], target: *mut T, capacity: i32) -> i32 {
     }
     value.len() as i32
 }
+// Native Windows rejects an out-of-range second continuation byte after
+// consuming the leading pair. Rust's maximal-subpart decoder consumes only
+// the lead byte in these cases. Keep valid text and other errors on std's path.
+fn windows_utf8_lossy(bytes: &[u8]) -> String {
+    let mut text = String::new();
+    let mut start = 0;
+    let mut i = 0;
+    while i + 1 < bytes.len() {
+        let first = bytes[i];
+        let second = bytes[i + 1];
+        let rejected = (0x80..=0xbf).contains(&second)
+            && match first {
+                0xe0 => second < 0xa0,
+                0xed => second >= 0xa0,
+                0xf0 => second < 0x90,
+                0xf4 => second >= 0x90,
+                _ => false,
+            };
+        if rejected {
+            text.push_str(&String::from_utf8_lossy(&bytes[start..i]));
+            text.push('�');
+            i += 2;
+            start = i;
+        } else {
+            i += 1;
+        }
+    }
+    text.push_str(&String::from_utf8_lossy(&bytes[start..]));
+    text
+}
 unsafe extern "win64" fn MultiByteToWideChar(
     page: u32,
     flags: u32,
@@ -71,7 +101,7 @@ unsafe extern "win64" fn MultiByteToWideChar(
     };
     let text = match std::str::from_utf8(&bytes) {
         Ok(v) => std::borrow::Cow::Borrowed(v),
-        Err(_) if flags == 0 => String::from_utf8_lossy(&bytes),
+        Err(_) if flags == 0 => std::borrow::Cow::Owned(windows_utf8_lossy(&bytes)),
         Err(_) => return fail(1113),
     };
     let wide: Vec<u16> = text.encode_utf16().collect();
@@ -212,14 +242,20 @@ mod tests {
         }
     }
     #[test]
-    fn default_replacement_preserves_valid_prefix_suffix_and_unicode_subparts() {
+    fn default_replacement_preserves_valid_text_and_native_invalid_prefix_groups() {
         for (bytes, expected) in [
             (vec![0xff], "�"),
             (vec![65, 0xff, 66], "A�B"),
             (vec![0xf0, 0x9f], "�"),
-            (vec![0xed, 0xa0, 0x80], "���"),
+            (vec![0xed, 0xa0, 0x80], "��"),
             (vec![0xc0, 0xaf], "��"),
-            (vec![0xf4, 0x90, 0x80, 0x80], "����"),
+            (vec![0xe0, 0x80, 0x80], "��"),
+            (vec![0xf0, 0x80, 0x80, 0x80], "���"),
+            (
+                vec![65, 0xed, 0xa0, 0x80, 66, 0xf4, 0x90, 0x80, 0x80, 67],
+                "A��B���C",
+            ),
+            (vec![0xf4, 0x90, 0x80, 0x80], "���"),
         ] {
             let mut out = [0xababu16; 16];
             ffi::SetLastError(0xbeef);
