@@ -6,6 +6,13 @@ See the latest direct-Metal record for current implementation evidence.
 
 ## Off-the-shelf PE64: released Windows u-config on physical M4
 
+A subsequent host unit exercises redirected stdin through actual Win64
+ReadFile/WriteFile bridges: arbitrary byte readback, exact short-read/EOF counts,
+preserved buffer tails, write-denial, high handle bits and stale-handle failure.
+All 24 PE Rust tests and PE Clippy pass on physical M4/x86-64. This closes a host
+coverage gap; u-config does not consume stdin, and this adds no native Windows
+stdin observation or new product capability. Frozen observers are unchanged.
+
 All three PE jobs pass in [42386144339](https://github.com/daeken/Alkyhol/actions/runs/42386144339)
 on `1ccfd87`. Native Windows, hosted Mac and a fresh clean physical M4 execution
 of the transferred upstream PE agree on all eleven cases, including the literal

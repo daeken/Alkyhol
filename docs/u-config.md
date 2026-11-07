@@ -109,8 +109,9 @@ future pairs must match its exact inputs, binary and observations. Raw stream
 records are checked against the compared outputs, including duplicate detection.
 All 27 jobs pass at `1ccfd87`; strict-reference PE run 42386424722 then passes
 all three jobs at `9645f17`, with another clean matching physical M4 run.
-Twenty-three PE Rust tests pass,
-including real PTY Unicode output, mapped memory, environment/buffer boundaries,
+Twenty-four PE Rust tests pass,
+including real PTY Unicode output, Win64 redirected-stdin read/EOF/error checks,
+mapped memory, environment/buffer boundaries,
 search layout/exhaustion, file separators and nonzero upper handle bits. Ten
 portable tests pass on native arm64. Root tests (78), Python tests (134), formatting
 and PE Clippy pass. The original frozen 24-import/19-word PE observer still passes

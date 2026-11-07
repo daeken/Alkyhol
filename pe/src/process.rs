@@ -1107,4 +1107,99 @@ mod tests {
         assert_eq!(&bytes, "λ🌸".as_bytes());
         assert_eq!(close_stream(token), Some(1));
     }
+    #[test]
+    fn redirected_stdin_reads_real_bytes_then_eof_through_the_win64_bridge() {
+        let _guard = context();
+        let path = std::env::temp_dir().join(format!(
+            "alkyhol-pe-stdin-{}",
+            reserve_handle_token().unwrap()
+        ));
+        std::fs::write(&path, [0, 0xff, 42]).unwrap();
+        let token = reserve_handle_token().unwrap();
+        PROCESS.with(|p| {
+            let mut slot = p.borrow_mut();
+            let state = slot.as_mut().unwrap();
+            state.objects.insert(
+                token,
+                Object::Stream(Stream {
+                    file: File::open(&path).unwrap(),
+                    input: true,
+                }),
+            );
+            state.standard[0] = token;
+        });
+        unsafe {
+            let read: unsafe extern "win64" fn(
+                usize,
+                *mut c_void,
+                u32,
+                *mut u32,
+                *mut c_void,
+            ) -> i32 =
+                std::mem::transmute(crate::abi::resolve("kernel32.dll", "ReadFile").unwrap());
+            let write: unsafe extern "win64" fn(
+                usize,
+                *const c_void,
+                u32,
+                *mut u32,
+                *mut c_void,
+            ) -> i32 =
+                std::mem::transmute(crate::abi::resolve("kernel32.dll", "WriteFile").unwrap());
+            let handle = GetStdHandle(0xfffffff6);
+            assert_eq!(handle, token);
+            let tagged = handle | 0x1234567800000000;
+            let mut buffer = [0xa5u8; 8];
+            let mut transferred = 999;
+            assert_eq!(
+                read(
+                    tagged,
+                    buffer.as_mut_ptr().cast(),
+                    8,
+                    &mut transferred,
+                    ptr::null_mut()
+                ),
+                1
+            );
+            assert_eq!(transferred, 3);
+            assert_eq!(buffer, [0, 0xff, 42, 0xa5, 0xa5, 0xa5, 0xa5, 0xa5]);
+            assert_eq!(
+                read(
+                    handle,
+                    buffer.as_mut_ptr().cast(),
+                    8,
+                    &mut transferred,
+                    ptr::null_mut()
+                ),
+                1
+            );
+            assert_eq!(transferred, 0);
+            assert_eq!(buffer[3..], [0xa5; 5]);
+            transferred = 999;
+            assert_eq!(
+                write(
+                    tagged,
+                    buffer.as_ptr().cast(),
+                    1,
+                    &mut transferred,
+                    ptr::null_mut()
+                ),
+                0
+            );
+            assert_eq!((transferred, ffi::GetLastError()), (0, 5));
+            assert_eq!(close_stream(handle), Some(1));
+            transferred = 999;
+            assert_eq!(
+                read(
+                    handle,
+                    buffer.as_mut_ptr().cast(),
+                    8,
+                    &mut transferred,
+                    ptr::null_mut()
+                ),
+                0
+            );
+            assert_eq!((transferred, ffi::GetLastError()), (0, 6));
+        }
+        std::fs::remove_file(path).unwrap();
+    }
 }
