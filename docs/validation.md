@@ -4,6 +4,36 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## Guest-generated code and memory permissions: physical M4, native run pending
+
+VirtualProtect/VirtualFree/FlushInstructionCache now perform real protection,
+release and platform cache operations for the process context's bounded owned
+allocations. VirtualAlloc keeps per-page state and correct temporary ownership
+during 64-KiB alignment trims. Arbitrary image/heap protection, RWX, guard pages,
+decommit/reserve-only, foreign/global cache flushes and unowned ranges remain
+unsupported. No new exceptions/unwind startup acceptance or successful stubs.
+
+The owned unchanged PE SHA-256 is
+`a138926f31fad3b21b07eb8cdb7bfca097ebdfcc8745055397e543054ee1d0b5`.
+Physical M4/Rosetta normal and forced-rebase runs agree on all 29 raw DWORDs,
+including both actual results from emitted/rewritten Win64 instructions,
+neighbor-page data, cross-page protection rounding/old values, no-access recovery
+and successful release. The Mach-O's extracted PE payload equals the exact input.
+The identical PE is transferred to Windows for independent OS API execution;
+that new native comparison is pending.
+
+All 60 PE host tests, eight lifetime compiler checks, 19 portable arm64 tests,
+190 Python tests and PE Clippy pass locally. Three new host units exercise
+actual generated Win64 code, mixed per-page changes and release; preserve outputs/
+ownership on rejected inputs; and use isolated children to measure write-RX,
+execute-RW, read-NOACCESS and write-READONLY faults. A child queries the actual
+Mach VM map before/after release, without reading freed memory. Host failure/error
+contracts and permission-fault behavior are separate from native observations.
+The released u-config binary still passes all 11 cases normally/forcibly rebased.
+All earlier frozen fixtures/references and sample/asset/shader quality remain
+intact. Combined protect/cache/rewrite execution is measured; the individual
+cause of Rosetta cache invalidation is not isolated. No game compatibility claim.
+
 ## Guest module/export lookup: native Windows, hosted Mac and physical M4
 
 All 27 jobs pass at strict-reference revision `1374b0b`: three

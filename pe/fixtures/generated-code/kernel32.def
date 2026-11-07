@@ -1,0 +1,9 @@
+LIBRARY KERNEL32.dll
+EXPORTS
+    VirtualAlloc
+    VirtualProtect
+    VirtualFree
+    FlushInstructionCache
+    GetStdHandle
+    WriteFile
+    ExitProcess

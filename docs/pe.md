@@ -93,6 +93,8 @@ d3d12!D3D12SerializeRootSignature and D3D12SerializeVersionedRootSignature.
 The scoped guest lookup milestone adds GetModuleHandleW/GetProcAddress (36
 kernel32 names total); these require an explicit ModuleContext for supported
 DLL lookups and do not create fake builtin/main-image module handles.
+VirtualProtect, VirtualFree and FlushInstructionCache add bounded owned-allocation
+protection, release and generated-code execution (39 kernel32 names total).
 
 The existing [restricted kernel contracts](contracts.md) still apply: for example,
 file sharing must be FILE_SHARE_READ|WRITE|DELETE, security/template/named objects
@@ -652,3 +654,53 @@ binary tests, not general Windows loader or game compatibility claims.
 
 Primary contracts: [GetModuleHandleW](https://learn.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-getmodulehandlew)
 and [GetProcAddress](https://learn.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-getprocaddress).
+
+## Owned memory protection and guest-generated code
+
+VirtualAlloc still accepts NULL-address MEM_RESERVE|MEM_COMMIT/PAGE_READWRITE,
+bounded to 512 MiB, page-rounded and 64-KiB aligned in a checked 4-KiB x86 process.
+Each reservation now tracks its per-page protection. Its temporary mapping owns
+the remaining reservation after each successful alignment trim, so failed trims
+cannot leak ownership or blindly unmap a region already released.
+
+VirtualProtect changes real Darwin page permissions for a nonempty byte range
+entirely inside one owned allocation, rounding both boundaries to affected pages.
+It supports PAGE_NOACCESS, READONLY, READWRITE and EXECUTE_READ; old protection is
+that of the first affected page. Cross-reservation/unowned ranges, RWX, guard and
+other modifiers fail honestly. This does not yet protect arbitrary PE image or
+host heap regions. VirtualFree supports exact-base, size-zero MEM_RELEASE and
+consumes ownership only after successful unmapping. Decommit/reserve-only and
+partial release are not implemented; unreleased mappings still die with context.
+
+FlushInstructionCache accepts the current-process pseudo-handle and an explicit
+nonempty readable range in one owned allocation, invoking Darwin's public
+sys_icache_invalidate operation. Whole-process NULL flushes, other processes and
+unowned/no-access ranges fail explicitly. The platform documents coherent-cache
+behavior on physical x86. Executing rewritten code after protection/cache calls
+establishes the combined result; it does not isolate which operation invalidated
+Rosetta's translation cache or claim that a standalone flush caused the change.
+
+An owned unchanged no-CRT PE emits the actual Win64 bytes
+`b8 44 33 22 11 31 c8 01 d0 c3` (MOV immediate, XOR ECX, ADD EDX, RET), changes its
+page to executable/readable, flushes and calls it with real Windows arguments.
+It then returns the page to writable, rewrites the immediate to `0xfedcba98`,
+restores execute/read, flushes and observes a different actual result. It also
+checks neighboring data-page independence, a two-byte range straddling pages,
+first-page old protection, no-access/restoration and release. No original sample,
+shader, geometry or game binary is modified.
+
+```sh
+python3 tools/build_pe_generated_code.py
+python3 tools/run_pe_generated_code.py --fixture local/pe/generated-code/generated-code.exe --output local/pe/generated-code-alkyhol.json
+```
+
+Physical M4/Rosetta normally and forcibly rebased executes all 29 raw words.
+Host-only child tests independently observe faults for write-to-RX, execute-from-
+RW, read-from-NOACCESS and write-to-READONLY, and query the actual Mach VM map to
+verify release without dereferencing freed storage. Native results and exact
+revisions are recorded in [validation](validation.md). This is finite generated-
+code/memory API evidence, not general JIT, SEH or game compatibility.
+
+Primary contracts: [VirtualProtect](https://learn.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-virtualprotect),
+[VirtualFree](https://learn.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-virtualfree)
+and [FlushInstructionCache](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-flushinstructioncache).

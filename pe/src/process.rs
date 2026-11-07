@@ -27,6 +27,9 @@ unsafe extern "C" {
         offset: i64,
     ) -> *mut c_void;
     fn munmap(addr: *mut c_void, len: usize) -> i32;
+    fn mprotect(addr: *mut c_void, len: usize, prot: i32) -> i32;
+    fn sys_icache_invalidate(start: *mut c_void, len: usize);
+    fn getpagesize() -> i32;
 }
 const INVALID: usize = usize::MAX;
 const INVALID_HANDLE: u32 = 6;
@@ -46,11 +49,28 @@ enum Object {
 struct Mapping {
     address: usize,
     len: usize,
+    protections: Vec<u32>,
+}
+impl Mapping {
+    // Return the affected page interval only for a nonempty byte range entirely
+    // inside this one owned reservation. Arithmetic never wraps across regions.
+    fn pages(&self, address: usize, size: usize) -> Option<(usize, usize)> {
+        let end = address.checked_add(size)?;
+        if size == 0 || address < self.address || end > self.address.checked_add(self.len)? {
+            return None;
+        }
+        Some((
+            (address - self.address) / 4096,
+            (end - self.address).div_ceil(4096),
+        ))
+    }
 }
 impl Drop for Mapping {
     fn drop(&mut self) {
-        unsafe {
-            munmap(self.address as *mut c_void, self.len);
+        if self.len != 0 {
+            unsafe {
+                munmap(self.address as *mut c_void, self.len);
+            }
         }
     }
 }
@@ -329,6 +349,10 @@ unsafe extern "win64" fn VirtualAlloc(
     allocation: u32,
     protection: u32,
 ) -> *mut c_void {
+    if unsafe { getpagesize() } != 4096 {
+        fail(NOT_SUPPORTED);
+        return ptr::null_mut();
+    }
     if !address.is_null() || allocation != 0x3000 || protection != 4 {
         fail(NOT_SUPPORTED);
         return ptr::null_mut();
@@ -351,28 +375,165 @@ unsafe extern "win64" fn VirtualAlloc(
             fail(NOT_SUPPORTED);
             return ptr::null_mut();
         };
+        let mut protections = Vec::new();
+        if protections.try_reserve_exact(length / 4096).is_err()
+            || state.mappings.try_reserve(1).is_err()
+        {
+            fail(8);
+            return ptr::null_mut();
+        }
+        protections.resize(length / 4096, 4);
         let reserve = length + 65536;
         let raw = unsafe { mmap(ptr::null_mut(), reserve, 3, 2 | 0x1000, -1, 0) };
         if raw as isize == -1 {
             fail(8);
             return ptr::null_mut();
         }
-        let start = (raw as usize + 65535) & !65535;
+        // Keep ownership accurate after each successful trim, including errors.
+        // No MAP_FIXED operation can replace somebody else's mapping.
+        let mut mapped = Mapping {
+            address: raw as usize,
+            len: reserve,
+            protections,
+        };
+        let Some(start) = (raw as usize).checked_add(65535).map(|v| v & !65535) else {
+            fail(8);
+            return ptr::null_mut();
+        };
         let prefix = start - raw as usize;
         let suffix = reserve - prefix - length;
         unsafe {
             if prefix != 0 {
-                munmap(raw, prefix);
+                if munmap(raw, prefix) != 0 {
+                    fail(8);
+                    return ptr::null_mut();
+                }
+                mapped.address = start;
+                mapped.len -= prefix;
             }
             if suffix != 0 {
-                munmap((start + length) as *mut c_void, suffix);
+                if munmap((start + length) as *mut c_void, suffix) != 0 {
+                    fail(8);
+                    return ptr::null_mut();
+                }
+                mapped.len -= suffix;
             }
         }
-        state.mappings.push(Mapping {
-            address: start,
-            len: length,
-        });
+        state.mappings.push(mapped);
         start as *mut c_void
+    })
+}
+unsafe extern "win64" fn VirtualProtect(
+    address: *mut c_void,
+    size: usize,
+    protection: u32,
+    old: *mut u32,
+) -> i32 {
+    if address.is_null()
+        || size == 0
+        || old.is_null()
+        || (address as usize).checked_add(size).is_none()
+    {
+        return fail(INVALID_PARAMETER);
+    }
+    let rights = match protection {
+        1 => 0,
+        2 => 1,
+        4 => 3,
+        0x20 => 5,
+        _ => return fail(NOT_SUPPORTED),
+    };
+    PROCESS.with(|p| {
+        let mut state = p.borrow_mut();
+        let Some(state) = state.as_mut() else {
+            return fail(NOT_SUPPORTED);
+        };
+        for mapping in &mut state.mappings {
+            if let Some((first, last)) = mapping.pages(address as usize, size) {
+                let prior = mapping.protections[first];
+                if unsafe {
+                    mprotect(
+                        (mapping.address + first * 4096) as *mut c_void,
+                        (last - first) * 4096,
+                        rights,
+                    )
+                } != 0
+                {
+                    return fail(487);
+                }
+                mapping.protections[first..last].fill(protection);
+                unsafe {
+                    old.write_unaligned(prior);
+                }
+                return 1;
+            }
+        }
+        fail(487)
+    })
+}
+unsafe extern "win64" fn VirtualFree(address: *mut c_void, size: usize, kind: u32) -> i32 {
+    if kind != 0x8000 {
+        return fail(NOT_SUPPORTED);
+    }
+    if address.is_null() || size != 0 {
+        return fail(INVALID_PARAMETER);
+    }
+    PROCESS.with(|p| {
+        let mut state = p.borrow_mut();
+        let Some(state) = state.as_mut() else {
+            return fail(NOT_SUPPORTED);
+        };
+        let Some(index) = state
+            .mappings
+            .iter()
+            .position(|m| m.address == address as usize)
+        else {
+            return fail(487);
+        };
+        let mapping = &mut state.mappings[index];
+        if unsafe { munmap(address, mapping.len) } != 0 {
+            return fail(487);
+        }
+        mapping.len = 0; // Successful release consumes ownership before Drop.
+        state.mappings.swap_remove(index);
+        1
+    })
+}
+unsafe extern "win64" fn FlushInstructionCache(
+    process: usize,
+    address: *const c_void,
+    size: usize,
+) -> i32 {
+    if crate::abi::kernel_handle(process) != usize::MAX {
+        return fail(NOT_SUPPORTED);
+    }
+    // A null/global flush is not implemented by pretending a zero-byte platform
+    // operation flushes the whole guest process.
+    if address.is_null() {
+        return fail(NOT_SUPPORTED);
+    }
+    if size == 0 || (address as usize).checked_add(size).is_none() {
+        return fail(INVALID_PARAMETER);
+    }
+    PROCESS.with(|p| {
+        let state = p.borrow();
+        let Some(state) = state.as_ref() else {
+            return fail(NOT_SUPPORTED);
+        };
+        for mapping in &state.mappings {
+            if let Some((first, last)) = mapping.pages(address as usize, size) {
+                if mapping.protections[first..last].contains(&1) {
+                    return fail(NOT_SUPPORTED);
+                }
+                // Darwin's public cache-control operation. On physical x86 its
+                // documented implementation may be a coherent-cache no-op.
+                unsafe {
+                    sys_icache_invalidate(address.cast_mut(), size);
+                }
+                return 1;
+            }
+        }
+        fail(487)
     })
 }
 unsafe extern "win64" fn WriteConsoleW(
@@ -690,6 +851,9 @@ pub(crate) fn address(name: &str) -> Option<usize> {
         "GetEnvironmentVariableW" => Some(GetEnvironmentVariableW as *const () as usize),
         "GetModuleFileNameW" => Some(GetModuleFileNameW as *const () as usize),
         "VirtualAlloc" => Some(VirtualAlloc as *const () as usize),
+        "VirtualProtect" => Some(VirtualProtect as *const () as usize),
+        "VirtualFree" => Some(VirtualFree as *const () as usize),
+        "FlushInstructionCache" => Some(FlushInstructionCache as *const () as usize),
         "WriteConsoleW" => Some(WriteConsoleW as *const () as usize),
         "FindFirstFileW" => Some(FindFirstFileW as *const () as usize),
         "FindNextFileW" => Some(FindNextFileW as *const () as usize),
@@ -834,6 +998,236 @@ mod tests {
             assert_eq!(ffi::GetLastError(), 50);
         }
         PROCESS.with(|p| assert_eq!(p.borrow().as_ref().unwrap().mappings.len(), 2));
+    }
+    #[test]
+    fn generated_win64_code_runs_after_real_protection_changes_and_rewrites() {
+        type Protect = unsafe extern "win64" fn(*mut c_void, usize, u32, *mut u32) -> i32;
+        type Free = unsafe extern "win64" fn(*mut c_void, usize, u32) -> i32;
+        type Flush = unsafe extern "win64" fn(usize, *const c_void, usize) -> i32;
+        let protect: Protect = unsafe {
+            std::mem::transmute(crate::abi::resolve("kernel32.dll", "VirtualProtect").unwrap())
+        };
+        let free: Free = unsafe {
+            std::mem::transmute(crate::abi::resolve("kernel32.dll", "VirtualFree").unwrap())
+        };
+        let flush: Flush = unsafe {
+            std::mem::transmute(
+                crate::abi::resolve("kernel32.dll", "FlushInstructionCache").unwrap(),
+            )
+        };
+        let _context = context();
+        unsafe {
+            let allocation = VirtualAlloc(ptr::null_mut(), 4097, 0x3000, 4).cast::<u8>();
+            assert!(!allocation.is_null());
+            let code = allocation.add(64);
+            let instructions = [0xb8, 0x44, 0x33, 0x22, 0x11, 0x31, 0xc8, 0x01, 0xd0, 0xc3];
+            ptr::copy_nonoverlapping(instructions.as_ptr(), code, instructions.len());
+            let mut old = 0;
+            assert_eq!(protect(code.cast(), 10, 0x20, &mut old), 1);
+            assert_eq!(old, 4);
+            allocation.add(4096).write_volatile(0x5a); // The second page remains writable.
+            assert_eq!(flush(usize::MAX, code.cast(), 10), 1);
+            let call: unsafe extern "win64" fn(u32, u32) -> u32 = std::mem::transmute(code);
+            assert_eq!(call(7, 11), (0x11223344u32 ^ 7).wrapping_add(11));
+            assert_eq!(protect(allocation.cast(), 1, 4, &mut old), 1);
+            assert_eq!(old, 0x20);
+            code.add(1).cast::<u32>().write_unaligned(0xfedcba98);
+            assert_eq!(protect(code.cast(), 10, 0x20, &mut old), 1);
+            assert_eq!(old, 4);
+            assert_eq!(flush(usize::MAX, code.cast(), 10), 1);
+            assert_eq!(call(7, 11), (0xfedcba98u32 ^ 7).wrapping_add(11));
+            assert_eq!(protect(allocation.add(4095).cast(), 2, 2, &mut old), 1);
+            assert_eq!(old, 0x20); // Old protection is that of the first page.
+            assert_eq!(protect(allocation.cast(), 4096, 4, &mut old), 1);
+            assert_eq!(old, 2);
+            assert_eq!(protect(allocation.add(4096).cast(), 4096, 4, &mut old), 1);
+            assert_eq!(old, 2); // The straddling byte range changed both pages.
+            assert_eq!(allocation.add(4096).read_volatile(), 0x5a);
+            assert_eq!(free(allocation.cast(), 0, 0x8000), 1);
+            assert_eq!(free(allocation.cast(), 0, 0x8000), 0);
+            assert_eq!(ffi::GetLastError(), 487);
+        }
+        PROCESS.with(|p| assert!(p.borrow().as_ref().unwrap().mappings.is_empty()));
+    }
+    #[test]
+    fn memory_api_failures_preserve_ownership_rights_and_output_sentinels() {
+        let mut old = 0xdead;
+        let foreign = &mut old as *mut u32 as *mut c_void;
+        unsafe {
+            assert_eq!(VirtualProtect(foreign, 1, 2, &mut old), 0);
+            assert_eq!(ffi::GetLastError(), 50);
+            assert_eq!(VirtualFree(foreign, 0, 0x8000), 0);
+            assert_eq!(ffi::GetLastError(), 50);
+            assert_eq!(FlushInstructionCache(usize::MAX, foreign, 1), 0);
+            assert_eq!(ffi::GetLastError(), 50);
+        }
+        let _context = context();
+        unsafe {
+            let memory = VirtualAlloc(ptr::null_mut(), 4096, 0x3000, 4).cast::<u8>();
+            for (address, size, protection, error) in [
+                (ptr::null_mut(), 1, 2, 87),
+                (memory, 0, 2, 87),
+                (usize::MAX as *mut u8, 2, 2, 87),
+                (memory, 1, 0x40, 50),
+                (memory, 1, 0x104, 50),
+                (foreign.cast(), 1, 2, 487),
+                (memory.add(4095), 2, 2, 487),
+            ] {
+                assert_eq!(
+                    VirtualProtect(address.cast(), size, protection, &mut old),
+                    0
+                );
+                assert_eq!(ffi::GetLastError(), error);
+                assert_eq!(old, 0xdead);
+            }
+            assert_eq!(VirtualProtect(memory.cast(), 1, 2, ptr::null_mut()), 0);
+            assert_eq!(ffi::GetLastError(), 87);
+            for (address, size, kind, error) in [
+                (ptr::null_mut(), 0, 0x8000, 87),
+                (memory, 1, 0x8000, 87),
+                (memory, 0, 0x4000, 50),
+                (memory.add(1), 0, 0x8000, 487),
+                (foreign.cast(), 0, 0x8000, 487),
+            ] {
+                assert_eq!(VirtualFree(address.cast(), size, kind), 0);
+                assert_eq!(ffi::GetLastError(), error);
+            }
+            for (process, address, size, error) in [
+                (0, memory, 1, 50),
+                (usize::MAX, ptr::null_mut(), 0, 50),
+                (usize::MAX, memory, 0, 87),
+                (usize::MAX, usize::MAX as *mut u8, 2, 87),
+                (usize::MAX, memory.add(4095), 2, 487),
+            ] {
+                assert_eq!(FlushInstructionCache(process, address.cast(), size), 0);
+                assert_eq!(ffi::GetLastError(), error);
+            }
+            memory.write_volatile(0x5a);
+            assert_eq!(
+                FlushInstructionCache(0x12345678ffffffff, memory.cast(), 1),
+                1
+            );
+            assert_eq!(VirtualProtect(memory.cast(), 1, 1, &mut old), 1);
+            assert_eq!(old, 4);
+            assert_eq!(FlushInstructionCache(usize::MAX, memory.cast(), 1), 0);
+            assert_eq!(ffi::GetLastError(), 50);
+            assert_eq!(VirtualProtect(memory.cast(), 1, 4, &mut old), 1);
+            assert_eq!(old, 1);
+            assert_eq!(memory.read_volatile(), 0x5a);
+            assert_eq!(VirtualFree(memory.cast(), 0, 0x8000), 1);
+        }
+    }
+    #[test]
+    fn memory_permissions_are_enforced_and_release_unmaps() {
+        use std::os::unix::process::ExitStatusExt;
+        const CHILD: &str = "ALKYHOL_PE_MEMORY_CHILD";
+        if let Ok(mode) = std::env::var(CHILD) {
+            let _context = context();
+            unsafe {
+                let memory = VirtualAlloc(ptr::null_mut(), 65536, 0x3000, 4).cast::<u8>();
+                assert!(!memory.is_null());
+                ptr::copy_nonoverlapping([0xb8, 42, 0, 0, 0, 0xc3].as_ptr(), memory, 6);
+                let mut old = 0;
+                match mode.as_str() {
+                    "write-rx" => {
+                        assert_eq!(VirtualProtect(memory.cast(), 4096, 0x20, &mut old), 1);
+                        memory.write_volatile(0);
+                    }
+                    "execute-rw" => {
+                        assert_eq!(FlushInstructionCache(usize::MAX, memory.cast(), 6), 1);
+                        let call: unsafe extern "win64" fn() -> u32 = std::mem::transmute(memory);
+                        std::hint::black_box(call());
+                    }
+                    "read-noaccess" => {
+                        assert_eq!(VirtualProtect(memory.cast(), 4096, 1, &mut old), 1);
+                        std::hint::black_box(memory.read_volatile());
+                    }
+                    "write-readonly" => {
+                        assert_eq!(VirtualProtect(memory.cast(), 4096, 2, &mut old), 1);
+                        memory.write_volatile(0);
+                    }
+                    "released" => {
+                        unsafe extern "C" {
+                            static mach_task_self_: u32;
+                            fn mach_vm_region(
+                                task: u32,
+                                address: *mut u64,
+                                size: *mut u64,
+                                flavor: i32,
+                                info: *mut i32,
+                                count: *mut u32,
+                                object: *mut u32,
+                            ) -> i32;
+                            fn mach_port_deallocate(task: u32, port: u32) -> i32;
+                        }
+                        fn mapped(address: usize) -> bool {
+                            let mut start = address as u64;
+                            let mut size = 0;
+                            let mut info = [0i32; 9];
+                            let mut count = 9;
+                            let mut object = 0;
+                            let task = unsafe { mach_task_self_ };
+                            let status = unsafe {
+                                mach_vm_region(
+                                    task,
+                                    &mut start,
+                                    &mut size,
+                                    9,
+                                    info.as_mut_ptr(),
+                                    &mut count,
+                                    &mut object,
+                                )
+                            };
+                            assert_eq!(status, 0);
+                            if object != 0 {
+                                unsafe {
+                                    mach_port_deallocate(task, object);
+                                }
+                            }
+                            start <= address as u64 && (address as u64) < start + size
+                        }
+                        let middle = memory.add(32768) as usize;
+                        assert!(mapped(middle));
+                        assert_eq!(VirtualFree(memory.cast(), 0, 0x8000), 1);
+                        assert!(!mapped(middle));
+                        return;
+                    }
+                    _ => panic!("unknown child mode"),
+                }
+                panic!("forbidden memory access unexpectedly succeeded");
+            }
+        }
+        for mode in [
+            "write-rx",
+            "execute-rw",
+            "read-noaccess",
+            "write-readonly",
+            "released",
+        ] {
+            let run = std::process::Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "process::tests::memory_permissions_are_enforced_and_release_unmaps",
+                    "--nocapture",
+                ])
+                .env(CHILD, mode)
+                .output()
+                .unwrap();
+            if mode == "released" {
+                assert!(
+                    run.status.success(),
+                    "{}",
+                    String::from_utf8_lossy(&run.stderr)
+                );
+            } else {
+                assert!(
+                    matches!(run.status.signal(), Some(10 | 11)),
+                    "{mode}: {:?} {}",
+                    run.status,
+                    String::from_utf8_lossy(&run.stderr)
+                );
+            }
+        }
     }
     #[test]
     fn streams_have_real_io_rights_and_distinct_lifetimes_from_search_and_kernel_handles() {

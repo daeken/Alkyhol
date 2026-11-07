@@ -65,6 +65,20 @@ jobs:
         run: |
           python tools/build_pe_dynamic_lookup.py
           python tools/run_pe_dynamic_lookup.py --directory local/pe/dynamic-lookup --output local/pe/dynamic-lookup-alkyhol.json
+      - name: Execute and rewrite code emitted by an unchanged Windows PE through real memory APIs
+        run: |
+          python tools/build_pe_generated_code.py
+          python tools/run_pe_generated_code.py --fixture local/pe/generated-code/generated-code.exe --output local/pe/generated-code-alkyhol.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe-generated-code-fixture
+          path: |
+            local/pe/generated-code/generated-code.exe
+            local/pe/generated-code/generated-code-fixture.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe-generated-code-alkyhol
+          path: local/pe/generated-code-alkyhol.json
       - uses: actions/upload-artifact@v4
         with:
           name: pe-dynamic-lookup-fixture
@@ -269,6 +283,16 @@ jobs:
           path: local/pe/dynamic-lookup
       - name: Observe the identical guest EXE using actual Windows module and export lookup
         run: python tools/run_pe_dynamic_lookup.py --directory local/pe/dynamic-lookup --output local/pe/dynamic-lookup-windows.json
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe-generated-code-fixture
+          path: local/pe/generated-code
+      - name: Execute the identical PE emitting and rewriting code using native Windows APIs
+        run: python tools/run_pe_generated_code.py --fixture local/pe/generated-code/generated-code.exe --output local/pe/generated-code-windows.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe-generated-code-windows
+          path: local/pe/generated-code-windows.json
       - uses: actions/upload-artifact@v4
         with:
           name: pe-dynamic-lookup-windows
@@ -419,3 +443,12 @@ jobs:
           name: pe-dynamic-lookup-windows
           path: local/pe/observations
       - run: python tools/compare_pe_dynamic_lookup.py local/pe/observations/dynamic-lookup-windows.json local/pe/observations/dynamic-lookup-alkyhol.json
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe-generated-code-alkyhol
+          path: local/pe/observations
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe-generated-code-windows
+          path: local/pe/observations
+      - run: python tools/compare_pe_generated_code.py local/pe/observations/generated-code-windows.json local/pe/observations/generated-code-alkyhol.json
