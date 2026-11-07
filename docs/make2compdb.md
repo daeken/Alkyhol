@@ -76,3 +76,8 @@ Windows CRT, Shell32, graphics-binary or game compatibility.
 Primary API contracts: [CommandLineToArgvW](https://learn.microsoft.com/en-us/windows/win32/api/shellapi/nf-shellapi-commandlinetoargvw),
 [LocalFree](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-localfree)
 and [GetCurrentDirectory](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-getcurrentdirectory).
+
+Strict-reference revision `3899551` passes all 27 CI jobs. Downloaded clean native/
+hosted records and fresh clean physical M4 execution at that same revision agree
+on all 16 cases and the unchanged release/corpus identities. See
+[executed validation](validation.md) for CI links and precise test counts.
