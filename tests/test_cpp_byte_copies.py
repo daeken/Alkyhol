@@ -1,13 +1,12 @@
 """Synthetic observation gates; native/Metal executions supply actual GPU data."""
 import copy
+import hashlib
 import json
 import unittest
-from tools.run_cpp_byte_copies import RESIDUE_BYTES,SOURCE,compare_reports,validate_observation
+from tools.run_cpp_byte_copies import ROOT,RESIDUE_BYTES,SOURCE,compare_reports,validate_observation
 class ByteCopyReportTests(unittest.TestCase):
     def reports(self):
-        observation={'scenario':'byte-copies-v1','cases':272,'residue_buffer':'a5'*RESIDUE_BYTES,
-                     'overlay_buffer':'a5'*4099,'large_bytes_checked':16*1024*1024+97,
-                     'large_checksum':123,'large_windows':['a5'*32,'a5'*64,'a5'*32],'deferred':True}
+        observation=json.loads((ROOT/'cpp/reference/byte-copies-windows-v1.json').read_text())['observation']
         native={'schema_version':1,'backend':'native Windows SDK WARP byte copies','source_revision':'current',
                 'tracked_tree_clean':True,'artifacts':{SOURCE:'source'},'observation':observation}
         host=copy.deepcopy(native);host['backend']='Rust restricted Metal COM byte copies';return [native,host]
@@ -29,12 +28,24 @@ class ByteCopyReportTests(unittest.TestCase):
         for name in ['residue_buffer','overlay_buffer']:
             for fraction in [0,1,2,3,7]:
                 reports=self.reports();value=reports[1]['observation'][name];byte=(len(value)//2-1)*fraction//7
-                reports[1]['observation'][name]=value[:byte*2]+'00'+value[byte*2+2:]
+                reports[1]['observation'][name]=value[:byte*2]+format(int(value[byte*2:byte*2+2],16)^1,'02x')+value[byte*2+2:]
                 with self.assertRaises(ValueError):compare_reports(reports,'current')
         for window in range(3):
             for byte in range([32,64,32][window]):
                 reports=self.reports();value=reports[1]['observation']['large_windows'][window]
-                reports[1]['observation']['large_windows'][window]=value[:byte*2]+'00'+value[byte*2+2:]
+                reports[1]['observation']['large_windows'][window]=value[:byte*2]+format(int(value[byte*2:byte*2+2],16)^1,'02x')+value[byte*2+2:]
                 with self.assertRaises(ValueError):compare_reports(reports,'current')
         reports=self.reports();reports[1]['observation']['large_checksum']+=1
         with self.assertRaises(ValueError):compare_reports(reports,'current')
+
+    def test_live_backends_cannot_jointly_replace_frozen_native_results(self):
+        reports=self.reports()
+        for report in reports:report['observation']['large_checksum']=0
+        with self.assertRaises(ValueError):compare_reports(reports,'current')
+    def test_frozen_native_execution_source_and_observation_hash_are_preserved(self):
+        report=json.loads((ROOT/'cpp/reference/byte-copies-windows-v1.json').read_text())
+        self.assertEqual(report['backend'],'native Windows SDK WARP byte copies')
+        self.assertIs(report['tracked_tree_clean'],True)
+        self.assertEqual(report['source_revision'],'57e6321e63f67da84ebb26ae0b71df32033f0d9e')
+        self.assertEqual(report['artifacts'][SOURCE],hashlib.sha256((ROOT/SOURCE).read_bytes()).hexdigest())
+        self.assertEqual(hashlib.sha256(json.dumps(report['observation'],sort_keys=True,separators=(',',':')).encode()).hexdigest(),'c1016c4a93300ff0b85f43975a2e447fc9b8466b8455487d373ce4413f65868a')

@@ -280,3 +280,10 @@ large case asserts every byte in each executable and records a checksum plus
 three boundary windows; those summaries do not constitute a raw native comparison
 of its entire large buffer. The original queue-manager caller now uses 257-byte
 copies on all three original queues (v3), without changing original C++ objects.
+
+Native WARP and hosted Metal observations agree exactly on clean `57e6321` in
+[CI 42367694508](https://github.com/daeken/Alkyhol/actions/runs/42367694508), which
+passed all nineteen jobs. The separate physical M4 run, with Metal API validation,
+matches too. The native observation/source identity is frozen at
+`cpp/reference/byte-copies-windows-v1.json`; future live comparisons must continue
+matching it. Full original application initialization and rendering remain gated.

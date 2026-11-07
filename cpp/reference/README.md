@@ -115,3 +115,21 @@ matching this unchanged snapshot. Invalid-state rejection, rollback, overlapping
 queue rejection and injected GPU-failure poison remain separate local assertions;
 this native positive workload does not establish those edge semantics, shader
 execution, arbitrary barriers, full feature-level conformance or original frames.
+
+## Native byte-copy reference
+
+`byte-copies-windows-v1.json` preserves native SDK/WARP execution on `57e6321`
+in CI 42367694508. The workload covers 272 offset-residue/tail cases, odd-sized
+Private buffers and adjacent/overlapping partial writes. It retains all 39,601
+smaller readback/guard bytes. A large copy crosses the 16-MiB utility dispatch
+boundary; each executable asserts all 16,777,313 readback bytes, while the report
+retains a checksum and three windows totalling 128 bytes. The latter is summary
+agreement, not a raw comparison of the full large readback.
+
+Native WARP, hosted Metal and physical M4 records agree at the same clean
+revision. The physical run also enabled Metal API validation. Source identity
+and canonical observation SHA-256
+`c1016c4a93300ff0b85f43975a2e447fc9b8466b8455487d373ce4413f65868a`
+are checked separately; future live pairs must also match this native snapshot.
+The backend utility is open MSL memory-copy code, not general D3D12 shader or
+rendering support. Original sample shader bodies and prior references are intact.

@@ -4,9 +4,9 @@ import argparse
 import json
 from pathlib import Path
 if __package__:
-    from .run_cpp_device_buffers import run_probe
+    from .run_cpp_device_buffers import ROOT,run_probe
 else:
-    from run_cpp_device_buffers import run_probe
+    from run_cpp_device_buffers import ROOT,run_probe
 SOURCE='cpp/tests/byte_copies.cpp'
 RESIDUE_BYTES=35502
 def validate_observation(text):
@@ -27,6 +27,8 @@ def compare_reports(reports,revision):
         validate_observation(json.dumps(report['observation']))
     if not reports[0]['artifacts'].get(SOURCE) or reports[0]['artifacts'][SOURCE]!=reports[1]['artifacts'].get(SOURCE):raise ValueError('byte-copy probe source bytes differ')
     if reports[0]['observation']!=reports[1]['observation']:raise ValueError('native and Metal byte-copy observations differ')
+    frozen=json.loads((ROOT/'cpp/reference/byte-copies-windows-v1.json').read_text())
+    if reports[0]['observation']!=frozen['observation']:raise ValueError('live byte-copy behavior differs from frozen native contract')
 def run(output):return run_probe(output,'byte_copies','byte copies',validate_observation)
 if __name__=='__main__':
     parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--output',type=Path,required=True)

@@ -34,8 +34,16 @@ upstream sources and all sample shaders/assets remain unchanged. All 91 Python
 tests, runtime Clippy and formatting pass locally. The complete original sample
 relinks and still exits 78 before original initialization at device creation.
 
-A new CI probe executes the same byte-copy C++ source on native WARP and hosted
-Metal. Native results for this new workload remain pending. All eighteen prior
+A CI probe executes the same byte-copy C++ source on native WARP and hosted
+Metal. [CI 42367694508](https://github.com/daeken/Alkyhol/actions/runs/42367694508)
+passed all nineteen jobs on `57e6321`, including all previous shader/SDK/graphics
+comparisons. Downloaded clean native WARP and hosted Metal records also match
+the clean physical M4 record on every observed field: the 39,601 smaller bytes,
+128 boundary bytes and large checksum. The native snapshot is preserved at
+`cpp/reference/byte-copies-windows-v1.json`, canonical observation SHA-256
+`c1016c4a93300ff0b85f43975a2e447fc9b8466b8455487d373ce4413f65868a`.
+Both future live reports must match it unchanged. The current Python suite has
+93 passing tests. All eighteen prior
 jobs passed on `74a890e` in
 [42366501362](https://github.com/daeken/Alkyhol/actions/runs/42366501362).
 GPU queue waits, zero-length DEFAULT copies, same-resource copies, textures,
