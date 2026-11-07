@@ -12,11 +12,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Err("unexpected arguments".into());
     }
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    for (input, entry, output) in [(
-        "samples/miniengine/bary.hlsl",
-        "AlkyholMain",
-        "samples/miniengine/bary.generated.json",
-    ),("samples/miniengine/camera.hlsl","AlkyholMain","samples/miniengine/camera.generated.json")] {
+    for (input, entry, output) in [
+        (
+            "samples/miniengine/bary.hlsl",
+            "AlkyholMain",
+            "samples/miniengine/bary.generated.json",
+        ),
+        (
+            "samples/miniengine/camera.hlsl",
+            "AlkyholMain",
+            "samples/miniengine/camera.generated.json",
+        ),
+    ] {
         let bytes = compile_hlsl_with_options(
             Path::new(dxc),
             &root.join(input),
