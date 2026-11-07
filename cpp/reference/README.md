@@ -42,3 +42,16 @@ WARP, hosted Rust and physical M4 x86-64 observations agree on `4ea9957`;
 [CI 42357889974](https://github.com/daeken/Alkyhol/actions/runs/42357889974)
 passed all thirteen jobs. This is inherited metadata behavior, not device/fence
 or GPU implementation evidence.
+
+## Native committed-buffer reference
+
+`device-shared-buffers-windows-v1.json` preserves the successful native buffer
+observation from `2b5bbe3` in CI 42361555862. That run exposed an implementation
+mismatch: buffer alignment is 65536 and committed heap flags are 192, rather than
+the caller's input zeros. The implementation was corrected; this reference was
+not changed to make it pass. Live native WARP/hosted Metal comparison and physical
+M4 observations now agree on `5048884`, with all fifteen jobs passing in
+[42361819479](https://github.com/daeken/Alkyhol/actions/runs/42361819479).
+The fixture records descriptors, heap properties, mapped CPU data, nonzero-address
+checks and canonical parent identity; it does not prove native GPU allocation
+internals, feature-level support, COM command execution or rendering.

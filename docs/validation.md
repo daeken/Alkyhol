@@ -18,7 +18,7 @@ of 257 and 1024 bytes, exercise large by-value resource descriptors and by-value
 adapter LUID ABI, map/write/unmap/remap, obtain heap properties and native Metal
 GPU addresses, and verify retained device identity after releasing caller handles.
 Observed mapped checksums are 4261412018/3966715333 for the two widths. These are
-CPU data/ABI observations; matching native WARP behavior remains pending CI.
+CPU data/ABI observations; the subsequent native WARP comparison is recorded below.
 Unsupported void/struct operations are separately checked to abort with a
 specific diagnostic, never counted as supported behavior or successful results.
 
@@ -47,8 +47,14 @@ a real implementation mismatch: committed-buffer descriptors report alignment
 The full native report is preserved separately. Rust now matches those measured
 returns and exposes an actually 64-KiB-aligned subspan of its Metal allocation;
 CPU mapping, native GPU address and the direct Metal blit all use the same offset.
-No GPU address is synthesized. Physical observations now match the independently
-downloaded native record; a fresh CI comparison remains pending.
+No GPU address is synthesized. [CI 42361819479](https://github.com/daeken/Alkyhol/actions/runs/42361819479)
+passed all fifteen jobs on `5048884`, including the new live native/Metal buffer
+comparison. Downloaded native WARP and hosted Metal records also match the physical
+M4 x86-64 report from that same clean revision. All four descriptor/heap-property
+records, mapped checksums, address-presence and canonical parent-identity checks
+agree without weakening the comparison. A frozen native snapshot/source hash
+protects the measured values separately from the implementation. The current
+Python suite has 65 passing tests; runtime units/Clippy remain passing.
 See [restricted runtime](../cpp/runtime/README.md) for exact supported constraints.
 
 ## Direct-Metal DXGI factory/adapter COM: local discovery evidence

@@ -87,7 +87,10 @@ through Map. This is actual resource/backend evidence, not command submission
 through COM, a shader/rendering test, feature-level conformance or game compatibility.
 A shared C++ upload/readback probe records returned descriptors, heap properties,
 CPU-visible data checksums, GPU-address presence and parent lifetime on Metal and
-independent Windows SDK/WARP. Native comparison results must be recorded after CI.
+independent Windows SDK/WARP. [CI 42361819479](https://github.com/daeken/Alkyhol/actions/runs/42361819479)
+passed all fifteen jobs on `5048884`: native WARP, hosted Metal and physical M4
+observations agree on all returned buffer records. This adds no COM queue,
+feature-level or original C++ rendering claim.
 
 Native WARP observations normalize committed buffers to 65536-byte descriptor
 alignment and ALLOW_ONLY_BUFFERS heap flags (192). The implementation preserves
