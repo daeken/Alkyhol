@@ -76,6 +76,7 @@ jobs:
           DXC: ${{ github.workspace }}/local/dxc-build/bin/dxc
         run: |
           cargo test --manifest-path shader/Cargo.toml --locked -- --nocapture 2>&1 | tee shader-validation.txt
+          python tools/prepare_sakura_shaders.py --check
           cargo run --manifest-path shader/Cargo.toml --locked --example translate_samples -- "$DXC" --check
       - uses: actions/upload-artifact@v4
         if: always()

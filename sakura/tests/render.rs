@@ -35,6 +35,34 @@ fn full_scene_renders_repeatably_moves_reflects_resizes_and_captures() {
         let b = image::open(temp.join("b.png")).unwrap().to_rgba8();
         assert_eq!(a, b);
         assert_eq!(a.dimensions(), (129, 73));
+        renderer.set_original_shaders_enabled(false);
+        let manual = renderer.render(&c, 0., None).unwrap();
+        renderer
+            .capture(&temp.join("manual-reference.png"))
+            .unwrap();
+        let manual_pixels = image::open(temp.join("manual-reference.png"))
+            .unwrap()
+            .to_rgba8();
+        let changed = a
+            .pixels()
+            .zip(manual_pixels.pixels())
+            .filter(|(a, b)| a != b)
+            .count();
+        eprintln!(
+            "Original/manual source-camera and arithmetic observation: original={first:?}; manual={manual:?}; changed RGBA8 pixels={changed}; no full-frame equality claim"
+        );
+        assert_eq!(manual.primary.iter().sum::<u32>(), 129 * 73);
+        renderer.set_original_shaders_enabled(true);
+        assert_eq!(renderer.render(&c, 0., None).unwrap(), first);
+        renderer
+            .capture(&temp.join("restored-original.png"))
+            .unwrap();
+        assert_eq!(
+            a,
+            image::open(temp.join("restored-original.png"))
+                .unwrap()
+                .to_rgba8()
+        );
         assert!(
             a.pixels().all(|p| p[3] == 255),
             "default view has no primary reflective cubes; floor reflection alpha stays opaque"

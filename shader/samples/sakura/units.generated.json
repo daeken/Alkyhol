@@ -1,0 +1,42 @@
+{
+  "msl": "#pragma clang diagnostic ignored \"-Wunused-variable\"\n\n#include <metal_stdlib>\n#include <simd/simd.h>\n#include <metal_atomic>\n\nusing namespace metal;\n\nstruct SSBO\n{\n    uint _m0[1];\n};\n\nstruct SSBO_1\n{\n    uint4 _m0[1];\n};\n\nkernel void main0(device SSBO& _9 [[buffer(0)]], device SSBO_1& _14 [[buffer(1)]], uint3 gl_GlobalInvocationID [[thread_position_in_grid]])\n{\n    if (gl_GlobalInvocationID.x == 0u)\n    {\n        float _25 = exp2(as_type<float>(0xff800000u /* -inf */));\n        _14._m0[0u] = uint4(as_type<uint>((_25 * 0.800000011920928955078125) + 0.20000000298023223876953125), as_type<uint>((_25 * 0.60000002384185791015625) + 0.4000000059604644775390625), as_type<uint>((_25 * 0.199999988079071044921875) + 0.800000011920928955078125), as_type<uint>(1.0));\n    }\n    if (gl_GlobalInvocationID.x == 1u)\n    {\n        _14._m0[1u] = uint4(as_type<uint>(1.0), as_type<uint>(1.0), as_type<uint>(1.0), as_type<uint>(1.0));\n    }\n    if (gl_GlobalInvocationID.x == 2u)\n    {\n        _14._m0[2u] = uint4(as_type<uint>(0.5), as_type<uint>(0.20000000298023223876953125), as_type<uint>(0.300000011920928955078125), as_type<uint>(1.0));\n    }\n    if (gl_GlobalInvocationID.x == 3u)\n    {\n        _14._m0[3u] = uint4(as_type<uint>(0.4000000059604644775390625), as_type<uint>(0.35000002384185791015625), as_type<uint>(0.0), as_type<uint>(1.0));\n    }\n    if (gl_GlobalInvocationID.x == 4u)\n    {\n        _14._m0[4u] = uint4(as_type<uint>(1.0), as_type<uint>(2.0), as_type<uint>(1.0), as_type<uint>(1.0));\n    }\n    if (gl_GlobalInvocationID.x == 5u)\n    {\n        uint _89 = atomic_fetch_add_explicit((device atomic_uint*)&_9._m0[10u], 1u, memory_order_relaxed);\n        _14._m0[5u] = uint4(as_type<uint>(float(isnan(as_type<float>(0x7fc00000u /* nan */)))), as_type<uint>(3.0), as_type<uint>(0.0), as_type<uint>(0.0));\n    }\n    if (gl_GlobalInvocationID.x == 6u)\n    {\n        float _103;\n        float _133;\n        float _124;\n        float _126;\n        float _128;\n        float _130;\n        float _132;\n        uint _134;\n        float _102 = 0.0;\n        float _104 = 1.0;\n        uint _106 = 0u;\n        for (;;)\n        {\n            float _111 = (float(int(_106)) * 0.02500000037252902984619140625) + 5.0;\n            float _117 = fract(abs(_111));\n            _124 = abs((((_111 >= ((-0.0) - _111)) ? _117 : ((-0.0) - _117)) * 2.0) + (-1.0));\n            _126 = 1.0;\n            _128 = 1.0;\n            _130 = 0.0;\n            _132 = 0.0;\n            _134 = 0u;\n            for (;;)\n            {\n                float3 _138 = float3(_124, _126, _128);\n                float3 _139 = float3(_124, _126, _128);\n                float _140 = 1.0 / dot(_138, _139);\n                float _141 = abs(_124);\n                float _142 = abs(_126);\n                float _143 = abs(_128);\n                float _125 = (_141 * _140) + (-0.5299999713897705078125);\n                float _127 = (_142 * _140) + (-0.5299999713897705078125);\n                float _129 = (_143 * _140) + (-0.5299999713897705078125);\n                float _131 = sqrt(((_127 * _127) + (_125 * _125)) + (_129 * _129));\n                _133 = abs(_131 - _130) + _132;\n                uint _135 = _134 + 1u;\n                if (_135 == 50u)\n                {\n                    break;\n                }\n                else\n                {\n                    _124 = _125;\n                    _126 = _127;\n                    _128 = _129;\n                    _130 = _131;\n                    _132 = _133;\n                    _134 = _135;\n                }\n            }\n            _103 = (_133 * _104) + _102;\n            uint _107 = _106 + 1u;\n            if (_107 == 200u)\n            {\n                break;\n            }\n            else\n            {\n                _102 = _103;\n                _104 *= 0.89999997615814208984375;\n                _106 = _107;\n                continue;\n            }\n        }\n        float _168 = precise::clamp((precise::clamp(_103 * 0.000833333353511989116668701171875, 0.0, 1.0) + (-0.100000001490116119384765625)) * 1.25000011920928955078125, 0.0, 1.0);\n        float _172 = (_168 * _168) * (3.0 - (_168 * 2.0));\n        _14._m0[6u] = uint4(as_type<uint>(_172), as_type<uint>(_172), as_type<uint>(_172), as_type<uint>(1.0));\n    }\n}\n\n",
+  "entry_point": "main0",
+  "stage": "Compute",
+  "threads_per_group": [
+    1,
+    1,
+    1
+  ],
+  "resources": [
+    {
+      "class": "Uav",
+      "space": 0,
+      "register": 20,
+      "kind": "StructuredBuffer",
+      "alignment": 4,
+      "namespace": "Buffer",
+      "metal_index": 0,
+      "spirv_set": 2,
+      "spirv_binding": 20
+    },
+    {
+      "class": "Uav",
+      "space": 0,
+      "register": 30,
+      "kind": "StructuredBuffer",
+      "alignment": 16,
+      "namespace": "Buffer",
+      "metal_index": 1,
+      "spirv_set": 2,
+      "spirv_binding": 30
+    }
+  ],
+  "vertex_inputs": [],
+  "dxil_spirv_version": [
+    2,
+    72,
+    1
+  ],
+  "requires_ray_query": false,
+  "fragment_output_components": []
+}

@@ -9,6 +9,7 @@
       "space": 0,
       "register": 0,
       "kind": "Texture2D",
+      "alignment": 0,
       "namespace": "Texture",
       "metal_index": 0,
       "spirv_set": 1,

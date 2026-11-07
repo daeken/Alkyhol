@@ -68,7 +68,8 @@ The caller supplies a matching Metal vertex descriptor. This first milestone
 exercises compatible vertex/pixel signatures; it does not implement a general
 semantic linker or D3D12 root-signature/descriptor-heap runtime. Successful
 translation is not proof of arbitrary shader semantics, DXR support or game
-compatibility. Sakura still uses manual MSL. Sponza now uses original HLSL ray
+compatibility. Sakura uses original HLSL function bodies through an explicit
+[bounded SER-off adapter](../shader/samples/sakura/README.md). Sponza uses original HLSL ray
 generation in all modes and original hit/miss bodies for view 2 through explicit
 [source adapters](../shader/samples/miniengine/README.md). Original MiniEngine
 tone/display/fullscreen shaders and their include closure also execute through

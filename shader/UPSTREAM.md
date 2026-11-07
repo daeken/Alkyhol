@@ -31,3 +31,9 @@ The [MiniEngine shader package](samples/miniengine/README.md) also records the
 complete unmodified source/include closure for its migrated ray-generation,
 hit/miss, tone, display and fullscreen shaders. Its `upstream.json` binds every
 original file to the same pinned Microsoft source revision and exact SHA-256.
+
+The [Sakura package](samples/sakura/README.md) preserves full original HLSL/header
+files and extracts exact function bodies for a bounded two-level SER-off adapter.
+Microsoft MIT and Pablo Roman Andrioli Star Nest notices accompany the source.
+This specialization uses open inline-query compilation, not Apple's proprietary
+converter or an ignored SER hint.

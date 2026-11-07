@@ -30,7 +30,8 @@ metadata and real Metal compute/raster tests. See [shader translation](docs/shad
 for commands, supported contracts and current limits. Sponza now uses original
 HLSL primary ray generation in every view and original hit/miss shader bodies in
 view 2 through explicit source adapters. Tone mapping, display and fullscreen
-passes also use original HLSL; remaining shaded hit logic and Sakura use manual MSL.
+passes also use original HLSL. Sakura's original material/reflection/sky bodies
+run through a bounded SER-off adapter; Sponza's shaded hit logic still uses manual MSL.
 
 The core is dependency-free so file/event conformance work can run without a GPU
 or a network connection. Graphics has its own manifest and dependency resolution.

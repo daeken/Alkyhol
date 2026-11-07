@@ -4,6 +4,35 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## Original Sakura HLSL bodies: local evidence
+
+The physical M4 passed all ten Sakura tests and all sixteen shader tests; all
+34 Python tests, source extraction/regeneration checks, and shader/Sakura
+formatting/Clippy also passed. Original closest-hit, reflection, camera and
+miss/Star Nest bodies execute through a bounded SER-off inline-query adapter.
+The complete scene remains 33,983 unique triangles and 13,525 instances; the
+sky retains 200×50 iterations. Buffer tests cover the original 36-byte Vertex,
+indexed cube and zero-padded original leaf-index reads used by the trunk shader.
+An original helper compute fixture verifies interpolation/Fresnel/world-position
+and a counted fault/NaN payload when the depth contract is violated.
+
+The default 129×73 original/manual observations had identical hit/reflection
+counts but 642 different RGBA8 pixels; no pixel-equality claim is made. Original
+HLSL's +X Star Nest observation was 0.8959766 on this M4, separate from earlier
+manual-MSL and host scalar observations. No tolerance was widened to equate them.
+A full 960×540 original-shader frame was saved locally in 0.046s cold; the live
+window visibly rendered around 42 FPS at that resolution. These are live/cold
+observations, not an isolated steady-state benchmark or native DXR comparison.
+
+The [adapter record](../shader/samples/sakura/README.md) details source extraction,
+bounded recursion/context restoration, local-root/payload specialization and
+unsupported-SER failure behavior. Full DXR binary/library translation, SER and
+native Windows full-frame DXR comparison remain unverified.
+
+[Run 42342947047](https://github.com/daeken/Alkyhol/actions/runs/42342947047)
+passed all ten jobs on original tone/display revision `0cf9620`. That hosted
+evidence precedes this Sakura migration and does not imply hosted ray tracing.
+
 ## Original tone/display HLSL: local evidence
 
 The physical M4 passed all 15 MiniEngine and 14 shader tests, plus all 31 Python

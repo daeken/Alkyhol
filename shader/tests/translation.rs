@@ -162,6 +162,43 @@ fn original_sponza_adapter_declares_real_ray_queries_and_original_entry_bodies()
 }
 
 #[test]
+fn bounded_original_sakura_shader_uses_ray_queries_and_preserves_buffer_classes() {
+    let file = Path::new(env!("CARGO_MANIFEST_DIR")).join("samples/sakura/ser_off.hlsl");
+    let bytes = compile_hlsl_with_options(
+        &dxc(),
+        &file,
+        "AlkyholMain",
+        Stage::Compute,
+        &HlslOptions {
+            shader_model_6_5: true,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let shader = translate_dxil(&bytes, "AlkyholMain").unwrap();
+    assert!(shader.requires_ray_query);
+    assert_eq!(shader.resources.len(), 16);
+    for register in [2, 4, 6, 8] {
+        assert!(
+            shader
+                .resources
+                .iter()
+                .any(|r| r.class == RegisterClass::Srv
+                    && r.register == register
+                    && r.kind == "StructuredBuffer"
+                    && r.namespace == MetalNamespace::Buffer)
+        );
+    }
+    assert!(
+        !shader
+            .resources
+            .iter()
+            .any(|r| r.class == RegisterClass::Srv && r.register == 3),
+        "the original trunk index declaration is unused, not a substituted leaf/trunk binding"
+    );
+}
+
+#[test]
 fn explicit_metal_attachment_contract_widens_rgb_and_rejects_invalid_requests() {
     let file =
         Path::new(env!("CARGO_MANIFEST_DIR")).join("samples/miniengine/original/PresentSDRPS.hlsl");

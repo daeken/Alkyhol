@@ -1,0 +1,26 @@
+{
+  "repository": "https://github.com/microsoft/DirectX-Graphics-Samples",
+  "revision": "68a2b1e97f71642924e74c7757ca21756ad221b5",
+  "files": {
+    "Raytracing.hlsl": {
+      "upstream_path": "Samples/Desktop/D3D12Raytracing/src/D3D12RaytracingSakuraForestSER/Raytracing.hlsl",
+      "sha256": "2a3c730462b47e63c8ede48a61588ff77076bc17443946e64ff79c75ba3ebc8c",
+      "bytes": 15608
+    },
+    "Star.hlsli": {
+      "upstream_path": "Samples/Desktop/D3D12Raytracing/src/D3D12RaytracingSakuraForestSER/Star.hlsli",
+      "sha256": "24b9d69faa871ae30133ad2925f5f5b28a82b68a6d883a94c0ddaa803f2d4f24",
+      "bytes": 1614
+    },
+    "HlslCompat.h": {
+      "upstream_path": "Samples/Desktop/D3D12Raytracing/src/D3D12RaytracingSakuraForestSER/HlslCompat.h",
+      "sha256": "93f528ce31bc63c8567c2df54d0880dd1fd854118e0350a98420de77e703fcec",
+      "bytes": 644
+    },
+    "RaytracingHlslCompat.h": {
+      "upstream_path": "Samples/Desktop/D3D12Raytracing/src/D3D12RaytracingSakuraForestSER/RaytracingHlslCompat.h",
+      "sha256": "445a80a7e8e51ea7f1a79aebca9a89c25ca4d0c37488a2efd06647715d2f75fa",
+      "bytes": 1273
+    }
+  }
+}

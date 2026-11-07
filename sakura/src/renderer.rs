@@ -40,6 +40,8 @@ pub struct Renderer {
     height: u32,
     leaf_vertices: u32,
     counts: Buffer,
+    original: crate::original::OriginalPipeline,
+    original_enabled: bool,
 }
 impl Renderer {
     pub fn new(assets: &Path, width: u32, height: u32) -> Result<Self, String> {
@@ -109,7 +111,8 @@ impl Renderer {
             .map(|(name, srgb)| load_texture(native, &assets.join(name), *srgb))
             .collect::<Result<Vec<_>, _>>()?;
         let output = output_texture(native, width, height)?;
-        let counts = native.new_buffer(40, MTLResourceOptions::StorageModeShared);
+        let counts = native.new_buffer(48, MTLResourceOptions::StorageModeShared);
+        let original = crate::original::OriginalPipeline::new(native, &meshes)?;
         Ok(Self {
             device,
             scene,
@@ -122,10 +125,17 @@ impl Renderer {
             height,
             leaf_vertices: meshes[2].vertices.len() as u32,
             counts,
+            original,
+            original_enabled: true,
         })
     }
     pub fn extent(&self) -> (u32, u32) {
         (self.width, self.height)
+    }
+    /// Explicit A/B reference choice; original shader bodies are the default.
+    /// Shader errors never silently select the manual reference.
+    pub fn set_original_shaders_enabled(&mut self, enabled: bool) {
+        self.original_enabled = enabled;
     }
     pub fn resize(&mut self, width: u32, height: u32) -> Result<(), String> {
         self.output = output_texture(self.device.metal_device(), width, height)?;
@@ -156,30 +166,44 @@ impl Renderer {
                 debug: 0,
             };
             unsafe {
-                std::ptr::write_bytes(self.counts.contents(), 0, 40);
+                std::ptr::write_bytes(self.counts.contents(), 0, 48);
             }
             let command = self.device.metal_queue().new_command_buffer();
-            let encoder = command.new_compute_command_encoder();
-            encoder.set_compute_pipeline_state(&self.pipeline);
-            encoder.set_acceleration_structure(0, Some(&self.scene.acceleration));
-            for (i, b) in self.vertices.iter().enumerate() {
-                encoder.set_buffer(i as u64 + 1, Some(b), 0);
+            if self.original_enabled {
+                self.original.encode(
+                    command,
+                    crate::original::Frame {
+                        scene: &self.scene,
+                        camera,
+                        light,
+                        textures: &self.textures,
+                        output: &self.output,
+                        counts: &self.counts,
+                    },
+                );
+            } else {
+                let encoder = command.new_compute_command_encoder();
+                encoder.set_compute_pipeline_state(&self.pipeline);
+                encoder.set_acceleration_structure(0, Some(&self.scene.acceleration));
+                for (i, b) in self.vertices.iter().enumerate() {
+                    encoder.set_buffer(i as u64 + 1, Some(b), 0);
+                }
+                encoder.set_bytes(
+                    5,
+                    std::mem::size_of::<Params>() as u64,
+                    (&params as *const Params).cast(),
+                );
+                encoder.set_buffer(6, Some(&self.counts), 0);
+                encoder.set_texture(0, Some(&self.textures[0]));
+                encoder.set_texture(1, Some(&self.textures[1]));
+                encoder.set_texture(2, Some(&self.output));
+                self.scene.use_resources(encoder);
+                encoder.dispatch_threads(
+                    MTLSize::new(self.width as u64, self.height as u64, 1),
+                    MTLSize::new(8, 8, 1),
+                );
+                encoder.end_encoding();
             }
-            encoder.set_bytes(
-                5,
-                std::mem::size_of::<Params>() as u64,
-                (&params as *const Params).cast(),
-            );
-            encoder.set_buffer(6, Some(&self.counts), 0);
-            encoder.set_texture(0, Some(&self.textures[0]));
-            encoder.set_texture(1, Some(&self.textures[1]));
-            encoder.set_texture(2, Some(&self.output));
-            self.scene.use_resources(encoder);
-            encoder.dispatch_threads(
-                MTLSize::new(self.width as u64, self.height as u64, 1),
-                MTLSize::new(8, 8, 1),
-            );
-            encoder.end_encoding();
             if let Some(drawable) = drawable {
                 let pass = RenderPassDescriptor::new();
                 let a = pass.color_attachments().object_at(0).unwrap();
@@ -194,7 +218,13 @@ impl Renderer {
                 command.present_drawable(drawable);
             }
             complete(command).map_err(|e| e.to_string())?;
-            let counts = unsafe { *(self.counts.contents().cast::<[u32; 10]>()) };
+            let counts = unsafe { *(self.counts.contents().cast::<[u32; 12]>()) };
+            if counts[10] != 0 || counts[11] != 0 {
+                return Err(format!(
+                    "original Sakura shader failed: {} unsupported-state/budget faults, {} nonfinite pixels",
+                    counts[10], counts[11]
+                ));
+            }
             Ok(FrameStats {
                 primary: counts[..6].try_into().unwrap(),
                 floor_reflections: counts[6],

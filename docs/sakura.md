@@ -7,6 +7,14 @@ The user accepted a faithful Rust port of the scene/rendering logic, then explic
 selected direct Metal from Rust instead of wgpu. The upstream checkout is ignored
 under `local/upstream/DirectX-Graphics-Samples`.
 
+The default renderer now compiles the original material, reflection, camera and
+miss/Star Nest function bodies through the open DXC → DXIL → SPIR-V → MSL chain.
+An explicit two-level SER-off source adapter supplies native inline ray queries
+and the fixed scene's shader dispatch. See the [shader package](../shader/samples/sakura/README.md)
+for exact extraction, payload/root-CB specialization, out-of-view index padding,
+failure behavior and provenance. This is not a claim of generic DXR library/SER
+translation. The old MSL port is retained only as an explicit A/B reference.
+
 The application must use the actual three OBJ assets and two JPEG textures, not a
 lookalike forest. The original instance groups are 441 floor cubes, 961 reflective
 cubes, 961 trunks, 961 leaf meshes and 10,201 bushes: 13,525 instances total. Mesh
