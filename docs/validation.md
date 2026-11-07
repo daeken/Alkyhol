@@ -4,6 +4,44 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## Descriptor-heap allocation: local COM/storage evidence
+
+The explicit Metal subset now supplies typed 11-slot ID3D12DescriptorHeap objects
+for all four heap types. Shader-visible allocation is limited to CBV/SRV/UAV and
+sampler heaps. Real retained Shared Metal buffers reserve 64-byte virtual slots;
+CPU handles identify their actual backing addresses and visible GPU handles use
+actual native GPU addresses. Non-visible GPU handles are null. This is empty heap
+storage/metadata/ownership support, not initialized views or shader binding.
+View/sampler creation, descriptor copies and command-list binding still abort
+with explicit unavailable diagnostics; no successful empty descriptor operation
+is substituted for them.
+
+The physical M4/x86-64 shared C++ probe allocates twelve heaps across type,
+visibility and node-mask cases, exercises null-output capability checks, inherited
+metadata/QI, by-value descriptors/handles, stable starts and retained parent
+identity. Each logical last-slot index is computed using that backend's actual
+increment. Raw increments remain in reports; only those opaque driver byte strides
+are excluded from cross-backend semantic equality. Returned descriptors, handle
+presence, index offsets and ownership remain exact comparison fields.
+
+Five new runtime units pass (42 total), including typed layout/bounds, defensive
+constructor failures, actual handles/storage and metadata/parent lifetime, all
+CPU heap types/range separation and a real Metal blit round-trip through the heap
+backing allocation. That last check proves backing storage is GPU accessible;
+it does not consume a D3D descriptor. Runtime Clippy/formatting and all 97 Python
+tests pass locally. The unchanged original DescriptorHeap.cpp object now joins
+the original queue/allocator subsystem caller: all four CPU allocators perform
+pool rollover, and both visible heap types perform bump/index/range/exhaustion
+checks (v4 observation). All three original object hashes are verified from the
+complete original build; no upstream source is edited. The whole original app
+relinks and still exits 78 before initialization at D3D12CreateDevice.
+
+New CI executes the same heap probe on native SDK/WARP and hosted Metal and
+compares the explicit semantic invariants from clean identical revisions. Native
+results for this new allocation workload remain pending. The earlier frozen-byte
+reference milestone passed all nineteen jobs on `db66f16` in
+[42368218306](https://github.com/daeken/Alkyhol/actions/runs/42368218306).
+
 ## Byte-granular COM buffer copies: physical GPU evidence
 
 Unaligned offsets and odd copy lengths now lower to a small MIT-licensed native

@@ -274,6 +274,12 @@ jobs:
         with:
           name: cpp-byte-copies-Windows
           path: cpp-byte-copies.json
+      - name: Observe descriptor heap allocation, handles and parent ownership
+        run: python tools/run_cpp_descriptor_heaps.py --output cpp-descriptor-heaps.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cpp-descriptor-heaps-Windows
+          path: cpp-descriptor-heaps.json
       - name: Observe native D3D12 COM private-data and interface ownership
         run: python tools/run_cpp_object_reference.py --output cpp-object-reference.json
       - uses: actions/upload-artifact@v4
@@ -441,6 +447,12 @@ jobs:
         with:
           name: cpp-byte-copies-Metal
           path: cpp-byte-copies.json
+      - name: Observe descriptor heap allocation, handles and parent ownership
+        run: python tools/run_cpp_descriptor_heaps.py --output cpp-descriptor-heaps.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cpp-descriptor-heaps-Metal
+          path: cpp-descriptor-heaps.json
       - uses: actions/upload-artifact@v4
         with:
           name: cpp-metal-factory
@@ -549,4 +561,25 @@ jobs:
           revision=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
           compare_reports(reports,revision)
           print('All residue/overlay readbacks and large-copy checksum/windows agree; large case also checks all bytes independently in each executable. No general D3D shader or original rendering claim')
+          PY
+
+  compare-cpp-descriptor-heaps:
+    needs: [cpp-metal-factory, graphics-reference]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: cpp-descriptor-heaps-*
+          path: cpp-descriptor-observations
+      - name: Compare descriptor heap metadata and logical handle invariants
+        run: |
+          python3 - <<'PY'
+          import json, subprocess
+          from pathlib import Path
+          from tools.run_cpp_descriptor_heaps import compare_reports
+          reports=[json.loads(p.read_text()) for p in Path('cpp-descriptor-observations').glob('*/*.json')]
+          revision=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
+          compare_reports(reports,revision)
+          print('All heap descriptors, handle presence/index offsets and ownership checks agree. Raw driver strides are preserved separately; no initialized descriptor or shader-binding claim')
           PY

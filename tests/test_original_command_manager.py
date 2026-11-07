@@ -17,7 +17,7 @@ class OriginalQueueTests(unittest.TestCase):
                 path=upstream/source;path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(b'synthetic source')
                 obj=build/f'{index}.o';obj.write_bytes(b'synthetic object')
                 report['units'].append({'source':source,'object':obj.name,'exit_code':0,'sha256':hashlib.sha256(path.read_bytes()).hexdigest(),'object_sha256':hashlib.sha256(obj.read_bytes()).hexdigest()})
-            self.assertEqual(current_objects(upstream,build,report,{'header':'digest'}),[build/'0.o',build/'1.o'])
+            self.assertEqual(current_objects(upstream,build,report,{'header':'digest'}),[build/f'{i}.o' for i in range(len(ORIGINALS))])
             for key,value in [('complete',False),('upstream_revision','different'),('headers_sha256',{})]:
                 invalid=copy.deepcopy(report);invalid[key]=value
                 with self.assertRaises(ValueError):current_objects(upstream,build,invalid,{'header':'digest'})
@@ -29,10 +29,10 @@ class OriginalQueueTests(unittest.TestCase):
                 with self.assertRaises(ValueError):current_objects(upstream,build,report,{'header':'digest'})
                 path.write_bytes(saved)
     def test_original_queue_sequence_requires_high_bit_values_and_all_shutdown_checks(self):
-        expected={'scenario':'original-command-manager-v3','next_values':[9,(2<<56)|9,(3<<56)|9],
-                  'queues':3,'copy_queues':3,'copy_bytes_per_queue':257,'allocator_pool_reused':True,'increments_per_queue':8,'idle':True,'shutdown':True}
+        expected={'scenario':'original-command-manager-v4','next_values':[9,(2<<56)|9,(3<<56)|9],
+                  'queues':3,'copy_queues':3,'copy_bytes_per_queue':257,'descriptor_types':4,'visible_heaps':2,'allocator_pool_reused':True,'increments_per_queue':8,'idle':True,'shutdown':True}
         self.assertEqual(validate_observation(json.dumps(expected)),expected)
-        for key,value in [('scenario','other'),('next_values',[9,9,9]),('queues',2),('copy_queues',2),('copy_bytes_per_queue',256),('allocator_pool_reused',False),('increments_per_queue',7),('idle',1),('shutdown',False)]:
+        for key,value in [('scenario','other'),('next_values',[9,9,9]),('queues',2),('copy_queues',2),('copy_bytes_per_queue',256),('descriptor_types',3),('visible_heaps',1),('allocator_pool_reused',False),('increments_per_queue',7),('idle',1),('shutdown',False)]:
             invalid=copy.deepcopy(expected);invalid[key]=value
             with self.assertRaises(ValueError):validate_observation(json.dumps(invalid))
         with self.assertRaises(ValueError):validate_observation(json.dumps({**expected,'extra':True}))

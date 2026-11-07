@@ -24,6 +24,7 @@ renderer or a feature-level claim.
 | Restricted allocators/command lists | Real state/epoch/snapshot ownership and COM submission of buffer copies. The Shared-copy probe's 2048 bytes/eleven state results match native WARP, hosted Metal and physical M4. Drawing, dispatch and textures remain unsupported; bounded buffer barriers and byte lowering are below |
 | DEFAULT transitions | DIRECT-list buffer transitions, bounded COMMON/read/COPY promotion/decay and atomic batch state validation. Private-buffer copy chains and CPU-fenced queue handoff match native WARP, hosted Metal and physical M4 on all 4096 bytes/returned fields. Split/alias/UAV barriers and GPU queue waits remain unavailable |
 | Byte-granular copies | Aligned blits plus an open native MSL byte-copy utility, with exact ranges, cached pipeline and bounded dispatch chunks. Native WARP, hosted Metal and physical M4 agree on 272 cases/Private overlays, all small readbacks, and large-copy checksum/windows with full local range assertions. No general D3D Dispatch or shader translation claim |
+| Descriptor-heap allocation | Real 11-slot COM objects and empty Metal-backed slots for four CPU/two visible types; stable actual handles, metadata/parent ownership and own backend stride. Original allocator/heap helpers execute locally. Native invariant comparison pending; no initialized views, copies or binding |
 | Original queue-management subsystem | Unchanged CommandListManager and CommandAllocatorPool objects execute creation, allocator allocation/deferred reuse/reset, three-queue COM copies, high-bit fences/waits, idle and shutdown on physical Metal through a separate caller |
 | D3D12 creation | Explicit E_NOTIMPL and cleared interface outputs; no device, resource or command capability success |
 | D3D12 root serialization/debug/experiments | Explicit failures; no serialized blob or debug interface |
@@ -46,6 +47,6 @@ ABI-test constructor. [ID3D12Object metadata](reference/README.md) preserves its
 independent native contract. Restricted derived device/resource/queue/fence
 interfaces now compose that implementation. Restricted command-list GPU copies
 also work, as do bounded Private-buffer transitions. The next runtime steps
-include descriptor/root-signature and pipeline support.
+include descriptor views/copies/binding, root signatures and pipeline support.
 Neither restricted nor metadata constructors substitute for
 production device creation or original application initialization.

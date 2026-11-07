@@ -407,9 +407,6 @@ unsafe extern "C" fn desc_object(
 ) -> i32 {
     unsafe { unsupported_out("D3D12 object creation", out) }
 }
-unsafe extern "C" fn descriptor_increment(_: *mut Device, _: i32) -> u32 {
-    unsupported_void("descriptor increment size")
-}
 unsafe extern "C" fn root_signature(
     _: *mut Device,
     _: u32,
@@ -653,8 +650,8 @@ static DEVICE_VTABLE: DeviceVtable = DeviceVtable {
     compute: desc_object,
     list: commands::create_list,
     feature,
-    heap: desc_object,
-    increment: descriptor_increment,
+    heap: descriptor_heaps::create,
+    increment: descriptor_heaps::increment,
     root: root_signature,
     cbv: view2,
     srv: view3,
@@ -1027,3 +1024,6 @@ mod commands;
 
 #[path = "byte_copy.rs"]
 mod byte_copy;
+
+#[path = "descriptor_heaps.rs"]
+mod descriptor_heaps;

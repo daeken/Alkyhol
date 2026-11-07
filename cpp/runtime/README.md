@@ -287,3 +287,33 @@ passed all nineteen jobs. The separate physical M4 run, with Metal API validatio
 matches too. The native observation/source identity is frozen at
 `cpp/reference/byte-copies-windows-v1.json`; future live comparisons must continue
 matching it. Full original application initialization and rendering remain gated.
+
+## Descriptor-heap allocation and handles
+
+The restricted device supports descriptor-heap objects with all 11 SDK slots,
+inherited metadata/identity and retained parent lifetime. CPU-visible allocations
+accept CBV/SRV/UAV, sampler, RTV and DSV types; only the first two accept the
+shader-visible flag. Counts must be positive and within the current 1,000,000-slot
+limit (2048 for samplers), with node mask 0/1 and no other flags. Valid null-output
+capability queries return S_FALSE without allocating or retaining an object.
+
+Each heap owns real Shared Metal backing storage with 64-byte virtual slots. Its
+CPU handle refers to the actual mapped start; a visible GPU handle is the native
+GPU start, and a non-visible one is null. These are opaque source-ABI handles,
+not permission for callers to dereference descriptor memory, a Windows driver
+encoding or an initialized Metal argument table. The backend increment describes
+its own reserved slot stride, as required by [handle arithmetic](https://learn.microsoft.com/windows/win32/api/d3d12/nf-d3d12-id3d12device-getdescriptorhandleincrementsize).
+An empty heap is not a usable view. View/sampler creation, descriptor copying and
+binding remain explicit unsupported operations.
+
+```sh
+python3 tools/run_cpp_descriptor_heaps.py --output local/cpp-descriptor-heaps.json
+```
+
+The shared probe preserves each backend's raw strides and compares exact returned
+descriptors, handle presence and index offsets computed using those strides.
+It does not require opaque driver increments/addresses to match numerically.
+Local GPU storage tests and original MiniEngine DescriptorAllocator/DescriptorHeap
+execution cover allocation, rollover, exhaustion and validation, not initialized
+descriptors or native shader consumption. The subsystem caller's v4 observation
+links three verified unchanged original implementation objects.

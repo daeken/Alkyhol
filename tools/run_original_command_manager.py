@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Run unchanged original MiniEngine queue-management objects on restricted Metal.
+"""Run unchanged original MiniEngine queue/descriptor objects on restricted Metal.
 
 Requires a complete, current original C++ build. This separate subsystem caller
-exercises original allocator/queue management and supported COM buffer copies.
+exercises original allocator/queue/descriptor management and supported COM copies.
 The original application's startup gate and unsupported rendering remain intact.
 """
 import argparse
@@ -18,7 +18,7 @@ if __package__:
 else:
     from build_original_miniengine import ROOT,ensure,header_hashes
 
-ORIGINALS=['MiniEngine/Core/CommandListManager.cpp','MiniEngine/Core/CommandAllocatorPool.cpp']
+ORIGINALS=['MiniEngine/Core/CommandListManager.cpp','MiniEngine/Core/CommandAllocatorPool.cpp','MiniEngine/Core/DescriptorHeap.cpp']
 PIN='68a2b1e97f71642924e74c7757ca21756ad221b5'
 
 def current_objects(upstream,build,report,headers):
@@ -36,8 +36,8 @@ def current_objects(upstream,build,report,headers):
 
 def validate_observation(text):
     result=json.loads(text)
-    expected={'scenario':'original-command-manager-v3','next_values':[9,(2<<56)|9,(3<<56)|9],
-              'queues':3,'copy_queues':3,'copy_bytes_per_queue':257,'allocator_pool_reused':True,'increments_per_queue':8,'idle':True,'shutdown':True}
+    expected={'scenario':'original-command-manager-v4','next_values':[9,(2<<56)|9,(3<<56)|9],
+              'queues':3,'copy_queues':3,'copy_bytes_per_queue':257,'descriptor_types':4,'visible_heaps':2,'allocator_pool_reused':True,'increments_per_queue':8,'idle':True,'shutdown':True}
     if result!=expected or any(type(result[k]) is not type(v) for k,v in expected.items()) or any(type(v) is not int for v in result['next_values']):
         raise ValueError('original command manager did not complete its full sequence')
     return result
