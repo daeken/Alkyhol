@@ -5,32 +5,51 @@ port. Upstream C++ and HLSL stay verbatim at
 `68a2b1e97f71642924e74c7757ca21756ad221b5`. Build tools verify the dependency
 revision and reject tracked edits; generated files stay outside the checkout.
 
-Current evidence: all 184 original project shader entries compiled using open
-DXC, including the seven complete original DXR libraries. The actual unmodified
-`ModelViewer.cpp` compiled to an x86-64 Mach-O object. The first complete project
-scan compiled 42/70 C++ translation units; remaining Windows/CRT header gaps are
-being implemented. Complete application linking and rendering are not established.
-A C++ virtual-call/WRL probe executes the real Rust `ID3DBlob` implementation,
-including canonical IUnknown identity, QueryInterface failure outputs, copy/move/
-attach/detach lifetimes and concurrent reference ownership. Separate Rust tests
-cover allocation failure, null outputs and the local zero-length contract.
-Native Windows edge-case return codes have not been measured for this new export.
+Current evidence: all **70 original C++ translation units** and **184 original
+project shader entries** compile, including the seven complete DXR libraries.
+The complete original application links as an x86-64 Mach-O executable against
+Rust's `libalkyhol.a`. Original Core/Model libraries use ordinary static archive
+extraction, as in the upstream project. No sample source edits, removed project
+units, placeholder shader bytecode or unresolved-symbol linker exceptions are used.
+
+This establishes compilation and linking, **not original application rendering**.
+D3D12/DXGI device creation, window/input services and root-signature serialization
+remain explicit unavailable exports. The small host entry bridge checks device
+creation first and exits 78 with its failing HRESULT; upstream Release assertions
+otherwise discard failures and would dereference missing interfaces. It does not
+launch the Rust reference port or claim an original frame. See
+[runtime status](runtime-status.md) for the current boundary.
+
+C++ virtual-call/WRL probes execute the real Rust ID3DBlob implementation,
+including canonical IUnknown identity, failed QueryInterface output clearing,
+copy/move/attach/detach lifetimes and concurrent references. Additional executed
+probes cover apartment nesting, header/task contracts, actual file I/O/metadata,
+UTF-32 text bridges, wide CRT conventions, compiler extensions and failure outputs.
+Native Windows comparison is now configured for the shared COM/DirectInput probes;
+its results must be recorded separately after execution.
 
 ```sh
 python3 tools/fetch_cpp_deps.py
 python3 tools/build_cpp_clang.py
 python3 tools/build_original_miniengine.py --shaders-only
 python3 tools/build_original_miniengine.py --cpp-only
+python3 tools/build_original_miniengine.py --link-only
+python3 tools/run_cpp_probes.py --compiler-tests --output local/cpp-observation.json
 ```
 
 The compiler bootstrap currently requires installed open LLVM **21.1.6**, including
-its development headers/static libraries. It rebuilds only three Sema components,
-the stock driver and required builtin objects, then links static Clang with LLVM.
-The checked-in patches supply bounded MSVC record-temporary reinterpretation and
-non-const record-reference binding. The ordinary Clang modes retain their standard
-rejection paths. Temporary storage/lifetime and base adjustments use Clang's own
-AST lowering. This is a compiler compatibility extension, not an edit or source
-rewrite of the sample. A local executable tests copied bits and destruction.
+its development headers/static libraries. It rebuilds four Sema components and
+one parser component, the stock driver and required builtin objects, then links
+static Clang with LLVM. The checked-in patches supply bounded MSVC record-temporary
+reinterpretation, non-const record-reference binding, legacy `typedef public` and
+header explicit-instantiation declarations whose body is provided by another TU.
+The compiler does not synthesize a missing template body: a negative link fixture
+requires the provider. Ordinary Clang modes retain rejection diagnostics.
+Temporary storage/lifetime and base adjustments use Clang's AST lowering. Tests
+execute copied bits, destruction and non-primary-base adjustment. These are
+compiler compatibility extensions, not edits or rewrites of sample code.
+`EngineTuning.cpp` additionally receives a forced header after its original PCH to
+select its existing modern-CRT branch, avoiding pre-VS2013 math replacements.
 
 Initial application objects target x86-64 and use Rosetta on this ARM Mac to retain
 upstream SSE behavior. Rust's `x86_64-apple-darwin` standard library is required
@@ -39,7 +58,7 @@ loading. Native `wchar_t` remains 32 bits as in Microsoft's Linux header adapter
 Win32 wide-path bridges must perform explicit conversion to the core UTF-16 APIs.
 Do not force short wchar onto the macOS C++ standard library.
 
-`cpp-build.json`, `shader-build.json`, compiler commands, hashes, objects and
+`cpp-build.json`, `shader-build.json`, `link-build.json`, compiler commands, hashes, objects and
 per-unit diagnostics live under ignored `local/original-miniengine/`. A failed
 unit makes the overall build fail. A declaration or a successful object compile
 is not an implemented API or a working application. Unsupported runtime behavior

@@ -220,3 +220,88 @@ mod tests {
         }
     }
 }
+
+#[derive(Clone, Copy)]
+struct Apartment {
+    model: i32,
+    depth: u32,
+}
+thread_local! { static APARTMENT: std::cell::RefCell<Option<Apartment>> = const { std::cell::RefCell::new(None) }; }
+/// Track the current thread's supported COM concurrency model and nesting.
+/// Object activation, proxy/stub marshaling and WinRT classes are separate APIs.
+#[unsafe(no_mangle)]
+pub extern "C" fn RoInitialize(model: i32) -> i32 {
+    if model != 0 && model != 1 {
+        return 0x80070057u32 as i32;
+    }
+    APARTMENT.with(|slot| {
+        let mut state = slot.borrow_mut();
+        match *state {
+            None => {
+                *state = Some(Apartment { model, depth: 1 });
+                S_OK
+            }
+            Some(current) if current.model != model => 0x80010106u32 as i32,
+            Some(current) => match current.depth.checked_add(1) {
+                Some(depth) => {
+                    *state = Some(Apartment { model, depth });
+                    1
+                }
+                None => E_OUTOFMEMORY,
+            },
+        }
+    })
+}
+/// Release one successful RoInitialize on the current thread.
+#[unsafe(no_mangle)]
+pub extern "C" fn RoUninitialize() {
+    APARTMENT.with(|slot| {
+        let mut state = slot.borrow_mut();
+        if let Some(current) = *state {
+            *state = if current.depth == 1 {
+                None
+            } else {
+                Some(Apartment {
+                    model: current.model,
+                    depth: current.depth - 1,
+                })
+            };
+        }
+    });
+}
+#[cfg(test)]
+mod apartment_tests {
+    use super::*;
+    #[test]
+    fn apartment_modes_nesting_and_failed_changes_preserve_the_original_mode() {
+        std::thread::spawn(|| {
+            assert_eq!(RoInitialize(7), 0x80070057u32 as i32);
+            assert_eq!(RoInitialize(0), S_OK);
+            assert_eq!(RoInitialize(0), 1);
+            assert_eq!(RoInitialize(1), 0x80010106u32 as i32);
+            RoUninitialize();
+            assert_eq!(RoInitialize(1), 0x80010106u32 as i32);
+            RoUninitialize();
+            assert_eq!(RoInitialize(1), S_OK);
+            RoUninitialize();
+        })
+        .join()
+        .unwrap();
+    }
+    #[test]
+    fn concurrency_models_are_thread_local() {
+        std::thread::spawn(|| {
+            assert_eq!(RoInitialize(1), S_OK);
+            std::thread::spawn(|| {
+                assert_eq!(RoInitialize(0), S_OK);
+                RoUninitialize();
+            })
+            .join()
+            .unwrap();
+            assert_eq!(RoInitialize(0), 0x80010106u32 as i32);
+            RoUninitialize();
+        })
+        .join()
+        .unwrap();
+    }
+}

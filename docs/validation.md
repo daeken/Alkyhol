@@ -4,27 +4,49 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
-## Original C++ intake and Rust COM foundation: work in progress
+## Complete original MiniEngine C++ compile/link: local source ABI evidence
 
-The user selected the complete unmodified MiniEngine Sponza C++ application as
-its next target. The original checkout remains clean at its pinned revision.
-Open DXC compiled all 184 project shader entries; the unmodified ModelViewer.cpp
-compiled to an x86-64 Mach-O object using explicit compiler compatibility for
-MSVC temporary casts/references. A full source scan compiled 42 of 70 original
-C++ translation units. Remaining Windows/CRT header gaps are not counted as a
-complete build; full linking and runtime rendering have not been established.
+On the physical M4 macOS host, the pinned original checkout remains clean at
+`68a2b1e97f71642924e74c7757ca21756ad221b5`. Open DXC compiles all 184 original
+project shader entries, including seven complete DXR libraries. The patched open
+Clang build compiles **70/70 original C++ translation units** without rewriting
+upstream source. Original Core and Model archives plus ModelViewer link against
+Rust's x86-64 static library as a complete Mach-O application. Source, compiler,
+header, object, shader-header and executable hashes/commands are recorded under
+ignored `local/original-miniengine/`. Link validation rejects stale headers or
+changed source/objects rather than claiming a mixed build.
 
-An actual x86-64 C++/WRL program linked to the Rust static library and passed
-ID3DBlob/IUnknown identity, buffer, copy/move/attach/detach and threaded reference
-ownership assertions. Three new Rust COM unit tests and the full root suite pass;
-44 Python tests, root Clippy, header-layout/task fixtures and compiler temporary
-lifetime fixtures also pass locally. New native Windows COM comparison remains
-unmeasured. See [original C++ build](../cpp/README.md) for precise commands,
-compiler patches, source/header provenance and the current partial build report.
+The executable's host entry bridge detects unavailable D3D12 COM device creation
+and returns 78 with HRESULT `80004001`. It intentionally does not enter upstream
+Release code with null interfaces: original rendering and even successful original
+application initialization are **not established**. No original C++ sample frame,
+full DXR library translation, window/input backend or device COM implementation
+is inferred from compilation. Working Rust reference sample apps are preserved.
 
-The preceding binding hardening `3bd9508` passed all twelve existing CI jobs in
-[42348669221](https://github.com/daeken/Alkyhol/actions/runs/42348669221).
-This predates the C++/COM work and does not validate it by implication.
+Local C++ executables pass actual Rust IUnknown/ID3DBlob virtual calls, WRL
+ownership, concurrent references, apartment nesting, all 267 DirectInput metadata
+records, layout/task fixtures, CRT wide paths/secure fields/alignment/wide format
+strings, UTF-32 text conversions and real kernel file metadata/read/close. The
+runtime ABI fixture separately checks explicit unsupported APIs clear output
+interfaces and fail; those checks are not positive API implementation evidence.
+Three compiler executables cover record storage/destruction, reference/base
+adjustment and actual cross-TU template linkage. Standard-mode diagnostics remain;
+omitting the real template provider fails to link. Root Rust tests/Clippy and all
+44 Python tests pass locally. These new CPU probes use x86-64 via Rosetta, not a
+Metal graphics execution path.
+
+The existing CI now also runs the same COM/DirectInput probe sources against
+independent native Windows SDK libraries and compares their outputs/descriptor
+bytes with Rust. Native results for that addition remain pending. Prior intake
+`0c72f0a` passed all twelve earlier jobs in
+[42351798268](https://github.com/daeken/Alkyhol/actions/runs/42351798268); this predates
+the complete build and cannot validate it by implication. The preceding shader
+GetDimensions milestone `b1dcd0b` also passed all twelve jobs in
+[42349370073](https://github.com/daeken/Alkyhol/actions/runs/42349370073).
+
+See [original C++ build](../cpp/README.md) and its
+[runtime status](../cpp/runtime-status.md) for compiler/header provenance, exact
+commands and explicitly unavailable runtime entry points.
 
 ## Shader binding validation hardening: local host evidence
 

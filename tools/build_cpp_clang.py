@@ -27,10 +27,13 @@ def build(prefix=Path('/opt/homebrew/opt/llvm'),jobs=3):
     if record.exists() and executable.exists():
         old=json.loads(record.read_text())
         if old['inputs']==inputs and old['executable_sha256']==hashlib.sha256(executable.read_bytes()).hexdigest():return executable
-    for name in ['SemaCast.cpp','SemaInit.cpp','SemaOverload.cpp']:
-        (out/name).write_bytes(subprocess.check_output(['git','-C',str(source),'show','HEAD:clang/lib/Sema/'+name]))
+    components={'Sema':['SemaCast.cpp','SemaInit.cpp','SemaOverload.cpp','SemaTemplateInstantiateDecl.cpp'],
+                'Parse':['ParseDecl.cpp']}
+    for directory,names in components.items():
+        for name in names:
+            (out/name).write_bytes(subprocess.check_output(['git','-C',str(source),'show',f'HEAD:clang/lib/{directory}/{name}']))
     for patch in patches:subprocess.run(['patch','--batch','-p4','-i',str(patch)],cwd=out,check=True)
-    work=[(out/name,out/(name+'.o')) for name in ['SemaCast.cpp','SemaInit.cpp','SemaOverload.cpp']]
+    work=[(out/name,out/(name+'.o')) for names in components.values() for name in names]
     work += [(p,out/('Builtin-'+p.name+'.o')) for p in sorted((source/'clang/lib/CodeGen/TargetBuiltins').glob('*.cpp'))]
     work += [(source/'clang/tools/driver'/name,out/(name+'.o')) for name in ['driver.cpp','cc1_main.cpp','cc1as_main.cpp','cc1gen_reproducer_main.cpp']]
     work += [(ROOT/'cpp/bridge/clang_main.cpp',out/'main.cpp.o')]
@@ -42,11 +45,17 @@ def build(prefix=Path('/opt/homebrew/opt/llvm'),jobs=3):
         obj.with_suffix('.log').write_text(result.stdout+result.stderr)
         if result.returncode:raise RuntimeError(f'Clang component failed: {src}\n{result.stderr}')
     with ThreadPoolExecutor(max_workers=jobs) as pool:list(pool.map(compile,work))
-    archive=out/'libclangSema.a';shutil.copy2(prefix/'lib/libclangSema.a',archive)
-    sema_objects=[out/(name+'.o') for name in ['SemaCast.cpp','SemaInit.cpp','SemaOverload.cpp']]
-    subprocess.run([str(prefix/'bin/llvm-ar'),'r',str(archive),*map(str,sema_objects)],check=True)
-    libraries=[str(archive) if p.name=='libclangSema.a' else str(p) for p in sorted((prefix/'lib').glob('libclang*.a'))]
-    objects=[str(obj) for _,obj in work if obj not in sema_objects]
+    replacements={}
+    component_objects=[]
+    for directory,names in components.items():
+        name=f'libclang{directory}.a';archive=out/name
+        shutil.copy2(prefix/'lib'/name,archive)
+        objects=[out/(name+'.o') for name in names]
+        component_objects+=objects
+        subprocess.run([str(prefix/'bin/llvm-ar'),'r',str(archive),*map(str,objects)],check=True)
+        replacements[name]=archive
+    libraries=[str(replacements.get(p.name,p)) for p in sorted((prefix/'lib').glob('libclang*.a'))]
+    objects=[str(obj) for _,obj in work if obj not in component_objects]
     subprocess.run([str(prefix/'bin/clang++'),*objects,*libraries,'-L'+str(prefix/'lib'),'-lLLVM',
                     '-Wl,-rpath,'+str(prefix/'lib'),'-o',str(executable)],check=True)
     for relative,target in [('lib/libLTO.dylib',prefix/'lib/libLTO.dylib'),('lib/clang',prefix/'lib/clang'),('include/c++/v1',prefix/'include/c++/v1')]:

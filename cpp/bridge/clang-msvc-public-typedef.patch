@@ -1,0 +1,16 @@
+--- a/clang/lib/Parse/ParseDecl.cpp
++++ b/clang/lib/Parse/ParseDecl.cpp
+@@ -3375,6 +3375,13 @@
+   // We use Sema's policy to get bool macros right.
+   PrintingPolicy Policy = Actions.getPrintingPolicy();
+   while (true) {
++    // Alkyhol: accept the legacy native-MSVC public typedef adornment used
++    // by MiniEngine's DDS loader. It does not change native alias identity.
++    if (getLangOpts().MicrosoftExt && Tok.is(tok::kw_public) &&
++        DS.getStorageClassSpec() == DeclSpec::SCS_typedef) {
++      ConsumeToken();
++      continue;
++    }
+     bool isInvalid = false;
+     bool isStorageClass = false;
+     const char *PrevSpec = nullptr;

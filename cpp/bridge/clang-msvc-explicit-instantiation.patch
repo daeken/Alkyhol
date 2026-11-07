@@ -1,0 +1,20 @@
+--- a/clang/lib/Sema/SemaTemplateInstantiateDecl.cpp
++++ b/clang/lib/Sema/SemaTemplateInstantiateDecl.cpp
+@@ -5485,6 +5485,17 @@
+     PatternDecl = PatternDef;
+     if (PatternDef->willHaveBody())
+       PatternDef = nullptr;
++  }
++
++  // Alkyhol: native MSVC accepts an explicit instantiation in a header
++  // without a body in this TU. A TU which sees the real body still instantiates
++  // it normally; other TUs only reference that definition. Never synthesize code.
++  if (getLangOpts().MicrosoftExt && AtEndOfTU && !PatternDef &&
++      TSK == TSK_ExplicitInstantiationDefinition) {
++    Function->setTemplateSpecializationKind(TSK_ExplicitInstantiationDeclaration,
++                                            PointOfInstantiation);
++    Function->setInstantiationIsPending(false);
++    return;
+   }
+ 
+   // True is the template definition is unreachable, otherwise false.

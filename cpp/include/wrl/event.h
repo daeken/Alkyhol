@@ -11,3 +11,15 @@ public:
     HANDLE Get()const{return value;}
 };
 }}}
+#include "roapi.h"
+namespace Microsoft { namespace WRL { namespace Wrappers {
+class RoInitializeWrapper {
+    HRESULT result;
+public:
+    explicit RoInitializeWrapper(RO_INIT_TYPE type):result(RoInitialize(type)){}
+    ~RoInitializeWrapper(){if(SUCCEEDED(result))RoUninitialize();}
+    operator HRESULT()const{return result;}
+    RoInitializeWrapper(const RoInitializeWrapper&)=delete;
+    RoInitializeWrapper& operator=(const RoInitializeWrapper&)=delete;
+};
+}}}

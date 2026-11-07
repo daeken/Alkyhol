@@ -7,3 +7,8 @@
 #define _Outptr_result_buffer_(x)
 #define _Analysis_noreturn_
 #define _Post_equal_to_(x)
+#define _Inout_updates_bytes_all_(...)
+#define _Inout_updates_bytes_all_opt_(...)
+#define _Inout_updates_to_(...)
+#define _Out_writes_to_opt_(...)
+#define _Out_writes_bytes_all_opt_(...)

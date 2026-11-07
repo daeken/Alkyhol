@@ -271,11 +271,14 @@ impl Kernel {
         Ok(file.file.lock().unwrap().write(bytes)?)
     }
     pub fn file_size(&self, handle: Handle) -> WinResult<u64> {
+        Ok(self.file_metadata(handle)?.len())
+    }
+    pub(crate) fn file_metadata(&self, handle: Handle) -> WinResult<std::fs::Metadata> {
         let object = self.object(handle)?;
         let Object::File(file) = &*object else {
             return Err(WinError(ERROR_INVALID_HANDLE));
         };
-        Ok(file.file.lock().unwrap().metadata()?.len())
+        Ok(file.file.lock().unwrap().metadata()?)
     }
     pub fn seek(&self, handle: Handle, distance: i64, method: u32) -> WinResult<u64> {
         let object = self.object(handle)?;

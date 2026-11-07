@@ -24,6 +24,17 @@ jobs:
       - run: python -m unittest discover -s tests -v
       - uses: ilammy/msvc-dev-cmd@v1
         if: runner.os == 'Windows'
+      - name: Install the C++ source ABI target on macOS
+        if: runner.os == 'macOS'
+        run: rustup target add x86_64-apple-darwin
+      - name: Execute C++ ABI probes against Rust or the independent Windows SDK
+        if: runner.os != 'Linux'
+        run: python tools/run_cpp_probes.py --output cpp-observation.json
+      - uses: actions/upload-artifact@v4
+        if: runner.os != 'Linux'
+        with:
+          name: cpp-${{ runner.os }}
+          path: cpp-observation.json
       - run: python tools/run_samples.py --output kernel-observation.json
       - uses: actions/upload-artifact@v4
         with:
@@ -50,6 +61,25 @@ jobs:
           baseline = next(r['samples'] for r in reports if r['backend'] == 'Windows SDK')
           assert all(r['samples'] == baseline for r in reports), reports
           print('Windows SDK, macOS and Linux sample observations agree')
+          PY
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: cpp-*
+          path: cpp-observations
+      - name: Compare COM probe results and all DirectInput descriptor bytes
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          reports=[json.loads(p.read_text()) for p in Path('cpp-observations').glob('*/cpp-observation.json')]
+          assert len(reports)==2
+          assert {r['backend'] for r in reports}=={'native Windows SDK','Rust native-host COM/Win32'}
+          assert all(r['schema_version']==1 and r['tracked_tree_clean'] is True for r in reports)
+          assert reports[0]['revision']==reports[1]['revision']
+          assert set(reports[0]['observations'])=={'com_blob','input_formats'}
+          assert reports[0]['observations']==reports[1]['observations']
+          assert {r['source']:r['source_sha256'] for r in reports[0]['executions'] if r['source'].endswith(('com_blob.cpp','input_formats.cpp'))}=={r['source']:r['source_sha256'] for r in reports[1]['executions']}
+          print('Native Windows SDK and Rust C++ COM probe outputs and all 267 DirectInput descriptors agree')
           PY
   shader:
     runs-on: macos-latest

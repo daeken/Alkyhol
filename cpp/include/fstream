@@ -1,0 +1,31 @@
+// Copyright (c) Alkyhol contributors. MIT licensed.
+#pragma once
+#include_next <fstream>
+#include "alkyhol_path.h"
+// Source-compatible Windows wide-path constructors on the native C++ library.
+namespace std {
+class alkyhol_ifstream:public basic_ifstream<char> {
+    using base=basic_ifstream<char>;
+public:
+    using base::base;
+    alkyhol_ifstream()=default;
+    explicit alkyhol_ifstream(const wstring& p,ios_base::openmode m=ios_base::in):base(alkyhol_path(p),m){}
+    explicit alkyhol_ifstream(const wchar_t* p,ios_base::openmode m=ios_base::in):base(alkyhol_path(p),m){}
+    using base::open;
+    void open(const wstring& p,ios_base::openmode m=ios_base::in){base::open(alkyhol_path(p),m);}
+    void open(const wchar_t* p,ios_base::openmode m=ios_base::in){base::open(alkyhol_path(p),m);}
+};
+class alkyhol_ofstream:public basic_ofstream<char> {
+    using base=basic_ofstream<char>;
+public:
+    using base::base;
+    alkyhol_ofstream()=default;
+    explicit alkyhol_ofstream(const wstring& p,ios_base::openmode m=ios_base::out):base(alkyhol_path(p),m){}
+    explicit alkyhol_ofstream(const wchar_t* p,ios_base::openmode m=ios_base::out):base(alkyhol_path(p),m){}
+    using base::open;
+    void open(const wstring& p,ios_base::openmode m=ios_base::out){base::open(alkyhol_path(p),m);}
+    void open(const wchar_t* p,ios_base::openmode m=ios_base::out){base::open(alkyhol_path(p),m);}
+};
+}
+#define ifstream alkyhol_ifstream
+#define ofstream alkyhol_ofstream

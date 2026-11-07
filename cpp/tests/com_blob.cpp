@@ -2,6 +2,7 @@
 #include <d3dcompiler.h>
 #include <wrl/client.h>
 #include <cassert>
+#include <cstdio>
 #include <cstring>
 #include <thread>
 #include <vector>
