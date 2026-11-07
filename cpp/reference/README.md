@@ -157,3 +157,30 @@ full canonical SHA-256, including its raw strides, is
 `f492c53e6077155086010c76cf09953aa8ee48561e3073093d6b08cc69efa9c0`.
 The GPU-handle presence/sentinel fields are still compared, not excluded to make
 the implementation pass. Heap flags remain the authority for binding permission.
+
+
+## Copied constant-buffer views
+
+`cbv-copies-windows-v1.json` is the full native WARP report from CI 42371948288
+on `b10a7df`, Windows SDK 10.0.26100.0. The same C++ source creates UPLOAD CBVs,
+simple copies, overwrites original slots, stages unequal ranges, and copies
+scattered unit ranges with NULL sizes. Native D3D12 consumes all four copied CBVs
+through real root-signature/compute-pipeline/Dispatch calls using a tiny HLSL
+consumer compiled with pinned open DXC. Its committed 4156-byte DXIL container
+has SHA-256 `cf2694b10805c93623f4e73c0f58a4ed2faaed78a48933fd5967a2965be49aa0`;
+CI regenerates that header exactly with the open compiler. This introduces no
+proprietary or gated shader compiler.
+
+All 72 readback words (16 data plus 8 guards in each of three cases) agree with
+hosted Metal and separate physical M4/API-validation execution on that revision.
+The complete observation's canonical SHA-256 is
+`309c6fedf53fb0e3bf1915edda937b7b35d32bbb5ff87c400ebdf6cc169aa769`.
+Future live pairs must also match this frozen payload. Reports preserve source,
+fixture/generator hashes, executable hash, compiler, SDK, host and diagnostics.
+The Metal consumer is an explicit diagnostic MSL reader of virtual descriptor
+records. These finite observations establish copied contents/guards, not general
+Alkyhol D3D12 binding/PSOs/Dispatch or identical-DXIL Metal translation. Resource
+release while descriptors remain live is tested only as a local ownership
+extension; the native probe retains resources. Original C++ rendering stays gated.
+This run's producer and descriptor comparison jobs passed; its overall run had an
+unrelated new test's Windows path-spelling failure, corrected in `d2208ed`.

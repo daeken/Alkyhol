@@ -352,8 +352,11 @@ capacity beyond 24 stays untouched. No normal command-list capability is implied
 The separate native observer consumes copied views through an actual D3D12 root
 signature/PSO/Dispatch with an open-DXC-compiled HLSL fixture. The different
 consumers compare descriptor contents; they are not identical shader translation.
-Native execution for this new workload is pending. Physical M4/API-validation
-execution passes. Registries use weak references; initialized records retain
+Native WARP, hosted Metal and physical M4/API-validation readbacks agree on all
+72 data/guard words in CI 42371948288 on `b10a7df`. The native report is frozen in
+`cpp/reference/cbv-copies-windows-v1.json`; future pairs must also match it. That
+run had a separate tooling test path-spelling failure, corrected in `d2208ed`;
+a fully passing fresh CI result is pending. Registries use weak references; initialized records retain
 native allocations after their COM resource shell dies (a tested local extension,
 not a native lifetime parity claim).
 

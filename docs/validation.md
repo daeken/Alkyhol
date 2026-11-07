@@ -25,8 +25,7 @@ guard words (72 total). No CPU substitute fills those readbacks. Native Windows
 CI uses that same C++ copy workload but consumes its views via a real D3D12 root
 signature/compute pipeline and a tiny HLSL shader compiled with pinned open DXC.
 The committed DXIL header must regenerate exactly with that open compiler; no
-gated converter or new proprietary shader compiler is used. Native/hosted
-execution of this new workload is pending. This is descriptor-content evidence,
+gated converter or new proprietary shader compiler is used. This is descriptor-content evidence,
 not identical-DXIL Metal translation, general Rust D3D12 root signatures/pipelines/
 Dispatch, original rendering or game compatibility.
 
@@ -40,6 +39,23 @@ Clippy/formatting, all 103 Python tests and exact open-DXC regeneration pass.
 The unchanged original queue/allocator/heap subsystem caller still passes; the
 complete original application relinks and still exits 78 before initialization
 at D3D12CreateDevice. Original sources, assets, shaders and Rust apps are unchanged.
+
+Native WARP, hosted Metal and physical M4 clean observations on `b10a7df`
+agree on all 72 words and complete observer/fixture/generator identities. The
+producer and descriptor comparison jobs passed in
+[42371948288](https://github.com/daeken/Alkyhol/actions/runs/42371948288).
+That overall run caught a Windows path-spelling assumption in the new generator
+protocol test; `d2208ed` corrects that test, without shader/runtime/observer changes.
+The full native report is frozen at `cpp/reference/cbv-copies-windows-v1.json`.
+Its canonical observation SHA-256 is
+`309c6fedf53fb0e3bf1915edda937b7b35d32bbb5ff87c400ebdf6cc169aa769`.
+The 4156-byte HLSL consumer's DXIL SHA-256 is
+`cf2694b10805c93623f4e73c0f58a4ed2faaed78a48933fd5967a2965be49aa0`.
+Future live pairs must also match the frozen native payload; every word remains
+an exact comparison field. The freeze adds source/fixture identity and joint-drift
+protocol tests, bringing the local Python suite to 105 passing tests. Both actual
+native/Metal pairs pass the strict frozen comparator locally. A full fresh CI
+result is still pending for this new reference.
 
 The preceding frozen allocation record passed all twenty CI jobs on `5ba4baa`
 in [42370649149](https://github.com/daeken/Alkyhol/actions/runs/42370649149).

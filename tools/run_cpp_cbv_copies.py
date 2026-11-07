@@ -7,9 +7,9 @@ import argparse
 import json
 from pathlib import Path
 if __package__:
-    from .run_cpp_device_buffers import run_probe
+    from .run_cpp_device_buffers import ROOT,run_probe
 else:
-    from run_cpp_device_buffers import run_probe
+    from run_cpp_device_buffers import ROOT,run_probe
 
 INPUTS=('cpp/tests/cbv_copies.cpp','cpp/tests/cbv_probe.hlsl',
         'cpp/tests/cbv_probe_dxil.h','tools/build_cpp_cbv_probe.py')
@@ -40,6 +40,9 @@ def compare_reports(reports,revision):
             raise ValueError('CBV observer or shader fixture differs: '+name)
     if reports[0]['observation']!=reports[1]['observation']:
         raise ValueError('native and Metal copied CBV data/guard words differ')
+    frozen=json.loads((ROOT/'cpp/reference/cbv-copies-windows-v1.json').read_text())
+    if reports[0]['observation']!=frozen['observation']:
+        raise ValueError('live copied CBV contents differ from frozen native contract')
 
 def run(output):
     return run_probe(output,'cbv_copies','CBV copies',validate_observation)

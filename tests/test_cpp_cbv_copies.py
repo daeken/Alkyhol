@@ -1,15 +1,16 @@
 """Synthetic report validation only; actual GPU execution is a separate CI step."""
 import copy
+import hashlib
 import json
 import unittest
 from unittest.mock import patch
-from tools.run_cpp_cbv_copies import INPUTS,compare_reports,validate_observation
+from tools.run_cpp_cbv_copies import ROOT,INPUTS,compare_reports,validate_observation
 from tools import build_cpp_cbv_probe
 
 class CbvReportTests(unittest.TestCase):
     def reports(self):
-        # Protocol data, deliberately not a purported native observation.
-        observation={'scenario':'cbv-copy-v1','cases':[[i for i in range(24)] for _ in range(3)],'snapshot_independent':True,'gpu_consumed':True}
+        # Measured payload in synthetic report envelopes; this does not run a GPU.
+        observation=json.loads((ROOT/'cpp/reference/cbv-copies-windows-v1.json').read_text())['observation']
         native={'schema_version':1,'backend':'native Windows SDK WARP CBV copies','source_revision':'current','tracked_tree_clean':True,'artifacts':{name:'bytes' for name in INPUTS},'observation':observation}
         host=copy.deepcopy(native);host['backend']='Rust restricted Metal COM CBV copies'
         return [native,host]
@@ -38,6 +39,19 @@ class CbvReportTests(unittest.TestCase):
             for word in range(24):
                 reports=self.reports();reports[1]['observation']['cases'][row][word]^=1
                 with self.assertRaises(ValueError):compare_reports(reports,'current')
+
+    def test_joint_backend_drift_cannot_replace_frozen_native_contents(self):
+        reports=self.reports()
+        for report in reports:report['observation']['cases'][0][0]^=1
+        with self.assertRaises(ValueError):compare_reports(reports,'current')
+    def test_frozen_native_execution_source_shader_and_complete_output_identity(self):
+        report=json.loads((ROOT/'cpp/reference/cbv-copies-windows-v1.json').read_text())
+        self.assertEqual(report['backend'],'native Windows SDK WARP CBV copies')
+        self.assertIs(report['tracked_tree_clean'],True)
+        self.assertEqual(report['source_revision'],'b10a7dfa5043dcf74248a9613b8c59342c2bb8a6')
+        for name in INPUTS:self.assertEqual(report['artifacts'][name],hashlib.sha256((ROOT/name).read_bytes()).hexdigest())
+        canonical=json.dumps(report['observation'],sort_keys=True,separators=(',',':')).encode()
+        self.assertEqual(hashlib.sha256(canonical).hexdigest(),'309c6fedf53fb0e3bf1915edda937b7b35d32bbb5ff87c400ebdf6cc169aa769')
 
 class CbvShaderFixtureTests(unittest.TestCase):
     def test_regeneration_uses_open_dxc_and_checks_exact_generated_bytes(self):
