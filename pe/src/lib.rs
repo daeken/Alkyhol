@@ -3,7 +3,11 @@
 mod command_line;
 pub use command_line::windows_command_line;
 mod image;
-pub use image::{Export, ExportTable, ExportTarget, Image, Import, ImportSymbol, Section};
+mod unwind_info;
+pub use image::{
+    Export, ExportTable, ExportTarget, Image, Import, ImportSymbol, RuntimeFunction,
+    RuntimeFunctionTable, Section,
+};
 
 #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
 mod abi;
@@ -26,7 +30,7 @@ pub use process::ProcessContext;
 #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
 mod runtime;
 #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
-pub use runtime::{LinkedImage, LinkedLibrary, LoadedImage, LoadedLibrary};
+pub use runtime::{LinkedImage, LinkedLibrary, LoadedImage, LoadedLibrary, RegisteredImage};
 #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
 mod library_set;
 #[cfg(all(target_os = "macos", target_arch = "x86_64"))]

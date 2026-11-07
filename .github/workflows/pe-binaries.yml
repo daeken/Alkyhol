@@ -133,6 +133,20 @@ jobs:
         with:
           name: pe-virtual-unwind-alkyhol
           path: local/pe/virtual-unwind-alkyhol.json
+      - name: Observe assembler-generated static metadata and actual caller restoration
+        run: |
+          python tools/build_pe_static_functions.py
+          python tools/run_pe_static_functions.py --fixture local/pe/static-functions/static-functions.exe --output local/pe/static-functions-alkyhol.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe-static-functions-fixture
+          path: |
+            local/pe/static-functions/static-functions.exe
+            local/pe/static-functions/static-functions-fixture.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe-static-functions-alkyhol
+          path: local/pe/static-functions-alkyhol.json
       - name: Restore saved integer/vector slots in real small and far-offset Win64 frames
         run: |
           python tools/build_pe_unwind_saves.py
@@ -410,6 +424,16 @@ jobs:
           path: local/pe/virtual-unwind-windows.json
       - uses: actions/download-artifact@v4
         with:
+          name: pe-static-functions-fixture
+          path: local/pe/static-functions
+      - name: Observe native module static lookup deletion rejection and caller restoration
+        run: python tools/run_pe_static_functions.py --fixture local/pe/static-functions/static-functions.exe --output local/pe/static-functions-windows.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe-static-functions-windows
+          path: local/pe/static-functions-windows.json
+      - uses: actions/download-artifact@v4
+        with:
           name: pe-unwind-saves-fixture
           path: local/pe/unwind-saves
       - name: Assert native SDK integer/vector context slot layouts with MSVC
@@ -662,3 +686,12 @@ jobs:
           name: pe-text-conversion-windows
           path: local/pe/observations
       - run: python tools/compare_pe_text_conversion.py local/pe/observations/text-conversion-windows.json local/pe/observations/text-conversion-alkyhol.json
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe-static-functions-alkyhol
+          path: local/pe/observations
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe-static-functions-windows
+          path: local/pe/observations
+      - run: python tools/compare_pe_static_functions.py local/pe/observations/static-functions-windows.json local/pe/observations/static-functions-alkyhol.json

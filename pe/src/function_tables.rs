@@ -4,15 +4,10 @@
 use alkyhol::ffi;
 use std::{ffi::c_void, ptr};
 
-#[repr(C)]
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct RuntimeFunction {
-    pub begin: u32,
-    pub end: u32,
-    pub unwind: u32,
-}
+pub(crate) use crate::RuntimeFunction;
 struct Table {
     original: usize,
+    image_owned: bool,
     base: u64,
     first: u64,
     last: u64,
@@ -32,9 +27,30 @@ fn unsupported(reason: &str) -> ! {
     std::process::exit(78)
 }
 impl Registry {
+    #[cfg(test)]
+    pub(crate) fn entry_count_for_test(&self) -> usize {
+        self.entries
+    }
     // Caller owns immutable readable records and their code/unwind storage
     // until deletion. The returned pointers identify the ORIGINAL records.
     unsafe fn add(&mut self, original: *const RuntimeFunction, count: u32, base: u64) -> u8 {
+        unsafe { self.add_kind(original, count, base, false) }
+    }
+    pub(crate) unsafe fn add_static(
+        &mut self,
+        original: *const RuntimeFunction,
+        count: u32,
+        base: u64,
+    ) -> u8 {
+        unsafe { self.add_kind(original, count, base, true) }
+    }
+    unsafe fn add_kind(
+        &mut self,
+        original: *const RuntimeFunction,
+        count: u32,
+        base: u64,
+        image_owned: bool,
+    ) -> u8 {
         let count = count as usize;
         if count > 65536 || self.entries + count > 65536 || self.tables.len() == 64 {
             return fail(50);
@@ -78,6 +94,7 @@ impl Registry {
         self.entries += count;
         self.tables.push(Table {
             original: original as usize,
+            image_owned,
             base,
             first,
             last,
@@ -86,10 +103,16 @@ impl Registry {
         1
     }
     fn delete(&mut self, original: *const RuntimeFunction) -> u8 {
+        self.delete_kind(original, false)
+    }
+    pub(crate) fn delete_static(&mut self, original: *const RuntimeFunction) -> u8 {
+        self.delete_kind(original, true)
+    }
+    fn delete_kind(&mut self, original: *const RuntimeFunction, image_owned: bool) -> u8 {
         let Some(index) = self
             .tables
             .iter()
-            .position(|t| t.original == original as usize)
+            .position(|t| t.original == original as usize && t.image_owned == image_owned)
         else {
             return 0;
         };

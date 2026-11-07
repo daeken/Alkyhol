@@ -4,6 +4,34 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## Registered static PE function tables: initial physical evidence
+
+The owned unchanged PE SHA-256 is
+`70071d28d28a2d6167450e4fe7c8a8096adbb132ec6f1e82a6ab4cca16539e48`.
+LLVM SEH assembler/linker directives emit its actual `.pdata`/`.xdata`; the C
+client never imports/calls RtlAddFunctionTable. Physical M4/Rosetta development
+execution matches all 20 raw words in normal and forced-rebase runs. It resolves
+original static record/base/ranges, observes rejected guest deletion and retained
+lookup, then manually restores a real active RBX/R12/small-allocation frame and
+checks preserved seeded context bytes. Actual execution returns normally; no
+Windows exception is raised or dispatched. Native Windows execution using its OS
+module tables is newly defined and pending.
+
+RegisteredImage borrows ProcessContext and unregisters before unmapping. The
+launcher now selects this EXE path; ordinary LoadedImage/DLL/library startup
+contracts still reject static metadata. Pure inspection/preflight APIs validate
+read-only table/recipe extents, RX ranges, supported v1 body recipes and loader-
+write disjointness. Guest deletion cannot remove static entries. Capacity failure
+rolls back without consuming other registry entries. Existing TLS/CFG/handler/
+frame/prologue/epilogue/dispatch restrictions remain; this is not full SEH support.
+
+All 86 PE host tests/nine lifetime compiler checks, 25 portable tests, Clippy and
+233 Python tests pass. Additional host checks cover unsupported startup shapes,
+code/metadata boundaries, mutable data, IAT/relocation aliasing, exact original
+record identity, delete/drop/capacity behavior and scope lifetime. The unchanged
+released peports corpus and old manual-unwind PE still pass on the new launcher.
+See [static function tables](static-functions.md) for exact APIs and constraints.
+
 ## Direct UTF conversion boundaries: native Windows and physical M4
 
 All 27 CI jobs pass at strict-reference revision `c008de5`: three

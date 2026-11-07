@@ -5,6 +5,21 @@ const PAGE: usize = 4096;
 // Bounded virtual address extent; sparse BSS is demand-zero, not a Vec allocation.
 const MAX_IMAGE: usize = 1024 * 1024 * 1024;
 
+/// Direct AMD64 runtime-function record. All three DWORDs are image-relative.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RuntimeFunction {
+    pub begin: u32,
+    pub end: u32,
+    pub unwind: u32,
+}
+/// Validated static table; `rva` identifies the original image records.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RuntimeFunctionTable {
+    pub rva: usize,
+    pub entries: Vec<RuntimeFunction>,
+}
+
 #[derive(Clone, Debug)]
 pub struct Section {
     pub rva: usize,
@@ -491,6 +506,95 @@ impl<'a> Image<'a> {
             entries,
         }))
     }
+    /// Inspect a bounded static AMD64 table and supported v1 body recipes.
+    /// Records/code/unwind slots must be backed by readonly/executable image data.
+    /// This does not map/register code or enable exception dispatch.
+    pub fn runtime_functions(&self) -> Result<Option<RuntimeFunctionTable>> {
+        let (rva, length) = self.directories[3];
+        if length == 0 {
+            return Ok(None);
+        }
+        if !rva.is_multiple_of(4) || !length.is_multiple_of(12) || length / 12 > 65536 {
+            return Err("invalid static runtime-function table shape".into());
+        }
+        // Loader fixups must not mutate the metadata after this preflight.
+        let mut writes: Vec<usize> = self
+            .imports()?
+            .into_iter()
+            .map(|i| i.iat)
+            .chain(self.relocations()?)
+            .collect();
+        writes.sort_unstable();
+        let readonly = |address: usize, length: usize| -> Result<()> {
+            let end = address
+                .checked_add(length)
+                .ok_or("static metadata extent overflow")?;
+            let first = writes.partition_point(|&w| w + 8 <= address);
+            if writes.get(first).is_some_and(|&w| w < end) {
+                return Err("loader fixup overlaps static function metadata".into());
+            }
+            if !self.sections.iter().any(|s| {
+                address >= s.rva && end <= s.rva + s.raw_size && s.rights & 0xe0000000 == 0x40000000
+            }) {
+                return Err(
+                    "static metadata must be initialized readonly non-executable data".into(),
+                );
+            }
+            Ok(())
+        };
+        readonly(rva, length)?;
+        let bytes = self.file_range(rva, length)?;
+        let mut entries = Vec::with_capacity(length / 12);
+        let mut previous = 0;
+        for row in bytes.as_chunks::<12>().0 {
+            let e = RuntimeFunction {
+                begin: u32_at(row, 0)?,
+                end: u32_at(row, 4)?,
+                unwind: u32_at(row, 8)?,
+            };
+            if e.begin >= e.end || e.begin < previous || e.unwind == 0 || e.unwind & 3 != 0 {
+                return Err("invalid sorted/direct static function record".into());
+            }
+            let begin = e.begin as usize;
+            let end = e.end as usize;
+            if !self.sections.iter().any(|s| {
+                begin >= s.rva && end <= s.rva + s.raw_size && s.rights & 0x60000000 == 0x60000000
+            }) {
+                return Err("static function range is not initialized RX code".into());
+            }
+            readonly(e.unwind as usize, 4)?;
+            let header: [u8; 4] = self.file_range(e.unwind as usize, 4)?.try_into().unwrap();
+            let slots = usize::from(header[2]) * 2;
+            let padded = (slots + 3) & !3;
+            readonly(e.unwind as usize, 4 + padded)?;
+            if u32::from(header[1]) > e.end - e.begin {
+                return Err("static prologue exceeds function".into());
+            }
+            crate::unwind_info::decode(
+                header,
+                self.file_range(e.unwind as usize + 4, slots)?,
+                u64::from(header[1]),
+                true,
+            )
+            .map_err(|e| format!("unsupported static unwind recipe: {e}"))?;
+            previous = e.end;
+            entries.push(e);
+        }
+        Ok(Some(RuntimeFunctionTable { rva, entries }))
+    }
+    /// Preflight an EXE for the context-borrowing RegisteredImage API.
+    /// Only validated static body recipes are added; TLS/CFG/handlers still fail.
+    pub fn check_registered_startup(&self) -> Result<()> {
+        if self.is_dll {
+            return Err("registered EXE API does not initialize DLLs".into());
+        }
+        if self.directories[0].1 != 0 {
+            return Err("unsupported startup feature: exports".into());
+        }
+        self.check_auxiliary_startup_except_static()?;
+        self.runtime_functions()?;
+        Ok(())
+    }
     /// Startup gates are deliberately conservative; no silent TLS/CFG/unwind omission.
     pub fn check_startup(&self) -> Result<()> {
         if self.is_dll {
@@ -509,8 +613,15 @@ impl<'a> Image<'a> {
         self.check_auxiliary_startup()
     }
     fn check_auxiliary_startup(&self) -> Result<()> {
+        if self.directories[3].1 != 0 {
+            return Err(
+                "unsupported startup feature: exception/unwind (use registered EXE API)".into(),
+            );
+        }
+        self.check_auxiliary_startup_except_static()
+    }
+    fn check_auxiliary_startup_except_static(&self) -> Result<()> {
         for (i, name) in [
-            (3, "exception/unwind"),
             (7, "architecture"),
             (8, "global pointer"),
             (9, "static TLS/callbacks"),

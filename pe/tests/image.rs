@@ -294,3 +294,123 @@ fn sparse_bss_extent_accepts_one_gib_but_preserves_bounds_and_overflow_rejection
     put64(&mut bytes, OPT + 24, 0xffffffffc0000000);
     assert!(Image::parse(&bytes).is_err());
 }
+
+fn static_fixture() -> Vec<u8> {
+    let mut b = fixture();
+    put32(&mut b, TABLE + 40 + 36, 0x40000040);
+    directory(&mut b, 3, 0x2080, 12);
+    put32(&mut b, 0x480, 0x1000);
+    put32(&mut b, 0x484, 0x1006);
+    put32(&mut b, 0x488, 0x20c0);
+    b[0x4c0..0x4c4].copy_from_slice(&[1, 0, 0, 0]);
+    b
+}
+#[test]
+fn static_runtime_records_are_original_rvas_and_require_explicit_registered_preflight() {
+    assert!(
+        Image::parse(&fixture())
+            .unwrap()
+            .runtime_functions()
+            .unwrap()
+            .is_none()
+    );
+    let b = static_fixture();
+    let p = Image::parse(&b).unwrap();
+    let t = p.runtime_functions().unwrap().unwrap();
+    assert_eq!(t.rva, 0x2080);
+    assert_eq!(
+        t.entries,
+        vec![alkyhol_pe::RuntimeFunction {
+            begin: 0x1000,
+            end: 0x1006,
+            unwind: 0x20c0
+        }]
+    );
+    assert_eq!(std::mem::size_of::<alkyhol_pe::RuntimeFunction>(), 12);
+    assert_eq!(std::mem::align_of::<alkyhol_pe::RuntimeFunction>(), 4);
+    assert!(p.check_startup().is_err());
+    p.check_registered_startup().unwrap();
+    for dir in [7, 8, 9, 10, 11, 13, 14, 15] {
+        let mut bad = b.clone();
+        directory(&mut bad, dir, 0x2100, 4);
+        assert!(
+            Image::parse(&bad)
+                .unwrap()
+                .check_registered_startup()
+                .is_err()
+        );
+    }
+    let mut dll = b.clone();
+    put16(&mut dll, 0x96, 0x2022);
+    let p = Image::parse_dll(&dll).unwrap();
+    assert!(p.runtime_functions().unwrap().is_some());
+    assert!(p.check_registered_startup().is_err());
+}
+#[test]
+fn static_table_shapes_permissions_ranges_and_recipe_operands_are_checked() {
+    for (offset, value) in [
+        (OPT + 112 + 3 * 8, 0x2081),
+        (OPT + 116 + 3 * 8, 13),
+        (TABLE + 40 + 36, 0xc0000040),
+        (0x480, 0x1006),
+        (0x484, 0x2000),
+        (0x488, 0),
+        (0x488, 0x20c1),
+        (0x488, 0x2400),
+    ] {
+        let mut b = static_fixture();
+        put32(&mut b, offset, value);
+        match Image::parse(&b) {
+            Err(_) => (),
+            Ok(p) => assert!(p.runtime_functions().is_err(), "{offset:x} {value:x}"),
+        }
+    }
+    for header in [
+        [2, 0, 0, 0],
+        [9, 0, 0, 0],
+        [1, 0, 0, 5],
+        [1, 7, 0, 0],
+        [1, 1, 1, 0],
+    ] {
+        let mut b = static_fixture();
+        b[0x4c0..0x4c4].copy_from_slice(&header);
+        b[0x4c4..0x4c8].copy_from_slice(&[1, 3, 0, 0]);
+        assert!(
+            Image::parse(&b).unwrap().runtime_functions().is_err(),
+            "{header:?}"
+        );
+    }
+    let mut b = static_fixture();
+    put32(&mut b, 0x488, 0x23fc);
+    b[0x7fc..0x800].copy_from_slice(&[1, 1, 1, 0]);
+    assert!(Image::parse(&b).unwrap().runtime_functions().is_err());
+    let mut b = static_fixture();
+    directory(&mut b, 3, 0x2080, 24);
+    put32(&mut b, 0x48c, 0x1002);
+    put32(&mut b, 0x490, 0x1006);
+    put32(&mut b, 0x494, 0x20c0);
+    assert!(Image::parse(&b).unwrap().runtime_functions().is_err());
+}
+#[test]
+fn loader_relocations_and_import_writes_cannot_mutate_preflighted_static_metadata() {
+    let mut b = static_fixture();
+    directory(&mut b, 5, 0x2200, 12);
+    put32(&mut b, 0x600, 0x2000);
+    put32(&mut b, 0x604, 12);
+    put16(&mut b, 0x608, 0xa080);
+    assert!(Image::parse(&b).unwrap().runtime_functions().is_err());
+    put16(&mut b, 0x608, 0xa0c0);
+    assert!(Image::parse(&b).unwrap().runtime_functions().is_err());
+    put16(&mut b, 0x608, 0xa180);
+    Image::parse(&b).unwrap().runtime_functions().unwrap();
+    // A real valid import descriptor whose IAT aliases the static record.
+    let mut b = static_fixture();
+    directory(&mut b, 1, 0x2100, 40);
+    put32(&mut b, 0x500, 0x2160);
+    put32(&mut b, 0x50c, 0x2140);
+    put32(&mut b, 0x510, 0x2080);
+    b[0x540..0x54d].copy_from_slice(b"kernel32.dll\0");
+    put64(&mut b, 0x560, 0x21a0);
+    b[0x5a2..0x5af].copy_from_slice(b"GetLastError\0");
+    assert!(Image::parse(&b).unwrap().runtime_functions().is_err());
+}

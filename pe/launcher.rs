@@ -80,9 +80,9 @@ fn main() {
                 ))
             })
             .collect::<alkyhol_pe::Result<Vec<_>>>()?;
-        let _process = alkyhol_pe::ProcessContext::install(&guest_args, &environment)?;
+        let process_scope = alkyhol_pe::ProcessContext::install(&guest_args, &environment)?;
         let image = alkyhol_pe::Image::parse(bytes)?;
-        image.check_startup()?;
+        image.check_registered_startup()?;
         let imports = image.imports()?;
         let relocs = image.relocations()?;
         if info {
@@ -107,12 +107,19 @@ fn main() {
         }
         if args.iter().any(|a| a == "--inspect") {
             // load() also preflights exact import resolution before mapping.
-            let mapped =
-                alkyhol_pe::LoadedImage::load(bytes, args.iter().any(|a| a == "--rebase"))?;
+            let mapped = alkyhol_pe::RegisteredImage::load(
+                bytes,
+                args.iter().any(|a| a == "--rebase"),
+                &process_scope,
+            )?;
             eprintln!("checked mapping; relocated={}", mapped.relocated());
             return Ok(());
         }
-        let mapped = alkyhol_pe::LoadedImage::load(bytes, args.iter().any(|a| a == "--rebase"))?;
+        let mapped = alkyhol_pe::RegisteredImage::load(
+            bytes,
+            args.iter().any(|a| a == "--rebase"),
+            &process_scope,
+        )?;
         if info {
             eprintln!("entering Win64 code; relocated={}", mapped.relocated());
         }

@@ -225,6 +225,83 @@ impl Drop for LoadedImage {
     }
 }
 
+/// Executable whose validated static function records are registered until drop.
+/// The borrowed process guard must remain alive through registry cleanup/unmapping.
+/// Exception dispatch, prologue/epilogue unwinding and DLL static tables remain unsupported.
+///
+/// ```compile_fail,E0505
+/// # use alkyhol_pe::{ProcessContext,RegisteredImage};
+/// # fn example(bytes:&[u8])->alkyhol_pe::Result<()> {
+/// let process=ProcessContext::install(&["app.exe".into()],&[])?;
+/// let image=RegisteredImage::load(bytes,false,&process)?;
+/// drop(process);
+/// drop(image);
+/// # Ok(()) }
+/// ```
+pub struct RegisteredImage<'a> {
+    image: LoadedImage,
+    table: Option<*const crate::RuntimeFunction>,
+    _process: &'a crate::ProcessContext,
+}
+impl<'a> RegisteredImage<'a> {
+    /// Check/map an EXE and register its supported static table before entry.
+    /// Unknown recipes/startup features/imports fail before guest code executes.
+    pub fn load(bytes: &[u8], rebase: bool, process: &'a crate::ProcessContext) -> Result<Self> {
+        let parsed = Image::parse(bytes)?;
+        parsed.check_registered_startup()?;
+        let functions = parsed.runtime_functions()?;
+        let image = LoadedImage::map(&parsed, rebase, &resolve_builtin)?;
+        let table = if let Some(functions) = functions {
+            let records = unsafe {
+                image
+                    .base
+                    .add(functions.rva)
+                    .cast::<crate::RuntimeFunction>()
+            };
+            let added = crate::process::with_function_tables(|registry| {
+                registry.map(|r| unsafe {
+                    r.add_static(records, functions.entries.len() as u32, image.base as u64)
+                })
+            });
+            if added != Some(1) {
+                return Err("static function registration requires an active process scope and available table capacity".into());
+            }
+            Some(records as *const _)
+        } else {
+            None
+        };
+        Ok(Self {
+            image,
+            table,
+            _process: process,
+        })
+    }
+    /// Whether this checked mapping differs from the PE preferred base.
+    pub fn relocated(&self) -> bool {
+        self.image.relocated()
+    }
+    /// Enter the mapped executable.
+    ///
+    /// # Safety
+    /// Same trusted native-code restrictions as LoadedImage::enter. Static table
+    /// lookup/body restoration does not install Windows exception dispatch.
+    pub unsafe fn enter(&self) -> u32 {
+        unsafe { self.image.enter() }
+    }
+}
+impl Drop for RegisteredImage<'_> {
+    fn drop(&mut self) {
+        if let Some(table) = self.table.take() {
+            crate::process::with_function_tables(|registry| {
+                if let Some(r) = registry {
+                    r.delete_static(table);
+                }
+            });
+        }
+        // image field drops/unmaps only after its registry entry has been removed.
+    }
+}
+
 /// One executable linked to explicitly supplied, already attached DLL instances.
 /// Loading only checks/maps the EXE; it does not enter or initialize guest code.
 /// DLL ownership stays with the caller, with borrows retained through unmapping.
@@ -566,6 +643,99 @@ mod tests {
         b
     }
 
+    fn static_fixture() -> Vec<u8> {
+        let mut bytes = permission_fixture();
+        let opt = 0x98;
+        bytes[opt + 112 + 3 * 8..opt + 116 + 3 * 8].copy_from_slice(&0x2040u32.to_le_bytes());
+        bytes[opt + 116 + 3 * 8..opt + 120 + 3 * 8].copy_from_slice(&12u32.to_le_bytes());
+        for (at, value) in [(0x640, 0x1000u32), (0x644, 0x1006), (0x648, 0x2060)] {
+            bytes[at..at + 4].copy_from_slice(&value.to_le_bytes());
+        }
+        bytes[0x660..0x664].copy_from_slice(&[1, 0, 0, 0]);
+        bytes
+    }
+    #[test]
+    fn registered_exe_exposes_original_static_records_and_removes_them_before_unmapping() {
+        let process = crate::ProcessContext::install(&["static-unit".into()], &[]).unwrap();
+        let bytes = static_fixture();
+        assert!(LoadedImage::load(&bytes, true).is_err());
+        let image = RegisteredImage::load(&bytes, true, &process).unwrap();
+        assert!(image.relocated());
+        let base = image.image.base as u64;
+        let table = image.table.unwrap();
+        let lookup: unsafe extern "win64" fn(
+            u64,
+            *mut u64,
+            *mut c_void,
+        ) -> *const crate::RuntimeFunction = unsafe {
+            std::mem::transmute(abi::resolve("kernel32.dll", "RtlLookupFunctionEntry").unwrap())
+        };
+        let delete: unsafe extern "win64" fn(*const crate::RuntimeFunction) -> u8 = unsafe {
+            std::mem::transmute(abi::resolve("kernel32.dll", "RtlDeleteFunctionTable").unwrap())
+        };
+        let mut returned = 0;
+        assert_eq!(
+            unsafe { lookup(base + 0x1000, &mut returned, ptr::null_mut()) },
+            table
+        );
+        assert_eq!(returned, base);
+        assert_eq!(table as u64 - base, 0x2040);
+        assert_eq!(unsafe { (*table).unwind }, 0x2060);
+        assert_eq!(unsafe { delete(table) }, 0);
+        assert_eq!(
+            unsafe { lookup(base + 0x1005, &mut returned, ptr::null_mut()) },
+            table
+        );
+        assert!(unsafe { lookup(base + 0x1006, &mut returned, ptr::null_mut()) }.is_null());
+        assert_eq!(unsafe { image.enter() }, 42);
+        drop(image);
+        assert!(unsafe { lookup(base + 0x1000, &mut returned, ptr::null_mut()) }.is_null());
+        let ordinary = RegisteredImage::load(&permission_fixture(), true, &process).unwrap();
+        assert_eq!(unsafe { ordinary.enter() }, 42);
+    }
+    #[test]
+    fn static_registration_failure_preserves_dynamic_tables_and_releases_capacity_on_drop() {
+        let process = crate::ProcessContext::install(&["static-capacity".into()], &[]).unwrap();
+        let rows = vec![
+            crate::RuntimeFunction {
+                begin: 16,
+                end: 32,
+                unwind: 0x200
+            };
+            64
+        ];
+        let add: unsafe extern "win64" fn(*const crate::RuntimeFunction, u32, u64) -> u8 = unsafe {
+            std::mem::transmute(abi::resolve("kernel32.dll", "RtlAddFunctionTable").unwrap())
+        };
+        let delete: unsafe extern "win64" fn(*const crate::RuntimeFunction) -> u8 = unsafe {
+            std::mem::transmute(abi::resolve("kernel32.dll", "RtlDeleteFunctionTable").unwrap())
+        };
+        for i in 0..64 {
+            assert_eq!(
+                unsafe { add(rows.as_ptr().add(i), 1, 0x123400000000 + i as u64 * 0x10000) },
+                1
+            );
+        }
+        assert!(RegisteredImage::load(&static_fixture(), true, &process).is_err());
+        assert_eq!(
+            crate::process::with_function_tables(|r| r.map(|r| r.entry_count_for_test())),
+            Some(64)
+        );
+        assert_eq!(unsafe { delete(rows.as_ptr()) }, 1);
+        let image = RegisteredImage::load(&static_fixture(), true, &process).unwrap();
+        assert_eq!(
+            crate::process::with_function_tables(|r| r.map(|r| r.entry_count_for_test())),
+            Some(64)
+        );
+        drop(image);
+        assert_eq!(
+            crate::process::with_function_tables(|r| r.map(|r| r.entry_count_for_test())),
+            Some(63)
+        );
+        for i in 1..64 {
+            assert_eq!(unsafe { delete(rows.as_ptr().add(i)) }, 1);
+        }
+    }
     #[test]
     fn large_sparse_image_has_real_zeroed_writable_end_pages() {
         let mut bytes = permission_fixture();

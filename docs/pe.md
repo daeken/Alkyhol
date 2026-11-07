@@ -62,7 +62,7 @@ runtime currently requires 4K pages in the x86 process. Memory starts zero-fille
 including uninitialized section bytes; imports/fixups are applied before final
 permissions. Import slots cannot overlap relocation fixups.
 
-The ordinary executable and isolated DLL constructors resolve imports by exact
+The executable and isolated DLL constructors resolve imports by exact
 symbol from the explicit **kernel32.dll**, **shell32.dll**, **d3dcompiler_47.dll** and **d3d12.dll** whitelists,
 with case-insensitive DLL identity. The dependency APIs below also accept named/
 ordinal imports from caller-supplied DLL instances. `LinkedImage::load` extends
@@ -740,8 +740,9 @@ envelopes fail explicitly. Records and code/unwind storage must stay valid and
 immutable until deletion. Registration snapshots metadata; it does not interpret
 or validate unwind recipe bytes, register Mach-O stack frames, unwind registers
 or dispatch Windows exceptions. Manual RtlVirtualUnwind support is described below;
-RtlUnwindEx, callback/growable tables and static `.pdata` startup remain unavailable. Existing loader startup
-gates are preserved. Guest threads/reentrant callbacks remain unsupported.
+RtlUnwindEx and callback/growable tables remain unavailable. The registered EXE
+path now supports bounded static `.pdata`, as described below; ordinary/DLL loader
+gates remain preserved. Guest threads/reentrant callbacks remain unsupported.
 
 Lookup currently requires a nonnull image-base output and NULL history pointer.
 Unsupported lookup context/history/output forms terminate with an explicit status
@@ -797,8 +798,9 @@ precede register pops during restoration, and the complete stack frame is bounde
 to 512 MiB. Unknown operations, handlers, chaining, frame pointers, context-pointer
 outputs and other control points terminate with diagnostic/status 78. No missing
 operation returns a fake successful no-handler result. Explicit integer/vector
-slot-save support is described below. Static `.pdata`, RtlUnwindEx, SEH dispatch
-and actual stack resumption remain separate work.
+slot-save and registered static EXE metadata support are described below.
+Static DLL metadata, RtlUnwindEx, SEH dispatch and actual stack resumption remain
+separate work.
 
 The implementation reads only required fields, plans restorations before changing
 CONTEXT, restores saved GPRs/RSP/RIP, and writes the original body RSP as the
@@ -873,3 +875,15 @@ Strict-reference revision `9a4bc97` passes all 27 CI jobs. Downloaded clean nati
 hosted records and fresh clean physical M4 execution at that same revision agree
 on all 37 words and the frozen executed PE/source identity. See the executed
 [validation record](validation.md) for CI links, counts and precise coverage.
+
+
+## Registered static EXE metadata
+
+The launcher now uses `RegisteredImage::load(bytes, rebase, &process)`, which
+registers supported static `.pdata`/`.xdata` before entry and removes its records
+before unmapping. The type borrows ProcessContext through its lifetime. Pure
+`Image::runtime_functions` and `check_registered_startup` inspect/preflight the
+bounded v1 subset. Ordinary LoadedImage/DLL constructors keep their previous gate;
+static DLL lifecycle and exception dispatch remain separate. Details, the
+assembler-generated identical-PE observer and evidence scopes are in
+[static-functions.md](static-functions.md).

@@ -40,3 +40,4 @@ pe/fixtures/unwind-saves/* text eol=lf
 pe/fixtures/make2compdb/* text eol=lf
 pe/fixtures/peports/* text eol=lf
 pe/fixtures/text-conversion/* text eol=lf
+pe/fixtures/static-functions/* text eol=lf
