@@ -216,7 +216,11 @@ original-helper execution has not been compared against its native C++ instance.
 The root producers/comparison passed in that initial run. Its overall run caught
 an older host ABI test which expected serialization to stay unavailable. Updating
 that obsolete boundary adds success/blob/error checks; the independent Windows
-root observer is unchanged. Fresh full CI is pending. See
+root observer is unchanged. The strict-reference run 42373991380 on `28cf869`
+passed all twenty-two jobs, including the corrected host ABI gate and every prior
+SDK/shader/graphics/resource comparison. Fresh downloaded native/hosted reports
+match clean physical M4 execution and the frozen 980-byte payload at that same
+revision. The original subsystem v5 caller also passes cleanly there. See
 [contract/open source provenance](../root-signatures.md) for all subset limits,
 pinned DXC derivation and retained NCSA license. GPU binding/PSOs/Dispatch and
 original C++ application rendering remain unavailable.

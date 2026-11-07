@@ -32,8 +32,19 @@ serialization to be unsupported. The check now validates actual success/error
 blobs and version-1.1 rejection. All five host C++ ABI probes pass locally. No
 frozen Windows observer is changed. Strict live pairs must also match the frozen
 native bytes/COM payload; local checks of both actual pairs pass. The Python
-suite now has 110 passing tests. A fresh complete CI result remains pending.
-No GPU binding/PSO/Dispatch or original-frame parity is claimed.
+suite now has 110 passing tests.
+
+The strict-reference run [42373991380](https://github.com/daeken/Alkyhol/actions/runs/42373991380)
+passed all twenty-two jobs on `28cf869`: updated host ABI boundaries, native
+SDK/WARP and hosted Rust/Metal roots, exact frozen root bytes and all previous
+SDK/shader/graphics/resource/descriptor comparisons. Downloaded clean reports
+from this revision also match fresh physical M4/x86-64 execution on all 980 bytes
+and COM assertions. The verified original subsystem v5 caller passes cleanly at
+that same revision. Its four unchanged objects include the original root helper;
+this original-helper execution is local and has not itself been compared with a
+native C++ instance. The full original app remains compiled/linked and gated at
+production D3D12CreateDevice. No GPU root binding/PSO/Dispatch or original-frame
+parity is claimed.
 
 ## Constant-buffer descriptors and copies: physical Metal evidence
 

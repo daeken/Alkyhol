@@ -78,7 +78,12 @@ future live pairs must also match it. Its full canonical observation SHA-256 is
 The initial overall run caught an older host ABI check that still expected root
 serialization to be unavailable. That check now requires real success blobs,
 owned diagnostics and honest version-1.1 rejection; all five C++ ABI probes pass
-locally. The fresh strict-reference CI result remains pending. The extra frozen
+locally. The strict-reference run
+[42373991380](https://github.com/daeken/Alkyhol/actions/runs/42373991380) passed all
+twenty-two jobs on `28cf869`, retaining every previous SDK/shader/graphics and
+resource comparison. Downloaded clean reports also match fresh physical M4
+execution and the frozen payload on all 980 bytes and COM assertions. The original
+subsystem v5 caller passes cleanly at the same revision. The extra frozen
 source/byte/joint-drift checks bring the Python suite to 110 passing tests.
 
 The separate original-subsystem caller now links the unchanged original

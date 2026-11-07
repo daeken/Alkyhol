@@ -378,6 +378,9 @@ are validated and deep-copied; metadata/parent ownership remains real. See the
 [bounded contract and open provenance](../root-signatures.md). A shared C++ probe
 records all 980 bytes of six root layouts, matching native WARP, hosted Rust/Metal
 and physical M4 on clean `5473a58` (CI 42373677759). The full native report is
-frozen in `cpp/reference/root-signatures-windows-v1.json`; fresh full CI remains
-pending after correcting an old host-only unavailable-serialization check. GPU binding, pipeline creation, dispatch and production device creation
+frozen in `cpp/reference/root-signatures-windows-v1.json`. After correcting an old
+host-only unavailable-serialization check, the strict-reference run on `28cf869`
+passed all twenty-two jobs in [42373991380](https://github.com/daeken/Alkyhol/actions/runs/42373991380).
+Fresh downloaded native/hosted reports also match clean physical M4 execution and
+the frozen payload. The original subsystem caller passes at that same revision. GPU binding, pipeline creation, dispatch and production device creation
 remain unavailable. This adds CPU layout/COM support, not original rendering.
