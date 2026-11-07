@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "backend": "native Windows PE64 / d3dcompiler_47 COM",
+  "pe_sha256": "ec197196d90cc8987169cbb6308034bd1bda026f7d84165d07fb5b917ab386cd",
+  "executed_pe_sha256": "ec197196d90cc8987169cbb6308034bd1bda026f7d84165d07fb5b917ab386cd",
+  "sources": {
+    "pe/fixtures/binary-com/contract.c": "6acbe0489cd5be04bf326c8fb4ca48bf974d36c5d68ffc162b9faaf06272b72e",
+    "pe/fixtures/binary-com/kernel32.def": "7d9b7ad13c933758b34b6a83244bce339b80798794dd28b1e7972d75221145bf",
+    "pe/fixtures/binary-com/d3dcompiler.def": "fe7d6d7a3d20c8ce4fd37ccc64b92a80325bce4340a3937fe1cb7ad4ac985f6d"
+  },
+  "observation": {
+    "status": 0,
+    "words": [
+      1111707469,
+      0,
+      37,
+      850568607,
+      0,
+      0,
+      0,
+      1,
+      1,
+      37,
+      2147500034,
+      1,
+      5,
+      4,
+      3,
+      2,
+      1,
+      850568607,
+      0,
+      0,
+      16384,
+      2478659192,
+      0
+    ],
+    "stdout_hex": "4d4f434200000000250000009fa5b232000000000000000000000000010000000100000025000000024000800100000005000000040000000300000002000000010000009fa5b2320000000000000000004000007856bd9300000000"
+  },
+  "forced_rebase_observation": null,
+  "revision": "ab08287da2803ecdbe600a82c82d51d962d31a5e",
+  "tracked_tree_clean": true
+}

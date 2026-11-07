@@ -58,10 +58,9 @@ def main():
     for name,value in manifest['sources'].items():
         if hashlib.sha256((ROOT/name).read_bytes()).hexdigest()!=value:
             raise ValueError('binary COM source identity changed')
-    if REFERENCE.exists():
-        reference=json.loads(REFERENCE.read_text(encoding='utf-8'))
-        for field in ['pe_sha256','sources']:
-            if manifest[field]!=reference[field]: raise ValueError('changed frozen binary COM fixture')
+    reference=json.loads(REFERENCE.read_text(encoding='utf-8'))
+    for field in ['pe_sha256','sources']:
+        if manifest[field]!=reference[field]: raise ValueError('changed frozen binary COM fixture')
     windows=platform.system()=='Windows'
     if windows:
         executable=pe

@@ -5,12 +5,14 @@ from pathlib import Path
 import struct
 import subprocess
 import sys
+import tempfile
 import unittest
+from unittest import mock
 
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'tools'))
 from build_pe_binary_com import SOURCES
-from run_pe_binary_com import EXPECTED_WORDS,decode
+from run_pe_binary_com import REFERENCE,EXPECTED_WORDS,decode
 from compare_pe_binary_com import compare,NATIVE,HOST
 
 
@@ -69,6 +71,18 @@ class BinaryComProtocolTests(unittest.TestCase):
         reports=self.reports()
         for r in reports: r.update(pe_sha256='e'*64,executed_pe_sha256='e'*64)
         with self.assertRaises(ValueError): compare(reports,reference=self.reports()[0])
+
+
+    def test_default_native_reference_is_required_and_rejects_joint_identity_drift(self):
+        native=json.loads(REFERENCE.read_text(encoding='utf-8'))
+        host=copy.deepcopy(native)
+        host.update(backend=HOST,forced_rebase_observation=copy.deepcopy(host['observation']))
+        self.assertEqual(compare([native,host]),23)
+        with tempfile.TemporaryDirectory() as directory:
+            with mock.patch('compare_pe_binary_com.REFERENCE',Path(directory)/'missing.json'):
+                with self.assertRaises(FileNotFoundError): compare([native,host])
+        for r in [native,host]: r.update(pe_sha256='e'*64,executed_pe_sha256='e'*64)
+        with self.assertRaises(ValueError): compare([native,host])
 
 
 if __name__=='__main__': unittest.main()

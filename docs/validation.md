@@ -4,7 +4,7 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
-## Win64 virtual COM: physical M4, native comparison pending
+## Win64 virtual COM: native Windows, hosted Mac and physical M4
 
 The binary d3dcompiler_47 provider now exposes D3DCreateBlob through a Win64
 factory and a separate five-slot Win64 ID3DBlob vtable over the existing native
@@ -20,8 +20,14 @@ canonical IUnknown/shared buffer predicates, unsupported-IID `0x80004002` with
 cleared output, reference transitions 5→4→3→2→1→0, buffer lengths 37/16384,
 and client-written checksums `850568607`/`2478659192`. Data survives alias releases
 while the original reference remains live. The extracted Mach-O PE bytes match
-the exact input hash. Native Windows will execute that identical PE against its
-real d3dcompiler_47; its comparison is wired into PE CI and remains pending.
+the exact input hash. All three [PE jobs](https://github.com/daeken/Alkyhol/actions/runs/42402557855)
+pass on `ab08287`. Downloaded clean Windows/hosted reports and a clean physical
+M4 run at that same revision agree on the unchanged PE/source identities and all
+23 raw DWORDs against the actual Windows d3dcompiler_47 implementation. The full
+native record is frozen at `pe/reference/binary-com-windows-v1.json`; future
+drivers require its exact input before execution and comparisons require its
+observed words/raw output. This is binary virtual-call evidence, separate from
+the earlier source-C++ COM probe.
 [Contract/reproduction](pe.md#binary-com-id3dblob).
 
 All 50 PE tests, four lifetime compiler checks, 19 portable arm64 tests, 166 Python
@@ -34,6 +40,8 @@ allocation behavior is host-only here, and no native zero-fill or concurrent-
 reference parity is inferred. Prior docs-only `3411d84` passes all 27 jobs
 (PE 42401067461; conformance 42401067373). No original source/asset/shader, older
 frozen reference, native shader-tool requirement or game data changes.
+Freezing the native record adds a fifth protocol unit (167 Python tests),
+including missing-reference and joint-identity-drift rejection.
 
 ## Closed DLL bundle lifecycle: native Windows, hosted Mac and physical M4
 

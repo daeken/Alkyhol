@@ -474,7 +474,12 @@ balances reference transitions through final release and verifies 37/16384-byte
 buffer contents before/after alias release. It writes every byte before reading;
 native zero initialization is not assumed. The exact executable is transferred
 to Windows, where the OS's d3dcompiler_47 implementation is the independent peer.
-The native comparison is pending until recorded in [validation](validation.md).
+All three [PE jobs](https://github.com/daeken/Alkyhol/actions/runs/42402557855) pass
+on `ab08287`: clean native Windows, hosted Mac and physical M4 records agree on
+the identical executable/source and all 23 output words. The complete native
+record is frozen at `pe/reference/binary-com-windows-v1.json`; drivers verify its
+PE/source identities before execution, and comparisons require its actual results.
+See [validation](validation.md) for exact executed revisions.
 
 ```sh
 python3 tools/build_pe_binary_com.py
