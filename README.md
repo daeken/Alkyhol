@@ -66,3 +66,5 @@ GPU result.
 
 See [executed validation](docs/validation.md) for host/backend identities, actual
 CI results and the limits of the current sample evidence.
+The [native D3D12 scenario](docs/graphics-reference.md) defines an independent
+Windows WARP render/copy reference and exact full-pixel comparison with Alkyhol.

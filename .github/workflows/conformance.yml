@@ -62,6 +62,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
       - name: Install software Vulkan adapter for Linux contract tests
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y mesa-vulkan-drivers libvulkan1
@@ -91,9 +94,61 @@ jobs:
         env:
           XDG_RUNTIME_DIR: /tmp
         run: cargo run --manifest-path graphics/Cargo.toml --locked --example copy_resource -- --allow-software
+      - name: Observe the D3D12 comparison scenario on Metal
+        if: runner.os == 'macOS'
+        run: python tools/run_graphics_contract.py --output graphics-contract.json
+      - name: Observe the D3D12 comparison scenario on explicit software Vulkan
+        if: runner.os == 'Linux'
+        env:
+          XDG_RUNTIME_DIR: /tmp
+        run: python tools/run_graphics_contract.py --allow-software --output graphics-contract.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: graphics-contract-${{ runner.os }}
+          path: graphics-contract.json
       - uses: actions/upload-artifact@v4
         with:
           name: graphics-${{ runner.os }}
           path: |
             triangle.ppm
             graphics/Cargo.lock
+  graphics-reference:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: ilammy/msvc-dev-cmd@v1
+      - name: Execute actual Windows SDK D3D12 with explicit WARP
+        run: python tools/run_graphics_contract.py --output graphics-contract.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: graphics-contract-Windows
+          path: graphics-contract.json
+  compare-graphics:
+    needs: [graphics, graphics-reference]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: graphics-contract-*
+          path: observations
+      - name: Compare every observed pixel against native D3D12 WARP
+        run: |
+          python3 - <<'PY'
+          import json, subprocess
+          from pathlib import Path
+          from tools.graphics_contract import validate_observation
+          reports = [json.loads(p.read_text()) for p in Path('observations').glob('*/graphics-contract.json')]
+          assert len(reports) == 3, reports
+          assert {r['backend'] for r in reports} == {'native D3D12 WARP', 'Alkyhol Metal', 'Alkyhol software Vulkan'}
+          revision = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
+          assert all(r['schema_version'] == 1 and r['source_revision'] == revision and r['tracked_tree_clean'] is True for r in reports)
+          for report in reports:
+              validate_observation(json.dumps(report['observation']))
+          baseline = next(r['observation'] for r in reports if r['backend'] == 'native D3D12 WARP')
+          assert all(r['observation'] == baseline for r in reports)
+          print('All 1040 source and 1040 destination RGBA8 bytes agree on D3D12 WARP, Metal and software Vulkan')
+          PY

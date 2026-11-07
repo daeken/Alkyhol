@@ -65,6 +65,11 @@ does not translate HLSL/DXIL. Raster tests establish the sample's behavior only;
 there is no native D3D12 differential graphics reference yet. The graphics workflow
 must actually build and execute before any backend is described as validated.
 
+The new [native D3D12 reference scenario](graphics-reference.md) separately defines
+a full-pixel checkerboard render/copy comparison against Windows WARP, Metal and
+software Vulkan. Its executed results are recorded in the validation log. It does
+not make the existing triangle example a native D3D12 differential reference.
+
 Still missing: swapchains/presentation, windows, buffers/upload heaps, descriptors,
 root signatures, fences, multiple queues, general shaders, compute, indirect draws,
 resource lifetime APIs, residency, DXR and vendor features. No D3D feature level is
