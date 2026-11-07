@@ -42,7 +42,12 @@ static const GUID unknown = {0,0,0,{0xc0,0,0,0,0,0,0,0x46}};
 static U8 output[4096];
 static U8 *volatile relocated_output=output;
 static U32 used;
-#define CHECK(c,id) do { if (!(c)) ExitProcess(id); } while (0)
+static void fail(U32 status) {
+    U32 written=0;
+    WriteFile(GetStdHandle(0xfffffff5u),output,used,&written,0);
+    ExitProcess(status);
+}
+#define CHECK(c,id) do { if (!(c)) fail(id); } while (0)
 static void record(U32 value) {
     U32 i; CHECK(used+4<=sizeof(output),20);
     for(i=0;i<4;i++) relocated_output[used++]=(U8)(value>>(i*8));
@@ -110,7 +115,7 @@ void entry(void) {
     /* Valid pointers, invalid 65-DWORD budget. Diagnostic spelling is backend-specific. */
     constants.payload.constants[2]=65; desc.count=1; desc.parameters=&constants; desc.flags=0;
     record((U32)D3D12SerializeRootSignature(&desc,1,&blob,&error));
-    record(blob==0); CHECK(error!=0,28); record(1);
+    record(blob==0); record(error!=0); CHECK(error!=0,28);
     size=error->vtable->GetBufferSize(error); CHECK(size>1&&size<65536,29);
     text=(const U8 *)error->vtable->GetBufferPointer(error); CHECK(text!=0,30);
     record(text[size-1]==0); record(error->vtable->Release(error));

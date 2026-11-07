@@ -27,6 +27,14 @@ diagnostic text, host null/unsupported-version edge cases and allocation failure
 are not claimed equivalent. Existing source interfaces, frozen PE inputs,
 graphics samples/shaders/assets and game data are unchanged.
 
+Initial PE CI `42404379361` on `bad2ead` passes the Mac job but the native
+Windows process exits 28: its 65-DWORD case did not return the assumed diagnostic
+blob. This is a real failed comparison, not native parity. An instrumented
+unfrozen fixture now flushes partial observations before failure so the native
+HRESULT/success/error predicates can be examined without weakening the check.
+The initial fixture/hash above is retained as the identity of that failed run;
+new native observations are pending. All earlier frozen PE fixtures are intact.
+
 ## Win64 virtual COM: native Windows, hosted Mac and physical M4
 
 All 27 jobs pass at strict-reference revision `1e47b28`: three
