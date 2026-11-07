@@ -88,3 +88,10 @@ The actual native record at `pe/reference/static-functions-windows-v1.json` is
 frozen and required by default, including exact executed PE/source identity.
 This native observer covers one assembler-generated v1 push/small-allocation frame;
 other static recipe forms and lifecycle failure boundaries have host assertions.
+
+Strict-reference revision `825549f` passes all three PE and 24 conformance CI
+jobs. Downloaded native Windows/hosted Mac reports and fresh clean physical M4
+execution at that same revision agree on all 20 words and exact PE/source
+identities; normal and forced-rebase host runs agree. See the linked validation
+record for the runs and separate host-test evidence. This does not add exception
+dispatch or general compiler-runtime coverage.

@@ -6,6 +6,18 @@ See the latest direct-Metal record for current implementation evidence.
 
 ## Registered static PE function tables: native Windows and physical M4
 
+All 27 CI jobs pass at strict-reference revision `825549f`: three
+[PE jobs](https://github.com/daeken/Alkyhol/actions/runs/42425038558) and all 24
+[conformance jobs](https://github.com/daeken/Alkyhol/actions/runs/42425038579).
+Downloaded clean native Windows/hosted Mac records and fresh clean physical
+M4/Rosetta execution at that same revision agree on all 20 raw DWORDs and exact
+executed PE/source identities, including normal and forced-rebase host results.
+The 86 PE host tests/nine lifetime compiler checks, 25 portable tests, 234 Python
+tests and Clippy pass. All older frozen binary, SDK/source/COM, shader and Metal
+comparisons remain green. Native observations cover one static frame's lookup
+and manual caller restoration; other recipes/lifetime failures remain host
+assertions, and Windows exception dispatch remains unsupported.
+
 The owned unchanged PE SHA-256 is
 `70071d28d28a2d6167450e4fe7c8a8096adbb132ec6f1e82a6ab4cca16539e48`.
 LLVM SEH assembler/linker directives emit its actual `.pdata`/`.xdata`; the C
