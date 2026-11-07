@@ -305,8 +305,10 @@ are preflighted before the new DLL's DllMain. Missing modules or symbols never
 receive successful placeholders. The ordinary EXE and isolated constructors keep
 rejecting foreign dependencies.
 
-Dependencies have caller-assigned ASCII DLL basenames (at most 255 bytes), matched
-case-insensitively; symbols stay case-sensitive. There are at most 64 names, with
+Dependencies have caller-assigned DLL basenames (at most 255 bytes), starting with
+an ASCII letter/digit, containing only ASCII alphanumeric/`._-` and ending in
+`.dll`. Module names match case-insensitively; symbols stay case-sensitive.
+There are at most 64 names, with
 no duplicate case aliases, path components or kernel32 override. Module-definition
 LIBRARY text is not treated as a filesystem identity, consistent with Microsoft's
 [LoadLibrary contract](https://learn.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-loadlibraryw).
@@ -351,3 +353,5 @@ its owned DLL before releasing dependencies. Paired compiler checks accept corre
 teardown and reject early dependency destruction with E0505, even when the
 consumer has no further explicit use. These are lifetime checks, separate from
 executed DLL behavior; see [validation](validation.md) for exact revisions.
+The final `9b766e5` implementation passes all 27 CI jobs, with a clean physical
+M4 run matching the same-revision Windows/hosted records and frozen reference.

@@ -4,7 +4,17 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
-## Explicit DLL-to-DLL linking: native Windows comparison and M4 assertions
+## Explicit DLL-to-DLL linking: native Windows, hosted Mac and physical M4
+
+All 27 jobs pass on the final implementation `9b766e5`: three
+[PE jobs](https://github.com/daeken/Alkyhol/actions/runs/42395797481) and all 24
+[conformance jobs](https://github.com/daeken/Alkyhol/actions/runs/42395797350).
+Downloaded clean native Windows/hosted Mac records and a fresh clean physical M4
+run at that same revision agree with the frozen two-DLL identities, cross-DLL
+calls/forwarded targets and all 48 lifecycle bytes. Both host DLLs actually rebase
+in the forced run. Hosted PE tests include all 39 units, both lifetime compiler
+checks and the dedicated-address real VM-unmap check. Existing executable,
+source/COM/Metal/shader and native reference comparisons continue to pass.
 
 The new unsafe LinkedLibrary API binds named code/data IAT imports and named
 forwarders to explicitly supplied, already attached DLLs. Rust borrows retain
@@ -53,7 +63,7 @@ address, then retains the same real Mach VM presence/absence and DETACH checks.
 It never replaces existing mappings. All 100 isolated repetitions pass on physical
 M4. A 128-GiB trial hint was not honored and was rejected by the placement
 assertion. This changes test placement, not runtime unmapping or frozen evidence;
-the new full hosted run must still pass.
+the final full hosted run passes as recorded above.
 
 ## Failed DLL initialization: native Windows, hosted Mac and physical M4
 
