@@ -31,13 +31,13 @@ def run(output,compiler_tests=False):
     observations={};records=[]
     for name in names:
         source=ROOT/'cpp/tests'/(name+'.cpp');executable=build/(name+('.exe' if windows else ''))
-        command=['cl','/nologo','/std:c++14','/EHsc',str(source),'/Fe:'+str(executable),'/Fo:'+str(build/(name+'.obj')),'d3dcompiler.lib','dinput8.lib','dxguid.lib'] if windows else [*base,str(source),str(library),'-framework','Security','-framework','CoreFoundation','-lresolv','-o',str(executable)]
+        command=['cl','/nologo','/std:c++14','/EHsc',str(source),'/Fe:'+str(executable),'/Fo:'+str(build/(name+'.obj')),'d3dcompiler.lib','dinput8.lib','dxguid.lib','runtimeobject.lib'] if windows else [*base,str(source),str(library),'-framework','Security','-framework','CoreFoundation','-lresolv','-o',str(executable)]
         compiled=subprocess.run(command,cwd=build,capture_output=True,text=True)
         (build/(name+'.build.log')).write_text(compiled.stdout+compiled.stderr)
         if compiled.returncode:raise RuntimeError(f'{name} compilation failed: {compiled.stderr}\n{compiled.stdout}')
         result=subprocess.run([str(executable)],cwd=build,capture_output=True,text=True)
         (build/(name+'.run.log')).write_text(result.stdout+result.stderr)
-        if result.returncode:raise RuntimeError(f'{name} execution failed: {result.returncode}\n{result.stderr}')
+        if result.returncode:raise RuntimeError(f'{name} execution failed: {result.returncode}\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}')
         records.append({'source':str(source.relative_to(ROOT)),'source_sha256':hashlib.sha256(source.read_bytes()).hexdigest(),'command':command,'executable_sha256':hashlib.sha256(executable.read_bytes()).hexdigest()})
         if name in shared:observations[name]=result.stdout
         print(f'{name}: passed')

@@ -35,6 +35,11 @@ jobs:
         with:
           name: cpp-${{ runner.os }}
           path: cpp-observation.json
+      - uses: actions/upload-artifact@v4
+        if: always() && runner.os != 'Linux'
+        with:
+          name: cpp-diagnostics-${{ runner.os }}
+          path: local/cpp-tests/*.log
       - run: python tools/run_samples.py --output kernel-observation.json
       - uses: actions/upload-artifact@v4
         with:
@@ -64,7 +69,7 @@ jobs:
           PY
       - uses: actions/download-artifact@v4
         with:
-          pattern: cpp-*
+          pattern: cpp-[mW]*
           path: cpp-observations
       - name: Compare COM probe results and all DirectInput descriptor bytes
         run: |
