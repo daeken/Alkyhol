@@ -169,7 +169,7 @@ and encodes real native Metal blits. Signals share that submission order and
 cannot report completion before prior workload callbacks retire.
 
 Copies accept UPLOAD/DEFAULT sources and DEFAULT/READBACK destinations, with
-four-byte-aligned offsets/lengths. DEFAULT state constraints are described below.
+byte-granular offsets/lengths. DEFAULT state constraints and byte lowering are below.
 Full-resource copies require matching buffer widths. It neither rounds nor drops byte-granular requests;
 unsupported copies fail at Close and remain failed on Reset. No rendering state,
 draw, dispatch, texture copy, bundle or indirect command is supported. The only
@@ -217,8 +217,8 @@ aborts instead of exposing Private contents or pretending a CPU map exists.
 DIRECT lists accept complete transition barriers for DEFAULT buffers (subresource
 0 or ALL_SUBRESOURCES). The supported state set is COMMON, COPY_DEST and read-only
 subsets of GENERIC_READ. Split, aliasing, UAV, other resource classes and explicit
-barriers on other queue types remain unsupported. Four-byte copy alignment still
-applies; zero-byte DEFAULT copies are unsupported. Shared-heap states are immutable.
+barriers on other queue types remain unsupported. Zero-byte DEFAULT copies are
+unsupported. Shared-heap states are immutable.
 
 State checks cover the entire ExecuteCommandLists batch atomically. COMMON can
 promote for a copy; DEFAULT buffers decay at the batch boundary, never between
@@ -251,3 +251,32 @@ matches every observed field and byte. The native snapshot and original source
 hash are preserved under `cpp/reference/default-buffer-transitions-windows-v1.json`;
 future live comparisons must also agree with it. This is buffer-workload evidence,
 without a native rendered-frame, shader or feature-level claim.
+
+## Byte-granular copy lowering
+
+The macOS [buffer blit API](https://developer.apple.com/documentation/metal/mtlblitcommandencoder/copy(from:sourceoffset:to:destinationoffset:size:))
+requires aligned offsets. Copies that cannot use the aligned blit path execute
+the open `byte_copy.metal` utility through a real native compute encoder. It copies
+individual bytes in bounded 16-MiB dispatch chunks, checks the final partial group
+and never rounds a copy or overwrites neighbouring guards. Private storage stays
+GPU-only. No CPU mapping/copy, original sample shader change or gated converter
+is involved. Original HLSL rendering translation is unchanged.
+
+Each device lazily caches the actual utility pipeline or its compilation error.
+Encoder switches between consecutive blit/compute work preserve order. The kernel
+source, runtime and executable hashes are included in host probe provenance.
+This does not expose GraphicsCommandList::Dispatch or general shader pipelines;
+those APIs remain unsupported. Zero-length DEFAULT and same-resource copies also
+remain outside the subset.
+
+```sh
+python3 tools/run_cpp_byte_copies.py --output local/cpp-byte-copies.json
+```
+
+The shared workload contains 272 source/destination residue and tail cases,
+4099-byte Private copies/overlays, mixed blit/compute operations and a larger
+copy spanning two dispatch chunks. Small readbacks are preserved exactly. The
+large case asserts every byte in each executable and records a checksum plus
+three boundary windows; those summaries do not constitute a raw native comparison
+of its entire large buffer. The original queue-manager caller now uses 257-byte
+copies on all three original queues (v3), without changing original C++ objects.

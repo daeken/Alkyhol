@@ -59,6 +59,7 @@ pub struct Device {
     refs: AtomicU32,
     metadata: Metadata,
     metal: metal::Device,
+    byte_copy: byte_copy::Kernel,
 }
 struct Parent(*mut Device);
 impl Drop for Parent {
@@ -754,6 +755,7 @@ pub unsafe extern "C" fn AlkyholCreateMetalDeviceSubset(
             refs: AtomicU32::new(1),
             metadata: Metadata::new(),
             metal,
+            byte_copy: byte_copy::Kernel::default(),
         });
         unsafe {
             *out = Box::into_raw(object).cast();
@@ -1022,3 +1024,6 @@ mod queue;
 
 #[path = "commands.rs"]
 mod commands;
+
+#[path = "byte_copy.rs"]
+mod byte_copy;

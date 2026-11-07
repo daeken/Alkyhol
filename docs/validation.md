@@ -4,6 +4,43 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## Byte-granular COM buffer copies: physical GPU evidence
+
+Unaligned offsets and odd copy lengths now lower to a small MIT-licensed native
+MSL byte-copy utility; aligned copies retain Metal blits. This is backend memory
+copy implementation, not a replacement sample shader, general D3D12 Dispatch or
+an alternative shader translator. The per-device utility pipeline compiles lazily
+and caches its real result; compilation failure fails submission without a CPU
+copy or success fallback. GPU dispatches cover exact ranges in at most 16-MiB
+chunks. Encoder switches preserve command order and tracked-resource hazards.
+
+On physical M4/x86-64 with Metal API validation enabled, the shared C++ probe
+passes 272 offset-residue/tail cases and adjacent/overlapping writes to an odd
+4099-byte Private buffer. All 39,601 smaller readback/guard bytes match the test's
+independent expected data. It also checks all 16,777,313 bytes of a larger readback
+whose copy crosses a dispatch boundary, using a pattern that changes across that
+boundary. Reports retain its checksum and three boundary windows (128 bytes),
+not the complete large buffer. Native comparison therefore requires exact small
+readbacks/windows/checksum agreement plus each executable's full-range assertions;
+it is not a raw large-buffer byte-for-byte native dump comparison.
+
+Three new runtime units pass (37 total): parameter/chunk bounds and overflow,
+aligned-path selection, and actual Private compute→blit→compute data/guard checks
+with pipeline cache identity. Existing frozen Shared and DEFAULT copy probes
+still match their native snapshots. The original MiniEngine subsystem caller
+now copies 257 bytes on each original queue type (v3 observation), with allocator
+reuse and original fence routing intact. Its original implementation objects,
+upstream sources and all sample shaders/assets remain unchanged. All 91 Python
+tests, runtime Clippy and formatting pass locally. The complete original sample
+relinks and still exits 78 before original initialization at device creation.
+
+A new CI probe executes the same byte-copy C++ source on native WARP and hosted
+Metal. Native results for this new workload remain pending. All eighteen prior
+jobs passed on `74a890e` in
+[42366501362](https://github.com/daeken/Alkyhol/actions/runs/42366501362).
+GPU queue waits, zero-length DEFAULT copies, same-resource copies, textures,
+general pipelines and original rendering remain outside this milestone.
+
 ## DEFAULT-buffer transitions: physical GPU evidence
 
 The explicit Metal subset now allocates DEFAULT buffers in genuine Private

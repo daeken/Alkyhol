@@ -36,8 +36,8 @@ def current_objects(upstream,build,report,headers):
 
 def validate_observation(text):
     result=json.loads(text)
-    expected={'scenario':'original-command-manager-v2','next_values':[9,(2<<56)|9,(3<<56)|9],
-              'queues':3,'copy_queues':3,'allocator_pool_reused':True,'increments_per_queue':8,'idle':True,'shutdown':True}
+    expected={'scenario':'original-command-manager-v3','next_values':[9,(2<<56)|9,(3<<56)|9],
+              'queues':3,'copy_queues':3,'copy_bytes_per_queue':257,'allocator_pool_reused':True,'increments_per_queue':8,'idle':True,'shutdown':True}
     if result!=expected or any(type(result[k]) is not type(v) for k,v in expected.items()) or any(type(v) is not int for v in result['next_values']):
         raise ValueError('original command manager did not complete its full sequence')
     return result
@@ -53,7 +53,7 @@ def run(output,build):
     source=ROOT/'cpp/tests/original_command_manager.cpp'
     inputs=[source,Path(__file__).resolve(),manifest,library,*objects,*[upstream/p for p in ORIGINALS],
             ROOT/'Cargo.toml',ROOT/'Cargo.lock',ROOT/'cpp/runtime/Cargo.toml',ROOT/'cpp/runtime/Cargo.lock',
-            *sorted((ROOT/'src').glob('*.rs')),*sorted((ROOT/'cpp/runtime/src').glob('*.rs'))]
+            *sorted((ROOT/'src').glob('*.rs')),*sorted((ROOT/'cpp/runtime/src').glob('*.rs')),*sorted((ROOT/'cpp/runtime/src').glob('*.metal'))]
     def hashes():
         return {**header_hashes(),**{p.relative_to(ROOT).as_posix():hashlib.sha256(p.read_bytes()).hexdigest() for p in inputs}}
     before=hashes()

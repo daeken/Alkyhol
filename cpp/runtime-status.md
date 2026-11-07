@@ -21,8 +21,9 @@ renderer or a feature-level claim.
 | DXGI discovery | Real Metal factory through IDXGIFactory6 and adapter through IDXGIAdapter1; retained devices, parent ownership, descriptors, metadata and LUID lookup; no swap chains/outputs/device capability |
 | Restricted device/resource constructor | Explicit non-feature-level Metal-backed subset; real Shared UPLOAD/READBACK and Private DEFAULT buffers, descriptors/parent ownership/actual aligned GPU addresses. DEFAULT is not CPU-mappable. Not used by D3D12CreateDevice |
 | Restricted queues/fences | Real DIRECT/COMPUTE/COPY Metal queues, CPU fence signals/rewinds, event/null-event waits and ordered native completion callbacks. Finite native WARP fence comparison passes. GPU queue waits/timestamps remain unavailable |
-| Restricted allocators/command lists | Real state/epoch/snapshot ownership and COM submission of aligned buffer blits. The Shared-copy probe's 2048 bytes/eleven state results match native WARP, hosted Metal and physical M4. Drawing, dispatch, textures and byte-granular copies remain unsupported; bounded buffer barriers are below |
+| Restricted allocators/command lists | Real state/epoch/snapshot ownership and COM submission of buffer copies. The Shared-copy probe's 2048 bytes/eleven state results match native WARP, hosted Metal and physical M4. Drawing, dispatch and textures remain unsupported; bounded buffer barriers and byte lowering are below |
 | DEFAULT transitions | DIRECT-list buffer transitions, bounded COMMON/read/COPY promotion/decay and atomic batch state validation. Private-buffer copy chains and CPU-fenced queue handoff match native WARP, hosted Metal and physical M4 on all 4096 bytes/returned fields. Split/alias/UAV barriers and GPU queue waits remain unavailable |
+| Byte-granular copies | Aligned blits plus an open native MSL byte-copy utility, with exact ranges, cached pipeline and bounded dispatch chunks. Physical M4 passes all 272 residue/tail cases, Private overlays and full large-range checks. Native comparison pending; no general D3D Dispatch or shader translation claim |
 | Original queue-management subsystem | Unchanged CommandListManager and CommandAllocatorPool objects execute creation, allocator allocation/deferred reuse/reset, three-queue COM copies, high-bit fences/waits, idle and shutdown on physical Metal through a separate caller |
 | D3D12 creation | Explicit E_NOTIMPL and cleared interface outputs; no device, resource or command capability success |
 | D3D12 root serialization/debug/experiments | Explicit failures; no serialized blob or debug interface |
@@ -45,6 +46,6 @@ ABI-test constructor. [ID3D12Object metadata](reference/README.md) preserves its
 independent native contract. Restricted derived device/resource/queue/fence
 interfaces now compose that implementation. Restricted command-list GPU copies
 also work, as do bounded Private-buffer transitions. The next runtime steps
-include byte-granular copies, descriptor/root-signature and pipeline support.
+include descriptor/root-signature and pipeline support.
 Neither restricted nor metadata constructors substitute for
 production device creation or original application initialization.

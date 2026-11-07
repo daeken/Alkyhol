@@ -98,14 +98,13 @@ impl Submission {
             self.executing.store(false, Ordering::Release);
         }
     }
-    pub(super) fn encode(&self, encoder: &metal::BlitCommandEncoderRef) {
+    pub(super) fn needs_byte_copy(&self) -> bool {
+        self.commands.iter().any(|command|matches!(command,Command::Copy(c) if !byte_copy::aligned(c.source_offset,c.destination_offset,c.length)&&c.length!=0))
+    }
+    pub(super) fn encode(&self, encoder: &mut byte_copy::Encoder<'_>) {
         for command in &self.commands {
-            // Metal tracks hazards for these serial blits. Transition entries
-            // validate the D3D state contract; they do not need a second encoder.
-            if let Command::Copy(c) = command
-                && c.length != 0
-            {
-                encoder.copy_from_buffer(
+            if let Command::Copy(c) = command {
+                encoder.copy(
                     &c.source,
                     c.source_offset,
                     &c.destination,
@@ -242,11 +241,6 @@ unsafe extern "C" fn reset(this: *mut List, allocator: *mut Allocator, pipeline:
 fn extent(offset: u64, length: u64, width: u64) -> Result<(), i32> {
     if offset.checked_add(length).is_none_or(|end| end > width) {
         return Err(E_INVALIDARG);
-    }
-    // This first native-blit path accepts aligned copies only. Byte-granular
-    // lowering remains explicit unsupported, never rounded/truncated/padded.
-    if !offset.is_multiple_of(4) || !length.is_multiple_of(4) {
-        return Err(E_NOTIMPL);
     }
     Ok(())
 }

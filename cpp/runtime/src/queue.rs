@@ -262,13 +262,21 @@ unsafe fn submit(
         };
         let id = state.next;
         state.next = next;
-        let command = unsafe { (*this).native.new_command_buffer() };
-        if !batches.is_empty() {
-            let encoder = command.new_blit_command_encoder();
-            for batch in &batches {
-                batch.encode(encoder);
+        let pipeline = if batches.iter().any(|b| b.needs_byte_copy()) {
+            let device = unsafe { &*(*this).parent.0 };
+            match device.byte_copy.pipeline(&device.metal) {
+                Ok(pipeline) => Some(pipeline),
+                Err(error) => return error,
             }
-            encoder.end_encoding();
+        } else {
+            None
+        };
+        let command = unsafe { (*this).native.new_command_buffer() };
+        {
+            let mut encoder = super::byte_copy::Encoder::new(command, pipeline);
+            for batch in &batches {
+                batch.encode(&mut encoder);
+            }
         }
         for batch in &batches {
             batch.commit();

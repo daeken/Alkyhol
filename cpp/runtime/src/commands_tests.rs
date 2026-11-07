@@ -102,14 +102,14 @@ fn typed_layouts_preserve_all_sdk_slots_and_handle_argument_abi() {
     assert_eq!(std::mem::size_of::<GpuHandle>(), 8);
 }
 #[test]
-fn copy_extents_reject_overflow_truncation_and_unsupported_byte_granularity() {
+fn copy_extents_reject_overflow_and_truncation_but_allow_exact_byte_ranges() {
     assert_eq!(extent(0, 512, 512), Ok(()));
     assert_eq!(extent(512, 0, 512), Ok(()));
     for (offset, len) in [(u64::MAX, 4), (512, 4), (508, 8)] {
         assert_eq!(extent(offset, len, 512), Err(E_INVALIDARG));
     }
     for (offset, len) in [(1, 4), (0, 3)] {
-        assert_eq!(extent(offset, len, 512), Err(E_NOTIMPL));
+        assert_eq!(extent(offset, len, 512), Ok(()));
     }
 }
 #[test]
@@ -238,10 +238,7 @@ fn invalid_copy_is_sticky_and_never_repaired_by_close_or_reset() {
             prepare(d, 3, 1, lists.as_ptr() as usize),
             Err(E_FAIL)
         ));
-        assert!(matches!(
-            copy_command(d, dst, 0, src, 0, Some(1)),
-            Err(E_NOTIMPL)
-        ));
+        assert!(copy_command(d, dst, 0, src, 0, Some(1)).is_ok());
         assert!(matches!(
             copy_command(d, src, 0, dst, 0, Some(4)),
             Err(E_NOTIMPL)
@@ -380,11 +377,12 @@ fn immutable_full_copy_encodes_actual_metal_work_and_retains_released_com_buffer
         allocator_release(a);
         let queue = (*d).metal.new_command_queue();
         let command = queue.new_command_buffer();
-        let encoder = command.new_blit_command_encoder();
-        for batch in &batches {
-            batch.encode(encoder);
+        {
+            let mut encoder = byte_copy::Encoder::new(command, None);
+            for batch in &batches {
+                batch.encode(&mut encoder);
+            }
         }
-        encoder.end_encoding();
         command.commit();
         command.wait_until_completed();
         assert_eq!(command.status(), metal::MTLCommandBufferStatus::Completed);

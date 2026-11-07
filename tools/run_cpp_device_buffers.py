@@ -70,7 +70,7 @@ def run_probe(output,name,label,validate,traps=()):
             library=ROOT/'cpp/runtime/target/x86_64-apple-darwin/debug/libalkyhol_cpp_metal.a'
             command=['clang++','-arch','x86_64','-std=c++14','-fms-extensions','-I'+str(ROOT/'cpp/include'),'-I'+str(headers/'include'),'-I'+str(headers/'include/directx'),'-I'+str(overlay),str(source),str(library),'-framework','Metal','-framework','Foundation','-framework','CoreGraphics','-framework','Security','-framework','CoreFoundation','-lobjc','-lresolv','-o',str(executable)]
             compiler=subprocess.check_output(['clang++','--version'],text=True);backend='Rust restricted Metal COM '+label
-            inputs += [ROOT/'Cargo.toml',ROOT/'Cargo.lock',ROOT/'cpp/runtime/Cargo.toml',ROOT/'cpp/runtime/Cargo.lock',library,*sorted((ROOT/'src').glob('*.rs')),*sorted((ROOT/'cpp/runtime/src').glob('*.rs')),*sorted(p for p in (ROOT/'cpp/include').rglob('*') if p.is_file())]
+            inputs += [ROOT/'Cargo.toml',ROOT/'Cargo.lock',ROOT/'cpp/runtime/Cargo.toml',ROOT/'cpp/runtime/Cargo.lock',library,*sorted((ROOT/'src').glob('*.rs')),*sorted((ROOT/'cpp/runtime/src').glob('*.rs')),*sorted((ROOT/'cpp/runtime/src').glob('*.metal')),*sorted(p for p in (ROOT/'cpp/include').rglob('*') if p.is_file())]
         hashes=lambda:{p.relative_to(ROOT).as_posix():hashlib.sha256(p.read_bytes()).hexdigest() for p in inputs}
         before=hashes();compiled=subprocess.run(command,cwd=scratch,capture_output=True,text=True,timeout=120)
         if compiled.returncode:raise RuntimeError('buffer probe compilation failed:\n'+compiled.stdout+compiled.stderr)

@@ -268,6 +268,12 @@ jobs:
         with:
           name: cpp-default-buffers-Windows
           path: cpp-default-buffers.json
+      - name: Execute byte-granular copies across residues, tails and a dispatch boundary
+        run: python tools/run_cpp_byte_copies.py --output cpp-byte-copies.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cpp-byte-copies-Windows
+          path: cpp-byte-copies.json
       - name: Observe native D3D12 COM private-data and interface ownership
         run: python tools/run_cpp_object_reference.py --output cpp-object-reference.json
       - uses: actions/upload-artifact@v4
@@ -429,6 +435,12 @@ jobs:
         with:
           name: cpp-default-buffers-Metal
           path: cpp-default-buffers.json
+      - name: Execute byte-granular copies across residues, tails and a dispatch boundary
+        run: python tools/run_cpp_byte_copies.py --output cpp-byte-copies.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cpp-byte-copies-Metal
+          path: cpp-byte-copies.json
       - uses: actions/upload-artifact@v4
         with:
           name: cpp-metal-factory
@@ -516,4 +528,25 @@ jobs:
           revision=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
           compare_reports(reports,revision)
           print('All 4096 DEFAULT-buffer readback/sentinel bytes, descriptors, map failure and fence results agree; no shader, feature-level or original-rendering claim')
+          PY
+
+  compare-cpp-byte-copies:
+    needs: [cpp-metal-factory, graphics-reference]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: cpp-byte-copies-*
+          path: cpp-byte-observations
+      - name: Compare native WARP and restricted Metal byte-copy behavior
+        run: |
+          python3 - <<'PY'
+          import json, subprocess
+          from pathlib import Path
+          from tools.run_cpp_byte_copies import compare_reports
+          reports=[json.loads(p.read_text()) for p in Path('cpp-byte-observations').glob('*/*.json')]
+          revision=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
+          compare_reports(reports,revision)
+          print('All residue/overlay readbacks and large-copy checksum/windows agree; large case also checks all bytes independently in each executable. No general D3D shader or original rendering claim')
           PY
