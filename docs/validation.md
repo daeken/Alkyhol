@@ -42,6 +42,13 @@ results for this new allocation workload remain pending. The earlier frozen-byte
 reference milestone passed all nineteen jobs on `db66f16` in
 [42368218306](https://github.com/daeken/Alkyhol/actions/runs/42368218306).
 
+The first native run, [42369268249](https://github.com/daeken/Alkyhol/actions/runs/42369268249),
+failed a probe assertion equating nonzero GPU-handle bits with heap visibility.
+No native heap parity is claimed from that failure. The observer now records the
+actual value in diagnostics and separately records the all-ones invalid sentinel,
+while preserving both fields in comparison. This measures the native distinction
+before deciding how the backend should represent it; no frozen oracle is changed.
+
 ## Byte-granular COM buffer copies: physical GPU evidence
 
 Unaligned offsets and odd copy lengths now lower to a small MIT-licensed native

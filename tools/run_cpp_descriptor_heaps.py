@@ -14,9 +14,9 @@ def validate_observation(text):
     if not isinstance(result['strides'],list) or len(result['strides'])!=4 or any(type(v) is not int or not 0<v<2**32 for v in result['strides']):raise ValueError('four actual positive backend strides required')
     if result['parent_lifetime'] is not True or not isinstance(result['heaps'],list) or len(result['heaps'])!=12:raise ValueError('incomplete descriptor-heap ownership observations')
     for row in result['heaps']:
-        if not isinstance(row,dict) or set(row)!={'desc','cpu_present','gpu_present','last_cpu_index','last_gpu_index'}:raise ValueError('invalid descriptor-heap fields')
+        if not isinstance(row,dict) or set(row)!={'desc','cpu_present','gpu_present','gpu_invalid_sentinel','last_cpu_index','last_gpu_index'}:raise ValueError('invalid descriptor-heap fields')
         if not isinstance(row['desc'],list) or len(row['desc'])!=4 or any(type(v) is not int or not 0<=v<2**32 for v in row['desc']):raise ValueError('invalid returned descriptor-heap words')
-        if row['cpu_present'] is not True or type(row['gpu_present']) is not bool:raise ValueError('invalid handle presence')
+        if row['cpu_present'] is not True or type(row['gpu_present']) is not bool or type(row['gpu_invalid_sentinel']) is not bool:raise ValueError('invalid handle presence')
         for name in ['last_cpu_index','last_gpu_index']:
             if type(row[name]) is not int or not 0<=row[name]<2**32:raise ValueError('invalid descriptor index offsets')
     return result
