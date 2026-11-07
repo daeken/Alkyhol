@@ -408,3 +408,24 @@ Nonfinite output fails rendering; it is not accepted as a black-pixel fallback.
 These are local physical Metal assertions, not native Windows effect comparisons.
 Source/raster-derived differences and remaining postprocessing are documented in
 [miniengine.md](miniengine.md#textured-lighting-shadows-and-reflections).
+
+The shaded code revision `001ac6e8213b724f5c93c31ffc4862704475c26e` passed all
+nine jobs in [42339198654](https://github.com/daeken/Alkyhol/actions/runs/42339198654).
+This includes actual BC1 mip sampling and shader arithmetic on hosted Metal
+(`Apple Paravirtual device`, RT false), all original DDS chain checks, and continued
+native MSVC/Rust geometry-byte, Sakura placement and SDK WARP checker-copy agreement.
+Hosted compute evidence does not validate shadow/reflection traversal; those
+full-scene RT tests were explicitly run on physical M4. All ten MiniEngine
+integration tests passed locally with `--include-ignored`, plus Clippy and 29 Python
+tests. The refreshed live native app visibly displayed material lighting and floor
+reflections at approximately 59.6 FPS at 960×540. Actual key 1 / key 7 UI actions
+switched the title/view between shaded lighting and reflections. The window scales
+the render texture; fullscreen does not imply native display pixel resolution.
+This observed presentation rate is not a controlled uncapped performance claim.
+
+A separate fixed camera-preset-3 release capture at 960×540 observed 617,850 shadow
+queries, 519,675 shadow hits, 99,450 reflection queries/hits, 108 tangent repairs and
+zero short self-reflections. Raw source/asset/executable hashes and diagnostics are
+ignored in `local/miniengine/physical-shaded-report.json`; output is
+`local/miniengine/shaded-reflections.png`. Native full shaded DXR pixels and the
+remaining original postprocessing passes have not been validated or implemented.

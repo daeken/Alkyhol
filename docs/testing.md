@@ -55,3 +55,12 @@ Sakura units and the physical full-scene render assertions are described in
 [sakura.md](sakura.md#tests-and-fidelity-boundary). Asset intake tests mock network
 success/corruption and enforce hash/size rejection without replacing existing
 files. Actual public asset downloads are independently SHA-256 verified.
+
+MiniEngine H3D/CLI tests cover explicit serialized SIMD layout, local index order,
+all truncated prefixes, bad fields/strings/geometry, preserved unused NaN bits and
+original camera conventions. DDS tests validate BC1 dimensions/formats/mip bounds,
+all 50 source chains and actual Metal mip/default sampling. Shader fixtures cover
+mirrored/invalid/degenerate tangent frames, lighting endpoints and the Stanard tone
+curve. Physical full-scene tests verify repeatability, ray accounting, all views,
+shadow pixel changes, floor-only reflection changes, finite output and all five
+camera presets. See [MiniEngine details](miniengine.md).

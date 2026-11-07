@@ -50,8 +50,9 @@ See the [test map](docs/testing.md) for function and logical-unit coverage.
 
 ## Graphics
 
-[MiniEngine Sponza](docs/miniengine.md) provides a second geometry debugging
-scene with the original Bary Rays path and added neutral/normal/depth views.
+[MiniEngine Sponza](docs/miniengine.md) now renders original material/normal maps,
+native shadow rays and floor reflections, with Bary Rays and geometry/normal/depth
+diagnostics available alongside the shaded views.
 
 
 [Sakura Forest](docs/sakura.md) is the concrete application target: a faithful
