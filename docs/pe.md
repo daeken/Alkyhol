@@ -700,7 +700,9 @@ All three PE jobs pass on `2444dd5`
 hosted reports and fresh clean physical M4 execution at that same revision agree
 on the identical executed PE/source identity and all raw observations. The full
 native record is frozen at `pe/reference/generated-code-windows-v1.json` and
-required by default, including its exact input identity.
+required by default, including its exact input identity. Strict-reference
+revision `7c6bf36` passes all 27 CI jobs; downloaded clean Windows/hosted records
+and fresh physical M4 execution agree at that same revision on all 29 raw words.
 Host-only child tests independently observe faults for write-to-RX, execute-from-
 RW, read-from-NOACCESS and write-to-READONLY, and query the actual Mach VM map to
 verify release without dereferencing freed storage. Native results and exact

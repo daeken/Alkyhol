@@ -6,6 +6,16 @@ See the latest direct-Metal record for current implementation evidence.
 
 ## Guest-generated code and memory permissions: native Windows, hosted Mac and physical M4
 
+All 27 jobs pass at strict-reference revision `7c6bf36`: three
+[PE jobs](https://github.com/daeken/Alkyhol/actions/runs/42410932748) and all 24
+[conformance jobs](https://github.com/daeken/Alkyhol/actions/runs/42410932707).
+Downloaded clean Windows/hosted records and fresh clean physical M4 execution at
+that same revision agree with the frozen PE/source identity and all 29 raw
+DWORDs, including both actual emitted/rewritten-code results. Normal and forced
+host results agree. All prior frozen binary, SDK/source/COM, shader and Metal
+comparisons remain intact. This is finite code-emission/memory evidence, not
+general JIT/exception handling or game compatibility.
+
 All three [PE jobs](https://github.com/daeken/Alkyhol/actions/runs/42410651433)
 pass on `2444dd5`. Downloaded clean native Windows/hosted Mac records and clean
 physical M4 execution at that same revision agree on the exact PE/source/input
@@ -13,8 +23,9 @@ identity and all 29 raw DWORDs, including both actual generated-code results.
 Normal and forced-rebase host observations agree. The complete native report is
 frozen at `pe/reference/generated-code-windows-v1.json`; drivers and comparisons
 require its exact input/results by default. A missing-reference/joint-drift
-negative brings the Python suite to 191. Full strict conformance CI remains to
-be recorded separately.
+negative brings the Python suite to 191. Initial `2444dd5` also passes all 27
+jobs: that PE run and all 24 conformance jobs
+([42410651366](https://github.com/daeken/Alkyhol/actions/runs/42410651366)).
 
 VirtualProtect/VirtualFree/FlushInstructionCache now perform real protection,
 release and platform cache operations for the process context's bounded owned
