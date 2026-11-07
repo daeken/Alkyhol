@@ -832,9 +832,17 @@ mod tests {
                 start <= address as u64 && (address as u64) < start + size
             }
             let log = lifecycle_log();
-            let bytes = lifecycle_fixture(log.get(), true, None);
-            let lib = unsafe { LoadedLibrary::load(&bytes, true) }.unwrap();
+            let mut bytes = lifecycle_fixture(log.get(), true, None);
+            // Use an isolated preferred address, outside the normal mmap/JIT
+            // allocation area. Otherwise Rosetta/allocator activity can reuse
+            // an unmapped address before a later VM-region snapshot observes it.
+            // This is a non-replacing hint, and exact placement is asserted.
+            const PREFERRED: u64 = 0x1_8000_0000;
+            bytes[0xb0..0xb8].copy_from_slice(&PREFERRED.to_le_bytes());
+            bytes[0x800..0x808].copy_from_slice(&(PREFERRED + 0x1000).to_le_bytes());
+            let lib = unsafe { LoadedLibrary::load(&bytes, false) }.unwrap();
             let base = lib.base_address();
+            assert_eq!(base as u64, PREFERRED);
             assert!(mapped(base));
             drop(lib);
             assert_eq!(unsafe { (*log.get()).calls }, 2);

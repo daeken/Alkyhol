@@ -39,10 +39,21 @@ A follow-up compiler regression exposed early dependency destruction permitted b
 reference-container fields alone. An explicit LinkedLibrary destructor now
 detaches/unmaps the consumer while its borrowed dependencies remain required by
 Rust's drop checker. Two paired compile checks accept correct destruction order
-and reject an early dependency drop with actual E0505; all 39 execution tests and
+and reject an early dependency drop with actual E0505; all 39 PE host tests and
 the physical full-DLL observer still pass. Freezing the native baseline adds a
 sixth protocol unit and brings Python coverage to 151 tests. No DLL bytes or
 observed native expectations were changed to make this lifetime fix pass.
+
+All 27 jobs pass on `1ab6e23` (PE 42395051128; conformance 42395051127).
+The follow-up `ec5d673` PE run 42395383558 fails the pre-existing automatic-address
+VM-unmap child assertion before the compiler/native observers run. That snapshot
+cannot distinguish address reuse from a retained mapping; the cause remains
+unconfirmed. The unmap unit now requests and asserts a dedicated 6-GiB preferred
+address, then retains the same real Mach VM presence/absence and DETACH checks.
+It never replaces existing mappings. All 100 isolated repetitions pass on physical
+M4. A 128-GiB trial hint was not honored and was rejected by the placement
+assertion. This changes test placement, not runtime unmapping or frozen evidence;
+the new full hosted run must still pass.
 
 ## Failed DLL initialization: native Windows, hosted Mac and physical M4
 
