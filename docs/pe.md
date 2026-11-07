@@ -444,3 +444,5 @@ all 48 C notification bytes. The full native report is frozen at
 input identities and actual results. See [validation](validation.md).
 Native shared-leaf notification counts are not
 measured by these DLLs; the once-only diamond count is host-unit evidence.
+The strict `08aaf02` revision passes all 27 CI jobs, with a clean physical M4 run
+matching the same-revision native Windows/hosted records and frozen reference.

@@ -6,6 +6,16 @@ See the latest direct-Metal record for current implementation evidence.
 
 ## Closed DLL bundle lifecycle: native Windows, hosted Mac and physical M4
 
+All 27 jobs pass at strict-reference revision `08aaf02`: three
+[PE jobs](https://github.com/daeken/Alkyhol/actions/runs/42400565239) and all 24
+[conformance jobs](https://github.com/daeken/Alkyhol/actions/runs/42400565232).
+Downloaded clean native Windows/hosted Mac records and a fresh clean physical M4
+record at that same revision agree with the frozen three-DLL/source identities,
+both prior result sets, actual shared target equality and all 48 C notification
+bytes. All three host DLLs actually rebase in the forced run. Initial code
+`1e028b8` also passes all 27 jobs (PE 42399759919; conformance 42399759282).
+All previous frozen binary, SDK/source/COM/Metal/shader comparisons remain intact.
+
 LibrarySet now owns an explicitly supplied acyclic DLL graph, preflights all
 imports/forwarders/metadata before any initializer, orders dependencies before
 consumers, shares instances within the set and detaches in reverse order. It
