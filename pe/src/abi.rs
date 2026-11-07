@@ -153,6 +153,9 @@ pub(crate) fn resolve(module: &str, name: &str) -> Option<usize> {
             .or_else(|| crate::virtual_unwind::address(name))
             .or_else(|| crate::module_context::address(name));
     }
+    if module.eq_ignore_ascii_case("shell32.dll") {
+        return crate::process::shell_address(name);
+    }
     if module.eq_ignore_ascii_case("d3dcompiler_47.dll") {
         return crate::binary_com::address(name);
     }
@@ -162,9 +165,14 @@ pub(crate) fn resolve(module: &str, name: &str) -> Option<usize> {
     None
 }
 pub(crate) fn is_builtin(module: &str) -> bool {
-    ["kernel32.dll", "d3dcompiler_47.dll", "d3d12.dll"]
-        .iter()
-        .any(|name| module.eq_ignore_ascii_case(name))
+    [
+        "kernel32.dll",
+        "shell32.dll",
+        "d3dcompiler_47.dll",
+        "d3d12.dll",
+    ]
+    .iter()
+    .any(|name| module.eq_ignore_ascii_case(name))
 }
 
 #[cfg(test)]
@@ -194,6 +202,10 @@ mod tests {
     #[test]
     fn module_and_symbol_identity_are_not_guessed() {
         assert!(resolve("KERNEL32.dll", "GetLastError").is_some());
+        assert!(resolve("SHELL32.DLL", "CommandLineToArgvW").is_some());
+        assert!(resolve("kernel32.dll", "CommandLineToArgvW").is_none());
+        assert!(resolve("shell32.dll", "LocalFree").is_none());
+        assert!(resolve("vendor.dll", "CommandLineToArgvW").is_none());
         assert!(resolve("vendor.dll", "GetLastError").is_none());
         assert!(resolve("kernel32.dll", "getlasterror").is_none());
         assert!(resolve("kernel32.dll", "CreateThread").is_none());

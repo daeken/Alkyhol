@@ -37,3 +37,4 @@ pe/fixtures/generated-code/* text eol=lf
 pe/fixtures/function-tables/* text eol=lf
 pe/fixtures/virtual-unwind/* text eol=lf
 pe/fixtures/unwind-saves/* text eol=lf
+pe/fixtures/make2compdb/* text eol=lf

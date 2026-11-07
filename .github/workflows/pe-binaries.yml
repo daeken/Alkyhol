@@ -27,6 +27,22 @@ jobs:
         run: python tools/fetch_uconfig_binary.py
       - name: Execute real released PE package queries, listing and quoted Unicode arguments
         run: python tools/run_uconfig_binary.py --binary local/pe/u-config/pkg-config.exe --output local/pe/u-config-alkyhol.json
+      - name: Fetch and execute a second unchanged released Windows application
+        run: |
+          python tools/fetch_make2compdb_binary.py
+          python tools/run_make2compdb_binary.py --binary local/pe/make2compdb/make2compdb.exe --output local/pe/make2compdb-alkyhol.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe-make2compdb-release
+          path: |
+            local/pe/make2compdb/make2compdb.exe
+            local/pe/make2compdb/make2compdb.c
+            local/pe/make2compdb/UNLICENSE
+            local/pe/make2compdb/provenance.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe-make2compdb-alkyhol
+          path: local/pe/make2compdb-alkyhol.json
       - name: Build owned DLL and inspect export metadata without entering it
         run: |
           python tools/build_pe_export_fixture.py
@@ -251,6 +267,16 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe-make2compdb-release
+          path: local/pe/make2compdb
+      - name: Execute the identical released make2compdb against native Windows kernel32 and shell32
+        run: python tools/run_make2compdb_binary.py --binary local/pe/make2compdb/make2compdb.exe --output local/pe/make2compdb-windows.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe-make2compdb-windows
+          path: local/pe/make2compdb-windows.json
       - uses: actions/download-artifact@v4
         with:
           name: pe-fixture
@@ -559,3 +585,12 @@ jobs:
           name: pe-unwind-saves-windows
           path: local/pe/observations
       - run: python tools/compare_pe_unwind_saves.py local/pe/observations/unwind-saves-windows.json local/pe/observations/unwind-saves-alkyhol.json
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe-make2compdb-alkyhol
+          path: local/pe/observations
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe-make2compdb-windows
+          path: local/pe/observations
+      - run: python tools/compare_make2compdb_binary.py local/pe/observations/make2compdb-windows.json local/pe/observations/make2compdb-alkyhol.json

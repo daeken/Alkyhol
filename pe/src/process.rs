@@ -82,6 +82,7 @@ struct State {
     objects: BTreeMap<usize, Object>,
     functions: crate::function_tables::Registry,
     mappings: Vec<Mapping>,
+    locals: BTreeMap<usize, Box<[usize]>>,
 }
 /// Installs a single-thread process view until drop. Guest code may not outlive
 /// this guard. This does not install a Windows PEB/TEB, static TLS or DLL runtime.
@@ -110,6 +111,7 @@ impl ProcessContext {
             objects: BTreeMap::new(),
             functions: Default::default(),
             mappings: Vec::new(),
+            locals: BTreeMap::new(),
         };
         for i in 0..3 {
             let fd = unsafe { dup(i) };
@@ -273,6 +275,116 @@ unsafe extern "win64" fn GetCommandLineW() -> *const u16 {
             |s| s.command.as_ptr(),
         )
     })
+}
+// A real contiguous Shell32 argv allocation, released with the bounded LocalFree.
+unsafe extern "win64" fn CommandLineToArgvW(text: *const u16, count: *mut i32) -> *mut *mut u16 {
+    if count.is_null() {
+        fail(INVALID_PARAMETER);
+        return ptr::null_mut();
+    }
+    let text = match unsafe { wide(text) } {
+        Ok(s) => s,
+        Err(e) => {
+            fail(e);
+            return ptr::null_mut();
+        }
+    };
+    let args = match crate::command_line::canonical_arguments(&text) {
+        Ok(a) => a,
+        Err(_) => {
+            fail(NOT_SUPPORTED);
+            return ptr::null_mut();
+        }
+    };
+    let strings: Vec<Vec<u16>> = args
+        .iter()
+        .map(|s| s.encode_utf16().chain([0]).collect())
+        .collect();
+    let bytes = strings.len() * 8 + strings.iter().map(|s| s.len() * 2).sum::<usize>();
+    if bytes > 1024 * 1024 {
+        fail(NOT_SUPPORTED);
+        return ptr::null_mut();
+    }
+    PROCESS.with(|slot| {
+        let mut state = slot.borrow_mut();
+        let Some(state) = state.as_mut() else {
+            fail(NOT_SUPPORTED);
+            return ptr::null_mut();
+        };
+        if state.locals.len() >= 64 {
+            fail(NOT_SUPPORTED);
+            return ptr::null_mut();
+        }
+        let mut block = vec![0usize; bytes.div_ceil(8)].into_boxed_slice();
+        let address = block.as_mut_ptr();
+        let mut target = unsafe { address.add(strings.len()).cast::<u16>() };
+        for (index, string) in strings.iter().enumerate() {
+            unsafe {
+                address.add(index).write(target as usize);
+                ptr::copy_nonoverlapping(string.as_ptr(), target, string.len());
+                target = target.add(string.len());
+            }
+        }
+        state.locals.insert(address as usize, block);
+        unsafe {
+            count.write(strings.len() as i32);
+        }
+        address.cast()
+    })
+}
+unsafe extern "win64" fn LocalFree(pointer: *mut c_void) -> *mut c_void {
+    if pointer.is_null() {
+        return ptr::null_mut();
+    }
+    PROCESS.with(|slot| {
+        let mut state = slot.borrow_mut();
+        if state
+            .as_mut()
+            .is_some_and(|s| s.locals.remove(&(pointer as usize)).is_some())
+        {
+            ptr::null_mut()
+        } else {
+            fail(INVALID_PARAMETER);
+            pointer
+        }
+    })
+}
+unsafe extern "win64" fn GetCurrentDirectoryW(capacity: u32, buffer: *mut u16) -> u32 {
+    if !PROCESS.with(|slot| slot.borrow().is_some()) {
+        fail(NOT_SUPPORTED);
+        return 0;
+    }
+    let directory = match std::env::current_dir() {
+        Ok(p) => p,
+        Err(e) => {
+            fail(io_error(&e));
+            return 0;
+        }
+    };
+    let Some(text) = directory.to_str() else {
+        fail(1113);
+        return 0;
+    };
+    let wide: Vec<u16> = text.encode_utf16().collect();
+    if wide.len() + 1 > 32767 {
+        fail(206);
+        return 0;
+    }
+    if capacity as usize <= wide.len() {
+        return (wide.len() + 1) as u32;
+    }
+    if buffer.is_null() {
+        fail(INVALID_PARAMETER);
+        return 0;
+    }
+    unsafe {
+        ptr::copy_nonoverlapping(wide.as_ptr(), buffer, wide.len());
+        buffer.add(wide.len()).write(0);
+    }
+    wide.len() as u32
+}
+pub(crate) fn shell_address(name: &str) -> Option<usize> {
+    (name == "CommandLineToArgvW").then_some(CommandLineToArgvW as *const () as usize)
 }
 unsafe extern "win64" fn GetEnvironmentVariableW(
     name: *const u16,
@@ -852,6 +964,8 @@ unsafe extern "win64" fn FindClose(handle: usize) -> i32 {
 }
 pub(crate) fn address(name: &str) -> Option<usize> {
     match name {
+        "GetCurrentDirectoryW" => Some(GetCurrentDirectoryW as *const () as usize),
+        "LocalFree" => Some(LocalFree as *const () as usize),
         "GetStdHandle" => Some(GetStdHandle as *const () as usize),
         "GetConsoleMode" => Some(GetConsoleMode as *const () as usize),
         "GetCommandLineW" => Some(GetCommandLineW as *const () as usize),
@@ -884,6 +998,112 @@ mod tests {
     }
     fn w(s: &str) -> Vec<u16> {
         s.encode_utf16().chain([0]).collect()
+    }
+    #[test]
+    fn shell_argv_is_contiguous_utf16_owned_storage_freed_by_its_full_width_address() {
+        let guard = context();
+        let argv: unsafe extern "win64" fn(*const u16, *mut i32) -> *mut *mut u16 = unsafe {
+            std::mem::transmute(crate::abi::resolve("shell32.dll", "CommandLineToArgvW").unwrap())
+        };
+        let free: unsafe extern "win64" fn(*mut c_void) -> *mut c_void = unsafe {
+            std::mem::transmute(crate::abi::resolve("kernel32.dll", "LocalFree").unwrap())
+        };
+        let args = ["/a b/λ🌸.exe", "", "x\"y", "tail\\", "λ🌸"];
+        let command = windows_command_line(&args.map(String::from)).unwrap();
+        let mut count = -1;
+        ffi::SetLastError(0xbeef);
+        let block = unsafe { argv(command.as_ptr(), &mut count) };
+        assert!(!block.is_null());
+        assert_eq!(count, 5);
+        assert_eq!(ffi::GetLastError(), 0xbeef);
+        let mut string = unsafe { block.add(count as usize).cast::<u16>() };
+        for (index, expected) in args.iter().enumerate() {
+            let actual = unsafe { *block.add(index) };
+            assert_eq!(actual, string);
+            assert_eq!(unsafe { wide(actual) }.unwrap(), *expected);
+            string = unsafe { string.add(expected.encode_utf16().count() + 1) };
+        }
+        assert_eq!(
+            unsafe { free(block.cast::<u8>().wrapping_add(2).cast()) },
+            block.cast::<u8>().wrapping_add(2).cast()
+        );
+        assert_eq!(ffi::GetLastError(), 87);
+        assert!(unsafe { free(block.cast()) }.is_null());
+        assert_eq!(unsafe { free(block.cast()) }, block.cast());
+        assert!(unsafe { free(ptr::null_mut()) }.is_null());
+        let abandoned = unsafe { argv(command.as_ptr(), &mut count) };
+        assert!(!abandoned.is_null());
+        drop(guard);
+        let _fresh = context();
+        assert_eq!(unsafe { free(abandoned.cast()) }, abandoned.cast());
+    }
+    #[test]
+    fn shell_argument_failures_bounds_and_thread_ownership_are_explicit() {
+        let command = w("\"app\" \"x\"");
+        let mut count = 0x1234;
+        assert!(unsafe { CommandLineToArgvW(command.as_ptr(), &mut count) }.is_null());
+        assert_eq!(ffi::GetLastError(), 50);
+        let _guard = context();
+        assert!(unsafe { CommandLineToArgvW(ptr::null(), &mut count) }.is_null());
+        assert_eq!(ffi::GetLastError(), 87);
+        for input in ["app arg", "", "\"app\"  \"x\""] {
+            let text = w(input);
+            assert!(unsafe { CommandLineToArgvW(text.as_ptr(), &mut count) }.is_null());
+            assert_eq!(ffi::GetLastError(), 50);
+        }
+        assert_eq!(count, 0x1234);
+        assert!(unsafe { CommandLineToArgvW(command.as_ptr(), ptr::null_mut()) }.is_null());
+        assert_eq!(ffi::GetLastError(), 87);
+        let unterminated = vec![65u16; 32768];
+        assert!(unsafe { CommandLineToArgvW(unterminated.as_ptr(), &mut count) }.is_null());
+        let mut blocks = Vec::new();
+        for _ in 0..64 {
+            let block = unsafe { CommandLineToArgvW(command.as_ptr(), &mut count) };
+            assert!(!block.is_null());
+            blocks.push(block as usize);
+        }
+        assert!(unsafe { CommandLineToArgvW(command.as_ptr(), &mut count) }.is_null());
+        assert_eq!(ffi::GetLastError(), 50);
+        let other = blocks[0];
+        std::thread::spawn(move || {
+            assert_eq!(unsafe { LocalFree(other as *mut c_void) } as usize, other);
+        })
+        .join()
+        .unwrap();
+        for block in blocks {
+            assert!(unsafe { LocalFree(block as *mut c_void) }.is_null());
+        }
+        assert!(!unsafe { CommandLineToArgvW(command.as_ptr(), &mut count) }.is_null());
+    }
+    #[test]
+    fn current_directory_reports_real_host_utf16_size_and_terminator_without_invented_drives() {
+        let get: unsafe extern "win64" fn(u32, *mut u16) -> u32 = unsafe {
+            std::mem::transmute(
+                crate::abi::resolve("kernel32.dll", "GetCurrentDirectoryW").unwrap(),
+            )
+        };
+        assert_eq!(unsafe { get(0, ptr::null_mut()) }, 0);
+        assert_eq!(ffi::GetLastError(), 50);
+        let _guard = context();
+        let expected = std::env::current_dir()
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .encode_utf16()
+            .collect::<Vec<_>>();
+        ffi::SetLastError(0xbeef);
+        let size = unsafe { get(0, ptr::null_mut()) };
+        assert_eq!(size as usize, expected.len() + 1);
+        let mut buffer = vec![0xabab; size as usize + 1];
+        assert_eq!(unsafe { get(size - 1, buffer.as_mut_ptr()) }, size);
+        assert!(buffer.iter().all(|&v| v == 0xabab));
+        assert_eq!(unsafe { get(size, buffer.as_mut_ptr()) }, size - 1);
+        assert_eq!(&buffer[..expected.len()], expected);
+        assert_eq!(buffer[expected.len()], 0);
+        assert_eq!(buffer[size as usize], 0xabab);
+        assert_eq!(ffi::GetLastError(), 0xbeef);
+        assert_eq!(unsafe { get(size, ptr::null_mut()) }, 0);
+        assert_eq!(ffi::GetLastError(), 87);
     }
     #[test]
     fn command_environment_and_module_buffers_obey_windows_size_rules() {

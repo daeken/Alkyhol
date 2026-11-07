@@ -44,8 +44,8 @@ input snapshot, and writes an adjacent identity report. Packaging alone is not v
 `--inspect` checks startup/import support and creates/destroys a checked mapping
 without entering guest code. Missing support exits 78. Guest arguments follow
 `--`; command line, environment and inherited streams now have a bounded process
-view. No Windows PEB/TEB is installed. The first [released off-the-shelf program,
-u-config](u-config.md), runs unchanged with real package queries.
+view. No Windows PEB/TEB is installed. The released [u-config](u-config.md) and [make2compdb](make2compdb.md) programs
+run unchanged with real package queries and make-to-JSON work.
 
 ## Image and ABI contract
 
@@ -61,7 +61,7 @@ including uninitialized section bytes; imports/fixups are applied before final
 permissions. Import slots cannot overlap relocation fixups.
 
 The ordinary executable and isolated DLL constructors resolve imports by exact
-symbol from the explicit **kernel32.dll**, **d3dcompiler_47.dll** and **d3d12.dll** whitelists,
+symbol from the explicit **kernel32.dll**, **shell32.dll**, **d3dcompiler_47.dll** and **d3d12.dll** whitelists,
 with case-insensitive DLL identity. The dependency APIs below also accept named/
 ordinal imports from caller-supplied DLL instances. `LinkedImage::load` extends
 EXEs with those explicit borrowed dependencies without changing the ordinary
@@ -97,7 +97,9 @@ VirtualProtect, VirtualFree and FlushInstructionCache add bounded owned-allocati
 protection, release and generated-code execution (39 kernel32 names total).
 Explicit dynamic function-table registration/lookup/removal adds three Rtl names
 (42 kernel32 names total). Bounded manual RtlVirtualUnwind adds the 43rd name;
-its supported frame/context contract is described below.
+its supported frame/context contract is described below. The released
+[make2compdb](make2compdb.md) adds GetCurrentDirectoryW/LocalFree (45 kernel32
+names total) and a separate bounded shell32!CommandLineToArgvW bridge.
 
 The existing [restricted kernel contracts](contracts.md) still apply: for example,
 file sharing must be FILE_SHARE_READ|WRITE|DELETE, security/template/named objects
