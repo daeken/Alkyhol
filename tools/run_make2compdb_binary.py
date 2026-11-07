@@ -55,12 +55,11 @@ def identity(binary):
             'archive_url':URL,'archive_sha256':ARCHIVE_SHA256,'pe_member':'w64devkit/bin/make2compdb.exe','pe_sha256':PE_SHA256,
             'source_member':'w64devkit/src/make2compdb.c','source_sha256':SOURCE_SHA256,
             'license_url':LICENSE_URL,'license_sha256':LICENSE_SHA256,'rebuilt':False,'patched':False}
-    if provenance!=wanted or provenance['rebuilt'] is not False or provenance['patched'] is not False:raise ValueError('changed release provenance')
+    if provenance!=wanted or type(provenance['schema_version']) is not int or provenance['rebuilt'] is not False or provenance['patched'] is not False:raise ValueError('changed release provenance')
     inputs={'pe/fixtures/make2compdb/cases.json':digest(CORPUS)}
-    # Only this new corpus bootstraps its first independently executed Windows record.
-    if REFERENCE.exists():
-        reference=json.loads(REFERENCE.read_text(encoding='utf-8'))
-        if reference['input_sha256']!=inputs:raise ValueError('changed frozen make2compdb corpus')
+    reference=json.loads(REFERENCE.read_text(encoding='utf-8'))
+    for key,value in [('pe_sha256',PE_SHA256),('upstream_source_sha256',SOURCE_SHA256),('upstream_license_sha256',LICENSE_SHA256),('input_sha256',inputs)]:
+        if reference[key]!=value:raise ValueError('changed frozen release/corpus identity: '+key)
     return inputs
 
 

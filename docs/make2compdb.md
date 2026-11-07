@@ -67,7 +67,9 @@ error normalization is used. Only one exact verified host loader prefix is remov
 Normal and forced-rebase host executions must agree. Windows receives and runs the
 identical release PE/source/license files. PE/source/license/corpus identities and
 clean matching revisions are checked; actual native results are frozen separately
-once observed. Executed native/hosted/physical evidence is recorded in
+at `pe/reference/make2compdb-windows-v1.json` and required by default. All 16
+cases agree on native Windows, hosted Mac and physical M4 at `761fc2e`. Detailed
+executed native/hosted/physical evidence is recorded in
 [validation](validation.md). These are this application's tested paths, not general
 Windows CRT, Shell32, graphics-binary or game compatibility.
 

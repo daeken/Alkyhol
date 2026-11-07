@@ -12,6 +12,7 @@ ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'tools'))
 import fetch_make2compdb_binary as fetcher
 import run_make2compdb_binary as runner
+import compare_make2compdb_binary as comparator
 from compare_make2compdb_binary import compare
 
 
@@ -73,6 +74,20 @@ class Make2CompdbProtocolTests(unittest.TestCase):
             with mock.patch.object(fetcher,'ROOT',root),mock.patch.object(fetcher.platform,'system',return_value='Darwin'),mock.patch.object(fetcher.subprocess,'check_output') as extract,mock.patch.object(fetcher.urllib.request,'urlopen') as network:
                 with self.assertRaises(ValueError):fetcher.fetch(root/'output')
                 extract.assert_not_called();network.assert_not_called()
+
+    def test_frozen_native_record_is_required_and_joint_corpus_drift_cannot_replace_it(self):
+        native=json.loads(runner.REFERENCE.read_text(encoding='utf-8'))
+        host=copy.deepcopy(native);host.update(backend=runner.HOST,forced_rebase_observations=copy.deepcopy(native['observations']))
+        self.assertEqual(compare([native,host]),16)
+        with tempfile.TemporaryDirectory() as directory:
+            missing=Path(directory)/'missing.json'
+            with mock.patch.object(comparator,'REFERENCE',missing):
+                with self.assertRaises(FileNotFoundError):compare([native,host])
+            changed=Path(directory)/'changed.json';changed.write_bytes(runner.CORPUS.read_bytes()+b' ')
+            digest=hashlib.sha256(changed.read_bytes()).hexdigest()
+            for record in [native,host]:record['input_sha256']={'pe/fixtures/make2compdb/cases.json':digest}
+            with mock.patch.object(comparator,'CORPUS',changed):
+                with self.assertRaisesRegex(ValueError,'frozen native evidence'):compare([native,host])
 
 
 if __name__=='__main__':unittest.main()
