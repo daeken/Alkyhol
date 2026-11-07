@@ -4,6 +4,21 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## Same-container DXIL compute reference: local evidence
+
+The physical Apple M4 ran the new `dxil-compute-v1` observation probe and matched
+all 96 independently expected words: 19 uint4 results and a 20-word untouched
+tail. It consumes the existing compute fixture unchanged, checking matrix/cbuffer
+layout, overlapping namespaces, register space 2, group-shared barriers/reversal,
+unsigned wraparound and padded dispatch. Probe input/executable/DXIL hashes and
+actual backend identity are recorded by the runner. All 40 Python tests and shader
+formatting/Clippy pass locally; six new Python tests check validator/comparator
+and subprocess failures and are synthetic assertions, not native GPU evidence.
+
+An independent Windows SDK WARP probe and same-DXIL transfer/comparison jobs are
+now defined. They have not yet completed, so no native compute agreement is claimed
+in this record. Existing sample rendering paths and quality are unchanged.
+
 ## Original Sponza material/shadow/reflection HLSL: local evidence
 
 Physical Apple M4 passed all 18 MiniEngine tests, all 18 shader tests and all

@@ -104,3 +104,29 @@ raster tests but lacks RT; physical RT interface tests are explicitly ignored
 there. Native Windows DXIL compute/full shaded DXR frame comparisons remain
 unmeasured. Existing portable Win32/native SDK, MSVC geometry/placement and checker
 comparisons continue through the conformance workflow.
+
+## Identical-DXIL native compute reference
+
+The finite `dxil-compute-v1` probe executes the same compiled container on Metal
+and on an independent Windows SDK/D3D12 WARP program. It reuses the existing
+Alkyhol compute fixture unchanged: overlapping register numbers, a separate
+register space, a 64-byte cbuffer/row-major matrix, group-shared reversal/barrier,
+integer wraparound, a padded final group and an untouched output tail. A separate
+Python scalar contract checks every word; the comparison also requires matching
+DXIL SHA-256 and a clean matching source revision. Compiler/executable/source
+hashes and actual adapter identity accompany each observation.
+
+```sh
+# macOS: build the public fixture using the explicitly selected frontend, then
+# translate and execute its DXIL. The generated DXIL is the Windows input too.
+python3 tools/run_shader_compute.py --dxc "$DXC" \
+  --dxil local/compute.dxil --output local/shader-compute-Metal.json
+# Windows Developer Command Prompt: no DXC download or Alkyhol linkage needed.
+python tools/run_shader_compute.py --dxil compute.dxil --output shader-compute.json
+```
+
+The conformance workflow now transfers that DXIL from the shader job to a native
+Windows job, then compares all 96 words, including 20 sentinel words. The physical
+M4 probe passed locally; the new native result is pending until the CI jobs
+actually execute. Full shaded DXR frame comparison is outside this finite compute
+contract. Synthetic validator/process-failure tests do not count as GPU evidence.

@@ -78,11 +78,57 @@ jobs:
           cargo test --manifest-path shader/Cargo.toml --locked -- --nocapture 2>&1 | tee shader-validation.txt
           python tools/prepare_sakura_shaders.py --check
           cargo run --manifest-path shader/Cargo.toml --locked --example translate_samples -- "$DXC" --check
+          python tools/run_shader_compute.py --dxc "$DXC" --dxil compute.dxil --output shader-compute.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: shader-compute-Metal
+          path: |
+            compute.dxil
+            shader-compute.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: shader-Metal-validation
           path: shader-validation.txt
+  shader-compute-reference:
+    needs: shader
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: ilammy/msvc-dev-cmd@v1
+      - uses: actions/download-artifact@v4
+        with:
+          name: shader-compute-Metal
+          path: shader-compute-input
+      - name: Execute the identical DXIL container on native D3D12 WARP
+        run: python tools/run_shader_compute.py --dxil shader-compute-input/compute.dxil --output shader-compute.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: shader-compute-Windows
+          path: shader-compute.json
+  compare-shader-compute:
+    needs: [shader, shader-compute-reference]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: shader-compute-*
+          path: compute-observations
+      - name: Compare all compute words and untouched tail from the same DXIL
+        run: |
+          python3 - <<'PY'
+          import json, subprocess
+          from pathlib import Path
+          from tools.shader_compute_contract import compare_reports
+          reports = [json.loads(p.read_text()) for p in Path('compute-observations').glob('*/shader-compute.json')]
+          revision = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
+          compare_reports(reports, revision)
+          print('Native D3D12 WARP and translated Metal agree on all 96 output words, including the 20-word sentinel tail, from identical DXIL')
+          PY
   graphics:
     strategy:
       fail-fast: false
