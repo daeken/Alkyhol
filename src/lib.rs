@@ -1,4 +1,5 @@
 //! Native source compatibility experiments; not a Windows executable loader.
+pub mod com;
 pub mod ffi;
 pub mod graphics;
 pub mod kernel;

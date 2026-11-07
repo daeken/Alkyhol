@@ -1,0 +1,33 @@
+--- a/clang/lib/Sema/SemaOverload.cpp
++++ b/clang/lib/Sema/SemaOverload.cpp
+@@ -5373,7 +5373,13 @@
+   //     -- Otherwise, the reference shall be an lvalue reference to a
+   //        non-volatile const type (i.e., cv1 shall be const), or the reference
+   //        shall be an rvalue reference.
+-  if (!isRValRef && (!T1.isConstQualified() || T1.isVolatileQualified())) {
++  // Alkyhol: MSVC permits a record temporary to bind to a compatible
++  // non-volatile record lvalue reference, including a derived-to-base binding.
++  bool MsvcRecordTemporary = S.getLangOpts().MicrosoftExt &&
++      InitCategory.isPRValue() && T1->isRecordType() && T2->isRecordType() &&
++      RefRelationship == Sema::Ref_Compatible && !T1.isVolatileQualified();
++  if (!isRValRef && (!T1.isConstQualified() || T1.isVolatileQualified()) &&
++      !MsvcRecordTemporary) {
+     if (InitCategory.isRValue() && RefRelationship != Sema::Ref_Incompatible)
+       ICS.setBad(BadConversionSequence::lvalue_ref_to_rvalue, Init, DeclType);
+     return ICS;
+--- a/clang/lib/Sema/SemaInit.cpp
++++ b/clang/lib/Sema/SemaInit.cpp
+@@ -5462,7 +5462,12 @@
+   //       shall be an rvalue reference.
+   //       For address spaces, we interpret this to mean that an addr space
+   //       of a reference "cv1 T1" is a superset of addr space of "cv2 T2".
+-  if (isLValueRef &&
++  // Alkyhol: match the corresponding MSVC-compatible overload candidate;
++  // the existing temporary-reference path supplies lifetime and base adjustment.
++  bool MsvcRecordTemporary = S.getLangOpts().MicrosoftExt &&
++      InitCategory.isPRValue() && T1->isRecordType() && T2->isRecordType() &&
++      RefRelationship == Sema::Ref_Compatible && !T1Quals.hasVolatile();
++  if (isLValueRef && !MsvcRecordTemporary &&
+       !(T1Quals.hasConst() && !T1Quals.hasVolatile() &&
+         T1Quals.isAddressSpaceSupersetOf(T2Quals, S.getASTContext()))) {
+     if (S.Context.getCanonicalType(T2) == S.Context.OverloadTy)

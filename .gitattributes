@@ -3,3 +3,6 @@ shader/tests/fixtures/microsoft-hello-triangle.hlsl -text whitespace=cr-at-eol
 shader/samples/**/original/* -text whitespace=cr-at-eol,-blank-at-eol,-blank-at-eof
 shader/samples/sakura/*.generated.hlsli -text whitespace=cr-at-eol,-blank-at-eol,-blank-at-eof
 shader/samples/miniengine/*.generated.hlsli -text whitespace=cr-at-eol,-blank-at-eol,-blank-at-eof
+
+cpp/licenses/* -text whitespace=cr-at-eol
+cpp/bridge/*.patch whitespace=-blank-at-eol

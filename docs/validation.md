@@ -4,6 +4,28 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## Original C++ intake and Rust COM foundation: work in progress
+
+The user selected the complete unmodified MiniEngine Sponza C++ application as
+its next target. The original checkout remains clean at its pinned revision.
+Open DXC compiled all 184 project shader entries; the unmodified ModelViewer.cpp
+compiled to an x86-64 Mach-O object using explicit compiler compatibility for
+MSVC temporary casts/references. A full source scan compiled 42 of 70 original
+C++ translation units. Remaining Windows/CRT header gaps are not counted as a
+complete build; full linking and runtime rendering have not been established.
+
+An actual x86-64 C++/WRL program linked to the Rust static library and passed
+ID3DBlob/IUnknown identity, buffer, copy/move/attach/detach and threaded reference
+ownership assertions. Three new Rust COM unit tests and the full root suite pass;
+44 Python tests, root Clippy, header-layout/task fixtures and compiler temporary
+lifetime fixtures also pass locally. New native Windows COM comparison remains
+unmeasured. See [original C++ build](../cpp/README.md) for precise commands,
+compiler patches, source/header provenance and the current partial build report.
+
+The preceding binding hardening `3bd9508` passed all twelve existing CI jobs in
+[42348669221](https://github.com/daeken/Alkyhol/actions/runs/42348669221).
+This predates the C++/COM work and does not validate it by implication.
+
 ## Shader binding validation hardening: local host evidence
 
 Five new Rust remapper unit tests cover descriptor interval boundaries, adjacent

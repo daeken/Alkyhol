@@ -1,0 +1,75 @@
+{
+  "schema_version": 1,
+  "repositories": {
+    "DirectX-Graphics-Samples": {
+      "url": "https://github.com/microsoft/DirectX-Graphics-Samples.git",
+      "revision": "68a2b1e97f71642924e74c7757ca21756ad221b5"
+    },
+    "DirectX-Headers": {
+      "url": "https://github.com/microsoft/DirectX-Headers.git",
+      "revision": "75edcf75f4c0942dd0d39e75fdc5c42ca6f285fd"
+    },
+    "DirectXMath": {
+      "url": "https://github.com/microsoft/DirectXMath.git",
+      "revision": "d400b65211034e3e7997b3d5e8d7fdf45b0c3d2e"
+    },
+    "mingw-w64": {
+      "url": "https://github.com/mingw-w64/mingw-w64.git",
+      "revision": "35da1aeec5029cb6cd796adf15fb767cfe966bde"
+    },
+    "llvm-project": {
+      "url": "https://github.com/llvm/llvm-project.git",
+      "revision": "a832a5222e489298337fbb5876f8dcaf072c5cca"
+    },
+    "DirectXTex": {
+      "url": "https://github.com/microsoft/DirectXTex.git",
+      "revision": "c0cb97764379ebd20dbd2016c58965db85f5b307"
+    },
+    "DirectXMesh": {
+      "url": "https://github.com/microsoft/DirectXMesh.git",
+      "revision": "1e5a5e2bf005940202c3623bde57ea72ba76b416"
+    }
+  },
+  "adapted_headers": {
+    "basetsd.h": {
+      "repository": "DirectX-Headers",
+      "path": "include/wsl/stubs/basetsd.h",
+      "upstream_sha256": "f464a0af62887cee26c094437c20857a6de5f510879873ff6f61c3efd3253697"
+    },
+    "rpc.h": {
+      "repository": "DirectX-Headers",
+      "path": "include/wsl/stubs/rpc.h",
+      "upstream_sha256": "6169e7f95762b9304753c3f6da81c3a78bd86dc46788357ea4988902bc8394a0"
+    },
+    "rpcndr.h": {
+      "repository": "DirectX-Headers",
+      "path": "include/wsl/stubs/rpcndr.h",
+      "upstream_sha256": "83e90cd4f1746c22e970c443131cbc9154863aff6be8aad05d380ea320d44422"
+    },
+    "unknwn.h": {
+      "repository": "DirectX-Headers",
+      "path": "include/wsl/stubs/unknwn.h",
+      "upstream_sha256": "f29eaad0480e4a7da9c64cc2caed0abcefc6b30c677f7a8309f5bb13030833e4"
+    },
+    "unknwnbase.h": {
+      "repository": "DirectX-Headers",
+      "path": "include/wsl/stubs/unknwnbase.h",
+      "upstream_sha256": "6f0cd0479cea416de9f960ffa81a9927302f4c7f7103614a131fc124401b1ab2"
+    },
+    "winapifamily.h": {
+      "repository": "DirectX-Headers",
+      "path": "include/wsl/stubs/winapifamily.h",
+      "upstream_sha256": "c42b24ba228cfe80aa1e75772ba364dffb16f0aad7b61e9d9c6a9064c2359646"
+    },
+    "oaidl.h": {
+      "repository": "DirectX-Headers",
+      "path": "include/wsl/stubs/oaidl.h",
+      "upstream_sha256": "6169e7f95762b9304753c3f6da81c3a78bd86dc46788357ea4988902bc8394a0"
+    },
+    "ocidl.h": {
+      "repository": "DirectX-Headers",
+      "path": "include/wsl/stubs/ocidl.h",
+      "upstream_sha256": "6169e7f95762b9304753c3f6da81c3a78bd86dc46788357ea4988902bc8394a0"
+    }
+  }
+}

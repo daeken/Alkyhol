@@ -1,0 +1,9 @@
+#pragma once
+#include "basetsd.h"
+#define _In_reads_bytes_opt_(x)
+#define _Out_writes_to_(x,y)
+#define _Out_writes_bytes_to_(x,y)
+#define _Out_writes_bytes_to_opt_(x,y)
+#define _Outptr_result_buffer_(x)
+#define _Analysis_noreturn_
+#define _Post_equal_to_(x)

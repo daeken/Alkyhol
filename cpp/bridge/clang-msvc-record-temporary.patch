@@ -1,0 +1,21 @@
+--- a/clang/lib/Sema/SemaCast.cpp
++++ b/clang/lib/Sema/SemaCast.cpp
+@@ -2305,6 +2305,18 @@
+   }
+ 
+   if (const ReferenceType *DestTypeTmp = DestType->getAs<ReferenceType>()) {
++    // Alkyhol: bounded MSVC compatibility for MiniEngine's value-preserving
++    // C-style reinterpretation of a record temporary as an equally-sized record.
++    // Materialize its storage for the full expression; leave standard modes,
++    // named casts, scalars and mismatched layouts on the upstream diagnostic path.
++    QualType Pointee = DestTypeTmp->getPointeeType();
++    if (CStyle && Self.getLangOpts().MicrosoftExt &&
++        DestTypeTmp->isLValueReferenceType() && SrcExpr.get()->isPRValue() &&
++        SrcType->isRecordType() && Pointee->isRecordType() &&
++        !SrcType->isIncompleteType() && !Pointee->isIncompleteType() &&
++        Self.Context.getTypeSize(SrcType) == Self.Context.getTypeSize(Pointee) &&
++        Self.Context.getTypeAlign(SrcType) == Self.Context.getTypeAlign(Pointee))
++      SrcExpr = Self.CreateMaterializeTemporaryExpr(SrcType, SrcExpr.get(), true);
+     if (!SrcExpr.get()->isGLValue()) {
+       // Cannot cast non-glvalue to (lvalue or rvalue) reference type. See the
+       // similar comment in const_cast.
