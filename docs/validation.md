@@ -123,6 +123,46 @@ thread creation, memory allocation or pointer ownership. Stored addresses remain
 caller-owned host values. Full slot-lifetime rules and deliberate limits are in
 [the kernel contracts](contracts.md). No game compatibility is established.
 
+## Native thread callback milestone
+
+[Conformance run 42331502760](https://github.com/daeken/Alkyhol/actions/runs/42331502760)
+on revision `925f8f914bd73e5b2390a56ddfbf51fad8120a70` completed with all six jobs
+passing. CreateThread now starts a native host callback, GetCurrentThreadId returns
+its opaque Alkyhol identity, GetExitCodeThread queries pending/returned status, and
+WaitForSingleObject accepts thread handles. Completion remains signaled, including
+when a completed callback returns the numeric STILL_ACTIVE value (259).
+
+The pinned Microsoft Creating Threads port executes three actual CreateThread
+callbacks with separate parameter records, an event gate, individual finite waits
+and explicit handle cleanup. It checks parameter writes, callback IDs against the
+creation outputs, pending status, returned DWORD values and repeated completion
+waits. All six portable samples executed against Windows SDK/kernel32 on Windows
+Server 2025 build 26100 AMD64, Alkyhol on macOS 26.6.2 ARM64, and Alkyhol on Linux
+x86_64/glibc 2.43. Their complete observations agreed exactly. Downloaded reports
+bind the same revision and clean tracked trees; a clean local macOS report agreed.
+
+All 52 root Rust tests and 18 Python tests passed on each CI host. Nine new host
+thread tests include pending/completed/error paths, optional/null outputs, early
+handle close, distinct foreign/created thread IDs, returned 259, and a deliberately
+blocked Rust TLS destructor proving callback return alone does not publish
+completion. A safe Rust worker panic must produce an explicit host error. These
+host tests are separate from the Windows SDK sample; the panic path does not
+establish native Windows exception handling or DLL callback semantics.
+
+Four GPU integration tests and the drawing example passed on hosted Metal
+(`Apple Paravirtual device`) and explicit CPU Vulkan (llvmpipe LLVM 21.1.8).
+The same checks passed locally on physical Apple M4 Metal, macOS 27.0.1 ARM64 and
+Rust 1.99.1; all six C/C++ samples also passed with Apple Clang 21.0.0. Root local
+Clippy and CI root/graphics static checks passed with warnings denied.
+
+The initial thread backend uses a detached host monitor per callback to join the
+worker, then publish completion after host TLS destructors. This adds resources
+and does not emulate Windows stack reserve/commit, system-wide IDs, DLL lifecycle,
+security, inheritance, suspended creation, priority or abnormal termination. Existing
+event/semaphore/TLS ports still use their documented C++ thread substitutions;
+the new Creating Threads port provides the direct thread-API comparison. No game
+compatibility or universal API equivalence is established.
+
 ## Reproduce
 
 ```sh
