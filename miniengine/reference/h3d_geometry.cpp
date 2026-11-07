@@ -10,7 +10,7 @@ struct Box {Vector3 minimum,maximum;};
 struct Header {uint32_t meshes,materials,vertexBytes,indexBytes,depthBytes;Box bounds;};
 struct Attrib {uint16_t offset,normalized,components,format;};
 struct Mesh {Box bounds;uint32_t material,enabled,depthEnabled,stride,depthStride;Attrib attrib[16],depthAttrib[16];uint32_t vertexOffset,vertexCount,indexOffset,indexCount,depthOffset,depthCount;};
-struct alignas(16) Material {float colours[20];float opacity,shininess,strength;char paths[6][128],name[128];};
+struct alignas(16) Material {float colours[20];float opacity,shininess,strength;char paths[6][128],name[128];uint32_t padding;};
 static_assert(sizeof(Header)==64&&sizeof(Mesh)==336&&sizeof(Material)==992);
 int main(int argc,char**argv){
  if(argc!=3)return 2;std::ifstream input(argv[1],std::ios::binary);Header h{};input.read(reinterpret_cast<char*>(&h),sizeof(h));if(!input||h.meshes!=34||h.materials!=27)return 3;
