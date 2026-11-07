@@ -82,7 +82,8 @@ The 24 bridged imports are all executed by the PE fixture:
 The existing [restricted kernel contracts](contracts.md) still apply: for example,
 file sharing must be FILE_SHARE_READ|WRITE|DELETE, security/template/named objects
 and overlapped I/O are unsupported. This milestone adds binary calling convention
-bridges, not broader semantics for those functions. Unix status supports 0..255;
+bridges and explicit no-effect current-process/thread pseudo-handle CloseHandle
+semantics. Other native kernel restrictions remain. Unix status supports 0..255;
 a larger Windows ExitProcess/entry-return DWORD reports the unsupported status
 rather than silently claiming its low byte is equivalent.
 
@@ -93,8 +94,9 @@ XMM6..15 across real imported calls, plus five/seven-argument stack calls,
 UTF-16/surrogate filenames, a relocated absolute pointer, zero-filled storage,
 10,000 last-error iterations, 9,999 TLS round trips and last-error clearing,
 manual/auto-reset events, semaphore consumption/release, monotonic-counter
-predicates, file seek/EOF/truncation/flush/readback and a failed invalid handle.
-It writes 15 deterministic predicate/data words and a separate 12-byte Unicode-
+predicates, file seek/EOF/truncation/flush/readback and a failed null handle. Separate current-process/thread pseudo-handle closes
+record both return values and unchanged last-error sentinels.
+It writes 19 deterministic predicate/data words and a separate 12-byte Unicode-
 named file. Raw handles, pointers, clocks and TLS indices are deliberately not
 compared as if their implementation-specific values ought to match.
 
@@ -128,6 +130,7 @@ binary COM/graphics callers and redistributable sample/benchmark executables.
 ## Primary specifications
 
 The implementation follows Microsoft's [PE/COFF image and relocation format](https://learn.microsoft.com/en-us/windows/win32/debug/pe-format)
+, the [documented pseudo-handle close behavior](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-getcurrentprocess)
 and [x64 calling convention](https://learn.microsoft.com/en-us/cpp/build/x64-calling-convention).
 Apple documents the native-host architecture in [Rosetta's translation environment](https://developer.apple.com/documentation/apple-silicon/about-the-rosetta-translation-environment).
 Finite tests above establish only the operations actually exercised; these links

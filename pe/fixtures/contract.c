@@ -97,8 +97,13 @@ void entry(void) {
     RECORD(size);
     /* Explicitly invalid handle must fail, not become a successful stub. */
     SetLastError(0);
-    CHECK(!CloseHandle((HANDLE)(U64)-1) && GetLastError() == 6, 38);
+    CHECK(!CloseHandle((HANDLE)0) && GetLastError() == 6, 38);
     RECORD(GetLastError());
+    /* -1 and -2 are pseudo-handles, not invalid handles for CloseHandle. */
+    SetLastError(0xdead1234);
+    RECORD(CloseHandle((HANDLE)(U64)-1)); RECORD(GetLastError());
+    SetLastError(0xcafe4321);
+    RECORD(CloseHandle((HANDLE)(U64)-2)); RECORD(GetLastError());
     file = CreateFileW(report_name, 0x40000000u, 7, 0, 2, 128, 0);
     CHECK(file != (HANDLE)(U64)-1 && WriteFile(file, records, used * 4, &n, 0) && n == used * 4, 39);
     CHECK(CloseHandle(file), 40);

@@ -11,7 +11,8 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 EXPECTED_WORDS = [0x41424931, 0xcafebabe, 0x9876270f, 9999, 258, 0x45564e54,
-                  0, 1, 16, 8, 0x31415926, 0xdeadbeef, 0xfeedface, 12, 6]
+                  0, 1, 16, 8, 0x31415926, 0xdeadbeef, 0xfeedface, 12, 6,
+                  1, 0xdead1234, 1, 0xcafe4321]
 EXPECTED_FILE = struct.pack('<III', 0x12345678, 0x90abcdef, 0x31415926)
 
 

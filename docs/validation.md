@@ -16,10 +16,10 @@ machine code is executed unchanged, rather than recompiled for macOS.
 On physical M4/macOS, the fixture passes at its preferred base and after forced
 DIR64 rebasing, including all 24 imports, Win64 nonvolatile GPR/XMM canaries,
 stack arguments, surrogate-pair filename, zero fill, TLS/error stress, events,
-semaphores, timing predicates and file seek/truncation/readback. All 15 report
-words and the separate 12 file bytes match independent expectations. Eleven PE
+semaphores, timing predicates and file seek/truncation/readback. All 19 report
+words and the separate 12 file bytes match independent expectations. Twelve PE
 Rust tests pass on the x86-64 process (eight portable parser units plus import
-identity, mapping/entry and isolated real permission-fault tests); eight portable
+identity, mapping/entry, pseudo-handle semantics and isolated real permission-fault tests); eight portable
 tests also pass on native arm64. Root Rust tests (77), Python tests (127), PE
 Clippy and formatting pass locally. This is host/Rosetta evidence; native Windows
 comparison is pending the new workflow and must be recorded separately. Existing
@@ -33,6 +33,15 @@ no observer predicate or kernel behavior was relaxed. Packaging additionally
 extracts the actual linked read-only Mach-O section and verifies the PE snapshot
 hash. Execution reports compare that extracted/transferred payload identity.
 Three portable packaging-negative units pass (127 Python tests total).
+
+The next native attempt reached fixture assertion 38: the test had mistakenly
+classified -1 as an invalid CloseHandle handle. Windows uses -1/-2 for current
+process/thread pseudo-handles; documented close semantics have no effect. The
+binary bridge now recognizes those identities without touching the owned-handle
+table. The fixture tests NULL as genuinely invalid and separately records both
+pseudo-handle return/last-error pairs, rather than excluding the discrepancy.
+These new records still require native execution evidence; the restricted source
+kernel's original invalid-owned-handle contract/tests are unchanged.
 
 ## COM compute dispatch: physical Metal command-list evidence
 

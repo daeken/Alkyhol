@@ -19,7 +19,15 @@ mod shims {
     use super::*;
     bridge!(GetLastError() -> u32);
     bridge!(SetLastError(error: u32) -> ());
-    bridge!(CloseHandle(h: usize) -> i32);
+    // Windows -1/-2 are current-process/current-thread pseudo-handles. Closing
+    // them has no effect; do not send those identities to the owned-handle table.
+    unsafe extern "win64" fn CloseHandle(h: usize) -> i32 {
+        if h == usize::MAX || h == usize::MAX - 1 {
+            1
+        } else {
+            ffi::CloseHandle(h)
+        }
+    }
     bridge!(
         CreateFileW(
             name: *const u16,
@@ -125,6 +133,19 @@ pub(crate) fn resolve(module: &str, name: &str) -> Option<usize> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn pseudo_close_has_no_effect_and_null_still_fails() {
+        let close: unsafe extern "win64" fn(usize) -> i32 =
+            unsafe { std::mem::transmute(resolve("kernel32.dll", "CloseHandle").unwrap()) };
+        for pseudo in [usize::MAX, usize::MAX - 1] {
+            ffi::SetLastError(0x1234);
+            assert_eq!(unsafe { close(pseudo) }, 1);
+            assert_eq!(ffi::GetLastError(), 0x1234);
+        }
+        assert_eq!(unsafe { close(0) }, 0);
+        assert_eq!(ffi::GetLastError(), 6);
+    }
+
     #[test]
     fn module_and_symbol_identity_are_not_guessed() {
         assert!(resolve("KERNEL32.dll", "GetLastError").is_some());
