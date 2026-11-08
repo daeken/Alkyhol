@@ -13,6 +13,7 @@ def inputs(d):return {'sources':{(SOURCE/n).relative_to(ROOT).as_posix():digest(
 def verify(d):
     r=json.loads((d/'unnamed-semaphore-inputs.json').read_text())
     if r!=inputs(d):raise ValueError('semaphore source/PE identity changed')
+    if r!=frozen()['inputs']:raise ValueError('semaphore identity differs from frozen native observation')
     return r
 def build(d):
     d.mkdir(parents=True,exist_ok=True);clang=shutil.which('clang');lld=rust_tool('rust-lld');lib=d/'unnamed-semaphore.lib'
@@ -21,11 +22,22 @@ def build(d):
     for mode,name in enumerate(FILES):
         obj=d/(name+'.obj');subprocess.run([clang,'--target=i686-pc-windows-msvc','-O1','-ffreestanding','-fno-builtin','-fno-stack-protector','-fno-unwind-tables','-fno-asynchronous-unwind-tables','-Wall','-Wextra','-Werror','-Wno-unused-function',f'-DMODE={mode}','-c',str(SOURCE/'unnamed-semaphore.c'),'-o',str(obj)],check=True)
         subprocess.run([lld,'-flavor','link','/nodefaultlib','/subsystem:console','/machine:x86','/dynamicbase','/fixed:no','/timestamp:0','/safeseh:no','/manifest:no','/entry:entry',str(obj),str(lib),*[f'/alternatename:__imp__{n}@{s}=__imp__{n}' for n,s in SYMBOLS],'/out:'+str(d/name)],check=True)
+        literal=ROOT/f'pe/reference/pe32-unnamed-semaphore-{mode}-v1.exe'
+        if digest(literal)!=frozen()['inputs']['files'][name]:raise ValueError('changed literal native semaphore PE')
+        shutil.copyfile(literal,d/name)
     (d/'unnamed-semaphore-inputs.json').write_text(json.dumps(inputs(d),indent=2)+'\n');verify(d)
 def decode(data):
     e=0xface1234;expected=[0x53454d32,4,1,0,258,e,1,0,0,e,0,e,258,e,0,87,0,87,0,87,258,e,1,e,1,e,1,28]
     if len(data)!=112 or list(struct.unpack('<28I',data))!=expected:raise ValueError('semaphore permit/count/error/stack observations differ: '+data.hex())
     return expected
+def frozen():
+    path=ROOT/'pe/reference/pe32-unnamed-semaphore-windows-v1.json'
+    if digest(path)!='2a840b978afdfad61efed57f1a2972b72fc050f70018af3c2b6274700f26215f':raise ValueError('changed native semaphore record')
+    r=json.loads(path.read_bytes())
+    if r['backend']!='native Windows unnamed semaphores' or len(r['reports'])!=1:raise ValueError('incomplete native semaphore record')
+    row=r['reports'][0]
+    if row['case']!=0 or row['status'] or row['stderr_hex'] or decode(bytes.fromhex(row['stdout_hex']))!=row['words']:raise ValueError('failed native semaphore observation')
+    return r
 def execute(d,native=False):
     identity=verify(d);probe=None if native else runner(d);reports=[];path=d/('native-unnamed-semaphore.json' if native else 'unnamed-semaphore-host.json')
     for mode in ([0] if native else range(5)):

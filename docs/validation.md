@@ -4,6 +4,36 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## Original DAO passes both synchronization constructors and reaches a user folder
+
+At clean revision `0cda51c`, physical M4 executes the unchanged original EXE's
+actual `CreateEventW` and `CreateSemaphoreW`. Both complete four-word captures
+confirm NULL security and names; the semaphore starts at zero with a valid
+signed maximum. Real backing objects are created, original startup continues
+its critical-section/tick work, then reaches **SHELL32.dll!SHGetFolderPathW**.
+That API remains unsupported; no window/menu/rendering is observed. Folder
+contents/paths have not been invented. Original hashes, arguments, resource
+data and full captures remain local, with existing profile/dependency caveats.
+
+The [native startup job at `0cda51c`](https://github.com/daeken/Alkyhol/actions/runs/42520195797)
+passes the actual counting-semaphore observation and the preceding native
+startup comparisons. All 28 raw words agree with physical M4 after selecting
+the same five literal PEs and complete source/file hashes. The record is
+`pe/reference/pe32-unnamed-semaphore-windows-v1.json`, SHA-256
+`2a840b978afdfad61efed57f1a2972b72fc050f70018af3c2b6274700f26215f`.
+Permits are consumed one at a time, zero count times out, and negative/excessive
+initial counts or nonpositive maxima fail with native error 87. Earlier 42-word
+event evidence stays unchanged and agrees after adding semaphore routing.
+Four semaphore restrictions remain host-only exclusions. This follows the
+[CreateSemaphoreW contract](https://learn.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-createsemaphorew)
+within the admitted process-local scope, not general synchronization parity.
+
+Local checks pass: 211 Rust PE checks including doctests, 398 Python tests,
+project Clippy/formatting and actual event/semaphore PE execution. Broader CI
+jobs at this revision are still finishing. The API gate table now fills its
+first page; the next new import requires a checked layout extension preserving
+the existing math-gateway regions and frozen native comparisons.
+
 ## Original DAO creates its event and reaches a counting semaphore
 
 At clean revision `f34fd67`, physical M4 executes the original EXE's actual

@@ -1,0 +1,54 @@
+{
+  "backend": "native Windows unnamed semaphores",
+  "inputs": {
+    "sources": {
+      "pe/fixtures/pe32-startup/unnamed-semaphore.c": "e88174a293ad296430491d3c3eb966037e2b0be9958923cd9b3478e564dac78b",
+      "pe/fixtures/pe32-startup/unnamed-semaphore.def": "ca10d8f7eb200067633e94b12a00ac0dad44b0fa66fef54828d5a342206268b4"
+    },
+    "files": {
+      "unnamed-semaphore-0.exe": "4818af402db5553698936ca95d482dc594f6062d3bc7793948891c091fde7713",
+      "unnamed-semaphore-1.exe": "1234c6c164591ef3a55414d98b386aa4dc4345f804c4ff0e7838d7307b3818da",
+      "unnamed-semaphore-2.exe": "01ac3ea9abf5c0d60bbacbcb19981e940da6f66b631858e8b7b021361a065790",
+      "unnamed-semaphore-3.exe": "d42b8ee5422fbcb7140595bb353396b9d240ed9dc2f621817ee14d3e409cea3b",
+      "unnamed-semaphore-4.exe": "5124058a9ebd10399c31e2b647f0a8f3591a4f03b05ac5bfea4bf9d5f460aff8"
+    }
+  },
+  "reports": [
+    {
+      "case": 0,
+      "status": 0,
+      "stdout_hex": "324d4553040000000100000000000000020100003412cefa0100000000000000000000003412cefa000000003412cefa020100003412cefa000000005700000000000000570000000000000057000000020100003412cefa010000003412cefa010000003412cefa010000001c000000",
+      "stderr_hex": "",
+      "words": [
+        1397050674,
+        4,
+        1,
+        0,
+        258,
+        4207809076,
+        1,
+        0,
+        0,
+        4207809076,
+        0,
+        4207809076,
+        258,
+        4207809076,
+        0,
+        87,
+        0,
+        87,
+        0,
+        87,
+        258,
+        4207809076,
+        1,
+        4207809076,
+        1,
+        4207809076,
+        1,
+        28
+      ]
+    }
+  ]
+}

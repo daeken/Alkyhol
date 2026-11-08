@@ -1,4 +1,4 @@
-//! Checked PE32 unnamed events backed by Alkyhol's real event state machine.
+//! Checked PE32 unnamed events and counting semaphores backed by real kernel state.
 //! Named/security/inheritance profiles and guest-thread waits remain separate.
 use super::{LoadedImage32, unsupported};
 use crate::Result;
