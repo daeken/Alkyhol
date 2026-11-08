@@ -48,37 +48,74 @@ fn embedded_pe() -> &'static [u8] {
 enum Guest32<'a> {
     Plain(alkyhol_pe::LoadedImage32<'a>),
     Exceptions(alkyhol_pe::ExceptionImage32<'a>),
+    Process(alkyhol_pe::ProcessImage32<'a>),
 }
 impl Guest32<'_> {
     fn relocated(&self) -> bool {
         match self {
             Self::Plain(i) => i.relocated(),
             Self::Exceptions(i) => i.relocated(),
+            Self::Process(i) => i.relocations().last().copied().unwrap_or(false),
         }
     }
-    unsafe fn enter(&self) -> alkyhol_pe::Result<u32> {
+    unsafe fn enter(&mut self) -> alkyhol_pe::Result<u32> {
         match self {
             Self::Plain(i) => unsafe { i.enter() },
             Self::Exceptions(i) => unsafe { i.enter() },
+            Self::Process(i) => unsafe { i.enter() },
         }
     }
 }
 fn main() {
     let all: Vec<_> = std::env::args().skip(1).collect();
     let split = all.iter().position(|a| a == "--").unwrap_or(all.len());
-    let args = &all[..split];
-    if args.iter().any(|a| {
-        ![
-            "--inspect",
-            "--rebase",
-            "--loader-info",
-            "--teb-info",
-            "--repeat",
-            "--seh",
-        ]
-        .contains(&a.as_str())
-    }) {
-        process::exit(64);
+    let mut args = Vec::new();
+    let mut dlls = Vec::new();
+    let mut executable = None;
+    let mut options = all[..split].iter();
+    let usage = |message: &str| -> ! {
+        eprintln!("Alkyhol PE32 arguments: {message}");
+        process::exit(64)
+    };
+    while let Some(option) = options.next() {
+        match option.as_str() {
+            "--exe-name" => {
+                if executable.is_some() {
+                    usage("duplicate --exe-name");
+                }
+                executable = Some(
+                    options
+                        .next()
+                        .unwrap_or_else(|| usage("--exe-name requires a basename")),
+                );
+            }
+            "--dll" => {
+                let value = options
+                    .next()
+                    .unwrap_or_else(|| usage("--dll requires NAME=PATH"));
+                let (name, path) = value
+                    .split_once('=')
+                    .filter(|(n, p)| !n.is_empty() && !p.is_empty())
+                    .unwrap_or_else(|| usage("--dll requires NAME=PATH"));
+                dlls.push((name, path));
+            }
+            flag if [
+                "--inspect",
+                "--rebase",
+                "--loader-info",
+                "--teb-info",
+                "--repeat",
+                "--seh",
+            ]
+            .contains(&flag) =>
+            {
+                args.push(option.clone())
+            }
+            _ => usage("unknown launcher option; guest arguments follow --"),
+        }
+    }
+    if !dlls.is_empty() && executable.is_none() {
+        usage("--dll requires --exe-name to identify the original EXE");
     }
     let result = (|| -> alkyhol_pe::Result<u32> {
         let mut argv = vec![
@@ -104,6 +141,9 @@ fn main() {
         let process = alkyhol_pe::ProcessContext::install(&argv, &environment)?;
         let bytes = embedded_pe();
         let parsed = alkyhol_pe::Image::parse_i386(bytes)?;
+        if executable.is_some() && args.iter().any(|a| a.as_str() == "--seh") {
+            return Err("combined PE32 process-graph/SEH execution is unsupported".into());
+        }
         if args.iter().any(|a| a == "--seh") {
             parsed.check_exception_startup32()?;
         } else {
@@ -121,7 +161,25 @@ fn main() {
             );
         }
         let rebase = args.iter().any(|a| a == "--rebase");
-        let image = if args.iter().any(|a| a == "--seh") {
+        let mut image = if let Some(name) = executable {
+            let contents = dlls
+                .iter()
+                .map(|(_, path)| std::fs::read(path).map_err(|e| e.to_string()))
+                .collect::<alkyhol_pe::Result<Vec<_>>>()?;
+            let inputs: Vec<_> = dlls
+                .iter()
+                .zip(&contents)
+                .map(|((name, _), bytes)| (*name, bytes.as_slice()))
+                .collect();
+            if args.iter().any(|a| a.as_str() == "--inspect") {
+                alkyhol_pe::ProcessImage32::preflight((name, bytes), &inputs, rebase)?;
+                eprintln!("checked PE32 process dependency graph; no guest initialization");
+                return Ok(0);
+            }
+            Guest32::Process(unsafe {
+                alkyhol_pe::ProcessImage32::load((name, bytes), &inputs, rebase, &process)
+            }?)
+        } else if args.iter().any(|a| a == "--seh") {
             Guest32::Exceptions(alkyhol_pe::ExceptionImage32::load(bytes, rebase, &process)?)
         } else {
             Guest32::Plain(alkyhol_pe::LoadedImage32::load(bytes, rebase, &process)?)

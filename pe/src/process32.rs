@@ -161,6 +161,15 @@ pub struct ProcessImage32<'a> {
     finished: bool,
 }
 impl<'a> ProcessImage32<'a> {
+    /// Check the complete closed graph without mapping or executing any module.
+    /// This is metadata/import inspection, not a runtime compatibility result.
+    pub fn preflight(
+        executable: (&str, &[u8]),
+        dlls: &[(&str, &[u8])],
+        rebase: bool,
+    ) -> Result<()> {
+        Plan::new(executable, dlls, rebase).map(|_| ())
+    }
     /// Validate the complete graph, map all modules and perform static ATTACH.
     /// A false initializer returns an explicit initialization error and rolls
     /// back acquired initializers; it never becomes successful application entry.

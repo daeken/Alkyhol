@@ -108,6 +108,12 @@ jobs:
         with:
           name: pe32-process-alkyhol
           path: local/pe/pe32-process-alkyhol.json
+      - name: Check public process DLL arguments and metadata-only inspection
+        run: python tools/check_pe32_process_launcher.py --directory local/pe/pe32-process --process-report local/pe/pe32-process-alkyhol.json --output local/pe/pe32-process-launcher.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe32-process-launcher
+          path: local/pe/pe32-process-launcher.json
       - name: Execute the frozen owned DLL through Alkyhol, including DllMain and exports
         run: python tools/run_pe_library.py --dll local/pe/export-fixture/alkyhol_exports.dll --output local/pe/library-runtime.json
       - name: Execute a genuine failed DLL initializer and its ordered cleanup with imported APIs

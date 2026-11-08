@@ -26,7 +26,10 @@ require every raw word, exact inputs, clean matching revisions and error outputs
 See docs/pe32.md for the bounded API and remaining unsupported startup features.
 All 133 PE host tests, 16 compiler checks, 321 Python tests and Clippy pass.
 Portable metadata tests pass; physical bounded-SEH, linked-DLL and released
-i386 peports regressions retain their outcomes. No game instruction has executed.
+i386 peports regressions retain their outcomes. Eight additional physical M4 launcher checks pass: normal/rebased execution,
+metadata-only inspection of successful/failing initializers and explicit invalid
+option rejection. The public `--exe-name`/`--dll NAME=PATH` path preserves the
+released utility behavior. No game instruction has executed.
 
 ## Released i386 peports: native Windows, hosted Mac and physical M4
 
