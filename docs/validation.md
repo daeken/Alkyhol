@@ -4,7 +4,17 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
-## PE32 certificate metadata loading: native Windows and physical M4 development
+## PE32 certificate metadata loading: native Windows and physical M4
+
+All 27 CI jobs pass at strict-reference revision `70ef3d4`: three
+[PE jobs](https://github.com/daeken/Alkyhol/actions/runs/42434197943) and all 24
+[conformance jobs](https://github.com/daeken/Alkyhol/actions/runs/42434197923).
+Downloaded clean native Windows/hosted Mac reports and fresh clean physical M4
+execution at that same revision agree on all eight exact inputs/sources and every
+output byte, including normal/forced-rebase host execution. Both strict paired
+comparisons pass against the frozen native record. All existing binary/source,
+application/DLL, SDK/COM, shader and Metal comparisons remain green. The unchanged
+local game clears its next file-range gate but still stops before entry.
 
 Native Windows execution at `8a9e0fb` accepts all eight owned certificate-directory
 variants and returns the unchanged observer's eight DWORDs in every case. All
@@ -28,7 +38,8 @@ Physical M4 development runs agree on all eight exact outputs, normally and with
 forced rebase. The paired collector/comparator enforces same clean revision, exact
 frozen source/PE/case identity, raw output and actual forced relocation; crashes,
 unknown OS failures and observer failures cannot count as compatible rejections.
-Strict same-revision CI/physical comparison remains pending. All 99 PE host tests/
+Strict same-revision CI/physical comparison passes at `70ef3d4` as recorded
+above. All 99 PE host tests/
 12 compiler checks, 34 portable tests, 268 Python tests and Clippy pass locally.
 Synthetic tests additionally retain raw fields/input bytes, reject integrity
 requests and partial pairs, preserve unrelated bounds, and reject corrupted
