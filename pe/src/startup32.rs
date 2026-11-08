@@ -444,6 +444,13 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
             let Some(name) = read_units::<u16>(image, args[0], -1) else {
                 return u32::MAX;
             };
+            let name = match super::directory32::read_path(image, &name, args) {
+                Ok(name) => name,
+                Err(error) => {
+                    ffi::SetLastError(error);
+                    return u32::MAX;
+                }
+            };
             let call: unsafe extern "win64" fn(
                 *const u16,
                 u32,

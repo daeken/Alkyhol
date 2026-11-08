@@ -109,6 +109,16 @@ fn query(text: &str) -> Result<Query> {
     }
     Err("unsupported PE32 root-only find query".into())
 }
+/// The same exact, case-checked filesystem walk used by the search gateway.
+/// Returns a backed path or measured absence, never a guessed case alias.
+pub(super) fn existing(text: &str) -> Result<std::result::Result<(PathBuf, Metadata), u32>> {
+    match query(text)? {
+        Query::Found(_, metadata) => {
+            Ok(Ok((PathBuf::from(text[2..].replace('\\', "/")), metadata)))
+        }
+        Query::Failed(error) => Ok(Err(error)),
+    }
+}
 fn checked(image: &LoadedImage32<'_>, address: u32) {
     if !address.is_multiple_of(4)
         || !image.permits(address as usize, std::mem::size_of::<FindData>(), true)

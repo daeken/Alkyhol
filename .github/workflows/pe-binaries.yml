@@ -105,6 +105,10 @@ jobs:
         run: |
           python tools/observe_pe32_multimedia_clock.py
           python tools/observe_pe32_multimedia_clock.py --host
+      - name: Execute backed directory changes and actual relative reads at the DAO frontier
+        run: |
+          python tools/observe_pe32_current_directory.py
+          python tools/observe_pe32_current_directory.py --host
       - uses: actions/upload-artifact@v4
         with:
           name: pe32-startup-microtests
@@ -171,6 +175,8 @@ jobs:
             local/pe/startup-microtests/mutex-holder-inputs.json
             local/pe/startup-microtests/multimedia-clock-inputs.json
             local/pe/startup-microtests/multimedia-clock-host.json
+            local/pe/startup-microtests/current-directory-inputs.json
+            local/pe/startup-microtests/current-directory-host.json
             local/pe/startup-microtests/ctx-layout-empty-importer.dll
             local/pe/startup-microtests/ctx-layout-*.manifest
   native-pe32-startup:
@@ -270,6 +276,9 @@ jobs:
       - name: Observe the identical Winmm clock binary against actual native boot time
         if: ${{ success() || failure() }}
         run: python tools/observe_pe32_multimedia_clock.py --native
+      - name: Observe original directory-change and relative-read PEs on native Windows
+        if: ${{ success() || failure() }}
+        run: python tools/observe_pe32_current_directory.py --native
       - uses: actions/upload-artifact@v4
         if: always()
         with:

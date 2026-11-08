@@ -4,6 +4,38 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## Backed directory state prepared for the reached original startup call
+
+The PE32 `SetCurrentDirectoryW` provider now opens and retains a real directory
+reference in process-owned state. It admits existing exact absolute paths in
+the explicit `Z:` host-root view, with one optional trailing separator. Checked
+filesystem traversal rejects unknown case/Unicode aliases, symlinks, DOS devices,
+normalization, other drives and relative directory changes. Missing paths and
+non-directory targets return separate failures without changing the previous
+directory. Host process cwd is never changed. Renaming/replacing the directory
+externally is detected by identity checks and stops explicitly.
+
+`GetCurrentDirectoryW` observes that state with UTF-16 sizing/termination and
+checked output storage. After a successful set, ordinary relative or absolute
+existing read-only `CreateFileW` requests resolve through the backed directory;
+unknown create/write semantics stop. General inherited/per-drive cwd, relative
+directory setters, mutation/rename locks, UNC/device paths and arbitrary relative
+search APIs are not implemented. The interface follows Microsoft's
+[SetCurrentDirectory](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-setcurrentdirectory)
+and [GetCurrentDirectory](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-getcurrentdirectory)
+contracts within this finite profile.
+
+The physical M4 executes an owned PE through two Unicode directory selections,
+real relative reads returning distinct bytes, sizing/short/full output queries,
+guards and failed-change atomicity. Two unsupported namespace PEs stop before
+emitting success. Two Rust units check actual directory references, unchanged
+host cwd, namespace bounds and external rename detection. The identical-PE native
+observer is wired into CI; native error/buffer observations and a new original
+EXE run are pending, and these host assertions are not game compatibility.
+Local checks pass: 204 PE Rust checks including doctests on the Rosetta target,
+398 Python tests, project Clippy checks and formatting. Existing frozen
+fixtures/comparators and the PE64/source/Metal implementations are unchanged.
+
 ## Original DAO executes its multimedia clock and reaches working-directory setup
 
 At clean runtime revision `fce4123`, the physical M4 executes the unchanged EXE

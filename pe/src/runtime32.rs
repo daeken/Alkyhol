@@ -24,6 +24,8 @@ mod crt32;
 mod cursor32;
 #[path = "diagnostic32.rs"]
 mod diagnostic32;
+#[path = "directory32.rs"]
+mod directory32;
 #[path = "exception_filter32.rs"]
 mod exception_filter32;
 #[path = "fiber32.rs"]
@@ -76,7 +78,7 @@ unsafe extern "C" {
 }
 const PAGE: usize = 4096;
 const STACK: usize = 1024 * 1024;
-const APIS: [(&str, u16); 111] = [
+const APIS: [(&str, u16); 113] = [
     ("GetLastError", 0),
     ("SetLastError", 4),
     ("GetStdHandle", 4),
@@ -188,6 +190,8 @@ const APIS: [(&str, u16); 111] = [
     ("RegCloseKey", 4),
     ("CreateMutexW", 12),
     ("timeGetTime", 0),
+    ("SetCurrentDirectoryW", 4),
+    ("GetCurrentDirectoryW", 8),
 ];
 const EXIT_API: u32 = 14;
 // Win32 promises a reversible process-specific representation, not a published
@@ -476,6 +480,7 @@ struct Cpu32 {
     machine: Option<machine32::Machine>,
     registry: Option<RefCell<registry32::State>>,
     mutexes: Option<RefCell<mutex32::State>>,
+    current_directory: RefCell<Option<directory32::Directory>>,
     utc_timezone: bool,
 }
 impl Cpu32 {
@@ -489,6 +494,7 @@ impl Cpu32 {
     }
     fn close_files(&self) {
         let error = alkyhol::ffi::GetLastError();
+        self.current_directory.borrow_mut().take();
         if let Some(mutexes) = &self.mutexes {
             mutexes.borrow_mut().clear();
         }
@@ -561,6 +567,7 @@ impl Cpu32 {
             machine,
             registry: None,
             mutexes: None,
+            current_directory: RefCell::new(None),
             utc_timezone: false,
         })
     }
@@ -1765,6 +1772,8 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
             106 => machine32::information(image, args[0]),
             107 | 108 => registry32::dispatch(image, id, &args),
             109 => mutex32::create(image, &args),
+            111 => directory32::set(image, args[0]),
+            112 => directory32::get(image, &args),
             _ => unreachable!(),
         }
     })
@@ -1886,6 +1895,7 @@ mod tests {
                 machine: None,
                 registry: None,
                 mutexes: None,
+                current_directory: RefCell::new(None),
                 utc_timezone: false,
             }),
             tls: None,
