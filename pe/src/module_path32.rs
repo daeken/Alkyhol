@@ -125,14 +125,13 @@ fn output_count(length: usize, capacity: u32) -> Result<(usize, u32, bool)> {
     ))
 }
 
-pub(super) fn filename(image: &LoadedImage32<'_>, args: &[u32; 8]) -> u32 {
-    let [module, output, capacity, ..] = *args;
+fn module_name(image: &LoadedImage32<'_>, module: u32) -> Vec<u16> {
     let base = if module == 0 {
         image.cpu.executable.get()
     } else {
         module
     };
-    let name = image
+    image
         .cpu
         .modules
         .borrow()
@@ -142,7 +141,30 @@ pub(super) fn filename(image: &LoadedImage32<'_>, args: &[u32; 8]) -> u32 {
         .map(|o| o.windows.clone())
         .unwrap_or_else(|| {
             unsupported("PE32 module filename requires a known file-backed module origin")
-        });
+        })
+}
+pub(super) fn filename_ansi(image: &LoadedImage32<'_>, args: &[u32; 8]) -> u32 {
+    let [module, output, capacity, ..] = *args;
+    let name = module_name(image, module);
+    if name.iter().any(|&u| u > 127) {
+        unsupported("ANSI module filename currently requires an ASCII-backed origin");
+    }
+    if capacity as usize <= name.len() || capacity > 1024 * 1024 {
+        unsupported("ANSI module filename truncation/oversize profile is unsupported");
+    }
+    if !image.permits(output as usize, capacity as usize, true) {
+        unsupported("ANSI module filename output outside writable guest storage");
+    }
+    let bytes: Vec<u8> = name.iter().map(|&u| u as u8).collect();
+    unsafe {
+        std::ptr::copy_nonoverlapping(bytes.as_ptr(), output as *mut u8, bytes.len());
+        (output as *mut u8).add(bytes.len()).write(0);
+    }
+    bytes.len() as u32
+}
+pub(super) fn filename(image: &LoadedImage32<'_>, args: &[u32; 8]) -> u32 {
+    let [module, output, capacity, ..] = *args;
+    let name = module_name(image, module);
     let (count, result, truncated) =
         output_count(name.len(), capacity).unwrap_or_else(|e| unsupported(&e));
     if capacity != 0 {

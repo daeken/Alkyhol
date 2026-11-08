@@ -9,7 +9,14 @@ pub(super) struct Section {
     spin: u32,
 }
 impl Section {
-    fn enter(&mut self, thread: u32) -> crate::Result<()> {
+    pub(super) fn new(spin: u32) -> Self {
+        Self {
+            depth: 0,
+            owner: 0,
+            spin,
+        }
+    }
+    pub(super) fn enter(&mut self, thread: u32) -> crate::Result<()> {
         if self.depth != 0 && self.owner != thread {
             return Err("contended PE32 critical section requires guest thread scheduling".into());
         }
@@ -21,7 +28,7 @@ impl Section {
         self.owner = thread;
         Ok(())
     }
-    fn leave(&mut self, thread: u32) -> crate::Result<()> {
+    pub(super) fn leave(&mut self, thread: u32) -> crate::Result<()> {
         if self.depth == 0 || self.owner != thread {
             return Err("PE32 critical section leave without ownership".into());
         }
@@ -78,11 +85,7 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
         if sections.contains_key(&address) {
             unsupported("PE32 critical section already initialized");
         }
-        let section = Section {
-            depth: 0,
-            owner: 0,
-            spin: if id == 32 { args[1] } else { 0 },
-        };
+        let section = Section::new(if id == 32 { args[1] } else { 0 });
         section.write(address);
         sections.insert(address, section);
         return 1;

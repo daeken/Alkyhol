@@ -65,6 +65,10 @@ jobs:
         run: |
           python tools/observe_pe32_ci_atan.py
           python tools/observe_pe32_ci_atan.py --host
+      - name: Execute actual exit-table registration and reached A/W startup helpers
+        run: |
+          python tools/observe_pe32_onexit.py
+          python tools/observe_pe32_onexit.py --host
       - uses: actions/upload-artifact@v4
         with:
           name: pe32-startup-microtests
@@ -110,6 +114,8 @@ jobs:
             local/pe/startup-microtests/ci-sqrt-host.json
             local/pe/startup-microtests/ci-atan-inputs.json
             local/pe/startup-microtests/ci-atan-host.json
+            local/pe/startup-microtests/crt-onexit-inputs.json
+            local/pe/startup-microtests/crt-onexit-host.json
             local/pe/startup-microtests/ctx-layout-empty-importer.dll
             local/pe/startup-microtests/ctx-layout-*.manifest
   native-pe32-startup:
@@ -167,6 +173,10 @@ jobs:
         run: python tools/observe_pe32_ci_sqrt.py --native
       - name: Measure the next actually reached intrinsic on native Windows
         run: python tools/observe_pe32_ci_atan.py --native
+      - name: Check onexit and wide startup layouts independently against the Windows SDK
+        run: cl /nologo /c /W4 /WX /std:c++17 pe/fixtures/pe32-startup/crt-onexit-layout.cpp /Folocal/pe/startup-microtests/crt-onexit-layout.obj
+      - name: Compare actual CRT callback tables and A/W startup helpers on native Windows
+        run: python tools/observe_pe32_onexit.py --native
       - uses: actions/upload-artifact@v4
         if: always()
         with:

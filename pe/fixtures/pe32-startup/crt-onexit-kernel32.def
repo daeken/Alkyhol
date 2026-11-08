@@ -1,0 +1,10 @@
+LIBRARY kernel32.dll
+EXPORTS
+GetStdHandle
+WriteFile
+GetLastError
+SetLastError
+GetStartupInfoA
+GetStartupInfoW
+GetModuleFileNameA
+GetModuleFileNameW

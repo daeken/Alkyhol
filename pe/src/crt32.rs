@@ -9,8 +9,25 @@ pub(super) struct State {
     unexpected: u32,
     app_type: u32,
     errno: Option<u32>,
+    locks: std::collections::BTreeMap<u32, super::sync32::Section>,
 }
 impl State {
+    fn lock(&mut self, index: u32, thread: u32, enter: bool) -> crate::Result<()> {
+        if index != 8 {
+            return Err("CRT lock index outside the observed onexit lock profile".into());
+        }
+        if enter {
+            self.locks
+                .entry(index)
+                .or_insert_with(|| super::sync32::Section::new(0))
+                .enter(thread)
+        } else {
+            self.locks
+                .get_mut(&index)
+                .ok_or("CRT unlock requires an owned initialized lock")?
+                .leave(thread)
+        }
+    }
     fn set_error_mode(&mut self, mode: u32) -> crate::Result<u32> {
         let old = self.error_mode;
         match mode {
@@ -59,6 +76,83 @@ pub(super) fn initializers(image: &LoadedImage32<'_>, begin: u32, end: u32) -> u
     }
     0 // void return; actual callbacks and their side effects are the operation.
 }
+pub(super) fn dll_onexit(image: &LoadedImage32<'_>, args: &[u32; 8]) -> u32 {
+    if args[0] == 0
+        || !image.regions.iter().any(|&(first, last, rights)| {
+            rights & 0x20000000 != 0 && args[0] as usize >= first && (args[0] as usize) < last
+        })
+    {
+        unsupported("DLL onexit callback outside executable guest storage");
+    }
+    if args[1] == args[2]
+        || [args[1], args[2]]
+            .iter()
+            .any(|&p| !p.is_multiple_of(4) || !image.permits(p as usize, 4, true))
+    {
+        unsupported("DLL onexit output cells outside separate writable guest storage");
+    }
+    let begin = unsafe { (args[1] as *const u32).read() };
+    let end = unsafe { (args[2] as *const u32).read() };
+    let size = end
+        .checked_sub(begin)
+        .filter(|&n| n.is_multiple_of(4) && n < 4096 * 4)
+        .unwrap_or_else(|| unsupported("DLL onexit table range or budget is unsupported"));
+    if !begin.is_multiple_of(4) || (begin == 0 && end != 0) {
+        unsupported("invalid DLL onexit table endpoints");
+    }
+    let mut state = image.cpu.crt.borrow_mut();
+    let mut heap = image.cpu.heap.borrow_mut();
+    let handle = if let Some(h) = state.heap {
+        h
+    } else {
+        let h = heap.create(0, 0, 0).unwrap_or_else(|e| unsupported(&e));
+        if h == 0 {
+            unsupported("DLL onexit heap creation failed");
+        }
+        state.heap = Some(h);
+        h
+    };
+    if begin != 0 {
+        let allocated = heap
+            .size(handle, 0, begin)
+            .unwrap_or_else(|e| unsupported(&e));
+        if size > allocated {
+            unsupported("DLL onexit entries exceed the owned allocation");
+        }
+        for output in [args[1], args[2]] {
+            if (output as u64) < u64::from(begin) + u64::from(allocated)
+                && (output as u64) + 4 > u64::from(begin)
+            {
+                unsupported("DLL onexit output cells overlap the resized table");
+            }
+        }
+    }
+    let replacement = heap
+        .allocate(handle, 0, size + 4)
+        .unwrap_or_else(|e| unsupported(&e));
+    if replacement == 0 {
+        unsupported("DLL onexit allocation failure/errno behavior is unsupported");
+    }
+    unsafe {
+        if size != 0 {
+            std::ptr::copy_nonoverlapping(
+                begin as *const u8,
+                replacement as *mut u8,
+                size as usize,
+            );
+        }
+        ((replacement + size) as *mut u32).write(args[0]);
+    }
+    if begin != 0 {
+        heap.free(handle, 0, begin)
+            .unwrap_or_else(|e| unsupported(&e));
+    }
+    unsafe {
+        (args[1] as *mut u32).write(replacement);
+        (args[2] as *mut u32).write(replacement + size + 4);
+    }
+    args[0]
+}
 pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u32 {
     if id == 85 {
         let handler = image.cpu.crt.borrow().unexpected;
@@ -92,6 +186,12 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
             .unwrap_or_else(|| unsupported("terminate handler did not exit the guest process"));
     }
     let mut state = image.cpu.crt.borrow_mut();
+    if matches!(id, 94 | 95) {
+        state
+            .lock(args[0], alkyhol::ffi::GetCurrentThreadId(), id == 94)
+            .unwrap_or_else(|e| unsupported(&e));
+        return 0; // void: the owned lock mutation, not this register, is the operation.
+    }
     if id == 91
         && let Some(pointer) = state.errno
     {
@@ -163,6 +263,24 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn onexit_lock_tracks_real_recursion_ownership_and_rejects_unbalanced_release() {
+        let mut state = State::default();
+        assert!(state.lock(8, 7, false).is_err());
+        state.lock(8, 7, true).unwrap();
+        state.lock(8, 7, true).unwrap();
+        assert!(state.lock(8, 9, true).is_err());
+        assert!(state.lock(8, 9, false).is_err());
+        state.lock(8, 7, false).unwrap();
+        assert!(state.lock(8, 9, true).is_err());
+        state.lock(8, 7, false).unwrap();
+        assert!(state.lock(8, 7, false).is_err());
+        state.lock(8, 9, true).unwrap();
+        state.lock(8, 9, false).unwrap();
+        for index in [0, 7, 9, u32::MAX] {
+            assert!(state.lock(index, 7, true).is_err());
+        }
+    }
     #[test]
     fn error_policy_queries_preserve_settings_and_setters_return_previous() {
         let mut state = State::default();

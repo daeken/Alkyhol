@@ -4,6 +4,44 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## D3DX9 initialization completes; original PhysX startup reaches heap reallocation
+
+On the physical M4, actual original D3DX9 constructors now return and dependency
+traversal enters PhysX initialization. Real recursive CRT lock 8 and
+`__dllonexit` registration allow this advance. The latter validates live owned
+table storage, allocates/copies/appends/frees actual guest memory and returns the
+registered callback. Registration does not eagerly execute callbacks: the
+original caller still owns table traversal. Other lock IDs, contention,
+unbalanced ownership and invalid storage stop explicitly; this is not a general
+CRT destructor/termination implementation.
+
+The original PhysX startup next consumes `GetStartupInfoW` using the same explicit
+68-byte inherited-stream profile as A (no desktop/title/private inheritance
+block). `GetModuleFileNameA` supports complete ASCII-backed registered paths;
+truncation, non-ASCII origins and unknown modules still stop. The next actual
+unsupported import is **HeapReAlloc** in the original bundled CRT. The game EXE
+has not entered. The existing locally unpacked dependency caveat remains; game
+bytes, module/RVA captures and derived inventories stay local.
+
+The owned `crt-onexit-0.exe` executes 53 assertions on the physical M4: recursive
+cdecl calls and stack preservation, initially empty and preallocated callback
+tables, preserved entries and guards, reverse invocation order/side effects,
+A/W startup layouts and actual inherited handle relations, and complete ASCII
+A/W path agreement with error state. Four restriction PEs stop with 78 for their
+actual lock/pointer reason. Windows SDK layout checking and identical-PE native
+execution are wired into CI; those results are pending for this milestone.
+Local checks pass: 192 PE Rust tests/checks including doctests on the Rosetta
+x86_64 target, 374 Python tests, Clippy with project warnings denied and formatting.
+
+The [native job at `74f870f`](https://github.com/daeken/Alkyhol/actions/runs/42497907786)
+also completed all 204 frozen atan observations and the additional 16-row domain
+witness. The identical domain PE (SHA-256
+`c215904f56006e639db2aff613dea4bb51f7c06cc2571027724f3d4fe825d314`)
+was downloaded and executed on the physical M4. All 16 raw and decoded rows
+agree with Windows, including the five new signed/boundary cases, x87 control/
+status/stack, MXCSR and both error states. This leaves the documented 0x027F and
+other unsupported profiles excluded; no FP criteria or frozen fixtures changed.
+
 ## Original D3DX9 constructor passes arctangent
 
 On the physical M4, the original constructor executes beyond `_CIatan` and now

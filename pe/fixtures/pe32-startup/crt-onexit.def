@@ -1,0 +1,6 @@
+LIBRARY msvcrt.dll
+EXPORTS
+_lock
+_unlock
+__dllonexit
+malloc

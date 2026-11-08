@@ -66,7 +66,7 @@ unsafe extern "C" {
 }
 const PAGE: usize = 4096;
 const STACK: usize = 1024 * 1024;
-const APIS: [(&str, u16); 94] = [
+const APIS: [(&str, u16); 99] = [
     ("GetLastError", 0),
     ("SetLastError", 4),
     ("GetStdHandle", 4),
@@ -161,6 +161,11 @@ const APIS: [(&str, u16); 94] = [
     ("_errno", 0),
     ("_CIatan", 0),
     ("<private atan rejection>", 8),
+    ("_lock", 4),
+    ("_unlock", 4),
+    ("__dllonexit", 12),
+    ("GetStartupInfoW", 4),
+    ("GetModuleFileNameA", 12),
 ];
 const EXIT_API: u32 = 14;
 // Win32 promises a reversible process-specific representation, not a published
@@ -192,7 +197,7 @@ fn api_id(module: &str, symbol: &ImportSymbol) -> Option<usize> {
         .map(|(id, _)| id)
 }
 fn cdecl_api(id: usize) -> bool {
-    matches!(id, 78..=86 | 88..=93)
+    matches!(id, 78..=86 | 88..=96)
 }
 fn cleanup_bytes(id: usize, arguments: u16) -> u16 {
     if cdecl_api(id) { 0 } else { arguments }
@@ -1661,6 +1666,10 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
             91 => crt32::dispatch(image, id, &args),
             92 => unsupported("_CIatan requires its x87 gateway"),
             93 => math32::rejected_atan(image, args[0], args[1]),
+            94 | 95 => crt32::dispatch(image, id, &args),
+            96 => crt32::dll_onexit(image, &args),
+            97 => startup32::dispatch(image, 40, &args),
+            98 => module_path32::filename_ansi(image, &args),
             _ => unreachable!(),
         }
     })
