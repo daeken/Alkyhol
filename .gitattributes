@@ -53,3 +53,4 @@ pe/fixtures/pe32-load-config/* text eol=lf
 # PE32 geometry fixture generator is part of cross-host source identity.
 tools/build_pe32_geometry.py text eol=lf
 tools/build_pe32_certificates.py text eol=lf
+tools/build_pe32_load_config_geometry.py text eol=lf

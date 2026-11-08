@@ -4,23 +4,29 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
-## PE32 legacy load configuration and compiler GS: native observation pending
+## PE32 legacy load configuration / compiler GS: native observation
 
-A new original MIT corpus contains eight unchanged PE32 executables covering
-absent/no-cookie load configuration, 64/72-byte legacy records, default/custom/
-zero/small cookie seeds, and an intentionally invalid compiler-protected frame.
-The compiled GS epilogue calls an owned checker that compares the actual frame
-cookie against the module cookie; mismatch executes UD2. Positive probes record
-16 DWORDs of cookie properties, real protected calls, unchanged surrounding data
-and last-error state, without treating opaque random cookie bytes as equal.
-The deliberate-trap case retains its raw outcome separately from normal results;
-an unexplained crash is not a successful program run or Windows SEH evidence.
+Native Windows at `f566909` executes all seven positive owned cases and returns
+16 raw DWORDs each. The 64-byte default cookie remains unchanged; the 72-byte
+default cookie changes to a nonzero/nondefault opaque value. The tested custom
+64-byte seed and zero/small 72-byte seeds remain unchanged. Absent/no-cookie records
+leave the default unchanged. The complete actual native report is frozen unchanged
+at `pe/reference/pe32-load-config-windows-v1.json`; no host cookie policy is enabled
+by this capture. The real SDK/MSVC field-offset/width assertions also completed.
 
-Initial native execution is pending. A real Windows SDK/MSVC compile checks the
-explicit IMAGE_LOAD_CONFIG_DIRECTORY32 offsets and DWORD widths independently.
-The capture revision does not change Alkyhol startup gates or seed cookies. No
-game code/data enters this corpus. Collector guards preserve process statuses,
-launch failures and timeouts distinctly and reject case/source/payload drift.
+The compiler uses inline fast-path cookie comparisons for valid frames, so the
+probe's `(check_count==2)` observation is **0**: successful calls do not enter the
+slow checker. The deliberately invalid frame enters the owned mismatch checker
+and executes UD2: native status is 0xc000001d with exactly its two-DWORD begin
+marker. This is controlled compiler-check failure evidence, not a successful run,
+Windows SEH dispatch or an accepted arbitrary crash.
+
+Four new length pairs retain the frozen canonical compiler binaries and patch
+only the directory-length DWORD in each selected base. They separately cover
+64/72-byte directory and structure lengths, including both mismatches. Their native
+capture is pending. The original source, canonical inputs and native record remain
+unchanged. This observation revision retains Alkyhol's existing load-config gate;
+no game code/data enters CI and no entropy values are treated as byte-identical.
 
 ## PE32 compiler static TLS data: native Windows and physical M4
 

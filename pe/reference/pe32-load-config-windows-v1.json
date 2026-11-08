@@ -1,0 +1,144 @@
+{
+  "schema_version": 1,
+  "backend": "native Windows PE32 legacy load configuration",
+  "sources": {
+    "pe/fixtures/pe32-load-config/contract.c": "ee29a6df11681bc18fe79f38d16cfedb1c34473137a634535681ebd3ec5a581d",
+    "pe/fixtures/pe32-load-config/kernel32.def": "387a43121afd31dc1e37548f6125c97e359290f7e6ddb82beec909c417479dfb",
+    "pe/fixtures/pe32-load-config/sdk-layout.cpp": "f920bc22362382bd0014efcdd0b4bfb8f510972f5a47f9bf35d678a31dcae648"
+  },
+  "cases": [
+    {
+      "case": "absent",
+      "config_size": 0,
+      "initial_cookie": 3141592654,
+      "absent": true,
+      "no_cookie": false,
+      "fault": false,
+      "pe_sha256": "528f64ea0e1257828ab99e937e9dada21131c5824d92b9bf3ec60073b1ec7bd3"
+    },
+    {
+      "case": "no_cookie",
+      "config_size": 72,
+      "initial_cookie": 3141592654,
+      "absent": false,
+      "no_cookie": true,
+      "fault": false,
+      "pe_sha256": "933899e1d4367935f6c0f9507ecc2aa8cd845c7cb887c2cfd28221302bc8c420"
+    },
+    {
+      "case": "legacy64_default",
+      "config_size": 64,
+      "initial_cookie": 3141592654,
+      "absent": false,
+      "no_cookie": false,
+      "fault": false,
+      "pe_sha256": "1cea15b2f8ed33059145531ed932635e55550f793aaada32397962e54174c2c9"
+    },
+    {
+      "case": "legacy72_default",
+      "config_size": 72,
+      "initial_cookie": 3141592654,
+      "absent": false,
+      "no_cookie": false,
+      "fault": false,
+      "pe_sha256": "533e4a9f6c105e0ace8188d6520b32e706e525c3d6a265699b137883bdf85ec2"
+    },
+    {
+      "case": "legacy64_custom",
+      "config_size": 64,
+      "initial_cookie": 305441741,
+      "absent": false,
+      "no_cookie": false,
+      "fault": false,
+      "pe_sha256": "486ae594b98e40fd76151c2dbfd8981815b1d8c10dade0bc314a3f60e80c0b7e"
+    },
+    {
+      "case": "legacy72_zero",
+      "config_size": 72,
+      "initial_cookie": 0,
+      "absent": false,
+      "no_cookie": false,
+      "fault": false,
+      "pe_sha256": "8a9e0e3609f710ef281ce3ba2b513d9e13597f4997cb7d8fb30a6fe4f69466b7"
+    },
+    {
+      "case": "legacy72_small",
+      "config_size": 72,
+      "initial_cookie": 4660,
+      "absent": false,
+      "no_cookie": false,
+      "fault": false,
+      "pe_sha256": "d0369982a80c3395c4428fe741358319bcdcf500f84389ac3100772865cc837b"
+    },
+    {
+      "case": "corrupt_frame",
+      "config_size": 72,
+      "initial_cookie": 3141592654,
+      "absent": false,
+      "no_cookie": false,
+      "fault": true,
+      "pe_sha256": "067011722a593f515754fd8f6dd8b66615ab695bf626d62a0a73979acabb7198"
+    }
+  ],
+  "normal": [
+    {
+      "case": "absent",
+      "kind": "process",
+      "status": 0,
+      "stdout_hex": "493332430400000000000000000000000100000000000000000000000000000091563412055734120000000001000000d4c3b2a15566778844332211ccbbaa99",
+      "stderr_hex": ""
+    },
+    {
+      "case": "no_cookie",
+      "kind": "process",
+      "status": 0,
+      "stdout_hex": "493332430400000048000000000000000100000000000000000000000000000091563412055734120000000001000000d4c3b2a15566778844332211ccbbaa99",
+      "stderr_hex": ""
+    },
+    {
+      "case": "legacy64_default",
+      "kind": "process",
+      "status": 0,
+      "stdout_hex": "493332430400000040000000000000000100000000000000010000000100000091563412055734120000000001000000d4c3b2a15566778844332211ccbbaa99",
+      "stderr_hex": ""
+    },
+    {
+      "case": "legacy72_default",
+      "kind": "process",
+      "status": 0,
+      "stdout_hex": "493332430400000048000000010000000100000001000000010000000100000091563412055734120000000001000000d4c3b2a15566778844332211ccbbaa99",
+      "stderr_hex": ""
+    },
+    {
+      "case": "legacy64_custom",
+      "kind": "process",
+      "status": 0,
+      "stdout_hex": "493332430400000040000000000000000100000001000000010000000100000091563412055734120000000001000000d4c3b2a15566778844332211ccbbaa99",
+      "stderr_hex": ""
+    },
+    {
+      "case": "legacy72_zero",
+      "kind": "process",
+      "status": 0,
+      "stdout_hex": "493332430400000048000000000000000000000001000000010000000100000091563412055734120000000001000000d4c3b2a15566778844332211ccbbaa99",
+      "stderr_hex": ""
+    },
+    {
+      "case": "legacy72_small",
+      "kind": "process",
+      "status": 0,
+      "stdout_hex": "493332430400000048000000000000000100000001000000010000000100000091563412055734120000000001000000d4c3b2a15566778844332211ccbbaa99",
+      "stderr_hex": ""
+    },
+    {
+      "case": "corrupt_frame",
+      "kind": "process",
+      "status": 3221225501,
+      "stdout_hex": "4933474604000000",
+      "stderr_hex": ""
+    }
+  ],
+  "rebased": null,
+  "revision": "f56690924e660ef30f1a678184eb89e6d9636438",
+  "tracked_tree_clean": true
+}

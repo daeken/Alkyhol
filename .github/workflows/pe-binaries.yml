@@ -234,6 +234,14 @@ jobs:
           path: |
             local/pe/pe32-load-config/*.exe
             local/pe/pe32-load-config/load-config-fixture.json
+      - name: Build owned directory/record length pairs from frozen load-config bases
+        run: python tools/build_pe32_load_config_geometry.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe32-load-config-geometry-fixture
+          path: |
+            local/pe/pe32-load-config-geometry/*.exe
+            local/pe/pe32-load-config-geometry/load-config-geometry-fixture.json
       - name: Build owned SizeOfImage variants for independent native loader observation
         run: python tools/build_pe32_geometry.py
       - name: Execute owned PE32 geometry cases normally and with forced relocation
@@ -633,6 +641,16 @@ jobs:
         with:
           name: pe32-load-config-windows
           path: local/pe/pe32-load-config-windows.json
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe32-load-config-geometry-fixture
+          path: local/pe/pe32-load-config-geometry
+      - name: Observe native directory/record size mismatches without patching code
+        run: python tools/run_pe32_load_config_geometry.py --directory local/pe/pe32-load-config-geometry --output local/pe/pe32-load-config-geometry-windows.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe32-load-config-geometry-windows
+          path: local/pe/pe32-load-config-geometry-windows.json
       - uses: actions/download-artifact@v4
         with:
           name: pe32-geometry-fixture
