@@ -6,6 +6,17 @@ See the latest direct-Metal record for current implementation evidence.
 
 ## PE32 SizeOfImage geometry: native Windows and physical M4 development
 
+All 27 CI jobs pass at strict-reference revision `d08bcc4`: three
+[PE jobs](https://github.com/daeken/Alkyhol/actions/runs/42432430209) and all 24
+[conformance jobs](https://github.com/daeken/Alkyhol/actions/runs/42432430273).
+Downloaded clean native Windows/hosted Mac reports and fresh clean physical M4
+execution at that same revision agree on exact inputs/sources, five successful
+executions with every output byte, and three launch/preflight rejections. Host
+normal/forced-rebase results agree; raw native errors and host status/diagnostics
+remain separate. All older frozen PE64/PE32, application/DLL, SDK/source/COM,
+shader and Metal comparisons pass. This clears the local game's previous image-
+size gate, without entering its code or establishing game compatibility.
+
 Native Windows's actual collector at `7c8fd27` executes five adequate owned PE32
 variants, including four unaligned image-size fields, with the original eight raw
 output words. Three insufficient extents fail CreateProcess with winerror 193 /
@@ -23,7 +34,7 @@ Section/32-bit address/one-GiB/W^X bounds remain. Physical M4 development runs
 reproduce five executions and three preflight rejections in normal/forced-rebase
 runs. Native/raw OS errors are retained separately from host status 78; crashes,
 unknown OS failures and failed observer code cannot become compatible rejections.
-Strict same-revision paired CI comparison is pending the candidate run. This
+Strict same-revision paired comparison passes at `d08bcc4` as recorded above. This
 measures finite loader acceptance and the existing integer/stdcall observer, not
 native allocation/query layout or game execution. The unchanged local game now
 passes the old image-size gate and stops at file-range validation, before entry;
