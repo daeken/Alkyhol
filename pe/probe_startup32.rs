@@ -1,6 +1,6 @@
 //! Explicit diagnostic execution of a caller-supplied original PE32/DLL graph.
 //! External-service imports are inaccessible guards, never successful stubs.
-use alkyhol_pe::{ProcessContext, ProcessImage32};
+use alkyhol_pe::{ProcessContext, ProcessImage32, ProcessOptions32};
 fn main() {
     let args: Vec<_> = std::env::args().skip(1).collect();
     let result = (|| -> alkyhol_pe::Result<u32> {
@@ -10,6 +10,7 @@ fn main() {
         let mut forced = false;
         let mut strict = false;
         let mut file_origins = false;
+        let mut profile = ProcessOptions32::default();
         let mut options = args[1..].iter();
         while let Some(option) = options.next() {
             match option.as_str() {
@@ -27,8 +28,19 @@ fn main() {
                 "--rebase" => forced = true,
                 "--strict" => strict = true,
                 "--file-origins" => file_origins = true,
+                "--system-directory" => {
+                    profile.system_directory = Some(
+                        options
+                            .next()
+                            .ok_or("--system-directory requires a host directory")?
+                            .into(),
+                    )
+                }
                 _ => return Err("unknown startup diagnostic option".into()),
             }
+        }
+        if profile.system_directory.is_some() && !file_origins {
+            return Err("--system-directory requires --file-origins".into());
         }
         let bytes = if file_origins {
             Vec::new()
@@ -76,12 +88,13 @@ fn main() {
         );
         let mut image = if file_origins {
             unsafe {
-                ProcessImage32::load_files(
+                ProcessImage32::load_files_configured(
                     std::path::Path::new(path),
                     &file_modules,
                     if strict { None } else { Some(&external) },
                     forced,
                     &process,
+                    &profile,
                 )
             }
         } else if strict {

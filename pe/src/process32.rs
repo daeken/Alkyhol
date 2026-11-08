@@ -221,6 +221,13 @@ pub struct ProcessImage32<'a> {
     started: bool,
     finished: bool,
 }
+/// Explicit backed guest-profile roles. Default supplies no Windows installation
+/// or system directory. A configured directory is verified before guest entry;
+/// this does not install Windows files or establish side-by-side bindings.
+#[derive(Default)]
+pub struct ProcessOptions32 {
+    pub system_directory: Option<std::path::PathBuf>,
+}
 impl<'a> ProcessImage32<'a> {
     /// Check the complete closed graph without mapping or executing any module.
     /// This is metadata/import inspection, not a runtime compatibility result.
@@ -246,7 +253,7 @@ impl<'a> ProcessImage32<'a> {
         process: &'a ProcessContext,
     ) -> Result<Self> {
         let plan = Plan::new(executable, dlls, rebase)?;
-        unsafe { Self::load_plan(plan, rebase, process, false, &BTreeMap::new()) }
+        unsafe { Self::load_plan(plan, rebase, process, false, &BTreeMap::new(), None) }
     }
     /// Instrument a trusted startup path with guarded external-service imports.
     /// This is diagnostic execution, NOT Windows compatibility: missing service
@@ -265,7 +272,7 @@ impl<'a> ProcessImage32<'a> {
         process: &'a ProcessContext,
     ) -> Result<Self> {
         let plan = Plan::with_external(executable, dlls, rebase, Some(external))?;
-        unsafe { Self::load_plan(plan, rebase, process, true, &BTreeMap::new()) }
+        unsafe { Self::load_plan(plan, rebase, process, true, &BTreeMap::new(), None) }
     }
     /// Load a caller-supplied file graph and retain each actual canonical source
     /// path before initializers run. Z: mirrors the real host root. No DLL search,
@@ -293,6 +300,47 @@ impl<'a> ProcessImage32<'a> {
         rebase: bool,
         process: &'a ProcessContext,
     ) -> Result<Self> {
+        unsafe {
+            Self::load_files_configured(
+                executable,
+                dlls,
+                external,
+                rebase,
+                process,
+                &ProcessOptions32::default(),
+            )
+        }
+    }
+    /// Load the same explicit file graph with verified guest-profile paths.
+    /// No directory is guessed from a module filename or silently created.
+    ///
+    /// # Safety
+    /// The same trusted native-code contract as load_files applies. Profile
+    /// roles must describe the intended guest setup, not substituted DLL origins.
+    ///
+    /// ```compile_fail,E0505
+    /// # use alkyhol_pe::{ProcessImage32,ProcessContext,ProcessOptions32};
+    /// # fn example(path:&std::path::Path)->alkyhol_pe::Result<()> {
+    /// let process=ProcessContext::install(&["program.exe".into()],&[])?;
+    /// let options=ProcessOptions32::default();
+    /// let image=unsafe {ProcessImage32::load_files_configured(path,&[],None,false,&process,&options)}?;
+    /// drop(process);
+    /// drop(image);
+    /// # Ok(()) }
+    /// ```
+    pub unsafe fn load_files_configured(
+        executable: &std::path::Path,
+        dlls: &[(&str, &std::path::Path)],
+        external: Option<&[String]>,
+        rebase: bool,
+        process: &'a ProcessContext,
+        options: &ProcessOptions32,
+    ) -> Result<Self> {
+        let system_directory = options
+            .system_directory
+            .as_deref()
+            .map(super::module_path32::directory)
+            .transpose()?;
         if dlls.len() > 64 {
             return Err("PE32 process exceeds 64 explicit DLLs".into());
         }
@@ -318,7 +366,16 @@ impl<'a> ProcessImage32<'a> {
             .map(|(name, bytes)| (name.as_str(), bytes.as_slice()))
             .collect();
         let plan = Plan::with_external((name, &exe_bytes), &dlls, rebase, external)?;
-        unsafe { Self::load_plan(plan, rebase, process, external.is_some(), &paths) }
+        unsafe {
+            Self::load_plan(
+                plan,
+                rebase,
+                process,
+                external.is_some(),
+                &paths,
+                system_directory,
+            )
+        }
     }
     unsafe fn load_plan(
         plan: Plan<'_>,
@@ -326,8 +383,10 @@ impl<'a> ProcessImage32<'a> {
         process: &'a ProcessContext,
         diagnostic: bool,
         origins: &BTreeMap<String, super::module_path32::Origin>,
+        system_directory: Option<Vec<u16>>,
     ) -> Result<Self> {
         let mut cpu = Cpu32::new()?;
+        cpu.system_directory = system_directory;
         // Keep unknown manifest/binding state deferred until an activation query.
         // Existing paths do not gain a fabricated empty/default context.
         *cpu.activation.borrow_mut() = crate::activation_manifest::empty_default(

@@ -17,8 +17,15 @@ pub(super) fn find(image: &LoadedImage32<'_>, args: &[u32; 8]) -> u32 {
     }
     // A miss still requires a real bounded, terminated guest string. No host
     // dereference of an unchecked pointer, and no lossy UTF-16 conversion.
-    startup32::read_units::<u16>(image, key, -1)
+    let units = startup32::read_units::<u16>(image, key, -1)
         .unwrap_or_else(|| unsupported("PE32 activation key is unsupported"));
+    if image.cpu.diagnostic.is_some() {
+        eprintln!(
+            "PE32 diagnostic activation lookup: cbSize={size}; key_units_len={}; key_units_prefix={:x?}",
+            units.len(),
+            &units[..units.len().min(128)]
+        );
+    }
     if let Err(error) = &*image.cpu.activation.borrow() {
         unsupported(error);
     }

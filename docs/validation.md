@@ -4,6 +4,48 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## DAO reaches its original dependent-assembly lookup
+
+On the physical M4, the original CRT now executes GetSystemDirectoryW and calls
+FindActCtxSectionStringW itself. The runtime stops explicitly because activation
+of the original DLL manifests/dependent assemblies is unimplemented. It has not
+returned a fabricated successful binding or an invented missing-key result. The
+game EXE entry has **not run**; original identities/arguments stay ignored/local.
+
+`ProcessOptions32` and `load_files_configured` accept an explicit backed guest
+system-directory role. The library verifies an existing directory before guest
+entry, retains its canonical Z: spelling and implements checked UTF-16 copy/sizing.
+Absent configuration, non-directory/missing profile paths and invalid output stop
+explicitly. The default file/byte loaders supply no system-directory role.
+The probe opts in with `--file-origins --system-directory /actual/host/directory`.
+
+The local DAO driver now assigns a separate directory in its ignored guest profile
+to this role. It is currently empty; host services use Rust gateways. This is not
+a Windows installation, side-by-side binding or a relocation of the original CRT
+files. The CRT retains its genuine extracted source path, so the original caller
+continues into its activation lookup rather than skipping that check because of
+a substituted directory. Diagnostic lookup logs retain the checked output size
+and a bounded UTF-16 key prefix; all original-game captures remain local.
+
+An owned i386 PE checks full/exact/insufficient/zero capacities, last error,
+terminators and guards. Its 18 normalized DWORDs agree with the host profile's
+independently known complete directory path, including supplementary UTF-16 units.
+Four restrictions cover no role, read-only output, a regular file used as a
+directory and a missing directory; the latter two stop before guest entry. Native
+Windows comparison is pending. The native collector separately records Windows'
+actual directory and checks it exists under its OS root; this does not claim
+WOW64 filesystem-redirection support or equality with the local profile path.
+
+Local validation passes 154 PE host tests and 18 compile/documentation checks,
+338 Python tests, Clippy, all 25 prior startup cases and five new directory cases.
+All older native reports/source/PE identities remain frozen. Inspect the new
+dedicated startup CI result separately from historical download-dependent jobs.
+
+The next work is actual original assembly binding, using the locally extracted
+original assembly/publisher-policy metadata and native observations of activation
+during DLL startup. The current empty-default context profile remains insufficient
+for that graph; directory configuration alone does not make it empty or resolved.
+
 ## DAO real module origins and path queries
 
 On the physical M4 at clean `14cd103`, the original CRT now executes GetModuleFileNameW and

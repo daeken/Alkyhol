@@ -49,4 +49,5 @@ mod runtime32;
 #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
 pub use runtime32::{
     CallingConvention32, ExceptionImage32, LoadedImage32, LoadedLibrary32, ProcessImage32,
+    ProcessOptions32,
 };

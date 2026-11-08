@@ -55,6 +55,37 @@ pub(super) fn read(path: &Path) -> Result<(Vec<u8>, Origin)> {
     Ok((bytes, Origin { host, windows }))
 }
 
+pub(super) fn directory(path: &Path) -> Result<Vec<u16>> {
+    let host = std::fs::canonicalize(path).map_err(|e| format!("system directory: {e}"))?;
+    if !host.is_dir() {
+        return Err("system directory must identify an existing host directory".into());
+    }
+    windows_path(&host)
+}
+
+pub(super) fn system_directory(image: &LoadedImage32<'_>, args: &[u32; 8]) -> u32 {
+    let [output, capacity, ..] = *args;
+    let name = image.cpu.system_directory.as_ref().unwrap_or_else(|| {
+        unsupported(
+            "PE32 system directory requires an explicitly configured backed guest directory",
+        )
+    });
+    if capacity > 1024 * 1024 / 2 {
+        unsupported("PE32 system directory output exceeds checked size bound");
+    }
+    if capacity as usize <= name.len() {
+        return name.len() as u32 + 1;
+    }
+    if !output.is_multiple_of(2) || !image.permits(output as usize, capacity as usize * 2, true) {
+        unsupported("PE32 system directory output outside checked writable guest storage");
+    }
+    unsafe {
+        ptr::copy_nonoverlapping(name.as_ptr(), output as usize as *mut u16, name.len());
+        (output as usize as *mut u16).add(name.len()).write(0);
+    }
+    name.len() as u32
+}
+
 fn output_count(length: usize, capacity: u32) -> Result<(usize, u32, bool)> {
     if capacity > 1024 * 1024 / 2 {
         return Err("module filename buffer exceeds checked size bound".into());
@@ -173,6 +204,12 @@ mod tests {
         assert_eq!(origin.host, std::fs::canonicalize(&path).unwrap());
         assert_eq!(origin.windows, windows_path(&origin.host).unwrap());
         assert!(read(&root).is_err());
+        assert_eq!(
+            directory(&root).unwrap(),
+            windows_path(&std::fs::canonicalize(&root).unwrap()).unwrap()
+        );
+        assert!(directory(&path).is_err());
+        assert!(directory(&root.join("missing")).is_err());
         assert!(read(&root.join("missing.dll")).is_err());
         std::fs::remove_dir_all(root).unwrap();
     }

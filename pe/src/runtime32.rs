@@ -34,7 +34,7 @@ mod process32;
 mod startup32;
 #[path = "sync32.rs"]
 mod sync32;
-pub use process32::ProcessImage32;
+pub use process32::{ProcessImage32, ProcessOptions32};
 std::arch::global_asm!(include_str!("transition32.S"), options(att_syntax));
 unsafe extern "C" {
     fn mmap(
@@ -58,7 +58,7 @@ unsafe extern "C" {
 }
 const PAGE: usize = 4096;
 const STACK: usize = 1024 * 1024;
-const APIS: [(&str, u16); 58] = [
+const APIS: [(&str, u16); 59] = [
     ("GetLastError", 0),
     ("SetLastError", 4),
     ("GetStdHandle", 4),
@@ -117,6 +117,7 @@ const APIS: [(&str, u16); 58] = [
     ("FindActCtxSectionStringW", 20),
     ("GetModuleFileNameW", 12),
     ("GetLongPathNameW", 12),
+    ("GetSystemDirectoryW", 8),
 ];
 const EXIT_API: u32 = 14;
 // Win32 promises a reversible process-specific representation, not a published
@@ -360,6 +361,7 @@ struct Cpu32 {
     critical_sections: RefCell<std::collections::BTreeMap<u32, sync32::Section>>,
     service_gates: Cell<u32>,
     activation: RefCell<Result<()>>,
+    system_directory: Option<Vec<u16>>,
 }
 impl Cpu32 {
     fn clear_heap(&self) {
@@ -417,6 +419,7 @@ impl Cpu32 {
             activation: RefCell::new(Err(
                 "PE32 activation context is unknown outside the checked process profile".into(),
             )),
+            system_directory: None,
         })
     }
 }
@@ -1444,6 +1447,7 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
             55 => activation32::find(image, &args),
             56 => module_path32::filename(image, &args),
             57 => module_path32::long_name(image, &args),
+            58 => module_path32::system_directory(image, &args),
             _ => unreachable!(),
         }
     })
@@ -1504,6 +1508,7 @@ mod tests {
                 critical_sections: RefCell::new(Default::default()),
                 service_gates: Cell::new(0),
                 activation: RefCell::new(Err("test layout has no activation context".into())),
+                system_directory: None,
             }),
             tls: None,
             tls_entered: Cell::new(false),

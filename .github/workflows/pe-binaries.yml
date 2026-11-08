@@ -21,6 +21,8 @@ jobs:
         run: python tools/check_pe32_activation_miss.py
       - name: Execute genuine file-backed EXE and DLL path queries, including during DLL startup
         run: python tools/check_pe32_module_paths.py
+      - name: Execute an explicit backed system-directory profile without guessing DLL paths
+        run: python tools/check_pe32_system_directory.py
       - uses: actions/upload-artifact@v4
         with:
           name: pe32-startup-microtests
@@ -36,6 +38,8 @@ jobs:
             local/pe/startup-microtests/activation-miss-host.json
             local/pe/startup-microtests/module-path-inputs.json
             local/pe/startup-microtests/module-path-host.json
+            local/pe/startup-microtests/system-directory-inputs.json
+            local/pe/startup-microtests/system-directory-host.json
   native-pe32-startup:
     needs: pe32-startup
     runs-on: windows-latest
@@ -61,6 +65,8 @@ jobs:
         run: python tools/check_pe32_activation_miss.py --native
       - name: Compare identical module/path PE and DLL against real Windows loading
         run: python tools/check_pe32_module_paths.py --native
+      - name: Observe real Win32 system-directory sizing and output against the identical PE
+        run: python tools/check_pe32_system_directory.py --native
       - uses: actions/upload-artifact@v4
         if: always()
         with:
