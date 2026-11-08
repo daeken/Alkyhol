@@ -10,7 +10,13 @@ The owned named-mutex observer builds for the actual `CreateMutexW` frontier.
 It checks new versus already-existing objects, multiple references, actual
 last-close destruction, caller stack/error state, and a separate live parent
 process holding the same Windows named object. This is more than a non-NULL
-handle check. The native observation is wired into CI and pending. Compilation
+handle check. The first [native run at `d7b9911`](https://github.com/daeken/Alkyhol/actions/runs/42509666672)
+agrees on all 16 lifecycle words. The separate parent-process portion stopped
+before creating its object: Python's Windows `ctypes.set_last_error` takes a
+signed C int and rejected the unsigned high-bit sentinel. The caller now
+converts that sentinel to signed 32-bit form, preserving its bits. The raw
+partial report is retained locally; cross-process evidence remains pending.
+Compilation
 and two transport tests pass; the backend remains explicitly unsupported until
 its object identity/lifetime semantics are implemented. No game-specific object
 names or inventories are included in the public probe.

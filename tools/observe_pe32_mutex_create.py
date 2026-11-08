@@ -40,7 +40,7 @@ def native(d):
         row['words']=decode(r.stdout,case);save()
     run('lifecycle',FILES[0])
     kernel=ctypes.WinDLL('kernel32',use_last_error=True);create=kernel.CreateMutexW;create.argtypes=[ctypes.c_void_p,ctypes.c_int,ctypes.c_wchar_p];create.restype=ctypes.c_void_p;close=kernel.CloseHandle;close.argtypes=[ctypes.c_void_p];close.restype=ctypes.c_int
-    ctypes.set_last_error(0xface1234);handle=create(None,False,NAME);error=ctypes.get_last_error()
+    ctypes.set_last_error(ctypes.c_int32(0xface1234).value);handle=create(None,False,NAME);error=ctypes.get_last_error()
     if not handle:raise ValueError('independent native parent mutex creation failed')
     try:
         if error!=0:raise ValueError('native parent found a pre-existing mutex fixture; not claiming new ownership')
