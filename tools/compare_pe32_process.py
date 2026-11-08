@@ -41,7 +41,7 @@ def compare(windows,host,reference):
     return 105
 
 if __name__=='__main__':
-    p=argparse.ArgumentParser(description=__doc__);p.add_argument('windows',type=Path);p.add_argument('host',type=Path);p.add_argument('--initial-native-capture',action='store_true');a=p.parse_args()
+    p=argparse.ArgumentParser(description=__doc__);p.add_argument('windows',type=Path);p.add_argument('host',type=Path);a=p.parse_args()
     windows=json.loads(a.windows.read_text(encoding='utf-8'));host=json.loads(a.host.read_text(encoding='utf-8'))
-    reference=windows if a.initial_native_capture else json.loads(REFERENCE.read_text(encoding='utf-8'))
+    reference=json.loads(REFERENCE.read_text(encoding='utf-8'))
     print('Identical PE32 EXE/DLL process inputs agree on',compare(windows,host,reference),'DWORDs of real static startup, binary calls and process termination')

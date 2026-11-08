@@ -64,4 +64,17 @@ class Process32ProtocolTests(unittest.TestCase):
             altered=copy.deepcopy(host);del altered['rejected'][mode]
             with self.assertRaises(ValueError):comparator.compare(native,altered,native)
 
+    def test_actual_frozen_native_record_rejects_joint_body_drift(self):
+        native=json.loads(runner.REFERENCE.read_text(encoding='utf-8'))
+        host=copy.deepcopy(native);host['backend']=runner.HOST
+        host['normal']['stderr_hex']=(runner.RESTORED+b'false\n').hex()
+        host['rebased']=copy.deepcopy(host['normal']);host['rebased']['stderr_hex']=(runner.RESTORED+b'true\n').hex()
+        host['rejected']=self.reports()[1]['rejected']
+        reference=json.loads(runner.REFERENCE.read_text(encoding='utf-8'))
+        self.assertEqual(comparator.compare(native,host,reference),105)
+        for value in [native['normal'],host['normal'],host['rebased']]:
+            value['words'][54]^=1
+            value['stdout_hex']=struct.pack('<105I',*value['words']).hex()
+        with self.assertRaisesRegex(ValueError,'frozen process evidence'):comparator.compare(native,host,reference)
+
 if __name__=='__main__':unittest.main()

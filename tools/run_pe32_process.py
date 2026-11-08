@@ -36,9 +36,8 @@ def verify(directory):
         if hashlib.sha256((directory/name).read_bytes()).hexdigest()!=digest:raise ValueError('changed process PE bytes')
     for name,digest in manifest['sources'].items():
         if hashlib.sha256((ROOT/name).read_bytes()).hexdigest()!=digest:raise ValueError('changed process source bytes')
-    if REFERENCE.exists():
-        reference=json.loads(REFERENCE.read_text(encoding='utf-8'))
-        if any(manifest[k]!=reference[k] for k in ['sources','files']):raise ValueError('changed frozen process inputs')
+    reference=json.loads(REFERENCE.read_text(encoding='utf-8'))
+    if any(manifest[k]!=reference[k] for k in ['sources','files']):raise ValueError('changed frozen process inputs')
     return manifest
 
 def run(directory,output):

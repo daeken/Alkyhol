@@ -9,11 +9,17 @@ See the latest direct-Metal record for current implementation evidence.
 The original MIT process observer statically imports two unchanged frozen PE32
 DLLs, shares a dependency, performs actual module/symbol lookup and indirect
 calls, then calls a real imported third DLL that executes ExitProcess(7).
-The physical M4 emits all 105 raw DWORDs with status 7 in normal and forced-rebase
-runs. Static initialization happens once, then original DLL code runs in reverse
+At clean revision `76698e6`, native Windows, hosted Mac and physical M4 agree
+on all **105 raw DWORDs** and exit status 7 from the identical positive EXE/DLL
+graph, including actual forced relocation on Mac. Both strict paired comparisons
+pass. Static initialization happens once, then original DLL code runs in reverse
 teardown order. The owner restores/clears actual host selector state and rejects
-restart. Its complete positive EXE/DLL graph now transfers unchanged to Windows
-for native startup/termination comparison; that independent result is pending.
+restart. All 24 [conformance jobs](https://github.com/daeken/Alkyhol/actions/runs/42452681390)
+pass; native and Mac [PE jobs](https://github.com/daeken/Alkyhol/actions/runs/42452681333)
+passed and the paired comparison is recorded above. The complete unchanged native
+report is frozen at `pe/reference/pe32-process-windows-v1.json` and required by
+default. The initial-capture bypass is removed. These are finite startup and
+termination observations, not general CRT or game compatibility.
 
 Four host preflight restrictions (missing DLL, duplicate DLL, unused DLL and
 missing symbol) produce explicit status 78 before any guest output. A genuine

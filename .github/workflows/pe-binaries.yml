@@ -1225,4 +1225,4 @@ jobs:
         with:
           name: pe32-process-windows
           path: local/pe/observations
-      - run: python tools/compare_pe32_process.py --initial-native-capture local/pe/observations/pe32-process-windows.json local/pe/observations/pe32-process-alkyhol.json
+      - run: python tools/compare_pe32_process.py local/pe/observations/pe32-process-windows.json local/pe/observations/pe32-process-alkyhol.json
