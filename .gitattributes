@@ -175,3 +175,5 @@ pe/reference/pe32-create-directory-3-v1.exe -text
 pe/reference/pe32-create-directory-4-v1.exe -text
 pe/reference/pe32-create-directory-5-v1.exe -text
 pe/reference/pe32-create-directory-6-v1.exe -text
+pe/fixtures/pe32-startup/profile-roundtrip.c text eol=lf
+pe/fixtures/pe32-startup/profile-roundtrip.def text eol=lf
