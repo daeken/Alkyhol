@@ -13,7 +13,7 @@ body, rejects its actual post-return ESP, performs one detach and returns explic
 status 78. Missing/data exports and excessive arity are rejected before entry.
 Host assertions separately cover call-frame alignment/bounds and DLL header/entry
 kind isolation; a compiler check enforces the process borrow through destruction.
-All 117 PE host tests, 13 compiler checks and Clippy pass locally. Physical M4
+All 117 PE host tests, 13 compiler checks, 302 Python tests and Clippy pass locally. Physical M4
 execution of the existing frozen PE32 integer/stdcall, FS/TEB and compiler-TLS-data
 observers also retains their prior outputs and host cleanup checks after the CPU
 return-gate change. These development reports are separate from clean native CI.
