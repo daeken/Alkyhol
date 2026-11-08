@@ -4,6 +4,17 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## Next reached mutex call has an independent native lifetime observer
+
+The owned named-mutex observer builds for the actual `CreateMutexW` frontier.
+It checks new versus already-existing objects, multiple references, actual
+last-close destruction, caller stack/error state, and a separate live parent
+process holding the same Windows named object. This is more than a non-NULL
+handle check. The native observation is wired into CI and pending. Compilation
+and two transport tests pass; the backend remains explicitly unsupported until
+its object identity/lifetime semantics are implemented. No game-specific object
+names or inventories are included in the public probe.
+
 ## Original DAO startup passes a scoped registry query and reaches mutex creation
 
 On the physical M4, the unchanged original EXE now executes its reached
