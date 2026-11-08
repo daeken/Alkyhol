@@ -253,6 +253,7 @@ pub struct ProcessOptions32 {
     pub windows_directory: Option<std::path::PathBuf>,
     /// Explicit existing Documents directory for the current guest user. Only
     /// CSIDL_PERSONAL with current-path flags and a NULL token is admitted.
+    /// Also grants bounded default-policy directory creation under this backing.
     /// This declares fresh guest state, not a recovered Windows user profile.
     pub documents_directory: Option<std::path::PathBuf>,
     /// Explicit file-only INI profile: no IniFileMapping registry redirection.

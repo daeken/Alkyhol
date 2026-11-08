@@ -4,6 +4,37 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## Scoped real directory creation for the next original DAO blocker
+
+The development diagnostic captures the actual `CreateDirectoryW` path and NULL
+security argument. Original startup walks existing ancestors of its selected
+Documents directory before creating descendants. Existing ordinary ancestors
+now return their measured existence without a write outside that profile.
+Creation itself is restricted to exact ASCII descendants of the explicit
+Documents backing, anchored through no-follow directory handles and `mkdirat`.
+This leaves original install paths outside the write capability. POSIX inherited
+permissions implement this bounded host policy; general NT security descriptors,
+ACL parity, reparse points, case aliases and Unicode descendant names remain
+unsupported.
+
+Physical M4 executes an owned PE creating real parent/child directories, checking
+repeated calls, existing ancestors, file collisions and missing/non-directory
+parents. Python independently checks the resulting filesystem and unchanged
+collision file. Seven host exclusions reject security attributes, writes outside
+the backing, traversal, symlinks, Unicode descendants, relative paths and absent
+backing, with no escaped mutation. Native Windows is scheduled to execute the
+identical PE under the
+[CreateDirectoryW contract](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createdirectoryw).
+Success LastError remains a raw observation outside the documented failure
+channel; successful values are not normalized or asserted equivalent.
+The next clean original DAO run and native comparison remain pending.
+
+Local checks pass: 216 Rust PE checks including doctests, 406 Python tests and
+project Clippy/formatting. The preceding INI correction's hosted and native
+startup jobs pass on `7c6518c`
+([42522984117](https://github.com/daeken/Alkyhol/actions/runs/42522984117));
+its broader native job is still finishing.
+
 ## Original DAO passes 49 INI queries and reaches directory creation
 
 At clean revision `411ad55`, physical M4 executes 49 actual

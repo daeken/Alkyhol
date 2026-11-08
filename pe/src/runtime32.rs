@@ -87,7 +87,7 @@ unsafe extern "C" {
 }
 const PAGE: usize = 4096;
 const STACK: usize = 1024 * 1024;
-const APIS: [(&str, u16); 122] = [
+const APIS: [(&str, u16); 123] = [
     ("GetLastError", 0),
     ("SetLastError", 4),
     ("GetStdHandle", 4),
@@ -210,6 +210,7 @@ const APIS: [(&str, u16); 122] = [
     ("CreateSemaphoreW", 16),
     ("SHGetFolderPathW", 20),
     ("GetPrivateProfileStringW", 24),
+    ("CreateDirectoryW", 8),
 ];
 // The first 120 API slots retain their original offsets. The second bank
 // begins after both x87 bodies, leaving their machine code and failure gates
@@ -1820,6 +1821,7 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
             116..=119 => event32::dispatch(image, id, &args),
             120 => shell_folder32::get(image, &args),
             121 => private_profile32::get(image, &args),
+            122 => shell_folder32::create(image, &args),
             _ => unreachable!(),
         }
     })
