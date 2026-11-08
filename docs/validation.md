@@ -4,6 +4,18 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## PE32 compiler static TLS: native observation pending
+
+A new original MIT no-CRT PE32 observer uses Clang-generated __declspec(thread)
+accesses, an initialized integer, a zero-initialized integer and a relocated global
+pointer initializer. A real TLS directory requests aligned template storage plus
+16 zero-fill bytes and an empty callback list. Its 24 raw DWORDs check initialization,
+mutation, pointer identity, template containment and last-error state. The x86
+compiler ABI's __tls_array is an absolute FS offset, not a successful stub or a
+storage variable. Initial native Windows execution is pending; this capture does
+not change Alkyhol TLS/startup gates. No game inputs or existing frozen fixtures
+are changed. TLS callbacks, guest threads and dynamic TLS APIs remain separate.
+
 ## PE32 FS/TEB: native Windows and physical M4
 
 All 27 CI jobs pass at strict-reference revision `2ad7650`: three
