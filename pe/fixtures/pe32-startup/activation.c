@@ -35,8 +35,9 @@ static void resource(H module,const W *type,const W *name,W language) {
 }
 static void query(U32 stage,U32 size,U32 flags,U32 section,const W *key,H expected) {
     struct {struct Keyed data;U32 guard;} record;
-    U32 *raw=(U32 *)&record;
-    for(U32 i=0;i<sizeof(record)/4;i++)raw[i]=0x715e7a11;
+    unsigned char *raw=(unsigned char *)&record;
+    const unsigned char sentinel[4]={0x11,0x7a,0x5e,0x71};
+    for(U32 i=0;i<sizeof(record);i++)raw[i]=sentinel[i%4];
     record.data.size=size;
     SetLastError(0xface1234);
     U32 result=(U32)FindActCtxSectionStringW(flags,0,section,key,&record.data),error=GetLastError();
@@ -46,9 +47,9 @@ static void query(U32 stage,U32 size,U32 flags,U32 section,const W *key,H expect
         record.data.length,record.data.global_length,record.data.total_length,
         record.data.roster,record.data.flags,record.data.data!=0,record.data.base!=0,
         record.data.context==expected,record.data.context!=0,record.guard,0,0};
-    U32 unchanged=1;for(U32 i=1;i<16;i++)if(raw[i]!=0x715e7a11)unchanged=0;
+    U32 unchanged=1;for(U32 i=4;i<64;i++)if(raw[i]!=sentinel[i%4])unchanged=0;
     words[18]=unchanged;
-    U32 tail=1;for(U32 i=10;i<16;i++)if(raw[i]!=0x715e7a11)tail=0;
+    U32 tail=1;for(U32 i=40;i<64;i++)if(raw[i]!=sentinel[i%4])tail=0;
     words[19]=tail;emit(words,sizeof(words));
     if(result && (flags&1) && record.data.context)ReleaseActCtx(record.data.context);
 }

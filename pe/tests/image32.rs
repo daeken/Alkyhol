@@ -1,6 +1,37 @@
 //! Independent synthetic PE32 layouts; real native execution evidence is separate.
-use alkyhol_pe::{Image, ImportSymbol};
+use alkyhol_pe::{Image, ImportSymbol, ResourceName};
 const OPT: usize = 0x98;
+
+#[test]
+fn resource_metadata_uses_image_backing_without_mapping_or_activating() {
+    let mut b = fixture();
+    assert!(
+        Image::parse_i386(&b)
+            .unwrap()
+            .resources()
+            .unwrap()
+            .is_empty()
+    );
+    directory(&mut b, 2, 0x2200, 112);
+    for (offset, key, target) in [(0, 24, 32), (32, 1, 64), (64, 1033, 96)] {
+        p16(&mut b, 0x800 + offset + 14, 1);
+        p32(&mut b, 0x800 + offset + 16, key);
+        p32(
+            &mut b,
+            0x800 + offset + 20,
+            target | if offset < 64 { 0x80000000 } else { 0 },
+        );
+    }
+    p32(&mut b, 0x860, 0x2300);
+    p32(&mut b, 0x864, 3);
+    b[0x900..0x903].copy_from_slice(b"xml");
+    let resources = Image::parse_i386(&b).unwrap().resources().unwrap();
+    assert_eq!(resources[0].kind, ResourceName::Id(24));
+    assert_eq!(resources[0].bytes, b"xml");
+    assert_eq!(resources[0].bytes.as_ptr(), b[0x900..].as_ptr());
+    p32(&mut b, 0x860, 0x23ff);
+    assert!(Image::parse_i386(&b).unwrap().resources().is_err());
+}
 fn p16(b: &mut [u8], at: usize, value: u16) {
     b[at..at + 2].copy_from_slice(&value.to_le_bytes());
 }

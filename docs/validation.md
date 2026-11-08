@@ -35,11 +35,19 @@ Create/Activate/GetCurrent/Find/Deactivate/ReleaseActCtx behavior, including bot
 layout assertions are included. **Native results are pending**; no activation API
 implementation or original-game progress beyond the existing stop is claimed.
 
-Local checks pass 147 PE host tests plus 16 compile/documentation checks,
+Local checks pass 148 PE host tests plus 16 compile/documentation checks,
 329 Python tests, all 25 existing startup microtests and Clippy. The five new
 resource units cover exact RVA/payload separation, counted UTF-16 names,
 truncation, malformed trees and duplicate/count errors. Collector tests are
 synthetic format checks and do not establish activation semantics.
+
+At `388dbb7`, hosted resource inspection, all existing startup cases and the
+independent native SDK layout assertions passed. The new activation observer did
+not execute: its collector rejected Windows path separators in the source-key
+inventory before launch. Source keys now use portable forward slashes without
+relaxing any source/PE hash check. Native activation observations remain pending.
+The broader historical PE job again stopped at the unchanged upstream u-config
+HTTP 504 download; its dependent historical comparisons did not run.
 
 References: [PE resource tables](https://learn.microsoft.com/en-us/windows/win32/debug/pe-format#the-rsrc-section),
 [FindActCtxSectionStringW](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-findactctxsectionstringw),

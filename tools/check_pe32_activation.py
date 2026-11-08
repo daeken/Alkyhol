@@ -50,7 +50,7 @@ def expected_resources():
 
 def verify(directory):
     value = json.loads((directory/'activation-inputs.json').read_text())
-    expected = {str((SOURCE/n).relative_to(ROOT)): digest(SOURCE/n) for n in SOURCES}
+    expected = {(SOURCE/n).relative_to(ROOT).as_posix(): digest(SOURCE/n) for n in SOURCES}
     if value['sources'] != expected or value['files'] != {'activation.exe': digest(directory/'activation.exe')}:
         raise ValueError('activation source/identical-PE identity changed')
     if value['resource_prefix_sha256'] != hashlib.sha256(expected_resources()).hexdigest():
@@ -81,7 +81,7 @@ def host(directory):
                     '/safeseh:no', '/manifest:no', '/entry:entry', str(obj), str(res), str(lib),
                     *[f'/alternatename:__imp__{n}@{size}=__imp__{n}' for n, size in SYMBOLS],
                     '/out:'+str(exe)], check=True)
-    manifest = {'sources': {str((SOURCE/n).relative_to(ROOT)): digest(SOURCE/n) for n in SOURCES},
+    manifest = {'sources': {(SOURCE/n).relative_to(ROOT).as_posix(): digest(SOURCE/n) for n in SOURCES},
                 'files': {'activation.exe': digest(exe)},
                 'resource_prefix_sha256': hashlib.sha256(expected_resources()).hexdigest()}
     (directory/'activation-inputs.json').write_text(json.dumps(manifest, indent=2)+'\n')
