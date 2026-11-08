@@ -6,6 +6,17 @@ See the latest direct-Metal record for current implementation evidence.
 
 ## First unchanged PE32/i386 execution: native Windows and physical M4
 
+All 27 CI jobs pass at hardened strict-reference revision `796e395`: three
+[PE jobs](https://github.com/daeken/Alkyhol/actions/runs/42430262565) and all 24
+[conformance jobs](https://github.com/daeken/Alkyhol/actions/runs/42430262653).
+Downloaded clean native Windows/hosted Mac records and fresh clean physical M4
+execution at that same revision agree on all eight raw words, exact executed
+PE/source identities and the frozen native record. Normal/forced-rebase host
+results agree. All 96 PE host tests/12 compiler checks, 31 portable tests,
+252 Python tests and Clippy pass. Previous frozen PE64/application/DLL, native
+SDK/source/COM, shader and Metal comparisons remain green. This establishes the
+finite owned integer/stdcall observer, not DAOrigins startup or game compatibility.
+
 The new original MIT no-CRT i386 PE executes unchanged in a 64-bit Rosetta host
 on physical M4. Normal and forced-rebase development runs agree on all eight raw
 DWORDs: pointer width, 10,000 last-error round trips, preserved Win32 nonvolatile
