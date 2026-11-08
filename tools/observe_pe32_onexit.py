@@ -5,9 +5,9 @@ from pathlib import Path
 from build_pe_fixture import ROOT,rust_tool
 from check_pe32_activation import SOURCE,digest
 from observe_pe32_activation_startup import runner
-FILES=[f'crt-onexit-{i}.exe' for i in range(5)]
+FILES=[f'crt-onexit-{i}.exe' for i in range(6)]
 SOURCES=['crt-onexit.c','crt-onexit.def','crt-onexit-kernel32.def','crt-onexit-layout.cpp']
-REASONS={1:b'unlock requires an owned initialized lock',2:b'lock index outside the observed onexit lock profile',3:b'onexit callback outside executable guest storage',4:b'onexit output cells outside separate writable guest storage'}
+REASONS={1:b'unlock requires an owned initialized lock',2:b'lock index outside the observed onexit lock profile',3:b'onexit callback outside executable guest storage',4:b'onexit output cells outside separate writable guest storage',5:b'onexit requires a preallocated owned table'}
 def inputs(d):return {'sources':{(SOURCE/n).relative_to(ROOT).as_posix():digest(SOURCE/n) for n in SOURCES},'files':{n:digest(d/n) for n in FILES}}
 def verify(d):
     r=json.loads((d/'crt-onexit-inputs.json').read_text())

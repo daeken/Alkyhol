@@ -133,6 +133,59 @@ impl Heap {
         );
         Ok(address)
     }
+    pub(super) fn reallocate(
+        &mut self,
+        heap: u32,
+        flags: u32,
+        address: u32,
+        size: u32,
+    ) -> Result<u32> {
+        if flags & !0x19 != 0 {
+            return Err("unsupported PE32 HeapReAlloc flags/exception mode".into());
+        }
+        let block = self
+            .objects
+            .get(&heap)
+            .ok_or("unknown PE32 reallocation heap handle")?
+            .blocks
+            .get(&address)
+            .ok_or("PE32 HeapReAlloc requires a live owned allocation base")?;
+        let old_size = block.size;
+        if size > 512 * 1024 * 1024 {
+            return Ok(0); // Failure leaves the original allocation and last error intact.
+        }
+        if size as usize <= block.capacity {
+            if flags & 8 != 0 && size as usize > old_size {
+                unsafe {
+                    std::ptr::write_bytes(
+                        (address as *mut u8).add(old_size),
+                        0,
+                        size as usize - old_size,
+                    );
+                }
+            }
+            self.objects
+                .get_mut(&heap)
+                .expect("checked heap")
+                .blocks
+                .get_mut(&address)
+                .expect("checked block")
+                .size = size as usize;
+            return Ok(address);
+        }
+        if flags & 0x10 != 0 {
+            return Ok(0); // Owned capacity cannot satisfy this in-place-only growth.
+        }
+        let replacement = self.allocate(heap, flags & 9, size)?;
+        if replacement == 0 {
+            return Ok(0);
+        }
+        unsafe {
+            std::ptr::copy_nonoverlapping(address as *const u8, replacement as *mut u8, old_size);
+        }
+        self.free(heap, flags & 1, address)?;
+        Ok(replacement)
+    }
     pub(super) fn free(&mut self, heap: u32, flags: u32, address: u32) -> Result<u32> {
         let object = self
             .objects
@@ -218,6 +271,13 @@ mod tests {
         alkyhol::ffi::SetLastError(0x1234);
         assert_eq!(heap.size(0x10000, 0, 0x20000).unwrap(), 37);
         assert_eq!(heap.size(0x10000, 1, 0x30000).unwrap(), 0);
+        // Rejected relocation must retain size/ownership and never touch memory.
+        assert_eq!(heap.reallocate(0x10000, 16, 0x20000, 41).unwrap(), 0);
+        assert_eq!(heap.reallocate(0x10000, 0, 0x20000, u32::MAX).unwrap(), 0);
+        assert_eq!(heap.size(0x10000, 0, 0x20000).unwrap(), 37);
+        assert!(heap.reallocate(0x10000, 4, 0x20000, 41).is_err());
+        assert!(heap.reallocate(0x10000, 0, 0x20001, 41).is_err());
+        assert!(heap.reallocate(0x10001, 0, 0x20000, 41).is_err());
         assert_eq!(alkyhol::ffi::GetLastError(), 0x1234);
         for (h, f, p) in [
             (0x10000, 0, 0x20001),
@@ -232,6 +292,7 @@ mod tests {
             .blocks
             .remove(&0x20000);
         assert!(heap.size(0x10000, 0, 0x20000).is_err());
+        assert!(heap.reallocate(0x10000, 0, 0x20000, 41).is_err());
         alkyhol::ffi::SetLastError(error);
     }
 }

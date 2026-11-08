@@ -93,6 +93,11 @@ pub(super) fn dll_onexit(image: &LoadedImage32<'_>, args: &[u32; 8]) -> u32 {
     }
     let begin = unsafe { (args[1] as *const u32).read() };
     let end = unsafe { (args[2] as *const u32).read() };
+    if begin == 0 || end == 0 {
+        unsupported(
+            "DLL onexit requires a preallocated owned table; null-table behavior is unverified",
+        );
+    }
     let size = end
         .checked_sub(begin)
         .filter(|&n| n.is_multiple_of(4) && n < 4096 * 4)

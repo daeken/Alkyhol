@@ -69,6 +69,10 @@ jobs:
         run: |
           python tools/observe_pe32_onexit.py
           python tools/observe_pe32_onexit.py --host
+      - name: Execute owned heap resizing for the next actual bundled CRT call
+        run: |
+          python tools/observe_pe32_heap_realloc.py
+          python tools/observe_pe32_heap_realloc.py --host
       - uses: actions/upload-artifact@v4
         with:
           name: pe32-startup-microtests
@@ -116,6 +120,8 @@ jobs:
             local/pe/startup-microtests/ci-atan-host.json
             local/pe/startup-microtests/crt-onexit-inputs.json
             local/pe/startup-microtests/crt-onexit-host.json
+            local/pe/startup-microtests/heap-realloc-inputs.json
+            local/pe/startup-microtests/heap-realloc-host.json
             local/pe/startup-microtests/ctx-layout-empty-importer.dll
             local/pe/startup-microtests/ctx-layout-*.manifest
   native-pe32-startup:
@@ -177,6 +183,8 @@ jobs:
         run: cl /nologo /c /W4 /WX /std:c++17 pe/fixtures/pe32-startup/crt-onexit-layout.cpp /Folocal/pe/startup-microtests/crt-onexit-layout.obj
       - name: Compare actual CRT callback tables and A/W startup helpers on native Windows
         run: python tools/observe_pe32_onexit.py --native
+      - name: Compare identical process/private heap resize operations on native Windows
+        run: python tools/observe_pe32_heap_realloc.py --native
       - uses: actions/upload-artifact@v4
         if: always()
         with:

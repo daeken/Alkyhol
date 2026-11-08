@@ -32,7 +32,10 @@ U entry(void){
     (void)__dllonexit(0,&a.begin,&a.end);
 #elif MODE == 4
     (void)__dllonexit(one,(Fn **)1,&a.end);
+#elif MODE == 5
+    (void)__dllonexit(one,&a.begin,&a.end);
 #else
+    a.begin=(Fn *)malloc(128);if(!a.begin)__builtin_trap();a.end=a.begin;
     SetLastError(0xface1234);U before=stack();_lock(8);_lock(8);_unlock(8);_unlock(8);U after=stack();put(before==after);put(GetLastError());
     _lock(8);Fn ret=__dllonexit(one,&a.begin,&a.end);
     put(ret==one);put(a.begin!=0);put((U)a.begin&7);put((U)(a.end-a.begin));put(a.begin[0]==one);put(GetLastError());

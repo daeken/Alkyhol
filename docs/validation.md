@@ -4,6 +4,42 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## Original dependency startup reaches Bink
+
+The first native exit-table witness at `7c3275d` failed with access violation
+before producing its buffered record. That witness incorrectly attempted a NULL
+initial table; its successful host-only behavior was not native evidence. The
+backend now stops that unverified case, and the next witness uses allocated
+storage with an empty entry span, matching the table ownership required in the
+actual startup path. Expected callback/ABI/error fields are unchanged. The failed
+native report is retained locally. The revised native comparison remains pending.
+
+On the physical M4, the original bundled CRT's reached `HeapReAlloc` now resizes
+an actual live allocation with preserved content. Dependency traversal completes
+the PhysX-related and bundled C++ runtime initializers, then enters SpeedTree
+and Bink. Bink's first measured unsupported import is **USER32.dll!GetCursorPos**.
+**The game EXE has not entered.** No game bytes/inventories are committed; the
+previously documented locally unpacked dependency caveat remains.
+
+The bounded allocator retains live ownership, uses reserved capacity for shrink
+or small growth, and otherwise allocates/copies/frees real low-address storage.
+`HEAP_ZERO_MEMORY` clears only newly exposed bytes; in-place-only growth fails
+without mutation when owned capacity is insufficient. Allocation failure retains
+the original block and last error. Unknown/interior/freed pointers, foreign heaps
+and exception-mode flags stop explicitly. The profile uses the existing 512 MiB
+allocation budget and single guest thread; it does not claim native fragmentation
+or multithread scheduling behavior. These contracts follow the
+[Windows HeapReAlloc specification](https://learn.microsoft.com/en-us/windows/win32/api/heapapi/nf-heapapi-heaprealloc).
+
+The owned 64-word PE passes on the physical M4 for both process and private heaps:
+actual stdcall stack balance, eight-byte alignment, requested sizes, preserved
+prefixes, zeroed regrowth after shrink, in-place shrink, impossible-size failure
+with the old block retained, error state and eventual free. Three negative PEs
+stop for their actual pointer/heap/flag reason. Metadata unit checks separately
+exercise failed in-place growth and invalid ownership without dereferencing fake
+addresses. The two transport integrity tests, targeted Rust heap test, formatting
+and Clippy pass. Identical-PE native comparison is wired into CI and pending.
+
 ## D3DX9 initialization completes; original PhysX startup reaches heap reallocation
 
 On the physical M4, actual original D3DX9 constructors now return and dependency
@@ -23,11 +59,11 @@ unsupported import is **HeapReAlloc** in the original bundled CRT. The game EXE
 has not entered. The existing locally unpacked dependency caveat remains; game
 bytes, module/RVA captures and derived inventories stay local.
 
-The owned `crt-onexit-0.exe` executes 53 assertions on the physical M4: recursive
-cdecl calls and stack preservation, initially empty and preallocated callback
+The owned `crt-onexit-0.exe` records 53 words on the physical M4: recursive
+cdecl calls and stack preservation, preallocated empty and populated callback
 tables, preserved entries and guards, reverse invocation order/side effects,
 A/W startup layouts and actual inherited handle relations, and complete ASCII
-A/W path agreement with error state. Four restriction PEs stop with 78 for their
+A/W path agreement with error state. Five restriction PEs stop with 78 for their
 actual lock/pointer reason. Windows SDK layout checking and identical-PE native
 execution are wired into CI; those results are pending for this milestone.
 Local checks pass: 192 PE Rust tests/checks including doctests on the Rosetta
