@@ -5,3 +5,7 @@ WriteFile
 SetLastError
 GetLastError
 ExitProcess
+LoadLibraryA
+GetProcAddress
+FreeLibrary
+GetVersion

@@ -64,7 +64,7 @@ unsafe extern "C" {
 }
 const PAGE: usize = 4096;
 const STACK: usize = 1024 * 1024;
-const APIS: [(&str, u16); 88] = [
+const APIS: [(&str, u16); 89] = [
     ("GetLastError", 0),
     ("SetLastError", 4),
     ("GetStdHandle", 4),
@@ -153,6 +153,7 @@ const APIS: [(&str, u16); 88] = [
     ("?unexpected@@YAXXZ", 0),
     ("__set_app_type", 4),
     ("__get_app_type", 0),
+    ("GetVersion", 0),
 ];
 const EXIT_API: u32 = 14;
 // Win32 promises a reversible process-specific representation, not a published
@@ -1603,6 +1604,7 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
                 1
             }
             78..=87 => crt32::dispatch(image, id, &args),
+            88 => startup32::packed_version(),
             _ => unreachable!(),
         }
     })

@@ -4,6 +4,11 @@ use alkyhol::ffi;
 use std::{ffi::c_void, ptr};
 
 const LIMIT: usize = 1024 * 1024;
+// The existing bounded legacy persona, shared by both version-query APIs.
+const LEGACY_VERSION: [u32; 4] = [6, 2, 9200, 2];
+pub(super) fn packed_version() -> u32 {
+    LEGACY_VERSION[0] | (LEGACY_VERSION[1] << 8) | (LEGACY_VERSION[2] << 16)
+}
 fn startup_info(handles: [usize; 3]) -> [u8; 68] {
     // This host profile explicitly inherits its three streams. It has no
     // Windows desktop/title/position request or private CRT inheritance block.
@@ -523,7 +528,16 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
             }
             checked(image, args[0], 148, true);
             let mut bytes = [0u8; 148];
-            for (i, value) in [148u32, 6, 2, 9200, 2].into_iter().enumerate() {
+            for (i, value) in [
+                148u32,
+                LEGACY_VERSION[0],
+                LEGACY_VERSION[1],
+                LEGACY_VERSION[2],
+                LEGACY_VERSION[3],
+            ]
+            .into_iter()
+            .enumerate()
+            {
                 bytes[i * 4..i * 4 + 4].copy_from_slice(&value.to_le_bytes());
             }
             unsafe {

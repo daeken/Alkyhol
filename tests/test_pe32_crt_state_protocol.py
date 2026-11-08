@@ -7,6 +7,22 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
 import observe_pe32_crt_state as crt
 
 class CrtStateProtocol(unittest.TestCase):
+    def test_export_collector_preserves_actual_absence_and_uninterpreted_errors(self):
+        words = [0x58433332, 4, 10]
+        for i in range(10):
+            words += [i, int(i != 9), 127 if i == 9 else 0xface1234]
+        words += [0x23f00206, 0xface1234, 1]
+        raw = struct.pack('<36I', *words)
+        self.assertEqual(crt.decode_exports(raw), words)
+        for data in [raw[:-1], raw+b'\0']:
+            with self.assertRaises(ValueError):
+                crt.decode_exports(data)
+        for index in [0, 1, 2, 3, 4, 35]:
+            changed = words.copy()
+            changed[index] = 17
+            with self.assertRaises(ValueError):
+                crt.decode_exports(struct.pack('<36I', *changed))
+
     def words(self):
         error = 0xface1234
         words = [0x43523332, 4]

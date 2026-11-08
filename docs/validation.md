@@ -8,8 +8,10 @@ See the latest direct-Metal record for current implementation evidence.
 
 On the physical M4, the original D3DX9 helper now calls `msvcrt.dll!malloc` and
 receives actual owned low-address storage. The game EXE remains unchanged and
-its entry has **not run**. The next measured unsupported call is **GetVersion**
-during that DLL's initialization. The local unpacked dependency caveat remains;
+its entry has **not run**. Its reached GetVersion call now uses the existing
+legacy NT 6.2/build 9200 persona, sharing fields with GetVersionExA. The next
+measured unsupported call is **_initterm** during that DLL's initialization.
+Constructor-table callbacks have not run yet. The local unpacked dependency caveat remains;
 this is not game compatibility or unchanged-all-DLL execution.
 
 The CRT call required real cdecl gateways with caller stack cleanup. It also
@@ -39,14 +41,23 @@ Default abort/reporting, errno/new-handler allocation failure, free/realloc,
 arbitrary guest threads and C++ exception unwinding remain unsupported. The new
 CRT PE/state and callback-exit observations have been added to the existing
 Windows comparison workflow; native execution and full 73-word comparison are
-pending. Host assertions are not a native original-game observation. Original
+pending. The first native attempt at `0f49bf7` failed before output with
+0xC0000139 (entry point not found). At least one requested native import is
+unavailable; its identity is not yet isolated. This is **not** native CRT parity.
+A separate kernel-only native observer now records actual availability and error
+codes for these exact ten names before any optional CRT import, and records
+GetVersion. It keeps absence distinct from unsupported implementation rather than
+guessing which export failed. Host assertions are not a native original-game observation. Original
 files, traces, identities and launch inputs remain ignored/local.
 
 Local checks pass: 188 PE Rust tests/checks including doctests on the x86_64
 Rosetta target, 364 Python tests, project Clippy with warnings denied, formatting,
 all ten new CRT PEs and the existing 25 startup cases (including real stdcall FLS
 callbacks). The actual DAO graph again passes the CRT configuration work and
-D3DX9 malloc call before stopping at GetVersion.
+D3DX9 malloc call. The subsequent packed-version change advances that same
+profile to _initterm. The export-discovery addition passes the focused Rust
+library and four protocol tests; its kernel-only PE imports were independently
+inspected with LLVM before native dispatch.
 
 ## Dependency startup reaches original D3DX9 initialization (earlier milestone)
 
