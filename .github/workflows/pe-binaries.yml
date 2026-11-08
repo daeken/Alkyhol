@@ -77,6 +77,22 @@ jobs:
         with:
           name: pe-peports-alkyhol
           path: local/pe/peports-alkyhol.json
+      - name: Execute the original released i386 peports through real Win32 startup and process exit
+        run: |
+          python tools/fetch_peports32_binary.py
+          python tools/run_peports32_binary.py --binary local/pe/peports32/peports.exe --output local/pe/peports32-alkyhol.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe-peports32-release
+          path: |
+            local/pe/peports32/peports.exe
+            local/pe/peports32/peports.c
+            local/pe/peports32/UNLICENSE
+            local/pe/peports32/provenance.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe-peports32-alkyhol
+          path: local/pe/peports32-alkyhol.json
       - name: Execute the frozen owned DLL through Alkyhol, including DllMain and exports
         run: python tools/run_pe_library.py --dll local/pe/export-fixture/alkyhol_exports.dll --output local/pe/library-runtime.json
       - name: Execute a genuine failed DLL initializer and its ordered cleanup with imported APIs
@@ -837,6 +853,16 @@ jobs:
           path: local/pe/peports-windows.json
       - uses: actions/download-artifact@v4
         with:
+          name: pe-peports32-release
+          path: local/pe/peports32
+      - name: Execute the identical released i386 peports with native Windows startup and APIs
+        run: python tools/run_peports32_binary.py --binary local/pe/peports32/peports.exe --output local/pe/peports32-windows.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe-peports32-windows
+          path: local/pe/peports32-windows.json
+      - uses: actions/download-artifact@v4
+        with:
           name: pe-text-conversion-fixture
           path: local/pe/text-conversion
       - name: Observe direct UTF conversion calls against the native Windows API using the identical PE
@@ -1151,3 +1177,12 @@ jobs:
           name: pe32-seh-windows
           path: local/pe/observations
       - run: python tools/compare_pe32_seh.py local/pe/observations/pe32-seh-windows.json local/pe/observations/pe32-seh-alkyhol.json
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe-peports32-alkyhol
+          path: local/pe/observations
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe-peports32-windows
+          path: local/pe/observations
+      - run: python tools/compare_peports32_binary.py --initial-native-capture local/pe/observations/peports32-windows.json local/pe/observations/peports32-alkyhol.json

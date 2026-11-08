@@ -4,6 +4,36 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## Released i386 peports: physical M4 startup/file/Unicode/exit evidence
+
+The original released i386 peports from the official w64devkit 2.11.0 x86 archive
+passes all 16 exact existing peports corpus cases on the physical M4, both normal
+and forced rebase. Its original PE SHA-256 is
+`387d317019c36e86a26fa35818353d67dd47e9558e0b10819a2bb27a67fdeab9`;
+archive, source and license identities are independently checked by the fetcher.
+The Mach-O payload hash is checked against those exact released PE bytes.
+No source rebuild or executable patch is involved.
+
+This exercises actual original 32-bit startup, four-byte argv, UTF-8/UTF-16 sizing
+and conversion, Unicode paths, CreateFileW/ReadFile/CloseHandle, standard streams,
+and controlled non-returning ExitProcess through the Rust Win32 gateways.
+Actual host selector restoration and FS descriptor cleanup are required after
+ExitProcess. Exact status and raw output/error bytes cover help, imports, exports,
+file/stdin errors and subsequent-file recovery. The old released PE64 application,
+corpus and frozen native records remain unchanged.
+
+The new native workflow transfers the identical released i386 PE and frozen owned
+EXE/DLL input files to Windows. That native comparison is pending at this record;
+physical execution, host assertions and future native evidence remain separate.
+Focused unit checks cover four-byte argv/overflow, DLL+symbol binding identity,
+logical permissions, invalid conversion/I/O inputs, LocalFree ownership rejection
+exit-state reentry refusal and real owned-file cleanup without closing an
+unrelated open handle. All 130 PE host tests, 15 compiler checks, 316 Python
+tests and Clippy pass locally. Portable metadata tests pass. Frozen bounded
+SEH, linked-DLL and compiler-GS physical M4 regressions retain their outcomes.
+These checks do not establish arbitrary CRT,
+general DLL/thread teardown or game compatibility. No game code has run.
+
 ## Bounded PE32 hardware SEH: native Windows, hosted Mac and physical M4
 
 At clean revision `aacce9b`, native Windows, downloaded hosted Mac reports and fresh

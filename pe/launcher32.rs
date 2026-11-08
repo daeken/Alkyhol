@@ -64,7 +64,9 @@ impl Guest32<'_> {
     }
 }
 fn main() {
-    let args: Vec<_> = std::env::args().skip(1).collect();
+    let all: Vec<_> = std::env::args().skip(1).collect();
+    let split = all.iter().position(|a| a == "--").unwrap_or(all.len());
+    let args = &all[..split];
     if args.iter().any(|a| {
         ![
             "--inspect",
@@ -79,7 +81,27 @@ fn main() {
         process::exit(64);
     }
     let result = (|| -> alkyhol_pe::Result<u32> {
-        let process = alkyhol_pe::ProcessContext::install(&["guest32.exe".into()], &[])?;
+        let mut argv = vec![
+            std::env::current_exe()
+                .map_err(|e| e.to_string())?
+                .to_str()
+                .ok_or("non-Unicode executable name")?
+                .to_owned(),
+        ];
+        if split < all.len() {
+            argv.extend_from_slice(&all[split + 1..]);
+        }
+        let environment = std::env::vars_os()
+            .map(|(k, v)| {
+                Ok((
+                    k.into_string()
+                        .map_err(|_| "non-Unicode environment name")?,
+                    v.into_string()
+                        .map_err(|_| "non-Unicode environment value")?,
+                ))
+            })
+            .collect::<alkyhol_pe::Result<Vec<_>>>()?;
+        let process = alkyhol_pe::ProcessContext::install(&argv, &environment)?;
         let bytes = embedded_pe();
         let parsed = alkyhol_pe::Image::parse_i386(bytes)?;
         if args.iter().any(|a| a == "--seh") {

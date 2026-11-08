@@ -75,6 +75,10 @@ _alkyhol_pe32_gate_start:
     popq %rsi
     popq %rbp
     popq %rbx
+    movq %rax,%r11
+    shrq $32,%r11
+    testl %r11d,%r11d
+    jnz 2f
     movw $0x1017,%cx
     movw %cx,%fs
     movl 4(%r15),%ecx
@@ -82,6 +86,10 @@ _alkyhol_pe32_gate_start:
     pushq %r14
     pushq %rcx
     lretq
+2:
+    xorl %edx,%edx /* Zero ESP marker: explicit non-returning process exit. */
+    movq %r12,%rsp
+    jmpq *%r13
 .p2align 3
 _alkyhol_pe32_dispatch_slot:
     .quad 0

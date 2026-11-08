@@ -276,6 +276,11 @@ unsafe extern "win64" fn GetCommandLineW() -> *const u16 {
         )
     })
 }
+// Width-specific runtimes copy this owned process snapshot into guest storage;
+// a native pointer must never be truncated into a PE32 return value.
+pub(crate) fn command_snapshot() -> Option<Vec<u16>> {
+    PROCESS.with(|p| p.borrow().as_ref().map(|s| s.command.clone()))
+}
 // A real contiguous Shell32 argv allocation, released with the bounded LocalFree.
 unsafe extern "win64" fn CommandLineToArgvW(text: *const u16, count: *mut i32) -> *mut *mut u16 {
     if count.is_null() {

@@ -3,7 +3,7 @@
 //! No guest callbacks, PEB, CRT, process DLL loader/cache or exception dispatch.
 use crate::{ExportTable, ExportTarget, Image, ImportSymbol, ProcessContext, Result};
 use std::{
-    cell::Cell,
+    cell::{Cell, RefCell},
     ffi::c_void,
     marker::PhantomData,
     ptr,
@@ -13,6 +13,8 @@ use std::{
 #[path = "seh32.rs"]
 mod seh32;
 pub use seh32::ExceptionImage32;
+#[path = "startup32.rs"]
+mod startup32;
 std::arch::global_asm!(include_str!("transition32.S"), options(att_syntax));
 unsafe extern "C" {
     fn mmap(
@@ -36,7 +38,7 @@ unsafe extern "C" {
 }
 const PAGE: usize = 4096;
 const STACK: usize = 1024 * 1024;
-const APIS: [(&str, u16); 7] = [
+const APIS: [(&str, u16); 16] = [
     ("GetLastError", 0),
     ("SetLastError", 4),
     ("GetStdHandle", 4),
@@ -44,7 +46,33 @@ const APIS: [(&str, u16); 7] = [
     ("GetModuleHandleA", 4),
     ("GetModuleHandleW", 4),
     ("GetProcAddress", 8),
+    ("GetCommandLineW", 0),
+    ("CommandLineToArgvW", 8),
+    ("CloseHandle", 4),
+    ("ReadFile", 20),
+    ("CreateFileW", 28),
+    ("MultiByteToWideChar", 24),
+    ("WideCharToMultiByte", 32),
+    ("ExitProcess", 4),
+    ("LocalFree", 4),
 ];
+const EXIT_API: u32 = 14;
+fn api_id(module: &str, symbol: &ImportSymbol) -> Option<usize> {
+    let ImportSymbol::Name(symbol) = symbol else {
+        return None;
+    };
+    APIS.iter()
+        .enumerate()
+        .find(|(id, (name, _))| {
+            *name == symbol
+                && module.eq_ignore_ascii_case(if *id == 8 {
+                    "shell32.dll"
+                } else {
+                    "kernel32.dll"
+                })
+        })
+        .map(|(id, _)| id)
+}
 static SELECTORS: OnceLock<Result<(u16, u16)>> = OnceLock::new();
 fn selectors() -> Result<(u16, u16)> {
     SELECTORS
@@ -224,8 +252,19 @@ struct TlsBlock {
 struct Cpu32 {
     stack: LowMapping,
     teb: LowMapping,
+    blocks: RefCell<Vec<startup32::Block>>,
+    command: Cell<u32>,
+    exit: Cell<Option<u32>>,
+    files: RefCell<std::collections::BTreeSet<usize>>,
 }
 impl Cpu32 {
+    fn close_files(&self) {
+        let error = alkyhol::ffi::GetLastError();
+        for handle in std::mem::take(&mut *self.files.borrow_mut()) {
+            alkyhol::ffi::CloseHandle(handle);
+        }
+        alkyhol::ffi::SetLastError(error);
+    }
     fn new() -> Result<Self> {
         let stack = LowMapping::new(STACK + 2 * PAGE, PAGE, 0)?;
         let teb = LowMapping::new(PAGE, PAGE, 0)?;
@@ -239,7 +278,19 @@ impl Cpu32 {
         }
         stack.protect(0, PAGE, 0)?;
         stack.protect(PAGE + STACK, PAGE, 0)?;
-        Ok(Self { stack, teb })
+        Ok(Self {
+            stack,
+            teb,
+            blocks: RefCell::new(Vec::new()),
+            command: Cell::new(0),
+            exit: Cell::new(None),
+            files: RefCell::new(Default::default()),
+        })
+    }
+}
+impl Drop for Cpu32 {
+    fn drop(&mut self) {
+        self.close_files();
     }
 }
 enum Binding32 {
@@ -361,14 +412,8 @@ impl<'a> LoadedImage32<'a> {
         let fixups = parsed.relocations()?;
         let mut bindings = Vec::new();
         for import in imports {
-            let binding = if import.module.eq_ignore_ascii_case("kernel32.dll") {
-                match &import.symbol {
-                    ImportSymbol::Name(n) => APIS
-                        .iter()
-                        .position(|&(name, _)| name == n)
-                        .map(Binding32::Api),
-                    _ => None,
-                }
+            let binding = if let Some(id) = api_id(&import.module, &import.symbol) {
+                Some(Binding32::Api(id))
             } else {
                 match dependencies
                     .iter()
@@ -613,6 +658,9 @@ impl<'a> LoadedImage32<'a> {
         let Some(end) = address.checked_add(len) else {
             return false;
         };
+        if startup32::permits(&self.cpu, address, len, write) {
+            return true;
+        }
         if let Some(block) = &self.tls {
             let first = block.mapping.base as usize;
             if address >= first && end <= first + block.size {
@@ -695,6 +743,9 @@ impl<'a> LoadedImage32<'a> {
             if !slot.get().is_null() {
                 return Err("nested PE32 entry unsupported".into());
             }
+            if self.cpu.exit.get().is_some() {
+                return Err("PE32 process already requested ExitProcess".into());
+            }
             if self.tls.is_some() && self.tls_entered.get() {
                 return Err("PE32 static TLS images support one entry".into());
             }
@@ -725,6 +776,14 @@ impl<'a> LoadedImage32<'a> {
             });
             let returned_sp = (result >> 32) as u32;
             let expected_sp = self.cpu.stack.base as u32 + expected_offset as u32;
+            if returned_sp == 0 {
+                return match self.cpu.exit.get() {
+                    Some(status) if status == result as u32 && !self.dll => Ok(status),
+                    _ => Err(
+                        "PE32 exit gate returned without a matching process-exit request".into(),
+                    ),
+                };
+            }
             if returned_sp != expected_sp {
                 return Err(format!(
                     "PE32 {convention:?} call returned with an unbalanced guest stack"
@@ -921,7 +980,13 @@ fn query_name(address: u32, mut read: impl FnMut(u32) -> Result<u8>) -> Result<S
     }
     Err("export query exceeds 4096-byte bound".into())
 }
-extern "C" fn dispatch(id: u32, arguments: *const u32) -> u32 {
+extern "C" fn dispatch(id: u32, arguments: *const u32) -> u64 {
+    let result = dispatch_inner(id, arguments);
+    // ExitProcess is a non-returning guest operation. The assembly gate uses
+    // a separate control bit, never a forged stdcall return-stack observation.
+    u64::from(result) | if id == EXIT_API { 1u64 << 32 } else { 0 }
+}
+fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
     if seh32::in_handler() {
         seh32::async_fail(b"Alkyhol PE32 unsupported: imports from an exception handler\n");
     }
@@ -944,7 +1009,7 @@ extern "C" fn dispatch(id: u32, arguments: *const u32) -> u32 {
         }
         // Snapshot values rather than borrowing guest argument memory across a
         // host call: a valid output pointer may alias those stack words.
-        let mut args = [0u32; 5];
+        let mut args = [0u32; 8];
         for (index, value) in args.iter_mut().enumerate().take(bytes as usize / 4) {
             *value = unsafe { arguments.add(index).read_unaligned() };
         }
@@ -970,40 +1035,7 @@ extern "C" fn dispatch(id: u32, arguments: *const u32) -> u32 {
                     _ => 0x70000001 + index as u32,
                 }
             }
-            3 => {
-                let index = args[0].wrapping_sub(0x70000001) as usize;
-                if index >= 3 {
-                    unsupported("WriteFile handle is not a standard-stream proxy");
-                }
-                if args[4] != 0 {
-                    unsupported("overlapped Win32 I/O");
-                }
-                if args[2] > 1024 * 1024
-                    || !args[3].is_multiple_of(4)
-                    || !image.permits(args[1] as usize, args[2] as usize, false)
-                    || !image.permits(args[3] as usize, 4, true)
-                {
-                    unsupported("WriteFile buffers outside checked storage/bounds");
-                }
-                let write: unsafe extern "win64" fn(
-                    usize,
-                    *const c_void,
-                    u32,
-                    *mut u32,
-                    *mut c_void,
-                ) -> i32 = unsafe {
-                    std::mem::transmute(crate::abi::resolve("kernel32.dll", "WriteFile").unwrap())
-                };
-                unsafe {
-                    write(
-                        image.handles[index],
-                        args[1] as usize as *const c_void,
-                        args[2],
-                        args[3] as usize as *mut u32,
-                        ptr::null_mut(),
-                    ) as u32
-                }
-            }
+            3 => startup32::io(image, &args, true),
             4 | 5 => {
                 if image.dll {
                     unsupported("isolated PE32 DLL has no process executable module lookup");
@@ -1023,6 +1055,7 @@ extern "C" fn dispatch(id: u32, arguments: *const u32) -> u32 {
                 }
                 Err(error) => unsupported(&error),
             },
+            7..=15 => startup32::dispatch(image, id, &args),
             _ => unreachable!(),
         }
     })
@@ -1053,6 +1086,10 @@ mod tests {
                     base: 0x600000usize as *mut u8,
                     len: PAGE,
                 },
+                blocks: RefCell::new(Vec::new()),
+                command: Cell::new(0),
+                exit: Cell::new(None),
+                files: RefCell::new(Default::default()),
             }),
             tls: None,
             tls_entered: Cell::new(false),
