@@ -8,6 +8,7 @@ pub(super) struct State {
     terminate: u32,
     unexpected: u32,
     app_type: u32,
+    errno: Option<u32>,
 }
 impl State {
     fn set_error_mode(&mut self, mode: u32) -> crate::Result<u32> {
@@ -91,6 +92,11 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
             .unwrap_or_else(|| unsupported("terminate handler did not exit the guest process"));
     }
     let mut state = image.cpu.crt.borrow_mut();
+    if id == 91
+        && let Some(pointer) = state.errno
+    {
+        return pointer;
+    }
     if id == 86 {
         if args[0] > 2 {
             unsupported("unsupported CRT application type");
@@ -140,10 +146,17 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
         handle
     };
     let pointer = heap
-        .allocate(handle, 0, args[0])
+        .allocate(
+            handle,
+            if id == 91 { 8 } else { 0 },
+            if id == 91 { 4 } else { args[0] },
+        )
         .unwrap_or_else(|e| unsupported(&e));
     if pointer == 0 {
         unsupported("CRT malloc exhausted backed storage; errno/new-handler policy is unsupported");
+    }
+    if id == 91 {
+        state.errno = Some(pointer);
     }
     pointer
 }

@@ -4,15 +4,65 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
-## Original D3DX9 constructors execute through the CRT gateway
+## Original D3DX9 constructor passes the first x87 intrinsic
+
+On the physical M4, the original constructor now executes past `_CIsqrt` using
+a dedicated guest-i386 x87 gate. The next actual unsupported import is
+**_CIatan**. The DLL constructor table has not completed and **game EXE entry
+has not run**. The existing local unpacked-dependency caveat remains; no game
+compatibility or unchanged-all-DLL claim is made.
+
+The [native startup job at `b13af7d`](https://github.com/daeken/Alkyhol/actions/runs/42491731440)
+completed all 204 owned `_CIsqrt` observations: 17 raw 80-bit operands in 12
+precision/rounding contexts. It retains actual results, lower-stack witness,
+control/status words, MXCSR, last error and errno. The full report is frozen at
+`pe/reference/pe32-ci-sqrt-windows-v1.json`, SHA-256
+`7b1d29fd99c35c12a318f0a0d70661a943c78b25c181ba4f1065faed10930374`.
+The literal owned PE is `pe/reference/pe32-ci-sqrt-v1.exe`, SHA-256
+`8035d5e88c0f91dbb5c4b03e7bf91c31b9d43690ee82a230afc1cf5b4c1a389f`.
+All four original producer sources remain byte-pinned. Negative/NaN and other
+control-mode observations are preserved as evidence, not silently declared
+implemented by the backend.
+
+The bounded implementation admits nonnegative canonical operands within the
+binary64 finite magnitude range (including the minimum subnormal and signed
+zeros), control words 0x027F/0x037F, and the measured MXCSR controls. It computes
+on the actual x87 operand, with mode-dependent binary64 result narrowing. The
+maximum finite operand distinguishes a real double-rounding difference between
+these modes in the native record. All **20 corresponding native rows** match
+on the physical M4, including 80-bit results and every recorded state/error
+field. This is not a plain integer gateway or an assumption that host sqrt
+matches the intrinsic. All GPRs/flags and lower FP stack are preserved by the
+gate. Its checked rejection path retains the real snapshot on owned guest stack
+storage and stops unsupported profiles with 78.
+
+A separate 24-row identical-PE witness adds two inputs per control mode, including
+an 80-bit operand just above a binary64 square-root rounding threshold. These
+four new rows are host observations until their queued native comparison runs.
+Four host-only restrictions (other precision, negative, NaN, oversized magnitude)
+stop for the actual profile rejection reason; no NaN or errno success is fabricated.
+The `_errno` accessor supplies stable aligned zero-initialized guest storage;
+the witness checks its initial value, alias stability and writable sentinel.
+General errno/math-error hooks, arbitrary rounding/exception masks and guest-thread
+FP startup-state equivalence are not established. Original inputs, snapshots and
+module/RVA traces stay local.
+
+Local milestone checks pass: 190 PE Rust tests/checks including doctests on the
+x86_64 Rosetta target, 370 Python tests, project Clippy with warnings denied,
+formatting, all five bounded sqrt/restriction PEs, the 13 existing CRT PEs and
+the 25 startup cases. The actual original graph repeats the `_CIatan` stop after
+passing the square-root call. The 24-row native comparison is pending; these
+checks do not establish full floating-point or original-game equivalence.
+
+## Original D3DX9 constructors execute through the CRT gateway (earlier milestone)
 
 For the next actually reached `_CIsqrt` blocker, an owned native observer now
 loads raw 80-bit operands and calls the real x86 intrinsic directly from
 assembly. It captures 17 numeric inputs in 12 precision/rounding contexts,
 including an underlying x87 stack witness, control/status words, MXCSR, last
 error and errno. The observer does not convert through a C `double` signature.
-Native execution is pending; no sqrt backend implementation or math parity is
-claimed from its build or transport tests. The Microsoft [intrinsic contract](https://learn.microsoft.com/en-us/cpp/c-runtime-library/cisqrt?view=msvc-170)
+At this earlier instrumentation milestone, native execution was pending and its
+build/transport tests made no backend parity claim. The Microsoft [intrinsic contract](https://learn.microsoft.com/en-us/cpp/c-runtime-library/cisqrt?view=msvc-170)
 documents the specialized x86 convention. Inputs are original numeric fixtures,
 not extracted game data.
 

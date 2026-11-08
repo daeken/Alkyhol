@@ -57,8 +57,10 @@ jobs:
         run: |
           python tools/observe_pe32_crt_state.py
           python tools/observe_pe32_crt_state.py --host
-      - name: Build the x87 intrinsic observer for the actual next D3DX9 constructor blocker
-        run: python tools/observe_pe32_ci_sqrt.py
+      - name: Select frozen native x87 evidence and check the bounded intrinsic implementation
+        run: |
+          python tools/observe_pe32_ci_sqrt.py
+          python tools/observe_pe32_ci_sqrt.py --host
       - uses: actions/upload-artifact@v4
         with:
           name: pe32-startup-microtests
@@ -101,6 +103,7 @@ jobs:
             local/pe/startup-microtests/crt-state-inputs.json
             local/pe/startup-microtests/crt-state-host.json
             local/pe/startup-microtests/ci-sqrt-inputs.json
+            local/pe/startup-microtests/ci-sqrt-host.json
             local/pe/startup-microtests/ctx-layout-empty-importer.dll
             local/pe/startup-microtests/ctx-layout-*.manifest
   native-pe32-startup:

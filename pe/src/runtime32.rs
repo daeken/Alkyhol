@@ -28,6 +28,8 @@ mod fiber32;
 mod files32;
 #[path = "heap32.rs"]
 mod heap32;
+#[path = "math32.rs"]
+mod math32;
 #[path = "module_path32.rs"]
 mod module_path32;
 #[path = "nls32.rs"]
@@ -64,7 +66,7 @@ unsafe extern "C" {
 }
 const PAGE: usize = 4096;
 const STACK: usize = 1024 * 1024;
-const APIS: [(&str, u16); 89] = [
+const APIS: [(&str, u16); 92] = [
     ("GetLastError", 0),
     ("SetLastError", 4),
     ("GetStdHandle", 4),
@@ -154,6 +156,9 @@ const APIS: [(&str, u16); 89] = [
     ("__set_app_type", 4),
     ("GetVersion", 0),
     ("_initterm", 8),
+    ("_CIsqrt", 0),
+    ("<private x87 rejection>", 8),
+    ("_errno", 0),
 ];
 const EXIT_API: u32 = 14;
 // Win32 promises a reversible process-specific representation, not a published
@@ -172,7 +177,8 @@ fn api_id(module: &str, symbol: &ImportSymbol) -> Option<usize> {
     APIS.iter()
         .enumerate()
         .find(|(id, (name, _))| {
-            *name == symbol
+            *id != 90
+                && *name == symbol
                 && module.eq_ignore_ascii_case(if cdecl_api(*id) {
                     "msvcrt.dll"
                 } else if *id == 8 {
@@ -184,7 +190,7 @@ fn api_id(module: &str, symbol: &ImportSymbol) -> Option<usize> {
         .map(|(id, _)| id)
 }
 fn cdecl_api(id: usize) -> bool {
-    matches!(id, 78..=86 | 88)
+    matches!(id, 78..=86 | 88..=91)
 }
 fn cleanup_bytes(id: usize, arguments: u16) -> u16 {
     if cdecl_api(id) { 0 } else { arguments }
@@ -743,9 +749,25 @@ impl<'a> LoadedImage32<'a> {
         });
         template[64 + slot..72 + slot]
             .copy_from_slice(&(dispatch as *const () as u64).to_le_bytes());
+        if 256 + APIS.len() * 32 > math32::OFFSET {
+            return Err("API table overlaps the x87 gateway".into());
+        }
         for (id, &(_, argument_bytes)) in APIS.iter().enumerate() {
-            let at = 256 + id * 32;
-            let base = gates.base as u32 + at as u32;
+            let mut at = 256 + id * 32;
+            let mut base = gates.base as u32 + at as u32;
+            if id == 89 {
+                let target = gates.base as u32 + math32::OFFSET as u32;
+                template[at] = 0xe9;
+                template[at + 1..at + 5]
+                    .copy_from_slice(&target.wrapping_sub(base + 5).to_le_bytes());
+                math32::emit(
+                    &mut template,
+                    gates.base as u32,
+                    gates.base as u32 + 256 + 90 * 32,
+                )?;
+                at += 5;
+                base += 5;
+            }
             template[at] = 0x68;
             template[at + 1..at + 5].copy_from_slice(&(base + 16).to_le_bytes());
             template[at + 5] = 0x68;
@@ -1622,6 +1644,9 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
             78..=86 => crt32::dispatch(image, id, &args),
             87 => startup32::packed_version(),
             88 => crt32::initializers(image, args[0], args[1]),
+            89 => unsupported("_CIsqrt requires its x87 gateway"),
+            90 => math32::rejected(image, args[0], args[1]),
+            91 => crt32::dispatch(image, id, &args),
             _ => unreachable!(),
         }
     })
@@ -1633,6 +1658,17 @@ mod tests {
     #[test]
     fn cdecl_crt_gateways_keep_arguments_for_the_guest_caller() {
         assert!(256 + APIS.len() * 32 <= PAGE);
+        assert!(256 + APIS.len() * 32 <= math32::OFFSET);
+        assert!(
+            api_id(
+                "msvcrt.dll",
+                &ImportSymbol::Name("<private x87 rejection>".into())
+            )
+            .is_none()
+        );
+        let math_id = api_id("msvcrt.dll", &ImportSymbol::Name("_CIsqrt".into())).unwrap();
+        assert_eq!(math_id, 89);
+        assert_eq!(APIS[math_id].1, 0); // Real operands/results live on the x87 stack.
         for name in [
             "malloc",
             "_set_error_mode",
