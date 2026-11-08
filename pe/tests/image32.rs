@@ -62,6 +62,7 @@ fn i386_header_width_extents_and_all_truncated_prefixes_are_checked() {
     assert_eq!(image.base, 0x400000);
     assert_eq!(image.entry, 0x1000);
     assert_eq!(image.static_tls32().unwrap(), None);
+    assert_eq!(image.legacy_load_config32().unwrap(), None);
     image.check_startup().unwrap();
     assert!(Image::parse(&b).is_err());
     assert!(Image::parse_dll(&b).is_err());
@@ -495,4 +496,209 @@ fn callbacks_are_checked_metadata_and_never_silently_skipped_at_startup() {
     }
     p16(&mut b, 0x81c, 0);
     assert!(Image::parse_i386(&b).unwrap().static_tls32().is_err());
+}
+
+fn load_config_image() -> Vec<u8> {
+    let mut b = tls_image();
+    directory(&mut b, 9, 0, 0);
+    directory(&mut b, 10, 0x3000, 72);
+    b[0xa00..0xa48].fill(0);
+    p32(&mut b, 0xa00, 72);
+    p32(&mut b, 0xa3c, 0x402300);
+    p32(&mut b, 0x900, 0xbb40e64e);
+    for at in [0x814, 0x816, 0x818, 0x81a] {
+        p16(&mut b, at, 0);
+    }
+    p16(&mut b, 0x814, 0x303c);
+    b
+}
+
+#[test]
+fn legacy_load_config_retains_both_lengths_metadata_and_writable_cookie_rva() {
+    let original = load_config_image();
+    for outer in [64, 72] {
+        for inner in [64, 72] {
+            let mut b = original.clone();
+            directory(&mut b, 10, 0x3000, outer);
+            p32(&mut b, 0xa00, inner);
+            p32(&mut b, 0xa04, 0x12345678);
+            p16(&mut b, 0xa08, 1);
+            p16(&mut b, 0xa0a, 2);
+            let before = b.clone();
+            let image = Image::parse_i386(&b).unwrap();
+            let config = image.legacy_load_config32().unwrap().unwrap();
+            assert_eq!(
+                config,
+                alkyhol_pe::LegacyLoadConfig32 {
+                    directory_size: outer as usize,
+                    declared_size: inner as usize,
+                    timestamp: 0x12345678,
+                    major_version: 1,
+                    minor_version: 2,
+                    cookie_rva: Some(0x2300),
+                    seh_table_rva: None,
+                    seh_handlers: vec![]
+                }
+            );
+            assert_eq!(image.bytes, before);
+            image.check_startup().unwrap();
+        }
+    }
+    let mut b = original.clone();
+    p32(&mut b, 0xa3c, 0);
+    p16(&mut b, 0x814, 0);
+    assert_eq!(
+        Image::parse_i386(&b)
+            .unwrap()
+            .legacy_load_config32()
+            .unwrap()
+            .unwrap()
+            .cookie_rva,
+        None
+    );
+    let mut b = original;
+    p32(&mut b, 0xa3c, 0x402600);
+    p32(&mut b, OPT + 224 + 40 + 8, 0x800);
+    assert_eq!(
+        Image::parse_i386(&b)
+            .unwrap()
+            .legacy_load_config32()
+            .unwrap()
+            .unwrap()
+            .cookie_rva,
+        Some(0x2600)
+    );
+}
+
+#[test]
+fn load_config_rejects_unknown_shapes_active_fields_permissions_and_loader_aliases() {
+    let original = load_config_image();
+    for (at, value) in [
+        (OPT + 100 + 10 * 8, 60),
+        (OPT + 100 + 10 * 8, 76),
+        (0xa00, 60),
+        (0xa00, 76),
+        (0xa3c, 0x3fffff),
+        (0xa3c, 0x402301),
+        (0xa3c, 0x404000),
+        (0xa3c, 0x401000),
+        (0xa3c, 0x403000),
+        (0xa3c, 0x4020a0),
+        (OPT + 224 + 80 + 36, 0xc0000040),
+        (0x610, 0x3000),
+    ] {
+        let mut b = original.clone();
+        p32(&mut b, at, value);
+        assert!(
+            Image::parse_i386(&b)
+                .unwrap()
+                .legacy_load_config32()
+                .is_err(),
+            "{at:x}/{value:x}"
+        );
+    }
+    for at in (0xa0c..0xa3c).step_by(4) {
+        let mut b = original.clone();
+        p32(&mut b, at, 1);
+        assert!(
+            Image::parse_i386(&b)
+                .unwrap()
+                .legacy_load_config32()
+                .is_err()
+        );
+    }
+    for (at, value) in [(0x814, 0), (0x816, 0x3004), (0x824, 0x3300)] {
+        let mut b = original.clone();
+        p16(&mut b, at, value);
+        assert!(
+            Image::parse_i386(&b)
+                .unwrap()
+                .legacy_load_config32()
+                .is_err()
+        );
+    }
+}
+
+#[test]
+fn safeseh_suffix_is_checked_beyond_a_short_directory_without_claiming_dispatch() {
+    let mut b = load_config_image();
+    directory(&mut b, 10, 0x3000, 64);
+    p32(&mut b, 0xa40, 0x403180);
+    p32(&mut b, 0xa44, 2);
+    p16(&mut b, 0x816, 0x3040);
+    p32(&mut b, 0xb80, 0x1000);
+    p32(&mut b, 0xb84, 0x1010);
+    let config = Image::parse_i386(&b)
+        .unwrap()
+        .legacy_load_config32()
+        .unwrap()
+        .unwrap();
+    assert_eq!(config.seh_table_rva, Some(0x3180));
+    assert_eq!(config.seh_handlers, [0x1000, 0x1010]);
+    assert!(
+        Image::parse_i386(&b)
+            .unwrap()
+            .check_startup()
+            .unwrap_err()
+            .contains("SafeSEH")
+    );
+    for (at, value) in [
+        (0xa40, 0),
+        (0xa44, 0),
+        (0xa44, 65537),
+        (0xa40, 0x403181),
+        (0xa40, 0x402100),
+        (0xb84, 0x1000),
+        (0xb84, 0),
+        (0xb84, 0x1200),
+        (0xb84, 0x5000),
+        (0x610, 0x3180),
+    ] {
+        let mut bad = b.clone();
+        p32(&mut bad, at, value);
+        assert!(
+            Image::parse_i386(&bad)
+                .unwrap()
+                .legacy_load_config32()
+                .is_err(),
+            "{at:x}"
+        );
+    }
+    p16(&mut b, 0x818, 0x3180);
+    assert!(
+        Image::parse_i386(&b)
+            .unwrap()
+            .legacy_load_config32()
+            .is_err()
+    );
+}
+
+#[test]
+fn cookie_cannot_alias_tls_template_or_index_loader_storage() {
+    let mut b = tls_image();
+    directory(&mut b, 10, 0x3000, 72);
+    b[0xa00..0xa48].fill(0);
+    p32(&mut b, 0xa00, 72);
+    p32(&mut b, 0xa3c, 0x402300);
+    directory(&mut b, 5, 0x2200, 44);
+    p32(&mut b, 0x810, 20);
+    p16(&mut b, 0x81c, 0x303c);
+    p16(&mut b, 0x81e, 0);
+    p32(&mut b, 0x820, 0x2000);
+    p32(&mut b, 0x824, 12);
+    p16(&mut b, 0x828, 0x3108);
+    Image::parse_i386(&b).unwrap().static_tls32().unwrap();
+    assert!(
+        Image::parse_i386(&b)
+            .unwrap()
+            .legacy_load_config32()
+            .is_err()
+    );
+    p32(&mut b, 0xa3c, 0x402100);
+    assert!(
+        Image::parse_i386(&b)
+            .unwrap()
+            .legacy_load_config32()
+            .is_err()
+    );
 }

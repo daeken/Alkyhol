@@ -4,29 +4,55 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
-## PE32 legacy load configuration / compiler GS: native observation
+## PE32 legacy load configuration / compiler GS: native Windows and physical M4 development
 
-Native Windows at `f566909` executes all seven positive owned cases and returns
-16 raw DWORDs each. The 64-byte default cookie remains unchanged; the 72-byte
-default cookie changes to a nonzero/nondefault opaque value. The tested custom
-64-byte seed and zero/small 72-byte seeds remain unchanged. Absent/no-cookie records
-leave the default unchanged. The complete actual native report is frozen unchanged
-at `pe/reference/pe32-load-config-windows-v1.json`; no host cookie policy is enabled
-by this capture. The real SDK/MSVC field-offset/width assertions also completed.
+The frozen native canonical record at `pe/reference/pe32-load-config-windows-v1.json`
+comes from `f566909`: all seven positive executables return 16 DWORDs, and the
+controlled corrupt-frame case emits its two-DWORD marker then terminates with
+0xc000001d. All three [PE jobs](https://github.com/daeken/Alkyhol/actions/runs/42439989219)
+and all 24 [conformance jobs](https://github.com/daeken/Alkyhol/actions/runs/42439989250)
+pass on that capture revision. Actual Windows SDK/MSVC assertions confirm the
+explicit IMAGE_LOAD_CONFIG_DIRECTORY32 offsets and DWORD widths.
 
-The compiler uses inline fast-path cookie comparisons for valid frames, so the
-probe's `(check_count==2)` observation is **0**: successful calls do not enter the
-slow checker. The deliberately invalid frame enters the owned mismatch checker
-and executes UD2: native status is 0xc000001d with exactly its two-DWORD begin
-marker. This is controlled compiler-check failure evidence, not a successful run,
-Windows SEH dispatch or an accepted arbitrary crash.
+At `15c09ba`, the independently captured four-case length matrix shows that the
+**declared structure size** controls the observed default-cookie initialization:
+size 72 changes the default with either directory length; size 64 preserves it
+with either length. All four canonical bases/length variants execute successfully.
+The complete actual record is frozen unchanged at
+`pe/reference/pe32-load-config-geometry-windows-v1.json`. All three
+[PE jobs](https://github.com/daeken/Alkyhol/actions/runs/42440571972) and all 24
+[conformance jobs](https://github.com/daeken/Alkyhol/actions/runs/42440571956) pass.
+Only the directory-length DWORD is patched in each selected frozen base.
 
-Four new length pairs retain the frozen canonical compiler binaries and patch
-only the directory-length DWORD in each selected base. They separately cover
-64/72-byte directory and structure lengths, including both mismatches. Their native
-capture is pending. The original source, canonical inputs and native record remain
-unchanged. This observation revision retains Alkyhol's existing load-config gate;
-no game code/data enters CI and no entropy values are treated as byte-identical.
+Alkyhol now parses both lengths and the longer backed legacy span, retains checked
+cookie/SafeSEH RVAs, and validates immutable metadata/exact pointer relocations,
+writable cookie storage, sorted initialized-code handler targets and alias bounds.
+Cookie-only startup seeds the 72-byte default using host system entropy. The tested
+64-byte default, zero/small/custom seeds and absent/null-cookie cases are preserved.
+Only the cookie DWORD is written. Opaque random bytes/RNG algorithms and security
+strength are not compared. Exhausted/unavailable entropy fails before guest entry.
+
+Physical M4 development normal/forced-rebase runs agree on all **eleven positive
+records**, including the four length pairs. The compiler uses inline checks for
+valid frames, so the probe's `(check_count==2)` field is 0: successful calls do not
+enter the slow checker. A deliberately invalid compiler frame enters the owned
+checker and executes UD2: the physical host observes SIGILL (-4), with exactly the
+native begin marker. Raw Windows/Unix trap statuses remain separate; this is a
+controlled negative test, not a successful run or Windows SEH dispatch evidence.
+Strict same-clean-revision paired CI/physical comparison is pending.
+
+The focused metadata/entropy units, eight protocol tests, original unchanged PE
+execution and Clippy pass locally. Full checks are batched at milestones by the
+user's preference. Protocol negatives reject unexplained crashes, probe failures,
+changed data/inputs, missing actual relocation/cleanup and missing frozen records.
+Existing original fixture/source identities remain required.
+
+SafeSEH metadata is retained for inspection; exception dispatch remains an explicit
+startup gate. The user's local game now reaches that specific gate when the full
+legacy span is read. No game code executes, no unsupported exception behavior is
+reported successful, and all game-derived details stay local. The next priority is
+the game's exception/DLL startup path rather than further isolated format probes.
+See [PE32](pe32.md).
 
 ## PE32 compiler static TLS data: native Windows and physical M4
 

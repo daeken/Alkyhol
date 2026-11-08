@@ -87,6 +87,12 @@ fn conventional_layout_and_zero_fill_are_preserved() {
 fn amd64_certificate_metadata_retains_its_existing_file_backing_gate() {
     let mut bytes = fixture();
     assert!(Image::parse(&bytes).unwrap().static_tls32().is_err());
+    assert!(
+        Image::parse(&bytes)
+            .unwrap()
+            .legacy_load_config32()
+            .is_err()
+    );
     assert_eq!(Image::parse(&bytes).unwrap().certificate_directory(), None);
     directory(&mut bytes, 4, 0x7f8, 8);
     let before = bytes.clone();

@@ -21,6 +21,7 @@ unsafe extern "C" {
     fn mprotect(address: *mut c_void, len: usize, prot: i32) -> i32;
     fn munmap(address: *mut c_void, len: usize) -> i32;
     fn getpagesize() -> i32;
+    fn getentropy(buffer: *mut c_void, len: usize) -> i32;
     fn i386_get_ldt(start: i32, entries: *mut u64, count: i32) -> i32;
     fn i386_set_ldt(start: i32, entries: *const u64, count: i32) -> i32;
     fn alkyhol_enter_pe32(entry: u32, stack: u32, code: u32, data: u32) -> u32;
@@ -213,6 +214,32 @@ struct TlsBlock {
     mapping: LowMapping,
     size: usize,
 }
+const DEFAULT_GS_COOKIE: u32 = 0xbb40e64e;
+fn select_cookie(
+    declared_size: usize,
+    initial: u32,
+    mut entropy: impl FnMut() -> Result<u32>,
+) -> Result<u32> {
+    // Native observations: the declared structure length controls this action,
+    // even when the data-directory length disagrees. Other tested seeds persist.
+    if declared_size != 72 || initial != DEFAULT_GS_COOKIE {
+        return Ok(initial);
+    }
+    for _ in 0..128 {
+        let value = entropy()?;
+        if value != 0 && value != DEFAULT_GS_COOKIE {
+            return Ok(value);
+        }
+    }
+    Err("system entropy did not yield a nondefault security cookie".into())
+}
+fn cookie_entropy() -> Result<u32> {
+    let mut bytes = [0u8; 4];
+    if unsafe { getentropy(bytes.as_mut_ptr().cast(), bytes.len()) } != 0 {
+        return Err("system entropy unavailable for PE32 security cookie".into());
+    }
+    Ok(u32::from_ne_bytes(bytes))
+}
 /// Trusted i386 EXE mapping with separate low stack and stdcall API gates.
 /// The process guard and all mappings remain alive until drop. Minimal FS/TEB
 /// self/stack/last-error fields and single-thread static TLS data are supplied.
@@ -255,6 +282,7 @@ impl<'a> LoadedImage32<'a> {
         let parsed = Image::parse_i386(bytes)?;
         parsed.check_startup()?;
         let tls_info = parsed.static_tls32()?;
+        let load_config = parsed.legacy_load_config32()?;
         let imports = parsed.imports()?;
         let fixups = parsed.relocations()?;
         let mut bindings = Vec::new();
@@ -376,6 +404,17 @@ impl<'a> LoadedImage32<'a> {
                     .add(at)
                     .cast::<u32>()
                     .write_unaligned(gates.base as u32 + 256 + id as u32 * 32);
+            }
+            if let Some(config) = &load_config
+                && let Some(rva) = config.cookie_rva
+            {
+                let target = image.base.add(rva).cast::<u32>();
+                let value = select_cookie(
+                    config.declared_size,
+                    target.read_unaligned(),
+                    cookie_entropy,
+                )?;
+                target.write_unaligned(value);
             }
             if let (Some(info), Some(block)) = (&tls_info, &tls) {
                 // Copy the mapped template after relocations and import binding,
@@ -869,5 +908,41 @@ mod tests {
         assert!(!image.permits(0x700000, 29, true));
         assert!(!image.permits(0x70001c, 1, false));
         assert!(!image.permits(0x6fffff, 1, false));
+    }
+    #[test]
+    fn cookie_policy_preserves_legacy64_and_nondefault_seeds_without_requesting_entropy() {
+        for (size, seed) in [
+            (64, DEFAULT_GS_COOKIE),
+            (64, 0x1234abcd),
+            (72, 0),
+            (72, 0x1234),
+            (72, 0x1234abcd),
+        ] {
+            assert_eq!(
+                select_cookie(size, seed, || panic!("entropy must not be requested")).unwrap(),
+                seed
+            );
+        }
+        let mut values = [0, DEFAULT_GS_COOKIE, 0x1234abcd].into_iter();
+        assert_eq!(
+            select_cookie(72, DEFAULT_GS_COOKIE, || Ok(values.next().unwrap())).unwrap(),
+            0x1234abcd
+        );
+        assert_eq!(values.next(), None);
+    }
+    #[test]
+    fn unavailable_or_exhausted_entropy_never_becomes_a_successful_fixed_cookie() {
+        assert!(
+            select_cookie(72, DEFAULT_GS_COOKIE, || Err("entropy unavailable".into())).is_err()
+        );
+        let mut requests = 0;
+        assert!(
+            select_cookie(72, DEFAULT_GS_COOKIE, || {
+                requests += 1;
+                Ok(0)
+            })
+            .is_err()
+        );
+        assert_eq!(requests, 128);
     }
 }

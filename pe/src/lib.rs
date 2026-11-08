@@ -5,8 +5,8 @@ pub use command_line::windows_command_line;
 mod image;
 mod unwind_info;
 pub use image::{
-    Export, ExportTable, ExportTarget, Image, Import, ImportSymbol, RuntimeFunction,
-    RuntimeFunctionTable, Section, StaticTls32,
+    Export, ExportTable, ExportTarget, Image, Import, ImportSymbol, LegacyLoadConfig32,
+    RuntimeFunction, RuntimeFunctionTable, Section, StaticTls32,
 };
 
 #[cfg(all(target_os = "macos", target_arch = "x86_64"))]

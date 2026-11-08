@@ -9,7 +9,7 @@ import subprocess
 import tempfile
 from build_pe_fixture import ROOT
 from build_pe32_load_config_geometry import SOURCES,BASE_REFERENCE,variants
-from run_pe32_load_config import capture
+from run_pe32_load_config import run
 
 NATIVE='native Windows PE32 load-config lengths'
 HOST='Alkyhol PE32 load-config lengths / x86-64 Mach-O'
@@ -38,20 +38,7 @@ def verify(directory):
 
 def main():
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('--directory',type=Path,required=True);p.add_argument('--output',type=Path,required=True);args=p.parse_args()
-    manifest,items=verify(args.directory.resolve())
-    if platform.system()!='Windows':raise RuntimeError('initial geometry collector requires Windows')
-    observations=[]
-    with tempfile.TemporaryDirectory(prefix='alkyhol-load-config-lengths-') as temp:
-        for row,data in items:
-            path=Path(temp)/(row['case']+'.exe');path.write_bytes(data)
-            observations.append({'case':row['case'],**capture([str(path)],temp)})
-    baseline=json.loads(BASE_REFERENCE.read_text(encoding='utf-8'))['normal'][2]
-    if {k:v for k,v in observations[0].items() if k!='case'}!={k:v for k,v in baseline.items() if k!='case'}:raise ValueError('canonical geometry baseline differs')
-    report=dict(schema_version=1,backend=NATIVE,sources=manifest['sources'],cases=manifest['cases'],normal=observations,rebased=None,
-                revision=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),
-                tracked_tree_clean=not subprocess.check_output(['git','status','--porcelain','--untracked-files=no'],cwd=ROOT,text=True).strip())
-    args.output.parent.mkdir(parents=True,exist_ok=True);args.output.write_text(json.dumps(report,indent=2)+'\n',encoding='utf-8')
-    print('Recorded native directory/record length pairs; host policy comparison is separate')
+    manifest,items=verify(args.directory.resolve());run(manifest,items,args.output,NATIVE,HOST,REFERENCE)
 
 
 if __name__=='__main__':main()

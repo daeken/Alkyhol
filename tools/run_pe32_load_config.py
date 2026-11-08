@@ -44,28 +44,45 @@ def capture(command,cwd):
     return dict(kind='process',status=r.returncode,stdout_hex=r.stdout.hex(),stderr_hex=r.stderr.hex())
 
 
-def main():
-    p=argparse.ArgumentParser(description=__doc__);p.add_argument('--directory',type=Path,required=True);p.add_argument('--output',type=Path,required=True)
-    args=p.parse_args();manifest,items=verify(args.directory.resolve())
-    if platform.system()!='Windows':raise RuntimeError('initial load-config collector requires Windows')
-    kernel=ctypes.WinDLL('kernel32',use_last_error=True)
-    kernel.SetErrorMode.argtypes,kernel.SetErrorMode.restype=[ctypes.c_uint32],ctypes.c_uint32
-    old=kernel.SetErrorMode(0x8003);observations=[]
+def run(manifest,items,output,native_backend=NATIVE,host_backend=HOST,reference_path=REFERENCE):
+    reference=json.loads(reference_path.read_text(encoding='utf-8'))
+    for field in ['sources','cases']:
+        if manifest[field]!=reference[field]:raise ValueError('changed frozen load-config inputs')
+    windows=platform.system()=='Windows'
+    if not windows and platform.system()!='Darwin':raise RuntimeError('requires Windows or macOS')
+    observations=[];rebased=None if windows else []
+    old=None;kernel=None
+    if windows:
+        kernel=ctypes.WinDLL('kernel32',use_last_error=True)
+        kernel.SetErrorMode.argtypes,kernel.SetErrorMode.restype=[ctypes.c_uint32],ctypes.c_uint32
+        old=kernel.SetErrorMode(0x8003)
     try:
         with tempfile.TemporaryDirectory(prefix='alkyhol-pe32-load-config-') as temp:
             for row,data in items:
                 path=Path(temp)/(row['case']+'.exe');path.write_bytes(data)
-                observations.append({'case':row['case'],**capture([str(path)],temp)})
-    finally:kernel.SetErrorMode(old)
-    baseline=observations[0]
-    if baseline['kind']!='process' or baseline['status']!=0 or len(bytes.fromhex(baseline['stdout_hex']))!=64 or baseline['stderr_hex']:
-        raise ValueError('unchanged no-config compiler-GS baseline failed')
-    report=dict(schema_version=1,backend=NATIVE,sources=manifest['sources'],cases=manifest['cases'],
-                normal=observations,rebased=None,
+                executable=path
+                if not windows:
+                    from translate_pe32 import translate,embedded_payload
+                    executable=translate(path,Path(temp)/(row['case']+'-macos'))
+                    if hashlib.sha256(embedded_payload(executable.read_bytes())).hexdigest()!=row['pe_sha256']:
+                        raise ValueError('executed load-config payload differs')
+                flags=[] if windows else ['--loader-info','--teb-info']
+                observations.append({'case':row['case'],**capture([str(executable),*flags],temp)})
+                if not windows:
+                    rebased.append({'case':row['case'],**capture([str(executable),*flags,'--rebase'],temp)})
+    finally:
+        if windows:kernel.SetErrorMode(old)
+    report=dict(schema_version=1,backend=native_backend if windows else host_backend,
+                sources=manifest['sources'],cases=manifest['cases'],normal=observations,rebased=rebased,
                 revision=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),
                 tracked_tree_clean=not subprocess.check_output(['git','status','--porcelain','--untracked-files=no'],cwd=ROOT,text=True).strip())
-    args.output.parent.mkdir(parents=True,exist_ok=True);args.output.write_text(json.dumps(report,indent=2)+'\n',encoding='utf-8')
-    print('Recorded native legacy load-config outcomes; cookie policy/intentional trap comparison is separate')
+    output.parent.mkdir(parents=True,exist_ok=True);output.write_text(json.dumps(report,indent=2)+'\n',encoding='utf-8')
+    print('Recorded actual legacy load-config/compiler-GS outcomes: '+report['backend'])
+
+
+def main():
+    p=argparse.ArgumentParser(description=__doc__);p.add_argument('--directory',type=Path,required=True);p.add_argument('--output',type=Path,required=True)
+    args=p.parse_args();manifest,items=verify(args.directory.resolve());run(manifest,items,args.output)
 
 
 if __name__=='__main__':main()

@@ -6,15 +6,81 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import struct
 import unittest
 from unittest import mock
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'tools'))
 from build_pe32_load_config import SOURCES,CASES
-from run_pe32_load_config import verify,capture
+from run_pe32_load_config import verify,capture,REFERENCE,HOST
+from run_pe32_load_config_geometry import REFERENCE as GREFERENCE,HOST as GHOST
+from compare_pe32_load_config import compare
 
 
 class Pe32LoadConfigProtocolTests(unittest.TestCase):
+    def reports(self,geometry=False):
+        native=json.loads((GREFERENCE if geometry else REFERENCE).read_text())
+        host=copy.deepcopy(native);host['backend']=GHOST if geometry else HOST
+        for row in host['normal']:
+            fault=row['case']=='corrupt_frame';imports=2 if fault else 4
+            fixups=10 if fault else 29 if row['case']=='absent' else 37 if row['case']=='no_cookie' else 38
+            diagnostic=f'PE32: 4 sections, {imports} imports, {fixups} HIGHLOW fixups\nchecked i386 mapping; relocated=true\n'
+            if fault:row['status']=-4
+            else:diagnostic+='host segment selectors restored; owned FS descriptor cleared\n'
+            row['stderr_hex']=diagnostic.encode().hex()
+        host['rebased']=copy.deepcopy(host['normal'])
+        return native,host
+
+    def test_actual_frozen_properties_and_deliberate_trap_are_separate(self):
+        self.assertEqual(compare(self.reports()),(7,1));self.assertEqual(compare(self.reports(True)),(4,0))
+        native,host=self.reports()
+        self.assertEqual(native['normal'][-1]['status'],0xc000001d)
+        self.assertEqual(host['normal'][-1]['status'],-4)
+        words=[struct.unpack('<16I',bytes.fromhex(r['stdout_hex'])) for r in native['normal'][:-1]]
+        self.assertEqual([r[3] for r in words],[0,0,0,1,0,0,0])
+        self.assertTrue(all(r[10]==0 for r in words)) # Compiler's valid-frame inline fast path.
+
+    def test_every_case_raw_outputs_unexplained_crashes_and_probe_failures_are_rejected(self):
+        for geometry in [False,True]:
+            for backend in [0,1]:
+                for case in range(len(self.reports(geometry)[0]['normal'])):
+                    reports=list(self.reports(geometry));row=reports[backend]['normal'][case]
+                    data=bytearray.fromhex(row['stdout_hex']);data[-1]^=1;row['stdout_hex']=data.hex()
+                    with self.assertRaises(ValueError):compare(reports)
+                for status in [False,78,83,-11,0xc0000005]:
+                    reports=list(self.reports(geometry));reports[backend]['normal'][0]['status']=status
+                    with self.assertRaises(ValueError):compare(reports)
+        for status in [0,78,-11,-5]:
+            reports=list(self.reports());reports[1]['normal'][-1]['status']=status
+            with self.assertRaises(ValueError):compare(reports)
+
+    def test_exact_payload_sources_clean_revision_and_frozen_inputs_are_required(self):
+        for field,value in [('schema_version',True),('tracked_tree_clean',False),('revision','f'*40),('sources',{})]:
+            reports=list(self.reports());reports[1][field]=value
+            with self.assertRaises(ValueError):compare(reports)
+        reports=list(self.reports());reports[1]['cases'][0]['config_size']=False
+        with self.assertRaises(ValueError):compare(reports)
+        for field in ['sources','cases']:
+            reports=list(self.reports())
+            for report in reports:
+                if field=='sources':report[field][SOURCES[0]]='e'*64
+                else:report[field][0]['pe_sha256']='e'*64
+            with self.assertRaises(ValueError):compare(reports)
+        with tempfile.TemporaryDirectory() as temp:
+            with mock.patch('compare_pe32_load_config.REFERENCE',Path(temp)/'missing.json'):
+                with self.assertRaises(FileNotFoundError):compare(self.reports())
+
+    def test_actual_forced_relocation_cleanup_and_all_observation_rows_are_required(self):
+        for change in ['missing','dropped','relocation','cleanup','native_diagnostic','trap_marker']:
+            reports=list(self.reports());host=reports[1]
+            if change=='missing':host['rebased']=None
+            elif change=='dropped':host['normal'].pop()
+            elif change=='relocation':host['rebased'][0]['stderr_hex']=bytes.fromhex(host['rebased'][0]['stderr_hex']).replace(b'true',b'false').hex()
+            elif change=='cleanup':host['normal'][0]['stderr_hex']=''
+            elif change=='native_diagnostic':reports[0]['normal'][0]['stderr_hex']='ff'
+            else:host['normal'][-1]['stdout_hex']=''
+            with self.assertRaises(ValueError):compare(reports)
+
     def test_snapshot_case_parameters_types_and_source_payload_identity_are_checked(self):
         with tempfile.TemporaryDirectory() as temp:
             directory=Path(temp);rows=[]

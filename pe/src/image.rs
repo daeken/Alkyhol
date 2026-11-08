@@ -74,6 +74,19 @@ pub struct StaticTls32 {
     pub alignment: usize,
     pub callbacks: Vec<usize>,
 }
+/// Inspected legacy PE32 load configuration. RVAs remain guest-image offsets;
+/// inspection does not seed cookies, register handlers or dispatch exceptions.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LegacyLoadConfig32 {
+    pub directory_size: usize,
+    pub declared_size: usize,
+    pub timestamp: u32,
+    pub major_version: u16,
+    pub minor_version: u16,
+    pub cookie_rva: Option<usize>,
+    pub seh_table_rva: Option<usize>,
+    pub seh_handlers: Vec<usize>,
+}
 #[derive(Debug)]
 pub struct Image<'a> {
     pub bytes: &'a [u8],
@@ -808,6 +821,143 @@ impl<'a> Image<'a> {
             callbacks,
         }))
     }
+    /// Inspect the supported 64/72-byte PE32 legacy record, including a longer
+    /// declared structure behind a shorter directory. Other active fields fail.
+    pub fn legacy_load_config32(&self) -> Result<Option<LegacyLoadConfig32>> {
+        if !self.i386 {
+            return Err("legacy PE32 load-config inspection requires i386".into());
+        }
+        let (rva, directory_size) = self.directories[10];
+        if directory_size == 0 {
+            return Ok(None);
+        }
+        if ![64, 72].contains(&directory_size) || !rva.is_multiple_of(4) {
+            return Err("unsupported legacy load-config directory size/alignment".into());
+        }
+        let declared_size = u32_at(self.file_range(rva, 4)?, 0)? as usize;
+        if ![64, 72].contains(&declared_size) {
+            return Err("unsupported legacy load-config structure size".into());
+        }
+        let span = directory_size.max(declared_size);
+        let fixups = self.relocations()?;
+        let iats = self
+            .imports()?
+            .into_iter()
+            .map(|i| i.iat)
+            .collect::<Vec<_>>();
+        let overlaps = |a: usize, n: usize, b: usize, m: usize| a < b + m && b < a + n;
+        let readonly = |at: usize, len: usize, expected: &[usize]| -> Result<&'a [u8]> {
+            let bytes = self.file_range(at, len)?;
+            if !self.sections.iter().any(|s| {
+                at >= s.rva && at + len <= s.rva + s.raw_size && s.rights & 0xe0000000 == 0x40000000
+            }) || expected.iter().any(|w| fixups.binary_search(w).is_err())
+                || fixups
+                    .iter()
+                    .any(|&w| overlaps(at, len, w, 4) && !expected.contains(&w))
+                || iats.iter().any(|&w| overlaps(at, len, w, 4))
+            {
+                return Err("legacy load-config metadata requires readonly storage and exact pointer fixups".into());
+            }
+            Ok(bytes)
+        };
+        let record = self.file_range(rva, span)?;
+        if record[12..60].iter().any(|&b| b != 0) {
+            return Err("unsupported active legacy load-config fields".into());
+        }
+        let cookie_va = u32_at(record, 60)?;
+        let seh_va = if span == 72 { u32_at(record, 64)? } else { 0 };
+        let seh_count = if span == 72 {
+            u32_at(record, 68)? as usize
+        } else {
+            0
+        };
+        if (seh_va == 0) != (seh_count == 0) || seh_count > 65536 {
+            return Err("invalid bounded SafeSEH table/count pair".into());
+        }
+        let mut expected = Vec::new();
+        if cookie_va != 0 {
+            expected.push(rva + 60);
+        }
+        if seh_va != 0 {
+            expected.push(rva + 64);
+        }
+        readonly(rva, span, &expected)?;
+        let address = |va: u32| -> Result<usize> {
+            let offset = u64::from(va)
+                .checked_sub(self.base)
+                .ok_or("load-config VA precedes image")?;
+            if offset >= self.size as u64 {
+                return Err("load-config VA exceeds image".into());
+            }
+            Ok(offset as usize)
+        };
+        let cookie_rva = if cookie_va == 0 {
+            None
+        } else {
+            let target = address(cookie_va)?;
+            if !target.is_multiple_of(4)
+                || !self.sections.iter().any(|s| {
+                    target >= s.rva
+                        && target + 4 <= s.rva + s.size
+                        && s.rights & 0xe0000000 == 0xc0000000
+                })
+                || fixups
+                    .iter()
+                    .chain(&iats)
+                    .any(|&w| overlaps(target, 4, w, 4))
+            {
+                return Err(
+                    "security cookie requires aligned writable data without loader-write overlap"
+                        .into(),
+                );
+            }
+            if let Some(tls) = self.static_tls32()?
+                && (overlaps(target, 4, tls.index_rva, 4)
+                    || overlaps(target, 4, tls.template_rva, tls.template_size))
+            {
+                return Err("security cookie overlaps TLS loader storage".into());
+            }
+            Some(target)
+        };
+        let mut seh_handlers = Vec::new();
+        let seh_table_rva = if seh_va == 0 {
+            None
+        } else {
+            let table = address(seh_va)?;
+            if !table.is_multiple_of(4) {
+                return Err("unaligned SafeSEH table".into());
+            }
+            let bytes = readonly(table, seh_count * 4, &[])?;
+            for entry in bytes.as_chunks::<4>().0 {
+                let target = u32_at(entry, 0)? as usize;
+                if seh_handlers
+                    .last()
+                    .is_some_and(|&previous| target <= previous)
+                    || !self.sections.iter().any(|s| {
+                        target >= s.rva
+                            && target < s.rva + s.raw_size
+                            && s.rights & 0x60000000 == 0x60000000
+                    })
+                {
+                    return Err(
+                        "SafeSEH RVAs must be unique sorted initialized code targets".into(),
+                    );
+                }
+                seh_handlers.push(target);
+            }
+            Some(table)
+        };
+        Ok(Some(LegacyLoadConfig32 {
+            directory_size,
+            declared_size,
+            timestamp: u32_at(record, 4)?,
+            major_version: u16_at(record, 8)?,
+            minor_version: u16_at(record, 10)?,
+            cookie_rva,
+            seh_table_rva,
+            seh_handlers,
+        }))
+    }
     /// Inspect a bounded static AMD64 table and supported v1 body recipes.
     /// Records/code/unwind slots must be backed by readonly/executable image data.
     /// This does not map/register code or enable exception dispatch.
@@ -958,6 +1108,15 @@ impl<'a> Image<'a> {
                     }
                     if tls.zero_fill != 0 {
                         return Err("PE32 nonzero TLS SizeOfZeroFill is unsupported pending native investigation".into());
+                    }
+                    continue;
+                }
+                if i == 10 && self.i386 {
+                    let config = self
+                        .legacy_load_config32()?
+                        .ok_or("missing legacy load configuration")?;
+                    if !config.seh_handlers.is_empty() {
+                        return Err("PE32 SafeSEH exception dispatch is unsupported".into());
                     }
                     continue;
                 }
