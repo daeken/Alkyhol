@@ -4,6 +4,42 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## DAO real wall clock and live heap-size queries
+
+The physical M4 now executes the original CRT's GetSystemTimeAsFileTime and HeapSize
+calls, with real UTC output and allocation metadata. Its next observed stop is
+GetProcAddress for FindActCtxSectionStringW. That function has **not been called**;
+activation-context arguments/results and side-by-side assembly behavior remain
+unobserved/unimplemented. No successful activation or absent-context result is
+invented to bypass the original runtime check. The game EXE entry has **not run**.
+Original identities, traces and dependency data remain ignored and local.
+
+The new unchanged owned PE checks the 8-byte FILETIME write and guard, process and
+private heap requested sizes, HEAP_NO_SERIALIZE on the private heap, last-error
+preservation and real frees. Its actual timestamp is bracketed against parent UTC
+on each machine with 100 ms allowance for the non-precise Windows clock; raw
+clock values are deliberately not required to agree between machines. Native
+clock/heap results are pending. Separate wrong-heap and read-only-output programs
+stop with status 78 after a boot marker; these are host restrictions, not native
+observations of undefined Windows inputs. Synthetic record-validation negatives
+reject wrong epoch/time bounds, width, guards, padding-sized heap results and
+lost error preservation. They are not original-game evidence.
+
+Local validation passes 142 PE host tests, 16 compile/documentation checks,
+325 Python tests, Clippy and all 25 targeted host startup cases. The existing
+FILETIME epoch/range tests remain intact. All prior frozen reports and original
+fixture source/PE identities remain required unchanged.
+
+For predecessor `935dcad`, all five [PE jobs](https://github.com/daeken/Alkyhol/actions/runs/42463404929)
+and all 24 [conformance jobs](https://github.com/daeken/Alkyhol/actions/runs/42463404917)
+passed. Twelve identical-PE exact-output startup cases passed native Windows,
+including mapping edges, atomic wraparound, translated-domain SSE2/CPUID checks
+and the finite x87 division witness. This closes their prior pending native result;
+it establishes neither general floating-point parity nor game compatibility.
+
+References: [GetSystemTimeAsFileTime](https://learn.microsoft.com/en-us/windows/win32/api/sysinfoapi/nf-sysinfoapi-getsystemtimeasfiletime)
+and [HeapSize](https://learn.microsoft.com/en-us/windows/win32/api/heapapi/nf-heapapi-heapsize).
+
 ## DAO neutral-locale case mapping and later CRT initialization
 
 Original bundled CRT execution on the physical M4 now passes its lowercase and

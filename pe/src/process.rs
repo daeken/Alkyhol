@@ -825,7 +825,7 @@ struct FindData {
     name: [u16; 260],
     alternate: [u16; 14],
 }
-fn file_time(time: SystemTime) -> std::result::Result<[u32; 2], u32> {
+pub(crate) fn file_time(time: SystemTime) -> std::result::Result<[u32; 2], u32> {
     let ns = match time.duration_since(UNIX_EPOCH) {
         Ok(d) => d.as_nanos() as i128,
         Err(e) => -(e.duration().as_nanos() as i128),

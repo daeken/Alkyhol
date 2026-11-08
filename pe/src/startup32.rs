@@ -693,6 +693,18 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
             }
             result.len() as u32
         }
+        53 => {
+            if args[0] == 0 || !args[0].is_multiple_of(4) {
+                unsupported("invalid PE32 FILETIME output");
+            }
+            checked(image, args[0], 8, true);
+            let value = crate::process::file_time(std::time::SystemTime::now())
+                .unwrap_or_else(|_| unsupported("system clock outside FILETIME range"));
+            unsafe {
+                ptr::copy_nonoverlapping(value.as_ptr(), args[0] as *mut u32, 2);
+            }
+            0 // VOID: the real wall-clock value is written to the guest record.
+        }
         _ => unreachable!(),
     }
 }

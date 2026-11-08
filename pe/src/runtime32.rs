@@ -54,7 +54,7 @@ unsafe extern "C" {
 }
 const PAGE: usize = 4096;
 const STACK: usize = 1024 * 1024;
-const APIS: [(&str, u16); 53] = [
+const APIS: [(&str, u16); 55] = [
     ("GetLastError", 0),
     ("SetLastError", 4),
     ("GetStdHandle", 4),
@@ -108,6 +108,8 @@ const APIS: [(&str, u16); 53] = [
     ("LCMapStringW", 24),
     ("InterlockedDecrement", 4),
     ("IsProcessorFeaturePresent", 4),
+    ("GetSystemTimeAsFileTime", 4),
+    ("HeapSize", 12),
 ];
 const EXIT_API: u32 = 14;
 // Win32 promises a reversible process-specific representation, not a published
@@ -1420,6 +1422,13 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
                     )),
                 }
             }
+            53 => startup32::dispatch(image, id, &args),
+            54 => image
+                .cpu
+                .heap
+                .borrow()
+                .size(args[0], args[1], args[2])
+                .unwrap_or_else(|e| unsupported(&e)),
             _ => unreachable!(),
         }
     })

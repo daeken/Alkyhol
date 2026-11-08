@@ -151,6 +151,22 @@ impl Heap {
         object.free.push((address, block.capacity));
         Ok(1)
     }
+    pub(super) fn size(&self, heap: u32, flags: u32, address: u32) -> Result<u32> {
+        if flags & !1 != 0 {
+            return Err("unsupported PE32 HeapSize flags".into());
+        }
+        let object = self
+            .objects
+            .get(&heap)
+            .ok_or("unknown PE32 heap size handle")?;
+        let block = object
+            .blocks
+            .get(&address)
+            .ok_or("PE32 HeapSize requires a live owned allocation base")?;
+        // Windows reports the requested size, not this allocator's alignment
+        // padding. Successful size queries preserve the caller's last error.
+        Ok(block.size as u32)
+    }
     pub(super) fn permits(&self, address: usize, len: usize) -> bool {
         let Some(end) = address.checked_add(len) else {
             return false;
@@ -164,5 +180,58 @@ impl Heap {
     pub(super) fn clear(&mut self) {
         self.objects.clear();
         self.default = None;
+    }
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn size_uses_requested_extent_and_rejects_interior_foreign_and_freed_bases() {
+        // Metadata-only ownership test; no fabricated mapping is dereferenced.
+        let mut heap = std::mem::ManuallyDrop::new(Heap::default());
+        let object = Object {
+            _handle: LowMapping {
+                base: 0x10000usize as *mut u8,
+                len: 0,
+            },
+            regions: Vec::new(),
+            blocks: BTreeMap::from([
+                (
+                    0x20000,
+                    Block {
+                        size: 37,
+                        capacity: 40,
+                    },
+                ),
+                (
+                    0x30000,
+                    Block {
+                        size: 0,
+                        capacity: 8,
+                    },
+                ),
+            ]),
+            free: Vec::new(),
+        };
+        heap.objects.insert(0x10000, object);
+        let error = alkyhol::ffi::GetLastError();
+        alkyhol::ffi::SetLastError(0x1234);
+        assert_eq!(heap.size(0x10000, 0, 0x20000).unwrap(), 37);
+        assert_eq!(heap.size(0x10000, 1, 0x30000).unwrap(), 0);
+        assert_eq!(alkyhol::ffi::GetLastError(), 0x1234);
+        for (h, f, p) in [
+            (0x10000, 0, 0x20001),
+            (0x10001, 0, 0x20000),
+            (0x10000, 8, 0x20000),
+        ] {
+            assert!(heap.size(h, f, p).is_err());
+        }
+        heap.objects
+            .get_mut(&0x10000)
+            .unwrap()
+            .blocks
+            .remove(&0x20000);
+        assert!(heap.size(0x10000, 0, 0x20000).is_err());
+        alkyhol::ffi::SetLastError(error);
     }
 }
