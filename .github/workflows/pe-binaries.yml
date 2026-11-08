@@ -81,6 +81,10 @@ jobs:
         run: |
           python tools/observe_pe32_ansi_directories.py
           python tools/observe_pe32_ansi_directories.py --host
+      - name: Execute top-level filter registration reached by original DAO entry
+        run: |
+          python tools/observe_pe32_exception_filter.py
+          python tools/observe_pe32_exception_filter.py --host
       - uses: actions/upload-artifact@v4
         with:
           name: pe32-startup-microtests
@@ -134,6 +138,8 @@ jobs:
             local/pe/startup-microtests/cursor-host.json
             local/pe/startup-microtests/ansi-directories-inputs.json
             local/pe/startup-microtests/ansi-directories-host.json
+            local/pe/startup-microtests/exception-filter-inputs.json
+            local/pe/startup-microtests/exception-filter-host.json
             local/pe/startup-microtests/ctx-layout-empty-importer.dll
             local/pe/startup-microtests/ctx-layout-*.manifest
   native-pe32-startup:
@@ -209,6 +215,9 @@ jobs:
       - name: Observe complete ANSI Windows and system directory contracts on native Windows
         if: ${{ success() || failure() }}
         run: python tools/observe_pe32_ansi_directories.py --native
+      - name: Observe top-level filter replacement and clear without claiming exception delivery
+        if: ${{ success() || failure() }}
+        run: python tools/observe_pe32_exception_filter.py --native
       - uses: actions/upload-artifact@v4
         if: always()
         with:

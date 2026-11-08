@@ -4,6 +4,29 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## DAO EXE startup records its top-level filter and reaches heap locking
+
+The unchanged original game entry now executes past its reached
+`SetUnhandledExceptionFilter` call, records its callback in process-owned state,
+and continues original startup/critical-section initialization. Its next measured
+unsupported import is **KERNEL32.dll!HeapLock**. The game has not reached a main
+menu or observed render loop; all original-file/capture and unpacked-dependency
+caveats remain unchanged.
+
+The bounded API stores a checked executable guest callback (or NULL), returns
+the actual previous registration and supports replacement/clear. It does not
+eagerly invoke the filter or modify the host's signal/exception policy. This is
+[filter registration](https://learn.microsoft.com/en-us/windows/win32/api/errhandlingapi/nf-errhandlingapi-setunhandledexceptionfilter)
+only: delivering an unhandled guest exception through that filter and resuming
+modified CONTEXT are still unsupported. Instrumentation faults still stop; no
+successful exception handling is fabricated.
+
+An owned 11-word PE passes on the physical M4 for initial empty state, repeated
+registration, replacement, clearing, no eager callbacks, stdcall stack and error
+state. A bad callback stops explicitly. Callback-region boundary tests, two
+transport tests, Clippy and formatting pass. Native identical-PE comparison is
+wired into the existing CI as independent evidence and pending.
+
 ## Independent native startup observations retain upstream failures
 
 The [native startup job at `646a0e9`](https://github.com/daeken/Alkyhol/actions/runs/42501028073)

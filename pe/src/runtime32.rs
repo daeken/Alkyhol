@@ -24,6 +24,8 @@ mod crt32;
 mod cursor32;
 #[path = "diagnostic32.rs"]
 mod diagnostic32;
+#[path = "exception_filter32.rs"]
+mod exception_filter32;
 #[path = "fiber32.rs"]
 mod fiber32;
 #[path = "files32.rs"]
@@ -68,7 +70,7 @@ unsafe extern "C" {
 }
 const PAGE: usize = 4096;
 const STACK: usize = 1024 * 1024;
-const APIS: [(&str, u16); 103] = [
+const APIS: [(&str, u16); 104] = [
     ("GetLastError", 0),
     ("SetLastError", 4),
     ("GetStdHandle", 4),
@@ -172,6 +174,7 @@ const APIS: [(&str, u16); 103] = [
     ("GetCursorPos", 4),
     ("GetWindowsDirectoryA", 8),
     ("GetSystemDirectoryA", 8),
+    ("SetUnhandledExceptionFilter", 4),
 ];
 const EXIT_API: u32 = 14;
 // Win32 promises a reversible process-specific representation, not a published
@@ -435,6 +438,7 @@ struct Cpu32 {
     system_directory: Option<Vec<u16>>,
     system_windows_directory: Option<Vec<u16>>,
     windows_directory: Option<Vec<u16>>,
+    unhandled_filter: Cell<u32>,
     utc_timezone: bool,
 }
 impl Cpu32 {
@@ -501,6 +505,7 @@ impl Cpu32 {
             system_directory: None,
             system_windows_directory: None,
             windows_directory: None,
+            unhandled_filter: Cell::new(0),
             utc_timezone: false,
         })
     }
@@ -1689,6 +1694,7 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
             100 => cursor32::position(image, args[0]),
             101 => module_path32::windows_directory_ansi(image, &args),
             102 => module_path32::system_directory_ansi(image, &args),
+            103 => exception_filter32::replace(image, args[0]),
             _ => unreachable!(),
         }
     })
@@ -1802,6 +1808,7 @@ mod tests {
                 system_directory: None,
                 system_windows_directory: None,
                 windows_directory: None,
+                unhandled_filter: Cell::new(0),
                 utc_timezone: false,
             }),
             tls: None,
