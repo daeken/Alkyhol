@@ -1,0 +1,18 @@
+{
+  "backend": "native Windows PE32 GetSystemWindowsDirectoryW observer",
+  "inputs": {
+    "contract": "owned GetSystemWindowsDirectoryW mode0 v1",
+    "sources": {
+      "pe/fixtures/pe32-startup/system-directory.c": "f3eb6416d29205eab2634b7b9475f56353bf80a26453776261242d8cea4e521b",
+      "pe/fixtures/pe32-startup/system-windows-directory.def": "dc4f9b0dfd0fc5ea59add59541100c1270928c74a31a6fe44f76b558f4e55fe0"
+    },
+    "files": {
+      "system-windows-directory.exe": "956faab9767bde5ee7ecd88a15abd32e28a45918a614ec460b0121867b1bc2b3"
+    }
+  },
+  "status": 0,
+  "stdout_hex": "3233445304000000010000003412cefa0100000001000000010000003412cefa01000000010000003412cefa01000000010000003412cefa01000000010000003412cefa010000000a00000043003a005c00570069006e0064006f00770073000000",
+  "stderr_hex": "",
+  "system_windows_directory": "C:\\Windows",
+  "windows_root": "C:\\Windows"
+}

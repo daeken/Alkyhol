@@ -4,6 +4,43 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## DAO executes the shared Windows-directory query
+
+The original CRT now executes GetSystemWindowsDirectoryW on the physical M4 and
+reaches **FindFirstFileW** for the actual backed assembly-manifest path. File
+search still stops explicitly after a checked diagnostic pattern read; no
+successful handle or missing-file result is fabricated. Game entry has **not
+run**. All original path/argument captures remain ignored/local.
+
+The shared Windows-directory role is separately and explicitly configured in
+`ProcessOptions32` / `--system-windows-directory`, validated as an existing host
+directory before any initializer. It is not inferred from System32 or DLL paths.
+A small refactor shares checked UTF-16 sizing/copy code with the existing system
+directory API while retaining independent roles and existing restrictions.
+The actual local profile uses its genuine Windows folder and preserves original
+CRT origins; this does not install Windows or replace those origins.
+
+The unchanged owned i386 API-name variant ran on native Windows at `d993c7c`
+in the [startup job](https://github.com/daeken/Alkyhol/actions/runs/42480098934).
+All 18 normalized words agree with the physical M4, including full/exact/short/
+zero sizing, terminators, guards, untouched short output and preserved last error.
+Each complete path is independently checked: Windows reports its real OS root,
+while Alkyhol reports its actual supplied profile directory, including supplementary
+UTF-16 units. The raw native report is frozen at
+`pe/reference/pe32-system-windows-directory-windows-v1.json`, SHA-256
+`eac73c7dbf686427f111d279655157bf15c36b0a3998ba33f8cc257e06b42ae7`.
+Source and identical-PE identities are mandatory, without an initial-capture bypass.
+
+Five host cases pass (one positive with distinct root/System32 roles and four
+restrictions), as do all five prior system-directory cases, two new frozen
+transport tests and Clippy. The next owned native-only exact-file observer now
+builds with open Clang/LLD; its Windows execution is pending. It will record the
+592-byte find-data layout, real per-host timestamps/size/name, output guards,
+search exhaustion, handle close/stale-handle behavior and genuine absent-file/
+absent-parent results. Its SDK layout is checked independently with MSVC. No
+original game/runtime files enter that observer or CI. It does not yet establish
+host file-search support or native full-original-graph parity.
+
 ## DAO passes its original CRT assembly lookup
 
 The physical M4 now executes past the original CRT's FindActCtxSectionStringW

@@ -56,28 +56,54 @@ pub(super) fn read(path: &Path) -> Result<(Vec<u8>, Origin)> {
 }
 
 pub(super) fn directory(path: &Path) -> Result<Vec<u16>> {
-    let host = std::fs::canonicalize(path).map_err(|e| format!("system directory: {e}"))?;
+    directory_role(path, "system directory")
+}
+pub(super) fn directory_role(path: &Path, role: &str) -> Result<Vec<u16>> {
+    let host = std::fs::canonicalize(path).map_err(|e| format!("{role}: {e}"))?;
     if !host.is_dir() {
-        return Err("system directory must identify an existing host directory".into());
+        return Err(format!("{role} must identify an existing host directory"));
     }
     windows_path(&host)
 }
 
 pub(super) fn system_directory(image: &LoadedImage32<'_>, args: &[u32; 8]) -> u32 {
+    copy_directory(
+        image,
+        args,
+        image.cpu.system_directory.as_deref(),
+        "system directory",
+    )
+}
+pub(super) fn system_windows_directory(image: &LoadedImage32<'_>, args: &[u32; 8]) -> u32 {
+    copy_directory(
+        image,
+        args,
+        image.cpu.system_windows_directory.as_deref(),
+        "system Windows directory",
+    )
+}
+fn copy_directory(
+    image: &LoadedImage32<'_>,
+    args: &[u32; 8],
+    directory: Option<&[u16]>,
+    role: &str,
+) -> u32 {
     let [output, capacity, ..] = *args;
-    let name = image.cpu.system_directory.as_ref().unwrap_or_else(|| {
-        unsupported(
-            "PE32 system directory requires an explicitly configured backed guest directory",
-        )
+    let name = directory.unwrap_or_else(|| {
+        unsupported(&format!(
+            "PE32 {role} requires an explicitly configured backed guest directory"
+        ))
     });
     if capacity > 1024 * 1024 / 2 {
-        unsupported("PE32 system directory output exceeds checked size bound");
+        unsupported(&format!("PE32 {role} output exceeds checked size bound"));
     }
     if capacity as usize <= name.len() {
         return name.len() as u32 + 1;
     }
     if !output.is_multiple_of(2) || !image.permits(output as usize, capacity as usize * 2, true) {
-        unsupported("PE32 system directory output outside checked writable guest storage");
+        unsupported(&format!(
+            "PE32 {role} output outside checked writable guest storage"
+        ));
     }
     unsafe {
         ptr::copy_nonoverlapping(name.as_ptr(), output as usize as *mut u16, name.len());

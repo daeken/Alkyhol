@@ -22,6 +22,8 @@ mod ansi32;
 mod diagnostic32;
 #[path = "fiber32.rs"]
 mod fiber32;
+#[path = "files32.rs"]
+mod files32;
 #[path = "heap32.rs"]
 mod heap32;
 #[path = "module_path32.rs"]
@@ -58,7 +60,7 @@ unsafe extern "C" {
 }
 const PAGE: usize = 4096;
 const STACK: usize = 1024 * 1024;
-const APIS: [(&str, u16); 64] = [
+const APIS: [(&str, u16); 66] = [
     ("GetLastError", 0),
     ("SetLastError", 4),
     ("GetStdHandle", 4),
@@ -123,6 +125,8 @@ const APIS: [(&str, u16); 64] = [
     ("CreateActCtxW", 4),
     ("ActivateActCtx", 8),
     ("DeactivateActCtx", 8),
+    ("GetSystemWindowsDirectoryW", 8),
+    ("FindFirstFileW", 8),
 ];
 const EXIT_API: u32 = 14;
 // Win32 promises a reversible process-specific representation, not a published
@@ -368,6 +372,7 @@ struct Cpu32 {
     activation: RefCell<Result<()>>,
     bound_activation: RefCell<Option<activation32::State>>,
     system_directory: Option<Vec<u16>>,
+    system_windows_directory: Option<Vec<u16>>,
 }
 impl Cpu32 {
     fn clear_heap(&self) {
@@ -427,6 +432,7 @@ impl Cpu32 {
             )),
             bound_activation: RefCell::new(None),
             system_directory: None,
+            system_windows_directory: None,
         })
     }
 }
@@ -1465,6 +1471,8 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
             57 => module_path32::long_name(image, &args),
             58 => module_path32::system_directory(image, &args),
             59..=63 => activation32::dispatch(image, id, &args),
+            64 => module_path32::system_windows_directory(image, &args),
+            65 => files32::first(image, &args),
             _ => unreachable!(),
         }
     })
@@ -1527,6 +1535,7 @@ mod tests {
                 activation: RefCell::new(Err("test layout has no activation context".into())),
                 bound_activation: RefCell::new(None),
                 system_directory: None,
+                system_windows_directory: None,
             }),
             tls: None,
             tls_entered: Cell::new(false),

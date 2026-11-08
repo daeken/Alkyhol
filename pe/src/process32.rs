@@ -18,6 +18,11 @@ struct AssemblyInputs<'a> {
     manifests: &'a [std::path::PathBuf],
     policies: &'a [std::path::PathBuf],
 }
+#[derive(Default)]
+struct DirectoryRoles {
+    system: Option<Vec<u16>>,
+    windows: Option<Vec<u16>>,
+}
 fn executable_name(name: &str) -> Result<String> {
     if name.len() > 255
         || !name.to_ascii_lowercase().ends_with(".exe")
@@ -233,6 +238,9 @@ pub struct ProcessImage32<'a> {
 #[derive(Default)]
 pub struct ProcessOptions32 {
     pub system_directory: Option<std::path::PathBuf>,
+    /// A separate verified shared Windows-directory role. It is never inferred
+    /// from System32, DLL origins or the host's own operating-system directories.
+    pub system_windows_directory: Option<std::path::PathBuf>,
     /// Opt in to scoped exact x86 assembly binding from explicit private
     /// manifests, genuine file origins and optional caller-trusted policies.
     /// One/three-file layouts and token/hash metadata are bounded native-tested
@@ -267,7 +275,17 @@ impl<'a> ProcessImage32<'a> {
         process: &'a ProcessContext,
     ) -> Result<Self> {
         let plan = Plan::new(executable, dlls, rebase)?;
-        unsafe { Self::load_plan(plan, rebase, process, false, &BTreeMap::new(), None, None) }
+        unsafe {
+            Self::load_plan(
+                plan,
+                rebase,
+                process,
+                false,
+                &BTreeMap::new(),
+                DirectoryRoles::default(),
+                None,
+            )
+        }
     }
     /// Instrument a trusted startup path with guarded external-service imports.
     /// This is diagnostic execution, NOT Windows compatibility: missing service
@@ -286,7 +304,17 @@ impl<'a> ProcessImage32<'a> {
         process: &'a ProcessContext,
     ) -> Result<Self> {
         let plan = Plan::with_external(executable, dlls, rebase, Some(external))?;
-        unsafe { Self::load_plan(plan, rebase, process, true, &BTreeMap::new(), None, None) }
+        unsafe {
+            Self::load_plan(
+                plan,
+                rebase,
+                process,
+                true,
+                &BTreeMap::new(),
+                DirectoryRoles::default(),
+                None,
+            )
+        }
     }
     /// Load a caller-supplied file graph and retain each actual canonical source
     /// path before initializers run. Z: mirrors the real host root. No DLL search,
@@ -355,6 +383,11 @@ impl<'a> ProcessImage32<'a> {
             .as_deref()
             .map(super::module_path32::directory)
             .transpose()?;
+        let windows = options
+            .system_windows_directory
+            .as_deref()
+            .map(|path| super::module_path32::directory_role(path, "system Windows directory"))
+            .transpose()?;
         if options.activation_assemblies.is_none() && !options.activation_policies.is_empty() {
             return Err("publisher policy requires an explicit assembly profile".into());
         }
@@ -390,7 +423,10 @@ impl<'a> ProcessImage32<'a> {
                 process,
                 external.is_some(),
                 &paths,
-                system_directory,
+                DirectoryRoles {
+                    system: system_directory,
+                    windows,
+                },
                 options
                     .activation_assemblies
                     .as_deref()
@@ -407,11 +443,12 @@ impl<'a> ProcessImage32<'a> {
         process: &'a ProcessContext,
         diagnostic: bool,
         origins: &BTreeMap<String, super::module_path32::Origin>,
-        system_directory: Option<Vec<u16>>,
+        directories: DirectoryRoles,
         assembly_profile: Option<AssemblyInputs<'_>>,
     ) -> Result<Self> {
         let mut cpu = Cpu32::new()?;
-        cpu.system_directory = system_directory;
+        cpu.system_directory = directories.system;
+        cpu.system_windows_directory = directories.windows;
         // Keep unknown manifest/binding state deferred until an activation query.
         // Existing paths do not gain a fabricated empty/default context.
         *cpu.activation.borrow_mut() = crate::activation_manifest::empty_default(

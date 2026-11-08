@@ -54,10 +54,20 @@ fn main() {
                             .into(),
                     )
                 }
+                "--system-windows-directory" => {
+                    profile.system_windows_directory = Some(
+                        options
+                            .next()
+                            .ok_or("--system-windows-directory requires a host directory")?
+                            .into(),
+                    );
+                }
                 _ => return Err("unknown startup diagnostic option".into()),
             }
         }
-        if (profile.system_directory.is_some() || profile.activation_assemblies.is_some())
+        if (profile.system_directory.is_some()
+            || profile.system_windows_directory.is_some()
+            || profile.activation_assemblies.is_some())
             && !file_origins
         {
             return Err("guest directory/assembly profile requires --file-origins".into());
