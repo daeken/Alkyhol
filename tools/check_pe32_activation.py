@@ -31,7 +31,7 @@ def digest(path):
 def resources():
     return [(24, 1, 1033, (SOURCE / 'activation-empty.manifest').read_bytes()),
             (24, 2, 1033, (SOURCE / 'activation-file.manifest').read_bytes()),
-            (10, 'λ🌸', 1041, b'\x00owned\xffresource\x00')]
+            (10, 'Λ🌸', 1041, b'\x00owned\xffresource\x00')]
 
 
 def resource_record(kind, name, language, payload):

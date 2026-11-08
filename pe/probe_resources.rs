@@ -11,7 +11,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         (ResourceName::Id(24), ResourceName::Id(2), 1033),
         (
             ResourceName::Id(10),
-            ResourceName::Name("λ🌸".encode_utf16().collect()),
+            ResourceName::Name("Λ🌸".encode_utf16().collect()),
             1041,
         ),
     ];

@@ -49,6 +49,13 @@ relaxing any source/PE hash check. Native activation observations remain pending
 The broader historical PE job again stopped at the unchanged upstream u-config
 HTTP 504 download; its dependent historical comparisons did not run.
 
+The corrected collector at `684a8dc` did execute the owned PE on Windows and
+retrieved both manifest payloads, then the observer trapped while accessing its
+additional Unicode-named test resource. That run is **failed evidence**, not a
+successful activation observation. The owned resource name is now stored in
+uppercase form and failure records include the native resource error. Activation
+queries remain unobserved until the entire fixture reaches them successfully.
+
 References: [PE resource tables](https://learn.microsoft.com/en-us/windows/win32/debug/pe-format#the-rsrc-section),
 [FindActCtxSectionStringW](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-findactctxsectionstringw),
 [ACTCTXW](https://learn.microsoft.com/en-us/windows/win32/api/winbase/ns-winbase-actctxw)

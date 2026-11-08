@@ -29,7 +29,9 @@ static void emit(const void *data,U32 bytes) {
     U32 written=0;if(!WriteFile(GetStdHandle((U32)-11),data,bytes,&written,0)||written!=bytes)__builtin_trap();
 }
 static void resource(H module,const W *type,const W *name,W language) {
-    H entry=FindResourceExW(module,type,name,language);if(!entry)__builtin_trap();
+    H entry=FindResourceExW(module,type,name,language);
+    if(!entry){U32 error[3]={0x52455346,language,GetLastError()},written=0;
+        (void)WriteFile(GetStdHandle((U32)-12),error,sizeof(error),&written,0);__builtin_trap();}
     U32 size=SizeofResource(module,entry);H data=LockResource(LoadResource(module,entry));
     if(!data||!size)__builtin_trap();emit(&size,4);emit(data,size);
 }
@@ -55,7 +57,7 @@ static void query(U32 stage,U32 size,U32 flags,U32 section,const W *key,H expect
 }
 U32 entry(void) {
     H module=GetModuleHandleW(0);
-    const W unicode[]={0x3bb,0xd83c,0xdf38,0};
+    const W unicode[]={0x39b,0xd83c,0xdf38,0};
     resource(module,(const W *)24,(const W *)1,1033);
     resource(module,(const W *)24,(const W *)2,1033);
     resource(module,(const W *)10,unicode,1041);
