@@ -76,7 +76,7 @@ unsafe extern "C" {
 }
 const PAGE: usize = 4096;
 const STACK: usize = 1024 * 1024;
-const APIS: [(&str, u16); 110] = [
+const APIS: [(&str, u16); 111] = [
     ("GetLastError", 0),
     ("SetLastError", 4),
     ("GetStdHandle", 4),
@@ -187,6 +187,7 @@ const APIS: [(&str, u16); 110] = [
     ("RegOpenKeyExW", 20),
     ("RegCloseKey", 4),
     ("CreateMutexW", 12),
+    ("timeGetTime", 0),
 ];
 const EXIT_API: u32 = 14;
 // Win32 promises a reversible process-specific representation, not a published
@@ -215,6 +216,8 @@ fn api_id(module: &str, symbol: &ImportSymbol) -> Option<usize> {
                     "user32.dll"
                 } else if matches!(*id, 107 | 108) {
                     "advapi32.dll"
+                } else if *id == 110 {
+                    "winmm.dll"
                 } else {
                     "kernel32.dll"
                 })
@@ -1708,7 +1711,7 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
             67 => files32::close(image, args[0]),
             68..=70 => time32::dispatch(image, id, &args),
             71 => std::process::id(),
-            72 => time32::tick_count(),
+            72 | 110 => time32::tick_count(),
             73 | 74 => {
                 if !args[0].is_multiple_of(4) || !image.permits(args[0] as usize, 8, true) {
                     unsupported("PE32 performance-counter output outside checked guest storage");
@@ -1816,6 +1819,10 @@ mod tests {
         assert_eq!(APIS[id].1, 8);
         assert_eq!(cleanup_bytes(id, 8), 0);
         assert!(api_id("kernel32.dll", &ImportSymbol::Name("GetVersion".into())).is_some());
+        let timer = ImportSymbol::Name("timeGetTime".into());
+        let id = api_id("WINMM.dll", &timer).unwrap();
+        assert_eq!(cleanup_bytes(id, APIS[id].1), 0);
+        assert!(api_id("kernel32.dll", &timer).is_none());
     }
     #[test]
     fn pointer_encoding_roundtrips_the_entire_dword_without_dereferencing() {

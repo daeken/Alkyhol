@@ -101,6 +101,10 @@ jobs:
         run: |
           python tools/observe_pe32_mutex_create.py
           python tools/observe_pe32_mutex_create.py --host
+      - name: Execute the genuine Winmm clock import reached by original DAO startup
+        run: |
+          python tools/observe_pe32_multimedia_clock.py
+          python tools/observe_pe32_multimedia_clock.py --host
       - uses: actions/upload-artifact@v4
         with:
           name: pe32-startup-microtests
@@ -165,6 +169,8 @@ jobs:
             local/pe/startup-microtests/mutex-create-inputs.json
             local/pe/startup-microtests/mutex-create-host.json
             local/pe/startup-microtests/mutex-holder-inputs.json
+            local/pe/startup-microtests/multimedia-clock-inputs.json
+            local/pe/startup-microtests/multimedia-clock-host.json
             local/pe/startup-microtests/ctx-layout-empty-importer.dll
             local/pe/startup-microtests/ctx-layout-*.manifest
   native-pe32-startup:
@@ -261,6 +267,9 @@ jobs:
       - name: Observe native named-mutex references across processes and last-close destruction
         if: ${{ success() || failure() }}
         run: python tools/observe_pe32_mutex_create.py --native
+      - name: Observe the identical Winmm clock binary against actual native boot time
+        if: ${{ success() || failure() }}
+        run: python tools/observe_pe32_multimedia_clock.py --native
       - uses: actions/upload-artifact@v4
         if: always()
         with:

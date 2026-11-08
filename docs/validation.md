@@ -4,6 +4,33 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## Original DAO startup creates its named mutex and reaches the multimedia clock
+
+At clean runtime revision `2db79bf`, the physical M4 executes the original EXE's
+actual `CreateMutexW(NULL, FALSE, name)` through the backed shared guest session.
+Original startup continues to **WINMM.dll!timeGetTime**. The capture records the
+pre-build revision, clean runtime status, executable and probe hashes, and the
+explicit local object-directory selection. Original EXE bytes are unchanged;
+the prior local unpacked-dependency caveat remains. Captures and the game's
+object identity stay local. This is startup progress, not a menu/rendering result.
+
+The next reached clock now routes only `winmm.dll!timeGetTime` to the existing
+real continuous boot-millisecond provider. It keeps the low DWORD's specified
+49.7-day wrap and preserves error state. Kernel32 cannot claim this export.
+The provider follows the [documented timeGetTime contract](https://learn.microsoft.com/en-us/windows/win32/api/timeapi/nf-timeapi-timegettime)
+using actual host elapsed boot time. An owned variant
+of the existing clock producer imports the real separate Winmm DLL without
+changing the old producer/fixture. The physical host verifies live elapsed time
+against independent boot-clock and performance-counter observations, with raw
+per-host values retained. Native execution and the next original EXE run remain
+pending at this point; timer-resolution requests remain unsupported.
+
+The [mutex milestone CI](https://github.com/daeken/Alkyhol/actions/runs/42511091789)
+has passed the hosted PE32 startup and native Windows startup jobs, including
+the required identical-PE mutex comparison. Broader PE execution jobs are still
+finishing. The physical clock observer, export routing unit, Clippy and
+formatting checks pass locally; prior frozen records remain unchanged.
+
 ## Next reached mutex call has an independent native lifetime observer
 
 The [native startup job at `09124b9`](https://github.com/daeken/Alkyhol/actions/runs/42510592173)
