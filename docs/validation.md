@@ -4,6 +4,34 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## Native icon comparisons pass and original DAO reaches event creation
+
+At clean revision `eb4395e`, the physical M4 repeats original EXE startup through
+the actual resource icon load and reaches **KERNEL32.dll!CreateEventW**. Its
+original EXE/probe hashes and private arguments are retained locally. No native
+window, menu or game rendering is observed; existing fresh-profile and unpacked
+dependency caveats remain unchanged.
+
+The [native startup job at `eb4395e`](https://github.com/daeken/Alkyhol/actions/runs/42517813846)
+passes all native startup checks, including actual icon loading and the separate
+SDK/GDI readback of the identical owned PE resource. Its complete record is
+`pe/reference/pe32-resource-icon-windows-v1.json`, SHA-256
+`3b9a22f85a41334ed546e1f34f0cb0f9687f2a9635e19ef7dd54a257d0c3c6e5`.
+The raw GDI snapshot is `pe32-resource-icon-gdi-v1.bin`, SHA-256
+`41732b8eea027a41ea80cc67d95515a2db2e101d25d38d32954c786c7efa9ba7`.
+The physical M4 reruns all three selected literal PEs with identical complete
+producer/file hashes. All ten loader/cache/error/stack DWORDs agree, as do
+3,072 defined RGB bytes and 128 AND-mask bytes. The reserved fourth GDI byte is
+preserved raw and remains outside the predefined alpha comparison contract.
+These are owned icon-resource observations, not native game-pixel parity.
+
+Local checks pass after the fd-lifetime fix: 209 Rust PE checks including
+doctests, 398 Python tests, project Clippy/formatting, the icon/audit tests and
+the unchanged 76-word mutex ownership/handoff/abandonment reference. The hosted
+Rust/PE startup jobs at this revision also pass. The broader PE64 native and
+paired-comparison jobs are still finishing. Earlier failed runs remain recorded;
+no frozen previous sample, native intrinsic criterion or reference was relaxed.
+
 ## Original DAO loads its icon and reaches event creation; native details measured
 
 At clean revision `59e560a`, the unchanged original EXE loads its own real icon

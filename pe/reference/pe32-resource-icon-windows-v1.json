@@ -1,0 +1,43 @@
+{
+  "backend": "native Windows icon loader",
+  "inputs": {
+    "sources": {
+      "pe/fixtures/pe32-startup/resource-icon.c": "625850db3b8b3b5320b01e37e3a03f6ae203b4479ef85bfb9723ab560d52e34e",
+      "pe/fixtures/pe32-startup/resource-icon-kernel32.def": "a8f0649f1a80e3959859423631da18f62cf508ca14fb33505b1da3bfdfd41ac2",
+      "pe/fixtures/pe32-startup/resource-icon-user32.def": "f5de17f68d6512ecd5918ed80c7d55c932c435310b968c9a36c1ac3e1fa725f8",
+      "pe/fixtures/pe32-startup/resource-icon-reference.cpp": "2b4ff8d053d3374685e4cbc47d969419b970de54a595eecde4ba4735c97fc77b",
+      "tools/pe32_resource_icon_data.py": "4e42ec5ac0101bffbba2fd92ffa0fba5a410c7cd9ac8a506d36fbbae2ccddd13"
+    },
+    "files": {
+      "resource-icon-0.exe": "764d48f343ecba365aaa7ef9fa26aacab5613c3f1b7946382262d232389c42b9",
+      "resource-icon-1.exe": "df019221a911c9e54907ec3d0e251403debb3c74e3a5d8e6233c32173e90f23c",
+      "resource-icon-2.exe": "76148e1bce46def0e2f2612e2347eff74933d6a30dbe5e8c497db968d8282e0d"
+    }
+  },
+  "reports": [
+    {
+      "case": 0,
+      "status": 0,
+      "stdout_hex": "324f434904000000010000000000000001000000000000000100000015070000010000000a000000",
+      "stderr_hex": "",
+      "words": [
+        1229147954,
+        4,
+        1,
+        0,
+        1,
+        0,
+        1,
+        1813,
+        1,
+        10
+      ]
+    },
+    {
+      "case": "SDK-GDI-readback",
+      "status": 0,
+      "stdout_hex": "",
+      "stderr_hex": ""
+    }
+  ]
+}
