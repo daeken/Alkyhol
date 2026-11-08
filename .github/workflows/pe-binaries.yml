@@ -73,6 +73,10 @@ jobs:
         run: |
           python tools/observe_pe32_heap_realloc.py
           python tools/observe_pe32_heap_realloc.py --host
+      - name: Read the actual host cursor for the original Bink startup call
+        run: |
+          python tools/observe_pe32_cursor.py
+          python tools/observe_pe32_cursor.py --host
       - uses: actions/upload-artifact@v4
         with:
           name: pe32-startup-microtests
@@ -122,6 +126,8 @@ jobs:
             local/pe/startup-microtests/crt-onexit-host.json
             local/pe/startup-microtests/heap-realloc-inputs.json
             local/pe/startup-microtests/heap-realloc-host.json
+            local/pe/startup-microtests/cursor-inputs.json
+            local/pe/startup-microtests/cursor-host.json
             local/pe/startup-microtests/ctx-layout-empty-importer.dll
             local/pe/startup-microtests/ctx-layout-*.manifest
   native-pe32-startup:
@@ -185,6 +191,10 @@ jobs:
         run: python tools/observe_pe32_onexit.py --native
       - name: Compare identical process/private heap resize operations on native Windows
         run: python tools/observe_pe32_heap_realloc.py --native
+      - name: Check cursor structure layout against the Windows SDK
+        run: cl /nologo /c /W4 /WX /std:c++17 pe/fixtures/pe32-startup/cursor-layout.cpp /Folocal/pe/startup-microtests/cursor-layout.obj
+      - name: Observe cursor ABI while retaining actual per-host coordinates separately
+        run: python tools/observe_pe32_cursor.py --native
       - uses: actions/upload-artifact@v4
         if: always()
         with:

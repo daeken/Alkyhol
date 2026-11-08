@@ -4,6 +4,30 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## Original Bink startup reads the physical desktop cursor
+
+Bink's original `GetCursorPos` now performs a real read-only Quartz event query
+on the physical M4, followed by its tick query, thread-notification policy change
+and actual module-path query. Its next measured unsupported call is
+**KERNEL32.dll!GetWindowsDirectoryA**. The game EXE has not entered. Original game
+files, per-module captures and inventories remain local with the existing unpacked
+dependency caveat unchanged.
+
+The cursor bridge writes two checked signed 32-bit LONG fields from the actual
+host query. Its explicit profile uses Quartz logical desktop coordinates with
+floor quantization, including negative monitor coordinates. Nonfinite/out-of-range
+coordinates, an unavailable host event source and invalid guest storage stop.
+No cursor is moved and no input events are injected. This is not DPI virtualization,
+a Windows input-desktop model or screen-topology parity. See the
+[GetCursorPos contract](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getcursorpos).
+
+The owned PE passes on the physical M4 with actual coordinates, POINT guards,
+stdcall stack balance and preserved last error. A bad-pointer PE stops with 78.
+Conversion boundary tests and two transport tests pass, as do Clippy and formatting.
+Native SDK/identical-PE execution are added to CI and pending. Only ABI/guard/error
+fields are compared across hosts; actual coordinates remain explicitly per-host
+observations, not fixed cross-machine equality claims.
+
 ## Original dependency startup reaches Bink
 
 The first native exit-table witness at `7c3275d` failed with access violation

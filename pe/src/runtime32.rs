@@ -20,6 +20,8 @@ mod activation32;
 mod ansi32;
 #[path = "crt32.rs"]
 mod crt32;
+#[path = "cursor32.rs"]
+mod cursor32;
 #[path = "diagnostic32.rs"]
 mod diagnostic32;
 #[path = "fiber32.rs"]
@@ -66,7 +68,7 @@ unsafe extern "C" {
 }
 const PAGE: usize = 4096;
 const STACK: usize = 1024 * 1024;
-const APIS: [(&str, u16); 100] = [
+const APIS: [(&str, u16); 101] = [
     ("GetLastError", 0),
     ("SetLastError", 4),
     ("GetStdHandle", 4),
@@ -167,6 +169,7 @@ const APIS: [(&str, u16); 100] = [
     ("GetStartupInfoW", 4),
     ("GetModuleFileNameA", 12),
     ("HeapReAlloc", 16),
+    ("GetCursorPos", 4),
 ];
 const EXIT_API: u32 = 14;
 // Win32 promises a reversible process-specific representation, not a published
@@ -191,6 +194,8 @@ fn api_id(module: &str, symbol: &ImportSymbol) -> Option<usize> {
                     "msvcrt.dll"
                 } else if *id == 8 {
                     "shell32.dll"
+                } else if *id == 100 {
+                    "user32.dll"
                 } else {
                     "kernel32.dll"
                 })
@@ -1677,6 +1682,7 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
                 .borrow_mut()
                 .reallocate(args[0], args[1], args[2], args[3])
                 .unwrap_or_else(|e| unsupported(&e)),
+            100 => cursor32::position(image, args[0]),
             _ => unreachable!(),
         }
     })
