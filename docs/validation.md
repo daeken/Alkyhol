@@ -6,6 +6,19 @@ See the latest direct-Metal record for current implementation evidence.
 
 ## Rust PE32 activation scopes execute the frozen Windows observer
 
+The next native-only experiment, `observe_pe32_assembly_metadata.py`, is queued
+alongside this implementation. It keeps the same owned EXE/provider/C code and
+varies only assembly metadata: a newer private assembly version, deliberately
+incorrect SHA-1 metadata with noInheritable, and an unsigned token-bearing private
+assembly whose version differs from the matching token-bearing requester. This
+tests whether those actual Windows private-deployment rules require publisher
+policy or integrity enforcement before choosing a CRT binding model. The local
+PE/manifest build and two synthetic XML/input-integrity tests pass; **Windows
+results are pending**. Nonzero native process statuses are retained as outcomes,
+not successful compatibility; timeouts or partial execution fail the observer.
+No original game/runtime data is used and no host restriction has been relaxed
+based on this unexecuted experiment.
+
 The direct blocker is still DAO's original signed CRT assembly/publisher-policy
 binding. Game entry has **not run**. The next runtime component now executes:
 the unchanged owned EXE and two DLLs from the native scope experiment below run
