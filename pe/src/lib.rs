@@ -3,6 +3,8 @@
 mod command_line;
 pub use command_line::windows_command_line;
 #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
+mod activation_binding;
+#[cfg(all(target_os = "macos", target_arch = "x86_64"))]
 mod activation_manifest;
 mod image;
 mod resource;

@@ -4,6 +4,55 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## Rust PE32 activation scopes execute the frozen Windows observer
+
+The direct blocker is still DAO's original signed CRT assembly/publisher-policy
+binding. Game entry has **not run**. The next runtime component now executes:
+the unchanged owned EXE and two DLLs from the native scope experiment below run
+on the physical M4 through Alkyhol's new explicit assembly profile. Normal and
+forced-relocation runs match every frozen lifecycle observation, normalized
+context identity, query scalar and complete 124-byte redirection section. Actual
+module paths are checked independently against each host's provided files.
+
+`ProcessOptions32::activation_assemblies` opts into a bounded inventory of real
+assembly manifests. Each file declaration must resolve to the genuine provided
+module source; exact unsigned x86 identity/version matching is required. The
+current admitted schema is an empty EXE default plus resource-2 DLLs with one
+exact dependency on a single-file assembly. There is no filesystem search or
+version fallback. Unknown elements, hashes/signing/policy metadata, multiple
+files/dependencies, ambiguous resource languages, nonempty EXE defaults and
+unmeasured empty resource-2 DLL scopes stop explicitly. The complete opt-in graph
+is validated before **any** initializer, even if that code would never query an
+activation API. The older empty-only/diagnostic profile remains separate.
+
+A manifest-free dependency inherits its first importer's scope; a resource-2 DLL
+supplies its own scope. Each original initializer and reverse teardown runs in
+that saved scope, restoring the caller afterward. The runtime owns real low
+read-only section buffers and opaque inaccessible handle tokens, with reference
+counts for GetCurrentActCtx, returned query handles, created contexts and explicit
+activation stack entries. CreateActCtxW currently admits the measured module +
+resource-2 form; activation cookies are checked in stack order. Unknown handles,
+stale cookies, unsupported forms and unbalanced initializer activation stop.
+FindActCtxSectionStringW preserves native output holes, tail bytes and last error
+on success; a real supported-scope miss retains all output and sets 14007.
+
+Four host-only restrictions use the same unchanged PEs: absent assembly,
+duplicate identity, a substituted module origin and a mismatched assembly version.
+Each stops with status 78, no observation output and its specific reason. Parser,
+scope-inheritance and complete-section tests cover the corresponding logical
+units. The full pre-final PE suite passed 176 tests/checks; a subsequent focused
+run includes the additional role/version refusal test. All 343 Python tests and
+Clippy pass. CI now executes this exact host/native comparator; its new revision's
+result is pending, separately from these local M4 results.
+
+A local run of the original DAO graph with the default profile still reaches the
+same original FindActCtxSectionStringW frontier and stops 78. Opting into the new
+profile with an empty inventory refuses the unsupported original manifest
+attributes before original initialization; it does not turn those dependencies
+into absent keys. Original signed identity/hash metadata, multiple CRT files and
+publisher-policy redirects remain the next implementation work. All original
+captures and dependency files stay ignored/local, and no DAODecomp code changed.
+
 ## Measured Windows DLL activation scopes for DAO's actual blocker
 
 DAO still stops in its original CRT's FindActCtxSectionStringW call; game entry

@@ -11,6 +11,7 @@ struct Node<'a> {
 struct Plan<'a> {
     nodes: Vec<Node<'a>>,
     order: Vec<usize>,
+    edges: Vec<Vec<usize>>,
     deferred: Vec<(String, String, ImportSymbol)>,
 }
 fn executable_name(name: &str) -> Result<String> {
@@ -193,6 +194,7 @@ impl<'a> Plan<'a> {
         Ok(Self {
             nodes,
             order,
+            edges,
             deferred,
         })
     }
@@ -227,6 +229,10 @@ pub struct ProcessImage32<'a> {
 #[derive(Default)]
 pub struct ProcessOptions32 {
     pub system_directory: Option<std::path::PathBuf>,
+    /// Opt in to scoped, exact unsigned single-file assembly binding from
+    /// explicitly supplied manifests and genuine provided module origins.
+    /// No search, publisher policy, signed/hash metadata or implicit fallback.
+    pub activation_assemblies: Option<Vec<std::path::PathBuf>>,
 }
 impl<'a> ProcessImage32<'a> {
     /// Check the complete closed graph without mapping or executing any module.
@@ -253,7 +259,7 @@ impl<'a> ProcessImage32<'a> {
         process: &'a ProcessContext,
     ) -> Result<Self> {
         let plan = Plan::new(executable, dlls, rebase)?;
-        unsafe { Self::load_plan(plan, rebase, process, false, &BTreeMap::new(), None) }
+        unsafe { Self::load_plan(plan, rebase, process, false, &BTreeMap::new(), None, None) }
     }
     /// Instrument a trusted startup path with guarded external-service imports.
     /// This is diagnostic execution, NOT Windows compatibility: missing service
@@ -272,7 +278,7 @@ impl<'a> ProcessImage32<'a> {
         process: &'a ProcessContext,
     ) -> Result<Self> {
         let plan = Plan::with_external(executable, dlls, rebase, Some(external))?;
-        unsafe { Self::load_plan(plan, rebase, process, true, &BTreeMap::new(), None) }
+        unsafe { Self::load_plan(plan, rebase, process, true, &BTreeMap::new(), None, None) }
     }
     /// Load a caller-supplied file graph and retain each actual canonical source
     /// path before initializers run. Z: mirrors the real host root. No DLL search,
@@ -374,6 +380,7 @@ impl<'a> ProcessImage32<'a> {
                 external.is_some(),
                 &paths,
                 system_directory,
+                options.activation_assemblies.as_deref(),
             )
         }
     }
@@ -384,6 +391,7 @@ impl<'a> ProcessImage32<'a> {
         diagnostic: bool,
         origins: &BTreeMap<String, super::module_path32::Origin>,
         system_directory: Option<Vec<u16>>,
+        assembly_paths: Option<&[std::path::PathBuf]>,
     ) -> Result<Self> {
         let mut cpu = Cpu32::new()?;
         cpu.system_directory = system_directory;
@@ -445,6 +453,35 @@ impl<'a> ProcessImage32<'a> {
         }
         cpu.executable
             .set(mappings.last().expect("root mapping").image.base as u32);
+        if let Some(paths) = assembly_paths {
+            let origins = origins
+                .iter()
+                .map(|(name, origin)| (name.clone(), origin.host.clone()))
+                .collect();
+            let inventory = crate::activation_binding::Inventory::new(paths, &origins)?;
+            let templates: Vec<_> = plan
+                .nodes
+                .iter()
+                .enumerate()
+                .map(|(i, n)| inventory.template(&n.image, i == 0))
+                .collect();
+            let own: Vec<_> = templates.iter().map(|t| !matches!(t, Ok(None))).collect();
+            let owners = scope_owners(&plan.edges, &own)?;
+            let templates = plan
+                .nodes
+                .iter()
+                .zip(templates)
+                .map(|(node, template)| {
+                    let (_, index) = modules
+                        .iter()
+                        .find(|(name, _)| name == &node.name)
+                        .expect("mapped node");
+                    (mappings[*index].image.base as u32, template)
+                })
+                .collect();
+            *cpu.bound_activation.borrow_mut() =
+                Some(super::activation32::State::new(templates, &owners)?);
+        }
         *cpu.modules.borrow_mut() = modules
             .into_iter()
             .map(|(name, index)| Module32 {
@@ -474,6 +511,7 @@ impl<'a> ProcessImage32<'a> {
     }
     unsafe fn dll_entry(&self, index: usize, reason: u32, non_null: bool) -> Result<u32> {
         let image = &self.mappings[index];
+        let _scope = super::activation32::enter_scope(&image.cpu, image.image.base as u32);
         if image.entry == 0 {
             return Ok(1);
         }
@@ -532,6 +570,41 @@ impl<'a> ProcessImage32<'a> {
         self.mappings.iter().map(LoadedImage32::relocated).collect()
     }
 }
+
+// Match the loader's first dependency traversal: a resource-2 module supplies
+// its own scope to its initializer and manifest-free imports. A shared module
+// keeps its first loading scope; manifests are never globally unioned.
+fn scope_owners(edges: &[Vec<usize>], own: &[bool]) -> Result<Vec<usize>> {
+    if edges.is_empty() || edges.len() != own.len() || !own[0] {
+        return Err("activation scope graph lacks a root context".into());
+    }
+    let mut owners = vec![usize::MAX; edges.len()];
+    fn walk(
+        index: usize,
+        inherited: usize,
+        edges: &[Vec<usize>],
+        own: &[bool],
+        owners: &mut [usize],
+    ) -> Result<()> {
+        if index >= edges.len() {
+            return Err("activation dependency outside graph".into());
+        }
+        if owners[index] != usize::MAX {
+            return Ok(());
+        }
+        let scope = if own[index] { index } else { inherited };
+        owners[index] = scope;
+        for &child in &edges[index] {
+            walk(child, scope, edges, own, owners)?;
+        }
+        Ok(())
+    }
+    walk(0, 0, edges, own, &mut owners)?;
+    if owners.contains(&usize::MAX) {
+        return Err("unreferenced activation scope module".into());
+    }
+    Ok(owners)
+}
 impl Drop for ProcessImage32<'_> {
     fn drop(&mut self) {
         if let Err(error) = self.shutdown(false) {
@@ -547,6 +620,21 @@ impl Drop for ProcessImage32<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn activation_scopes_inherit_first_importer_and_restore_other_owners() {
+        let edges = vec![vec![1, 3], vec![2], vec![], vec![2]];
+        assert_eq!(
+            scope_owners(&edges, &[true, true, false, true]).unwrap(),
+            [0, 1, 1, 3]
+        );
+        assert_eq!(
+            scope_owners(&edges, &[true, false, false, true]).unwrap(),
+            [0, 0, 0, 3]
+        );
+        assert!(scope_owners(&edges, &[false, true, false, true]).is_err());
+        assert!(scope_owners(&[vec![2], vec![]], &[true, false]).is_err());
+        assert!(scope_owners(&[vec![], vec![]], &[true, false]).is_err());
+    }
     #[test]
     fn graph_preserves_dependency_order_shares_diamonds_and_rejects_cycles() {
         let edges = vec![vec![2, 1], vec![3], vec![3], vec![]];

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Owned native-only DLL activation observations for DAO's actual CRT blocker.
 
-macOS builds the exact PEs/manifests; only Windows executes this observer. No
-original DLLs, game manifests or derived game inventories are accepted by it.
+macOS builds the exact PEs/manifests; native Windows and the explicit Rosetta
+assembly profile execute them. No original game data is accepted by this tool.
 """
 import argparse
 import json
@@ -127,15 +127,63 @@ def build(directory):
     for name in ['ctx-importer.manifest','ctx-assembly.manifest']:shutil.copyfile(SOURCE/name,directory/name)
     (directory/'ctx-startup-inputs.json').write_text(json.dumps(identities(directory),indent=2)+'\n')
     verify(directory)
-    print('Built owned native-only activation/DLL observer; no host activation execution or compatibility claim')
+    print('Built the unchanged owned activation/DLL observer; build alone is not execution evidence')
 
-def native(directory):
-    inputs=verify(directory);run=directory/'ctx-sxs-run';assembly=run/'Alkyhol.OwnedCRT';assembly.mkdir(parents=True,exist_ok=True)
+def package(directory,name):
+    run=directory/name;assembly=run/'Alkyhol.OwnedCRT';assembly.mkdir(parents=True,exist_ok=True)
     for name in ['ctx-startup.exe','ctx-importer.dll']:shutil.copyfile(directory/name,run/name)
     shutil.copyfile(directory/'ctx-provider.dll',assembly/'ctx-provider.dll')
     shutil.copyfile(directory/'ctx-assembly.manifest',assembly/'Alkyhol.OwnedCRT.manifest')
     # The provider deliberately exists only inside the private assembly folder.
     if (run/'ctx-provider.dll').exists():raise ValueError('unisolated provider would invalidate the loader observation')
+    return run,assembly
+
+def host(directory):
+    inputs=verify(directory);run,assembly=package(directory,'ctx-host-run')
+    cargo=shutil.which('cargo') or str(Path.home()/'.cargo/bin/cargo')
+    rustc=shutil.which('rustc') or str(Path.home()/'.cargo/bin/rustc');target='x86_64-apple-darwin'
+    subprocess.run([cargo,'build','--manifest-path',str(ROOT/'pe/Cargo.toml'),'--target',target,'--locked','--offline'],check=True)
+    output=ROOT/'pe/target'/target/'debug';probe=directory/'ctx-startup-macos'
+    subprocess.run([rustc,'--edition=2024','--target',target,str(ROOT/'pe/probe_startup32.rs'),'--extern',
+                    'alkyhol_pe='+str(output/'libalkyhol_pe.rlib'),'-L','dependency='+str(output/'deps'),
+                    '-C','link-arg=-Wl,-pagezero_size,0x1000','-o',str(probe)],check=True)
+    args=[str(probe),str(run/'ctx-startup.exe'),'--strict','--file-origins','--assembly-manifest',str(assembly/'Alkyhol.OwnedCRT.manifest'),
+          '--dll','ctx-importer.dll='+str(run/'ctx-importer.dll'),'--dll','ctx-provider.dll='+str(assembly/'ctx-provider.dll')]
+    results=[]
+    for forced in [False,True]:
+        result=subprocess.run(args+(['--rebase'] if forced else []),cwd=run,capture_output=True,timeout=20)
+        report={'backend':'Rosetta PE32 scoped exact assembly binding','forced_relocation':forced,'inputs':inputs,
+                'status':result.returncode,'stdout_hex':result.stdout.hex(),'stderr_hex':result.stderr.hex()}
+        results.append(report)
+        path=directory/'ctx-startup-host.json';path.write_text(json.dumps(results,indent=2)+'\n')
+        if result.returncode:raise ValueError('host scoped activation failed; no compatible result claimed')
+        paths={1:assembly/'ctx-provider.dll',2:run/'ctx-importer.dll',3:run/'ctx-startup.exe'}
+        report['records']=decode(result.stdout,{actor:'Z:'+str(p.resolve()).replace('/','\\') for actor,p in paths.items()})
+        compare(report['records']);path.write_text(json.dumps(results,indent=2)+'\n')
+    negatives=[]
+    def reject(label,command,reason):
+        result=subprocess.run(command,cwd=run,capture_output=True,timeout=20)
+        negatives.append({'case':label,'status':result.returncode,'stdout_hex':result.stdout.hex(),'stderr_hex':result.stderr.hex()})
+        (directory/'ctx-startup-restrictions.json').write_text(json.dumps(negatives,indent=2)+'\n')
+        if result.returncode!=78 or result.stdout or reason not in result.stderr:
+            raise ValueError('scoped activation restriction did not stop before observation for its actual reason: '+label)
+    # Same frozen EXE/DLLs. Only explicit profile inputs vary, never acceptance
+    # criteria or original fixture bytes. These restrictions are host-only.
+    plain=[str(probe),str(run/'ctx-startup.exe'),'--strict','--file-origins',
+           '--dll','ctx-importer.dll='+str(run/'ctx-importer.dll'),'--dll','ctx-provider.dll='+str(assembly/'ctx-provider.dll')]
+    reject('missing-assembly',plain+['--activation'],b'unresolved exact assembly dependency')
+    manifest=assembly/'Alkyhol.OwnedCRT.manifest'
+    reject('duplicate-identity',args+['--assembly-manifest',str(manifest)],b'duplicate assembly identity')
+    wrong=run/'wrong-source';wrong.mkdir(exist_ok=True);shutil.copyfile(assembly/'ctx-provider.dll',wrong/'ctx-provider.dll')
+    changed=list(args);changed[-1]='ctx-provider.dll='+str(wrong/'ctx-provider.dll')
+    reject('wrong-module-origin',changed,b'assembly DLL is not the provided file-backed module')
+    variant=assembly/'version-mismatch.manifest';variant.write_bytes(manifest.read_bytes().replace(b'1.0.0.0',b'2.0.0.0'))
+    changed=list(args);changed[changed.index('--assembly-manifest')+1]=str(variant)
+    reject('version-mismatch',changed,b'unresolved exact assembly dependency')
+    print('Both M4 scoped-activation runs agree with every frozen native lifecycle/lookup/section observation')
+
+def native(directory):
+    inputs=verify(directory);run,assembly=package(directory,'ctx-sxs-run')
     result=subprocess.run([str((run/'ctx-startup.exe').resolve())],cwd=run,capture_output=True,timeout=20)
     report={'backend':'native Windows PE32 loader-scoped activation observer','inputs':inputs,'status':result.returncode,
             'stdout_hex':result.stdout.hex(),'stderr_hex':result.stderr.hex()}
@@ -148,4 +196,5 @@ def native(directory):
 
 if __name__=='__main__':
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('--output',type=Path,default=ROOT/'local/pe/startup-microtests')
-    p.add_argument('--native',action='store_true');a=p.parse_args();(native if a.native else build)(a.output.resolve())
+    mode=p.add_mutually_exclusive_group();mode.add_argument('--native',action='store_true');mode.add_argument('--host',action='store_true')
+    a=p.parse_args();(native if a.native else host if a.host else build)(a.output.resolve())

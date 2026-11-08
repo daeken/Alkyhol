@@ -28,6 +28,20 @@ fn main() {
                 "--rebase" => forced = true,
                 "--strict" => strict = true,
                 "--file-origins" => file_origins = true,
+                "--activation" => {
+                    profile.activation_assemblies.get_or_insert_with(Vec::new);
+                }
+                "--assembly-manifest" => {
+                    profile
+                        .activation_assemblies
+                        .get_or_insert_with(Vec::new)
+                        .push(
+                            options
+                                .next()
+                                .ok_or("--assembly-manifest requires a manifest path")?
+                                .into(),
+                        );
+                }
                 "--system-directory" => {
                     profile.system_directory = Some(
                         options
@@ -39,8 +53,10 @@ fn main() {
                 _ => return Err("unknown startup diagnostic option".into()),
             }
         }
-        if profile.system_directory.is_some() && !file_origins {
-            return Err("--system-directory requires --file-origins".into());
+        if (profile.system_directory.is_some() || profile.activation_assemblies.is_some())
+            && !file_origins
+        {
+            return Err("guest directory/assembly profile requires --file-origins".into());
         }
         let bytes = if file_origins {
             Vec::new()

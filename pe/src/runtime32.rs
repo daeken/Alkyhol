@@ -58,7 +58,7 @@ unsafe extern "C" {
 }
 const PAGE: usize = 4096;
 const STACK: usize = 1024 * 1024;
-const APIS: [(&str, u16); 59] = [
+const APIS: [(&str, u16); 64] = [
     ("GetLastError", 0),
     ("SetLastError", 4),
     ("GetStdHandle", 4),
@@ -118,6 +118,11 @@ const APIS: [(&str, u16); 59] = [
     ("GetModuleFileNameW", 12),
     ("GetLongPathNameW", 12),
     ("GetSystemDirectoryW", 8),
+    ("GetCurrentActCtx", 4),
+    ("ReleaseActCtx", 4),
+    ("CreateActCtxW", 4),
+    ("ActivateActCtx", 8),
+    ("DeactivateActCtx", 8),
 ];
 const EXIT_API: u32 = 14;
 // Win32 promises a reversible process-specific representation, not a published
@@ -361,6 +366,7 @@ struct Cpu32 {
     critical_sections: RefCell<std::collections::BTreeMap<u32, sync32::Section>>,
     service_gates: Cell<u32>,
     activation: RefCell<Result<()>>,
+    bound_activation: RefCell<Option<activation32::State>>,
     system_directory: Option<Vec<u16>>,
 }
 impl Cpu32 {
@@ -419,6 +425,7 @@ impl Cpu32 {
             activation: RefCell::new(Err(
                 "PE32 activation context is unknown outside the checked process profile".into(),
             )),
+            bound_activation: RefCell::new(None),
             system_directory: None,
         })
     }
@@ -840,6 +847,15 @@ impl<'a> LoadedImage32<'a> {
             return false;
         };
         if startup32::permits(&self.cpu, address, len, write) {
+            return true;
+        }
+        if self
+            .cpu
+            .bound_activation
+            .borrow()
+            .as_ref()
+            .is_some_and(|state| state.permits(address, len, write))
+        {
             return true;
         }
         if self.cpu.heap.borrow().permits(address, len) {
@@ -1448,6 +1464,7 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
             56 => module_path32::filename(image, &args),
             57 => module_path32::long_name(image, &args),
             58 => module_path32::system_directory(image, &args),
+            59..=63 => activation32::dispatch(image, id, &args),
             _ => unreachable!(),
         }
     })
@@ -1508,6 +1525,7 @@ mod tests {
                 critical_sections: RefCell::new(Default::default()),
                 service_gates: Cell::new(0),
                 activation: RefCell::new(Err("test layout has no activation context".into())),
+                bound_activation: RefCell::new(None),
                 system_directory: None,
             }),
             tls: None,

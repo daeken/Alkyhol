@@ -23,8 +23,10 @@ jobs:
         run: python tools/check_pe32_module_paths.py
       - name: Execute an explicit backed system-directory profile without guessing DLL paths
         run: python tools/check_pe32_system_directory.py
-      - name: Build an owned DLL activation-scope observer for native-only execution
+      - name: Build the frozen owned DLL activation-scope observer
         run: python tools/observe_pe32_activation_startup.py
+      - name: Execute identical PE activation scopes and sections against the frozen Windows record
+        run: python tools/observe_pe32_activation_startup.py --host
       - uses: actions/upload-artifact@v4
         with:
           name: pe32-startup-microtests
@@ -43,6 +45,7 @@ jobs:
             local/pe/startup-microtests/system-directory-inputs.json
             local/pe/startup-microtests/system-directory-host.json
             local/pe/startup-microtests/ctx-startup-inputs.json
+            local/pe/startup-microtests/ctx-startup-host.json
             local/pe/startup-microtests/ctx-provider.dll
             local/pe/startup-microtests/ctx-importer.dll
             local/pe/startup-microtests/ctx-importer.manifest
