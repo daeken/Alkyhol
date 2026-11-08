@@ -131,6 +131,90 @@ impl Documents {
             _ => Err(format!("unsupported directory creation failure: {error}")),
         }
     }
+    pub(super) fn open_file(
+        &self,
+        text: &str,
+        access: u32,
+        disposition: u32,
+    ) -> Result<std::result::Result<(File, bool), u32>> {
+        self.check()?;
+        let root = String::from_utf16(&self.units).map_err(|_| "invalid Documents role")?;
+        let relative = text
+            .strip_prefix(&format!("{root}\\"))
+            .ok_or("file writes are restricted to the explicit Documents backing")?;
+        if !relative.is_ascii() || text.encode_utf16().count() >= 260 {
+            return Err("profile file paths require bounded ASCII descendants".into());
+        }
+        if !(1..=5).contains(&disposition) {
+            return Ok(Err(87));
+        }
+        let before = match files32::existing(text)? {
+            Ok((_, meta)) => Some(meta),
+            Err(2) => None,
+            Err(error) => return Ok(Err(error)),
+        };
+        if before
+            .as_ref()
+            .is_some_and(|m| !m.is_file() || m.nlink() != 1)
+        {
+            return Err("profile write target must be a regular non-aliased file".into());
+        }
+        if disposition == 1 && before.is_some() {
+            return Ok(Err(80));
+        }
+        if matches!(disposition, 3 | 5) && before.is_none() {
+            return Ok(Err(2));
+        }
+        let mut parts: Vec<_> = relative.split('\\').collect();
+        let leaf =
+            CString::new(parts.pop().ok_or("missing file leaf")?).map_err(|e| e.to_string())?;
+        let mut parent = self.file.try_clone().map_err(|e| e.to_string())?;
+        for part in parts {
+            let part = CString::new(part).map_err(|e| e.to_string())?;
+            let fd = unsafe {
+                openat(
+                    parent.as_raw_fd(),
+                    part.as_ptr(),
+                    O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC,
+                )
+            };
+            if fd < 0 {
+                return Err("profile file parent changed during open".into());
+            }
+            parent = unsafe { File::from_raw_fd(fd) };
+        }
+        self.check()?;
+        let (_, meta) = files32::existing(text.rsplit_once('\\').ok_or("missing file parent")?.0)?
+            .map_err(|_| "profile file parent disappeared")?;
+        let opened = parent.metadata().map_err(|e| e.to_string())?;
+        if (opened.dev(), opened.ino()) != (meta.dev(), meta.ino()) {
+            return Err("profile file parent identity changed".into());
+        }
+        let read = access & 0x80000000 != 0;
+        let write = access & 0x40000000 != 0;
+        let mode = if write { if read { 2 } else { 1 } } else { 0 };
+        let flags =
+            mode | O_NOFOLLOW | O_CLOEXEC | if before.is_none() { 0x200 | 0x800 } else { 0 };
+        let fd = unsafe { openat(parent.as_raw_fd(), leaf.as_ptr(), flags, 0o666u32) };
+        if fd < 0 {
+            let error = std::io::Error::last_os_error();
+            return match error.kind() {
+                std::io::ErrorKind::PermissionDenied => Ok(Err(5)),
+                _ => Err(format!("profile file open failed: {error}")),
+            };
+        }
+        let file = unsafe { File::from_raw_fd(fd) };
+        let after = file.metadata().map_err(|e| e.to_string())?;
+        if !after.is_file()
+            || after.nlink() != 1
+            || before
+                .as_ref()
+                .is_some_and(|m| (m.dev(), m.ino()) != (after.dev(), after.ino()))
+        {
+            return Err("profile file identity changed during open".into());
+        }
+        Ok(Ok((file, before.is_some())))
+    }
     pub(super) fn ini_file(
         &self,
         text: &str,

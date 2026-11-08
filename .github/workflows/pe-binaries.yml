@@ -157,6 +157,14 @@ jobs:
         run: |
           python tools/observe_pe32_search_family.py
           python tools/observe_pe32_search_family.py --host
+      - name: Execute owned file sharing and descriptor operations
+        run: |
+          python tools/observe_pe32_file_family.py
+          python tools/observe_pe32_file_family.py --host
+      - name: Execute real native windows and original x86 callbacks
+        run: |
+          python tools/observe_pe32_window_family.py
+          python tools/observe_pe32_window_family.py --host
       - uses: actions/upload-artifact@v4
         with:
           name: pe32-startup-microtests
@@ -251,6 +259,10 @@ jobs:
             local/pe/startup-microtests/full-path-host.json
             local/pe/startup-microtests/search-family-inputs.json
             local/pe/startup-microtests/search-family-host.json
+            local/pe/startup-microtests/file-family-inputs.json
+            local/pe/startup-microtests/file-family-host.json
+            local/pe/startup-microtests/window-family-inputs.json
+            local/pe/startup-microtests/window-family-host.json
             local/pe/startup-microtests/ctx-layout-empty-importer.dll
             local/pe/startup-microtests/ctx-layout-*.manifest
   native-pe32-startup:
@@ -392,6 +404,12 @@ jobs:
       - name: Compare actual wildcard entries and A/W layouts on native Windows
         if: ${{ success() || failure() }}
         run: python tools/observe_pe32_search_family.py --native
+      - name: Observe identical file family PE on native Windows
+        if: ${{ success() || failure() }}
+        run: python tools/observe_pe32_file_family.py --native
+      - name: Observe identical window family PE on native Windows
+        if: ${{ success() || failure() }}
+        run: python tools/observe_pe32_window_family.py --native
       - uses: actions/upload-artifact@v4
         if: always()
         with:

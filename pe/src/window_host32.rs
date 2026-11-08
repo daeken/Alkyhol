@@ -48,7 +48,7 @@ unsafe extern "C" {
     fn CFArrayGetValueAtIndex(array: Id, index: isize) -> Id;
     fn CFDictionaryGetValue(dictionary: Id, key: Id) -> Id;
     fn CFBooleanGetValue(value: Id) -> i8;
-    fn CFRelease(value: Id);
+    fn CFRelease(value: *const c_void);
 }
 unsafe extern "C" {
     fn pthread_main_np() -> i32;
@@ -211,6 +211,36 @@ impl App {
         unsafe { send0::<()>(self.app, "updateWindows") };
         Ok(())
     }
+    pub(super) fn screen_geometry(&self) -> crate::Result<(Rect, u32)> {
+        let screens = unsafe { send0::<Id>(class("NSScreen")?, "screens") };
+        let count = unsafe { send0::<usize>(screens, "count") };
+        if count == 0 || count > 32 {
+            return Err("actual active screen inventory is unavailable or exceeds bounds".into());
+        }
+        let mut left = f64::INFINITY;
+        let mut top = f64::INFINITY;
+        let mut right = f64::NEG_INFINITY;
+        let mut bottom = f64::NEG_INFINITY;
+        for index in 0..count {
+            let screen = unsafe { send1::<_, Id>(screens, "objectAtIndex:", index) };
+            let mut rect = unsafe { rectangle(screen, "frame") };
+            rect.origin.y = self.desktop.size.height - rect.origin.y - rect.size.height;
+            left = left.min(rect.origin.x);
+            top = top.min(rect.origin.y);
+            right = right.max(rect.origin.x + rect.size.width);
+            bottom = bottom.max(rect.origin.y + rect.size.height);
+        }
+        Ok((
+            Rect {
+                origin: Point { x: left, y: top },
+                size: Size {
+                    width: right - left,
+                    height: bottom - top,
+                },
+            },
+            count as u32,
+        ))
+    }
     pub(super) fn activate(&self) {
         unsafe { send1::<_, ()>(self.app, "activateIgnoringOtherApps:", 1i8) };
     }
@@ -271,6 +301,19 @@ impl Window {
         let mut rect = unsafe { rectangle(self.window, "frame") };
         rect.origin.y = self.desktop_height - rect.origin.y - rect.size.height;
         rect
+    }
+    pub(super) fn client_frame(&self) -> crate::Result<Rect> {
+        let frame = unsafe { rectangle(self.window, "frame") };
+        let style = unsafe { send0::<u64>(self.window, "styleMask") };
+        let mut content = unsafe { convert(frame, style, "contentRectForFrameRect:styleMask:") }?;
+        content.origin.y = self.desktop_height - content.origin.y - content.size.height;
+        Ok(content)
+    }
+    pub(super) fn key(&self) -> bool {
+        unsafe { send0::<i8>(self.window, "isKeyWindow") != 0 }
+    }
+    pub(super) fn limits(&self) -> (Size, Size) {
+        unsafe { (send0(self.window, "minSize"), send0(self.window, "maxSize")) }
     }
     pub(super) fn client(&self) -> Rect {
         let view = unsafe { send0::<Id>(self.window, "contentView") };

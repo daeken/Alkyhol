@@ -1,0 +1,16 @@
+LIBRARY KERNEL32.dll
+EXPORTS
+GetStdHandle
+GetModuleFileNameA
+SetCurrentDirectoryA
+CreateFileA
+CloseHandle
+GetLastError
+WriteFile
+ReadFile
+SetFilePointer
+SetFilePointerEx
+SetEndOfFile
+FlushFileBuffers
+GetFileInformationByHandle
+GetFileSize

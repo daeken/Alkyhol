@@ -5165,3 +5165,14 @@ zero short self-reflections. Raw source/asset/executable hashes and diagnostics 
 ignored in `local/miniengine/physical-shaded-report.json`; output is
 `local/miniengine/shaded-reflections.png`. Native full shaded DXR pixels and the
 remaining original postprocessing passes have not been validated or implemented.
+
+## Integrated PE32 file/window bootstrap (2026-11-08)
+
+Physical M4/Rosetta owned PEs exercise actual file contents, sharing, seeking,
+truncation, live descriptor metadata and actual AppKit window ownership with
+original x86 callbacks. These new families are not frozen native evidence yet.
+CI now schedules the identical PE files on Windows. Original DAO passed real log
+creation/writing and reached its thread-name RaiseException before any window or
+D3D9 call. The run used e94ac05 plus explicitly recorded dirty runtime sources;
+local captures preserve that distinction. Native e94ac05 search-family observation
+succeeded; wide full-path sizing remains an explicitly unresolved mismatch.

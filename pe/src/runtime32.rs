@@ -34,6 +34,8 @@ mod event32;
 mod exception_filter32;
 #[path = "fiber32.rs"]
 mod fiber32;
+#[path = "fileio32.rs"]
+mod fileio32;
 #[path = "files32.rs"]
 mod files32;
 #[path = "heap32.rs"]
@@ -69,6 +71,10 @@ mod startup32;
 mod sync32;
 #[path = "time32.rs"]
 mod time32;
+#[path = "ui32.rs"]
+mod ui32;
+#[path = "window_host32.rs"]
+mod window_host32;
 pub use process32::{ProcessImage32, ProcessOptions32, TimeZone32};
 std::arch::global_asm!(include_str!("transition32.S"), options(att_syntax));
 unsafe extern "C" {
@@ -93,7 +99,7 @@ unsafe extern "C" {
 }
 const PAGE: usize = 4096;
 const STACK: usize = 1024 * 1024;
-const APIS: [(&str, u16); 143] = [
+const APIS: [(&str, u16); 177] = [
     ("GetLastError", 0),
     ("SetLastError", 4),
     ("GetStdHandle", 4),
@@ -237,6 +243,40 @@ const APIS: [(&str, u16); 143] = [
     ("FindFirstFileA", 8),
     ("FindNextFileA", 8),
     ("Sleep", 4),
+    ("SetFilePointer", 16),
+    ("SetFilePointerEx", 20),
+    ("FlushFileBuffers", 4),
+    ("GetFileInformationByHandle", 8),
+    ("SetEndOfFile", 4),
+    ("RegisterClassExW", 4),
+    ("RegisterClassA", 4),
+    ("UnregisterClassA", 8),
+    ("CreateWindowExW", 48),
+    ("CreateWindowExA", 48),
+    ("DefWindowProcW", 16),
+    ("DefWindowProcA", 16),
+    ("AdjustWindowRect", 12),
+    ("AdjustWindowRectEx", 16),
+    ("ShowWindow", 8),
+    ("UpdateWindow", 4),
+    ("GetClientRect", 8),
+    ("GetWindowRect", 8),
+    ("SetWindowPos", 28),
+    ("SetWindowTextW", 8),
+    ("IsWindowVisible", 4),
+    ("GetDesktopWindow", 0),
+    ("GetSystemMetrics", 4),
+    ("GetActiveWindow", 0),
+    ("GetWindowLongW", 8),
+    ("GetWindowLongA", 8),
+    ("SetWindowLongW", 12),
+    ("DestroyWindow", 4),
+    ("SetForegroundWindow", 4),
+    ("SetRect", 20),
+    ("ClientToScreen", 8),
+    ("ScreenToClient", 8),
+    ("GetWindowThreadProcessId", 8),
+    ("GetClassLongA", 8),
 ];
 // The first 120 API slots retain their original offsets. The second bank
 // begins after both x87 bodies, leaving their machine code and failure gates
@@ -272,7 +312,7 @@ fn api_id(module: &str, symbol: &ImportSymbol) -> Option<usize> {
                     "msvcrt.dll"
                 } else if matches!(*id, 8 | 120) {
                     "shell32.dll"
-                } else if matches!(*id, 100 | 115) {
+                } else if matches!(*id, 100 | 115) || (148..177).contains(id) {
                     "user32.dll"
                 } else if matches!(*id, 107 | 108) {
                     "advapi32.dll"
@@ -510,6 +550,7 @@ struct Cpu32 {
     command_ansi: Cell<u32>,
     exit: Cell<Option<u32>>,
     files: RefCell<std::collections::BTreeSet<usize>>,
+    file_leases: RefCell<std::collections::BTreeMap<usize, fileio32::Lease>>,
     searches: RefCell<std::collections::BTreeMap<u32, files32::Search>>,
     phase: Cell<Phase32>,
     modules: RefCell<Vec<Module32>>,
@@ -541,6 +582,7 @@ struct Cpu32 {
     current_directory: RefCell<Option<directory32::Directory>>,
     icons: RefCell<icon32::State>,
     events: RefCell<event32::State>,
+    ui: RefCell<ui32::State>,
     utc_timezone: bool,
 }
 impl Cpu32 {
@@ -560,6 +602,7 @@ impl Cpu32 {
             mutexes.borrow_mut().clear();
         }
         self.searches.borrow_mut().clear();
+        self.file_leases.borrow_mut().clear();
         for handle in std::mem::take(&mut *self.files.borrow_mut()) {
             alkyhol::ffi::CloseHandle(handle);
         }
@@ -602,6 +645,7 @@ impl Cpu32 {
             command_ansi: Cell::new(0),
             exit: Cell::new(None),
             files: RefCell::new(Default::default()),
+            file_leases: RefCell::new(Default::default()),
             searches: RefCell::new(Default::default()),
             phase: Cell::new(Phase32::Isolated),
             modules: RefCell::new(Vec::new()),
@@ -633,6 +677,7 @@ impl Cpu32 {
             current_directory: RefCell::new(None),
             icons: RefCell::new(Default::default()),
             events: RefCell::new(Default::default()),
+            ui: RefCell::new(Default::default()),
             utc_timezone: false,
         })
     }
@@ -1882,6 +1927,11 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
                 alkyhol::ffi::Sleep(args[0]);
                 0
             }
+            143 | 144 => fileio32::seek(image, args, id == 144),
+            145 => fileio32::flush(image, args[0]),
+            146 => fileio32::information(image, args),
+            147 => fileio32::end(image, args[0]),
+            148..=176 => ui32::dispatch(image, id - 148, &words),
             _ => unreachable!(),
         }
     })
@@ -2005,6 +2055,7 @@ mod tests {
                 command_ansi: Cell::new(0),
                 exit: Cell::new(None),
                 files: RefCell::new(Default::default()),
+                file_leases: RefCell::new(Default::default()),
                 searches: RefCell::new(Default::default()),
                 phase: Cell::new(Phase32::Isolated),
                 modules: RefCell::new(Vec::new()),
@@ -2034,6 +2085,7 @@ mod tests {
                 current_directory: RefCell::new(None),
                 icons: RefCell::new(Default::default()),
                 events: RefCell::new(Default::default()),
+                ui: RefCell::new(Default::default()),
                 utc_timezone: false,
             }),
             tls: None,

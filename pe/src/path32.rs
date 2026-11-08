@@ -1,7 +1,7 @@
 //! Lexical full-path family, using real process-owned Z: current directory.
 use super::{LoadedImage32, bulk32, directory32, startup32, unsupported};
 use crate::Result;
-fn resolve(current: &str, input: &str) -> Result<String> {
+pub(super) fn resolve(current: &str, input: &str) -> Result<String> {
     if input.is_empty() || input.len() > 32767 || input.starts_with("\\\\") {
         return Err("full-path input is outside the ordinary drive profile".into());
     }

@@ -285,6 +285,18 @@ impl Kernel {
             write,
         })))
     }
+    /// Adopt an already-open regular file, restricting its interface permissions.
+    /// The host descriptor continues enforcing its own access rights as well.
+    pub fn adopt_file(&self, file: File, access: u32) -> WinResult<Handle> {
+        if access & !(GENERIC_READ | GENERIC_WRITE) != 0 || !file.metadata()?.is_file() {
+            return Err(WinError(ERROR_NOT_SUPPORTED));
+        }
+        Ok(self.insert(Object::File(FileObject {
+            file: Mutex::new(file),
+            read: access & GENERIC_READ != 0,
+            write: access & GENERIC_WRITE != 0,
+        })))
+    }
     pub fn read_file(&self, handle: Handle, bytes: &mut [u8]) -> WinResult<usize> {
         let object = self.object(handle)?;
         let Object::File(file) = &*object else {
@@ -308,7 +320,8 @@ impl Kernel {
     pub fn file_size(&self, handle: Handle) -> WinResult<u64> {
         Ok(self.file_metadata(handle)?.len())
     }
-    pub(crate) fn file_metadata(&self, handle: Handle) -> WinResult<std::fs::Metadata> {
+    /// Live metadata of the owned file descriptor, including after seeking.
+    pub fn file_metadata(&self, handle: Handle) -> WinResult<std::fs::Metadata> {
         let object = self.object(handle)?;
         let Object::File(file) = &*object else {
             return Err(WinError(ERROR_INVALID_HANDLE));

@@ -170,6 +170,16 @@ fn function(name: &str) -> usize {
         .unwrap_or_else(|| unsupported("missing host startup API"))
 }
 pub(super) fn create_file(image: &LoadedImage32<'_>, args: &[u32; 8], ansi: bool) -> u32 {
+    if image.cpu.current_directory.borrow().is_none() {
+        let h = create_file_legacy(image, args, ansi);
+        if h != u32::MAX {
+            super::fileio32::track(image, h, args[1], args[2]);
+        }
+        return h;
+    }
+    super::fileio32::open(image, args, ansi)
+}
+pub(super) fn create_file_legacy(image: &LoadedImage32<'_>, args: &[u32; 8], ansi: bool) -> u32 {
     if image.cpu.files.borrow().len() >= 4096 {
         unsupported("PE32 open file limit");
     }
@@ -497,6 +507,7 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
             let result = unsafe { call(h) as u32 };
             if result != 0 {
                 image.cpu.files.borrow_mut().remove(&h);
+                image.cpu.file_leases.borrow_mut().remove(&h);
             }
             result
         }
