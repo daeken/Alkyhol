@@ -416,12 +416,11 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
             base
         }
         9 => {
-            if image
-                .cpu
-                .mutexes
-                .as_ref()
-                .is_some_and(|m| m.borrow_mut().close(args[0]))
-            {
+            if image.cpu.mutexes.as_ref().is_some_and(|m| {
+                m.borrow_mut()
+                    .close(args[0])
+                    .unwrap_or_else(|e| unsupported(&e))
+            }) {
                 return 1;
             }
             let call: unsafe extern "win64" fn(usize) -> i32 =

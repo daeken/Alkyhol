@@ -1,6 +1,8 @@
 //! Named, initially unowned mutex references in an explicit guest session.
 //! OS shared file locks represent live references across processes. This does
-//! not implement acquisition, release, abandonment, inheritance or Windows ACLs.
+//! supports non-alertable zero-timeout acquisition on the one admitted guest
+//! thread. Blocking waits, last-handle close while owned, inheritance and ACLs
+//! beyond the explicit default policy remain unsupported.
 use super::{LoadedImage32, startup32, unsupported};
 use crate::Result;
 use std::{
@@ -23,7 +25,32 @@ unsafe extern "C" {
 
 pub(super) struct State {
     directory: File,
-    handles: BTreeMap<u32, File>,
+    handles: BTreeMap<u32, Handle>,
+    owners: BTreeMap<String, Ownership>,
+}
+struct Handle {
+    _lease: File,
+    name: String,
+}
+struct Ownership {
+    file: File,
+    depth: u32,
+}
+fn marker(file: &mut File) -> Result<u8> {
+    if file.metadata().map_err(|e| e.to_string())?.len() != 1 {
+        return Err("missing or malformed mutex ownership record".into());
+    }
+    file.seek(SeekFrom::Start(0)).map_err(|e| e.to_string())?;
+    let mut byte = [0];
+    file.read_exact(&mut byte).map_err(|e| e.to_string())?;
+    if byte[0] > 1 {
+        return Err("invalid mutex ownership marker".into());
+    }
+    Ok(byte[0])
+}
+fn set_marker(file: &mut File, value: u8) -> Result<()> {
+    file.seek(SeekFrom::Start(0)).map_err(|e| e.to_string())?;
+    file.write_all(&[value]).map_err(|e| e.to_string())
 }
 fn name(units: &[u16]) -> Result<Vec<u16>> {
     // Bare and Local names share this caller-selected session namespace.
@@ -57,6 +84,7 @@ impl State {
         Ok(Self {
             directory,
             handles: BTreeMap::new(),
+            owners: BTreeMap::new(),
         })
     }
     fn file(&self, name: &str) -> Result<File> {
@@ -81,10 +109,74 @@ impl State {
         Ok(file)
     }
     pub(super) fn clear(&mut self) {
+        // Ending this admitted guest thread abandons its ownership if another
+        // process still holds a reference. Leave marker=1, release OS locks
+        // before dropping reference leases. A new object resets the marker.
+        self.owners.clear();
         self.handles.clear();
     }
-    pub(super) fn close(&mut self, handle: u32) -> bool {
-        self.handles.remove(&handle).is_some()
+    pub(super) fn close(&mut self, handle: u32) -> Result<bool> {
+        if let Some(value) = self.handles.get(&handle)
+            && self.owners.contains_key(&value.name)
+            && self
+                .handles
+                .values()
+                .filter(|h| h.name == value.name)
+                .count()
+                == 1
+        {
+            return Err("closing the last mutex handle while owned is unsupported".into());
+        }
+        Ok(self.handles.remove(&handle).is_some())
+    }
+    fn poll(&mut self, handle: u32) -> Result<u32> {
+        let name = self
+            .handles
+            .get(&handle)
+            .ok_or("mutex wait requires an owned live handle")?
+            .name
+            .clone();
+        if let Some(owner) = self.owners.get_mut(&name) {
+            owner.depth = owner
+                .depth
+                .checked_add(1)
+                .filter(|n| *n <= 1024)
+                .ok_or("mutex recursive ownership budget exceeded")?;
+            return Ok(0);
+        }
+        let gate = self.file("namespace.gate")?;
+        gate.lock().map_err(|e| e.to_string())?;
+        let mut file = self.file(&format!("{name}.owner"))?;
+        let abandoned = marker(&mut file)?;
+        match file.try_lock() {
+            Ok(()) => (),
+            Err(TryLockError::WouldBlock) => return Ok(258),
+            Err(TryLockError::Error(e)) => return Err(e.to_string()),
+        }
+        set_marker(&mut file, 1)?;
+        self.owners.insert(name, Ownership { file, depth: 1 });
+        Ok(if abandoned == 1 { 0x80 } else { 0 })
+    }
+    fn release(&mut self, handle: u32) -> Result<bool> {
+        let name = &self
+            .handles
+            .get(&handle)
+            .ok_or("mutex release requires an owned live handle")?
+            .name;
+        let Some(owner) = self.owners.get_mut(name) else {
+            return Ok(false);
+        };
+        if owner.depth > 1 {
+            owner.depth -= 1;
+            return Ok(true);
+        }
+        let gate = self.file("namespace.gate")?;
+        gate.lock().map_err(|e| e.to_string())?;
+        let owner = self.owners.get_mut(name).expect("checked owner");
+        set_marker(&mut owner.file, 0)?;
+        owner.file.unlock().map_err(|e| e.to_string())?;
+        self.owners.remove(name);
+        Ok(true)
     }
     fn create(&mut self, units: &[u16]) -> Result<(u32, bool)> {
         if self.handles.len() >= 128 {
@@ -112,6 +204,18 @@ impl State {
             lease.seek(SeekFrom::Start(0)).map_err(|e| e.to_string())?;
             lease.write_all(&record).map_err(|e| e.to_string())?;
         }
+        let mut owner = self.file(&format!("{filename}.owner"))?;
+        if !existing {
+            owner
+                .try_lock()
+                .map_err(|e| format!("inconsistent live owner without reference leases: {e}"))?;
+            if owner.metadata().map_err(|e| e.to_string())?.len() != 0 {
+                marker(&mut owner)?;
+            }
+            set_marker(&mut owner, 0)?;
+        } else {
+            marker(&mut owner)?;
+        }
         // Downgrade/acquire while creation remains serialized. Each returned
         // handle has an independent open-file reference and shared OS lease.
         lease.lock_shared().map_err(|e| e.to_string())?;
@@ -121,8 +225,37 @@ impl State {
         if (0x70000001..=0x70000003).contains(&handle) {
             return Err("mutex handle overlaps standard-stream namespace".into());
         }
-        self.handles.insert(handle, lease);
+        self.handles.insert(
+            handle,
+            Handle {
+                _lease: lease,
+                name: filename,
+            },
+        );
         Ok((handle, existing))
+    }
+}
+impl Drop for State {
+    fn drop(&mut self) {
+        self.clear();
+    }
+}
+pub(super) fn ownership(image: &LoadedImage32<'_>, args: &[u32; 8], wait: bool) -> u32 {
+    if wait && (args[1] != 0 || args[2] != 0) {
+        unsupported("mutex waits require zero timeout and alertable FALSE");
+    }
+    let state =
+        image.cpu.mutexes.as_ref().unwrap_or_else(|| {
+            unsupported("mutex ownership requires an explicit object directory")
+        });
+    let mut state = state.borrow_mut();
+    if wait {
+        state.poll(args[0]).unwrap_or_else(|e| unsupported(&e))
+    } else if state.release(args[0]).unwrap_or_else(|e| unsupported(&e)) {
+        1
+    } else {
+        alkyhol::ffi::SetLastError(288);
+        0
     }
 }
 pub(super) fn create(image: &LoadedImage32<'_>, args: &[u32; 8]) -> u32 {
@@ -194,13 +327,13 @@ mod tests {
             let (second, exists) = b.create(&wide("Local\\Owned")).unwrap();
             assert!(exists);
             assert_ne!(first, second);
-            assert!(a.close(first));
-            assert!(!a.close(first));
+            assert!(a.close(first).unwrap());
+            assert!(!a.close(first).unwrap());
             let (third, exists) = a.create(&wide("Owned")).unwrap();
             assert!(exists);
-            assert!(b.close(second));
+            assert!(b.close(second).unwrap());
             a.clear();
-            assert!(!a.close(third));
+            assert!(!a.close(third).unwrap());
             let (_, exists) = b.create(&wide("Owned")).unwrap();
             assert!(!exists);
             let (_, exists) = a.create(&wide("owned")).unwrap();
@@ -220,6 +353,58 @@ mod tests {
         std::fs::remove_file(path.join(&filename)).unwrap();
         std::os::unix::fs::symlink("namespace.gate", path.join(filename)).unwrap();
         assert!(state.create(&wide("Owned")).is_err());
+        drop(state);
+        std::fs::remove_dir_all(path).unwrap();
+    }
+    #[test]
+    fn ownership_is_recursive_across_handles_and_contended_between_process_views() {
+        let path = std::env::temp_dir().join(format!("alkyhol-owner-{}", std::process::id()));
+        std::fs::create_dir(&path).unwrap();
+        {
+            let mut a = State::open(&path).unwrap();
+            let mut b = State::open(&path).unwrap();
+            let (first, _) = a.create(&wide("Owned")).unwrap();
+            let (second, _) = a.create(&wide("Owned")).unwrap();
+            let (other, _) = b.create(&wide("Owned")).unwrap();
+            assert!(!a.release(first).unwrap());
+            assert_eq!(a.poll(first).unwrap(), 0);
+            assert_eq!(a.poll(second).unwrap(), 0);
+            assert!(a.close(first).unwrap()); // Ownership belongs to the thread/object.
+            assert!(a.close(second).is_err()); // Last-owned-close remains outside the profile.
+            assert_eq!(b.poll(other).unwrap(), 258);
+            assert!(!b.release(other).unwrap());
+            assert!(a.release(second).unwrap());
+            assert_eq!(b.poll(other).unwrap(), 258);
+            assert!(a.release(second).unwrap());
+            assert_eq!(b.poll(other).unwrap(), 0);
+            assert_eq!(a.poll(second).unwrap(), 258);
+            b.clear();
+            assert_eq!(a.poll(second).unwrap(), 0x80); // Real OS ownership released, marker survives.
+            assert_eq!(a.poll(second).unwrap(), 0);
+            assert!(a.release(second).unwrap());
+            assert!(a.release(second).unwrap());
+            assert!(a.close(second).unwrap());
+            let (fresh, exists) = a.create(&wide("Owned")).unwrap();
+            assert!(!exists);
+            assert_eq!(a.poll(fresh).unwrap(), 0);
+            a.clear();
+            let (fresh, exists) = b.create(&wide("Owned")).unwrap();
+            assert!(!exists);
+            assert_eq!(b.poll(fresh).unwrap(), 0); // A new object cannot inherit abandonment.
+            assert!(b.release(fresh).unwrap());
+        }
+        std::fs::remove_dir_all(path).unwrap();
+    }
+    #[test]
+    fn malformed_ownership_state_does_not_become_a_successful_wait() {
+        let path =
+            std::env::temp_dir().join(format!("alkyhol-owner-corrupt-{}", std::process::id()));
+        std::fs::create_dir(&path).unwrap();
+        let mut state = State::open(&path).unwrap();
+        let (handle, _) = state.create(&wide("Owned")).unwrap();
+        let (filename, _) = identity(&wide("Owned"));
+        std::fs::write(path.join(format!("{filename}.owner")), [2]).unwrap();
+        assert!(state.poll(handle).is_err());
         drop(state);
         std::fs::remove_dir_all(path).unwrap();
     }

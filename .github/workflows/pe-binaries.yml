@@ -113,6 +113,10 @@ jobs:
         run: |
           python tools/observe_pe32_mutex_attributes.py
           python tools/observe_pe32_mutex_attributes.py --host
+      - name: Execute real mutex acquisition, contention and abandonment reached by DAO
+        run: |
+          python tools/observe_pe32_mutex_ownership.py
+          python tools/observe_pe32_mutex_ownership.py --host
       - uses: actions/upload-artifact@v4
         with:
           name: pe32-startup-microtests
@@ -183,6 +187,8 @@ jobs:
             local/pe/startup-microtests/current-directory-host.json
             local/pe/startup-microtests/mutex-default-attributes-inputs.json
             local/pe/startup-microtests/mutex-default-attributes-host.json
+            local/pe/startup-microtests/mutex-ownership-inputs.json
+            local/pe/startup-microtests/mutex-ownership-host.json
             local/pe/startup-microtests/ctx-layout-empty-importer.dll
             local/pe/startup-microtests/ctx-layout-*.manifest
   native-pe32-startup:
@@ -288,6 +294,9 @@ jobs:
       - name: Observe explicit default mutex attributes sharing an object with NULL attributes
         if: ${{ success() || failure() }}
         run: python tools/observe_pe32_mutex_attributes.py --native
+      - name: Observe identical PE32 mutex ownership across real native processes
+        if: ${{ success() || failure() }}
+        run: python tools/observe_pe32_mutex_ownership.py --native
       - uses: actions/upload-artifact@v4
         if: always()
         with:

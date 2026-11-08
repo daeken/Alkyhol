@@ -257,7 +257,8 @@ pub struct ProcessOptions32 {
     pub registry_catalog: Option<std::path::PathBuf>,
     /// Explicit shared guest-session object directory. All participating guest
     /// processes must select the same owned directory. Named, initially unowned
-    /// mutex references only; ownership/waits/ACLs remain unsupported.
+    /// mutexes, zero-timeout non-alertable acquisition and release on the one
+    /// admitted guest thread. Blocking waits and general ACLs remain unsupported.
     pub object_directory: Option<std::path::PathBuf>,
     /// Explicit guest timezone. Default is unknown/unsupported for local-time
     /// APIs; host-local DST behavior is never guessed.

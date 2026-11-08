@@ -78,7 +78,7 @@ unsafe extern "C" {
 }
 const PAGE: usize = 4096;
 const STACK: usize = 1024 * 1024;
-const APIS: [(&str, u16); 113] = [
+const APIS: [(&str, u16); 115] = [
     ("GetLastError", 0),
     ("SetLastError", 4),
     ("GetStdHandle", 4),
@@ -192,6 +192,8 @@ const APIS: [(&str, u16); 113] = [
     ("timeGetTime", 0),
     ("SetCurrentDirectoryW", 4),
     ("GetCurrentDirectoryW", 8),
+    ("WaitForSingleObjectEx", 12),
+    ("ReleaseMutex", 4),
 ];
 const EXIT_API: u32 = 14;
 // Win32 promises a reversible process-specific representation, not a published
@@ -1774,6 +1776,7 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
             109 => mutex32::create(image, &args),
             111 => directory32::set(image, args[0]),
             112 => directory32::get(image, &args),
+            113 | 114 => mutex32::ownership(image, &args, id == 113),
             _ => unreachable!(),
         }
     })

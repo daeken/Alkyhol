@@ -4,6 +4,40 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## Real zero-timeout mutex ownership prepared for the reached DAO call
+
+The PE32 provider now implements `WaitForSingleObjectEx(handle, 0, FALSE)` and
+`ReleaseMutex` on its owned named mutexes and one admitted guest thread. A
+separate exclusive OS file lock holds ownership across guest calls/processes;
+reference leases remain independent. Recursive waits through any live handle
+increment the thread/object count, and only the final release clears ownership.
+A non-owner release fails with error 288. A live foreign owner produces timeout
+258. Persistent ownership markers plus released OS locks report abandoned
+ownership (128) after owner process death while another reference remains; a
+new object resets that marker. These are state changes, not invented wait results.
+
+Two original owned PE32 processes actually exercise contention, explicit release
+and handoff, then forced owner-process death and abandoned acquisition. All raw
+readiness/tail words, error state and process outcomes are retained. Recursive
+acquire/release, non-owner failure and caller stack balance run separately.
+All three scenarios pass on physical M4. Timed and alertable waits stop in two
+guest exclusions. Two new Rust units check shared-handle ownership, recursion,
+contention, abandonment/new-object reset, last-owned-close rejection and malformed
+ownership state. Existing reference-lifetime fixtures and their frozen bytes
+remain unchanged. Native comparison and the next original EXE run are pending.
+Local checks pass: 206 PE Rust checks including doctests on the Rosetta target,
+398 Python tests, project Clippy and formatting. The earlier frozen reference
+lifetime observer also passes its identical-PE lifecycle and cross-process
+close/death scenarios with the ownership implementation present.
+
+The finite contract follows Microsoft's
+[WaitForSingleObjectEx](https://learn.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-waitforsingleobjectex)
+and [ReleaseMutex](https://learn.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-releasemutex)
+descriptions. Blocking/timed/APC waits, other object kinds, additional guest
+threads, initial ownership, closing the last handle while still owned, custom
+security/inheritance and general mixed-version namespace sharing remain
+unsupported. This does not establish game compatibility or complete Win32 waits.
+
 ## Original DAO passes directory setup and explicit mutex attributes; next is acquisition
 
 At clean runtime revision `08b94a6`, the physical M4 unchanged original EXE
