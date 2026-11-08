@@ -1,0 +1,3 @@
+LIBRARY terminate.dll
+EXPORTS
+  Finish=_Finish@4

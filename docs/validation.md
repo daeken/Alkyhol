@@ -4,7 +4,31 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
-## Released i386 peports: physical M4 startup/file/Unicode/exit evidence
+## Closed PE32 process graph: physical M4 startup/calls/teardown evidence
+
+The original MIT process observer statically imports two unchanged frozen PE32
+DLLs, shares a dependency, performs actual module/symbol lookup and indirect
+calls, then calls a real imported third DLL that executes ExitProcess(7).
+The physical M4 emits all 105 raw DWORDs with status 7 in normal and forced-rebase
+runs. Static initialization happens once, then original DLL code runs in reverse
+teardown order. The owner restores/clears actual host selector state and rejects
+restart. Its complete positive EXE/DLL graph now transfers unchanged to Windows
+for native startup/termination comparison; that independent result is pending.
+
+Four host preflight restrictions (missing DLL, duplicate DLL, unused DLL and
+missing symbol) produce explicit status 78 before any guest output. A genuine
+failing initializer calls its dependency, receives immediate cleanup, then the
+previously initialized dependency rolls back. The 52 raw DWORD rollback sequence
+and status 78 are separate host evidence, not native failed-static-startup parity.
+Metadata/unit tests cover graph order/shared dependencies/cycles, identities and
+module/export ownership during initialization and teardown; protocol negatives
+require every raw word, exact inputs, clean matching revisions and error outputs.
+See docs/pe32.md for the bounded API and remaining unsupported startup features.
+All 133 PE host tests, 16 compiler checks, 321 Python tests and Clippy pass.
+Portable metadata tests pass; physical bounded-SEH, linked-DLL and released
+i386 peports regressions retain their outcomes. No game instruction has executed.
+
+## Released i386 peports: native Windows, hosted Mac and physical M4
 
 The original released i386 peports from the official w64devkit 2.11.0 x86 archive
 passes all 16 exact existing peports corpus cases on the physical M4, both normal
@@ -22,11 +46,16 @@ ExitProcess. Exact status and raw output/error bytes cover help, imports, export
 file/stdin errors and subsequent-file recovery. The old released PE64 application,
 corpus and frozen native records remain unchanged.
 
-The new native workflow transfers the identical released i386 PE and frozen owned
-EXE/DLL input files to Windows. That native comparison is pending at this record;
-physical execution, host assertions and future native evidence remain separate.
+At clean revision `e1772cf`, all 16 cases agree across native Windows, hosted Mac
+and physical M4, including actual forced relocation on Mac. Both strict paired
+comparisons pass. All three [PE jobs](https://github.com/daeken/Alkyhol/actions/runs/42451577637)
+and all 24 [conformance jobs](https://github.com/daeken/Alkyhol/actions/runs/42451577672)
+pass. The complete unchanged native record is frozen at
+`pe/reference/peports32-windows-v1.json` and required by default. Initial-capture
+bypass is removed. This finite utility evidence remains separate from game
+compatibility or general Windows/CRT startup.
 Focused unit checks cover four-byte argv/overflow, DLL+symbol binding identity,
-logical permissions, invalid conversion/I/O inputs, LocalFree ownership rejection
+logical permissions, invalid conversion/I/O inputs, LocalFree ownership rejection,
 exit-state reentry refusal and real owned-file cleanup without closing an
 unrelated open handle. All 130 PE host tests, 15 compiler checks, 316 Python
 tests and Clippy pass locally. Portable metadata tests pass. Frozen bounded

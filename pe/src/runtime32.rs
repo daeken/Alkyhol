@@ -13,8 +13,11 @@ use std::{
 #[path = "seh32.rs"]
 mod seh32;
 pub use seh32::ExceptionImage32;
+#[path = "process32.rs"]
+mod process32;
 #[path = "startup32.rs"]
 mod startup32;
+pub use process32::ProcessImage32;
 std::arch::global_asm!(include_str!("transition32.S"), options(att_syntax));
 unsafe extern "C" {
     fn mmap(
@@ -249,6 +252,20 @@ struct TlsBlock {
 }
 // Linked images on one guest thread share one stack and FS/last-error state.
 // An Rc keeps them thread-bound; the exclusive FS lease still guards CPU entry.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Phase32 {
+    Isolated,
+    Preparing,
+    Ready,
+    Running,
+    Detaching,
+    Exited,
+}
+struct Module32 {
+    name: String,
+    base: u32,
+    exports: Option<ExportTable>,
+}
 struct Cpu32 {
     stack: LowMapping,
     teb: LowMapping,
@@ -256,6 +273,9 @@ struct Cpu32 {
     command: Cell<u32>,
     exit: Cell<Option<u32>>,
     files: RefCell<std::collections::BTreeSet<usize>>,
+    phase: Cell<Phase32>,
+    modules: RefCell<Vec<Module32>>,
+    executable: Cell<u32>,
 }
 impl Cpu32 {
     fn close_files(&self) {
@@ -285,6 +305,9 @@ impl Cpu32 {
             command: Cell::new(0),
             exit: Cell::new(None),
             files: RefCell::new(Default::default()),
+            phase: Cell::new(Phase32::Isolated),
+            modules: RefCell::new(Vec::new()),
+            executable: Cell::new(0),
         })
     }
 }
@@ -292,6 +315,11 @@ impl Drop for Cpu32 {
     fn drop(&mut self) {
         self.close_files();
     }
+}
+struct MapContext32<'a> {
+    cpu: Option<Rc<Cpu32>>,
+    resolve: &'a dyn Fn(&str, &ImportSymbol) -> Result<Option<u32>>,
+    regions: &'a [(usize, usize, u32)],
 }
 enum Binding32 {
     Api(usize),
@@ -387,10 +415,42 @@ impl<'a> LoadedImage32<'a> {
         dependencies: &[(&str, &'a LoadedLibrary32<'a>)],
         exceptions: bool,
     ) -> Result<Self> {
+        let shared = dependency_cpu(dependencies)?;
+        let regions: Vec<_> = dependencies
+            .iter()
+            .flat_map(|(_, d)| d.mapping.regions.iter().copied())
+            .collect();
+        let resolve = |name: &str, symbol: &ImportSymbol| {
+            dependencies
+                .iter()
+                .find(|(n, _)| n.eq_ignore_ascii_case(name))
+                .map(|(_, d)| d.import_address(symbol).map(Some))
+                .unwrap_or(Ok(None))
+        };
+        Self::map_resolved(
+            bytes,
+            rebase,
+            _process,
+            dll,
+            exceptions,
+            MapContext32 {
+                cpu: shared,
+                resolve: &resolve,
+                regions: &regions,
+            },
+        )
+    }
+    fn map_resolved(
+        bytes: &[u8],
+        rebase: bool,
+        _process: &'a ProcessContext,
+        dll: bool,
+        exceptions: bool,
+        context: MapContext32<'_>,
+    ) -> Result<Self> {
         if ACTIVE.with(|s| !s.get().is_null()) {
             return Err("PE32 loading during guest entry is unsupported".into());
         }
-        let shared = dependency_cpu(dependencies)?;
         if unsafe { getpagesize() } != PAGE as i32 {
             return Err("PE32 requires 4-KiB host pages".into());
         }
@@ -415,15 +475,7 @@ impl<'a> LoadedImage32<'a> {
             let binding = if let Some(id) = api_id(&import.module, &import.symbol) {
                 Some(Binding32::Api(id))
             } else {
-                match dependencies
-                    .iter()
-                    .find(|(name, _)| name.eq_ignore_ascii_case(&import.module))
-                {
-                    Some((_, library)) => {
-                        Some(Binding32::Direct(library.import_address(&import.symbol)?))
-                    }
-                    None => None,
-                }
+                (context.resolve)(&import.module, &import.symbol)?.map(Binding32::Direct)
             }
             .ok_or_else(|| {
                 format!(
@@ -461,7 +513,7 @@ impl<'a> LoadedImage32<'a> {
             return Err("PE32 preferred base unavailable and no HIGHLOW fixups".into());
         }
         let gates = LowMapping::new(PAGE, PAGE, 0)?;
-        let cpu = match shared {
+        let cpu = match context.cpu {
             Some(cpu) => cpu,
             None => Rc::new(Cpu32::new()?),
         };
@@ -602,9 +654,7 @@ impl<'a> LoadedImage32<'a> {
         }
         // A direct dependency may call its imported API gate while this image
         // owns ACTIVE. All borrowed dependency data must retain its real rights.
-        for &(_, dependency) in dependencies {
-            regions.extend_from_slice(&dependency.mapping.regions);
-        }
+        regions.extend_from_slice(context.regions);
         regions.sort_unstable();
         regions.dedup();
         let standard: unsafe extern "win64" fn(u32) -> usize = unsafe {
@@ -688,19 +738,69 @@ impl<'a> LoadedImage32<'a> {
             Ok(unsafe { (at as usize as *const u8).read() })
         })
     }
+    fn module_handle(&self, address: u32, wide: bool) -> Result<Option<u32>> {
+        if self.cpu.modules.borrow().is_empty() {
+            if self.dll {
+                return Err("isolated PE32 DLL has no process executable module lookup".into());
+            }
+            if address != 0 {
+                return Err("named PE32 module lookup is unsupported".into());
+            }
+            return Ok(Some(self.image.base as u32));
+        }
+        if address == 0 {
+            return Ok(Some(self.cpu.executable.get()));
+        }
+        let mut name = if wide {
+            startup32::module_name(self, address)?
+        } else {
+            self.export_name(address)?
+        };
+        if name.len() > 255
+            || !name
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b))
+        {
+            return Err("PE32 module lookup requires an explicit ASCII basename".into());
+        }
+        if !name.contains('.') {
+            name.push_str(".dll");
+        }
+        if crate::abi::is_builtin(&name) {
+            return Err("PE32 builtin DLL module handles are unsupported".into());
+        }
+        Ok(self
+            .cpu
+            .modules
+            .borrow()
+            .iter()
+            .find(|m| m.name.eq_ignore_ascii_case(&name))
+            .map(|m| m.base))
+    }
     fn export_address(&self, module: u32, symbol: u32) -> Result<Option<u32>> {
-        if module != self.image.base as u32 {
-            return Err("GetProcAddress requires the current PE32 executable module".into());
-        }
-        if self.exports.is_none() {
-            return Err("GetProcAddress without a PE32 export table is unsupported".into());
-        }
+        let modules = self.cpu.modules.borrow();
+        let exports = if modules.is_empty() {
+            if module != self.image.base as u32 {
+                return Err("GetProcAddress requires the current PE32 executable module".into());
+            }
+            if self.exports.is_none() {
+                return Err("GetProcAddress without a PE32 export table is unsupported".into());
+            }
+            self.exports.as_ref()
+        } else {
+            modules
+                .iter()
+                .find(|m| m.base == module)
+                .ok_or("GetProcAddress requires a known PE32 process module")?
+                .exports
+                .as_ref()
+        };
         let name = if symbol > u16::MAX as u32 {
             Some(self.export_name(symbol)?)
         } else {
             None
         };
-        let entry = self.exports.as_ref().and_then(|table| {
+        let entry = exports.and_then(|table| {
             table.entries.iter().find(|e| match &name {
                 Some(n) => e.names.contains(n),
                 None => e.ordinal == symbol,
@@ -708,7 +808,7 @@ impl<'a> LoadedImage32<'a> {
         });
         match entry.map(|e| &e.target) {
             None => Ok(None),
-            Some(ExportTarget::Address { rva }) => (self.image.base as u32)
+            Some(ExportTarget::Address { rva }) => module
                 .checked_add(*rva as u32)
                 .map(Some)
                 .ok_or_else(|| "export address overflow".into()),
@@ -743,7 +843,7 @@ impl<'a> LoadedImage32<'a> {
             if !slot.get().is_null() {
                 return Err("nested PE32 entry unsupported".into());
             }
-            if self.cpu.exit.get().is_some() {
+            if self.cpu.exit.get().is_some() && self.cpu.phase.get() != Phase32::Detaching {
                 return Err("PE32 process already requested ExitProcess".into());
             }
             if self.tls.is_some() && self.tls_entered.get() {
@@ -1036,15 +1136,14 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
                 }
             }
             3 => startup32::io(image, &args, true),
-            4 | 5 => {
-                if image.dll {
-                    unsupported("isolated PE32 DLL has no process executable module lookup");
+            4 | 5 => match image.module_handle(args[0], id == 5) {
+                Ok(Some(base)) => base,
+                Ok(None) => {
+                    alkyhol::ffi::SetLastError(126);
+                    0
                 }
-                if args[0] != 0 {
-                    unsupported("named PE32 module lookup is unsupported");
-                }
-                image.image.base as u32
-            }
+                Err(error) => unsupported(&error),
+            },
             6 => match image.export_address(args[0], args[1]) {
                 Ok(Some(address)) => address,
                 Ok(None) => {
@@ -1090,6 +1189,9 @@ mod tests {
                 command: Cell::new(0),
                 exit: Cell::new(None),
                 files: RefCell::new(Default::default()),
+                phase: Cell::new(Phase32::Isolated),
+                modules: RefCell::new(Vec::new()),
+                executable: Cell::new(0),
             }),
             tls: None,
             tls_entered: Cell::new(false),

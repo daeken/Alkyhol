@@ -28,7 +28,6 @@ def compare(reports,reference=None):
 
 
 if __name__=='__main__':
-    p=argparse.ArgumentParser(description=__doc__);p.add_argument('reports',type=Path,nargs='+');p.add_argument('--initial-native-capture',action='store_true');args=p.parse_args()
+    p=argparse.ArgumentParser(description=__doc__);p.add_argument('reports',type=Path,nargs='+');args=p.parse_args()
     reports=[json.loads(p.read_text(encoding='utf-8')) for p in args.reports]
-    reference=next(r for r in reports if r['backend']==NATIVE) if args.initial_native_capture else None
-    print('Native Windows and Alkyhol agree on '+str(compare(reports,reference))+' unchanged released peports cases')
+    print('Native Windows and Alkyhol agree on '+str(compare(reports))+' unchanged released peports cases')

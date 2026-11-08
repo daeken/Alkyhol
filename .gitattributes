@@ -64,3 +64,6 @@ tools/build_pe32_certificates.py text eol=lf
 tools/build_pe32_load_config_geometry.py text eol=lf
 
 pe/reference/peports32-windows-v1.json -text whitespace=cr-at-eol
+
+pe/fixtures/pe32-process/* text eol=lf
+pe/reference/pe32-process-windows-v1.json -text whitespace=cr-at-eol

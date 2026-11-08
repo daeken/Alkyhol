@@ -78,9 +78,9 @@ def identity(binary):
     if provenance!=wanted or type(provenance['schema_version']) is not int or provenance['rebuilt'] is not False or provenance['patched'] is not False:raise ValueError('changed release provenance')
     fixture_bytes()
     inputs=corpus_hashes()
-    reference=json.loads(REFERENCE.read_text(encoding='utf-8')) if REFERENCE.exists() else None
+    reference=json.loads(REFERENCE.read_text(encoding='utf-8'))
     for key,value in [('pe_sha256',PE_SHA256),('upstream_source_sha256',SOURCE_SHA256),('upstream_license_sha256',LICENSE_SHA256),('input_sha256',inputs)]:
-        if reference is not None and reference[key]!=value:raise ValueError('changed frozen release/corpus identity: '+key)
+        if reference[key]!=value:raise ValueError('changed frozen release/corpus identity: '+key)
     return inputs
 
 

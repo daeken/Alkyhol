@@ -72,6 +72,11 @@ fn read_units<T: Copy + Default + PartialEq>(
         Some(result)
     }
 }
+pub(super) fn module_name(image: &LoadedImage32<'_>, address: u32) -> crate::Result<String> {
+    let wide = read_units::<u16>(image, address, -1).ok_or("invalid PE32 UTF-16 module name")?;
+    String::from_utf16(&wide[..wide.len() - 1])
+        .map_err(|_| "invalid PE32 UTF-16 module name".into())
+}
 fn allocate(cpu: &Cpu32, bytes: &[u8], argv: bool) -> u32 {
     if bytes.is_empty() || bytes.len() > LIMIT || cpu.blocks.borrow().len() >= 64 {
         unsupported("Win32 startup allocation limit");
@@ -353,10 +358,13 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
         }
         12 | 13 => convert(image, args, id == 13),
         14 => {
-            if image.dll {
-                unsupported("ExitProcess from isolated PE32 DLL unsupported");
+            match image.cpu.phase.get() {
+                super::Phase32::Isolated if !image.dll => image.cpu.close_files(),
+                super::Phase32::Running => (),
+                _ => unsupported(
+                    "ExitProcess during PE32 DLL initialization/teardown is unsupported",
+                ),
             }
-            image.cpu.close_files();
             image.cpu.exit.set(Some(args[0]));
             args[0]
         }

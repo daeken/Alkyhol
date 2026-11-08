@@ -1,0 +1,393 @@
+//! Closed, single-thread PE32 process ownership. No filesystem DLL search.
+use super::{CallingConvention32, Cpu32, LoadedImage32, MapContext32, Module32, Phase32};
+use crate::{ExportTarget, Image, ImportSymbol, ProcessContext, Result};
+use std::{collections::BTreeMap, rc::Rc};
+
+struct Node<'a> {
+    name: String,
+    image: Image<'a>,
+    bytes: &'a [u8],
+}
+struct Plan<'a> {
+    nodes: Vec<Node<'a>>,
+    order: Vec<usize>,
+}
+fn executable_name(name: &str) -> Result<String> {
+    if name.len() > 255
+        || !name.to_ascii_lowercase().ends_with(".exe")
+        || !name
+            .as_bytes()
+            .first()
+            .is_some_and(u8::is_ascii_alphanumeric)
+        || !name
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b))
+    {
+        return Err("invalid explicit PE32 executable basename".into());
+    }
+    Ok(name.to_ascii_lowercase())
+}
+fn target(table: Option<&crate::ExportTable>, symbol: &ImportSymbol) -> Result<usize> {
+    let export = table
+        .and_then(|t| {
+            t.entries.iter().find(|e| match symbol {
+                ImportSymbol::Name(name) => e.names.contains(name),
+                ImportSymbol::Ordinal(n) => *n != 0 && e.ordinal == u32::from(*n),
+            })
+        })
+        .ok_or_else(|| format!("missing PE32 process export {symbol:?}"))?;
+    match export.target {
+        ExportTarget::Address { rva } => Ok(rva),
+        ExportTarget::Forwarder(_) => Err("PE32 process export forwarders are unsupported".into()),
+    }
+}
+fn visit(
+    index: usize,
+    edges: &[Vec<usize>],
+    states: &mut [u8],
+    order: &mut Vec<usize>,
+) -> Result<()> {
+    match states[index] {
+        2 => return Ok(()),
+        1 => return Err("cyclic PE32 process imports are unsupported".into()),
+        _ => (),
+    }
+    states[index] = 1;
+    for &child in &edges[index] {
+        visit(child, edges, states, order)?;
+    }
+    states[index] = 2;
+    order.push(index);
+    Ok(())
+}
+impl<'a> Plan<'a> {
+    fn new(executable: (&str, &'a [u8]), dlls: &[(&str, &'a [u8])], rebase: bool) -> Result<Self> {
+        if dlls.len() > 64 {
+            return Err("PE32 process exceeds 64 explicit DLLs".into());
+        }
+        let mut nodes = vec![Node {
+            name: executable_name(executable.0)?,
+            image: Image::parse_i386(executable.1)?,
+            bytes: executable.1,
+        }];
+        nodes[0].image.check_startup()?;
+        let mut indices = BTreeMap::new();
+        for &(name, bytes) in dlls {
+            let name = crate::runtime::dll_basename(name)?;
+            if indices.insert(name.clone(), nodes.len()).is_some() {
+                return Err("duplicate PE32 process DLL basename".into());
+            }
+            let image = Image::parse_i386_dll(bytes)?;
+            image.check_library_startup()?;
+            nodes.push(Node { name, image, bytes });
+        }
+        let mut exports = Vec::new();
+        for node in &nodes {
+            let fixups = node.image.relocations()?;
+            if rebase && fixups.is_empty() {
+                return Err(
+                    "forced PE32 process relocation requires HIGHLOW fixups in every module".into(),
+                );
+            }
+            if node
+                .image
+                .imports()?
+                .iter()
+                .any(|i| fixups.iter().any(|&r| r < i.iat + 4 && i.iat < r + 4))
+            {
+                return Err("PE32 process IAT overlaps HIGHLOW fixup".into());
+            }
+            let table = node.image.exports()?;
+            if table.as_ref().is_some_and(|t| {
+                t.entries
+                    .iter()
+                    .any(|e| matches!(e.target, ExportTarget::Forwarder(_)))
+            }) {
+                return Err("PE32 process export forwarders are unsupported".into());
+            }
+            exports.push(table);
+        }
+        let mut edges = vec![Vec::new(); nodes.len()];
+        for (index, node) in nodes.iter().enumerate() {
+            for import in node.image.imports()? {
+                if super::api_id(&import.module, &import.symbol).is_some() {
+                    continue;
+                }
+                if crate::abi::is_builtin(&import.module) {
+                    return Err(format!(
+                        "unsupported Win32 process builtin {}!{:?}",
+                        import.module, import.symbol
+                    ));
+                }
+                let dependency = *indices
+                    .get(&import.module.to_ascii_lowercase())
+                    .ok_or_else(|| format!("missing DLL from PE32 process: {}", import.module))?;
+                target(exports[dependency].as_ref(), &import.symbol)?;
+                if !edges[index].contains(&dependency) {
+                    edges[index].push(dependency);
+                }
+            }
+        }
+        let mut order = Vec::new();
+        visit(0, &edges, &mut vec![0; nodes.len()], &mut order)?;
+        if order.len() != nodes.len() {
+            return Err("unreferenced DLL in explicit PE32 process".into());
+        }
+        Ok(Self { nodes, order })
+    }
+}
+
+/// Own one executable and its complete explicitly supplied acyclic DLL graph.
+/// All modules map and bind before any initializer. A shared guest stack/TEB
+/// spans static DLL initialization, EXE entry and reverse DLL process teardown.
+/// DLL names identify caller-supplied bytes; no filesystem search or loader API.
+/// No DLL TLS/SEH, forwarders, cyclic imports, guest threads or reentrant loading.
+///
+/// ```compile_fail,E0505
+/// # use alkyhol_pe::{ProcessImage32,ProcessContext};
+/// # fn example(bytes:&[u8])->alkyhol_pe::Result<()> {
+/// let process=ProcessContext::install(&["program.exe".into()],&[])?;
+/// let image=unsafe {ProcessImage32::load(("program.exe",bytes),&[],false,&process)}?;
+/// drop(process);
+/// drop(image);
+/// # Ok(()) }
+/// ```
+pub struct ProcessImage32<'a> {
+    // Dependency-first order; the last item is the executable. This vector is
+    // private: an individual mapping cannot escape its dependency owner.
+    mappings: Vec<LoadedImage32<'a>>,
+    attached: usize,
+    started: bool,
+    finished: bool,
+}
+impl<'a> ProcessImage32<'a> {
+    /// Validate the complete graph, map all modules and perform static ATTACH.
+    /// A false initializer returns an explicit initialization error and rolls
+    /// back acquired initializers; it never becomes successful application entry.
+    ///
+    /// # Safety
+    /// All supplied instructions/initializers/teardown obey LoadedImage32's
+    /// trusted integer-only contract. Supplied module identities must be correct.
+    /// No threads, retained pointers, direct syscalls or unsupported exceptions.
+    pub unsafe fn load(
+        executable: (&str, &[u8]),
+        dlls: &[(&str, &[u8])],
+        rebase: bool,
+        process: &'a ProcessContext,
+    ) -> Result<Self> {
+        let plan = Plan::new(executable, dlls, rebase)?;
+        let cpu = Rc::new(Cpu32::new()?);
+        cpu.phase.set(Phase32::Preparing);
+        let mut mappings: Vec<LoadedImage32<'a>> = Vec::new();
+        let mut modules: Vec<(String, usize)> = Vec::new();
+        for &index in &plan.order {
+            let node = &plan.nodes[index];
+            let resolve = |name: &str, symbol: &ImportSymbol| {
+                let Some((_, i)) = modules.iter().find(|(n, _)| n.eq_ignore_ascii_case(name))
+                else {
+                    return Ok(None);
+                };
+                let mapping = &mappings[*i];
+                let rva = target(mapping.exports.as_ref(), symbol)?;
+                (mapping.image.base as u32)
+                    .checked_add(rva as u32)
+                    .map(Some)
+                    .ok_or_else(|| "PE32 process import address overflow".into())
+            };
+            let mapping = LoadedImage32::map_resolved(
+                node.bytes,
+                rebase,
+                process,
+                index != 0,
+                false,
+                MapContext32 {
+                    cpu: Some(cpu.clone()),
+                    resolve: &resolve,
+                    regions: &[],
+                },
+            )?;
+            modules.push((node.name.clone(), mappings.len()));
+            mappings.push(mapping);
+        }
+        let regions: Vec<_> = mappings
+            .iter()
+            .flat_map(|m| m.regions.iter().copied())
+            .collect();
+        for mapping in &mut mappings {
+            mapping.regions = regions.clone();
+        }
+        cpu.executable
+            .set(mappings.last().expect("root mapping").image.base as u32);
+        *cpu.modules.borrow_mut() = modules
+            .into_iter()
+            .map(|(name, index)| Module32 {
+                name,
+                base: mappings[index].image.base as u32,
+                exports: mappings[index].exports.clone(),
+            })
+            .collect();
+        let mut result = Self {
+            mappings,
+            attached: 0,
+            started: false,
+            finished: false,
+        };
+        for index in 0..result.mappings.len() - 1 {
+            if unsafe { result.dll_entry(index, 1, true) }? == 0 {
+                // A failed initializer is not an acquired successful module.
+                unsafe { result.dll_entry(index, 0, false) }?;
+                return Err("PE32 static DLL PROCESS_ATTACH returned FALSE".into());
+            }
+            result.attached += 1;
+        }
+        cpu.phase.set(Phase32::Ready);
+        Ok(result)
+    }
+    unsafe fn dll_entry(&self, index: usize, reason: u32, non_null: bool) -> Result<u32> {
+        let image = &self.mappings[index];
+        if image.entry == 0 {
+            return Ok(1);
+        }
+        // Reserved is opaque; expose only a valid owned non-NULL storage token,
+        // not an invented Windows startup structure. Dereferencing is unsupported.
+        let reserved = if non_null {
+            image.cpu.teb.base as u32
+        } else {
+            0
+        };
+        unsafe {
+            image.invoke(
+                image.entry,
+                &[image.image.base as u32, reason, reserved],
+                CallingConvention32::Stdcall,
+            )
+        }
+    }
+    fn shutdown(&mut self, terminating: bool) -> Result<()> {
+        if self.finished {
+            return Ok(());
+        }
+        let cpu = self.mappings.last().expect("root mapping").cpu.clone();
+        cpu.phase.set(Phase32::Detaching);
+        while self.attached > 0 {
+            self.attached -= 1;
+            unsafe { self.dll_entry(self.attached, 0, terminating) }?;
+        }
+        cpu.close_files();
+        cpu.phase.set(Phase32::Exited);
+        self.finished = true;
+        Ok(())
+    }
+    /// Execute the original EXE once. Imported ExitProcess escapes through the
+    /// CPU exit gate, then real DLL DETACH runs before owned file handles close.
+    ///
+    /// # Safety
+    /// Same native-code contract as load; integer entry-result/ExitProcess only.
+    pub unsafe fn enter(&mut self) -> Result<u32> {
+        if self.started || self.finished {
+            return Err("PE32 process cannot be restarted".into());
+        }
+        self.started = true;
+        let image = self.mappings.last().expect("root mapping");
+        image.cpu.phase.set(Phase32::Running);
+        let result = unsafe { image.enter() };
+        if let Ok(status) = result {
+            image.cpu.exit.set(Some(status));
+        }
+        self.shutdown(true)?;
+        result
+    }
+    /// Actual relocation decisions in dependency initialization order, EXE last.
+    pub fn relocations(&self) -> Vec<bool> {
+        self.mappings.iter().map(LoadedImage32::relocated).collect()
+    }
+}
+impl Drop for ProcessImage32<'_> {
+    fn drop(&mut self) {
+        if let Err(error) = self.shutdown(false) {
+            super::unsupported(&error);
+        }
+        // Reverse order is intentional, including after initialization rollback.
+        while let Some(mapping) = self.mappings.pop() {
+            drop(mapping);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn graph_preserves_dependency_order_shares_diamonds_and_rejects_cycles() {
+        let edges = vec![vec![2, 1], vec![3], vec![3], vec![]];
+        let mut order = Vec::new();
+        visit(0, &edges, &mut [0; 4], &mut order).unwrap();
+        assert_eq!(order, [3, 2, 1, 0]);
+        for edges in [
+            vec![vec![0]],
+            vec![vec![1], vec![0]],
+            vec![vec![1], vec![2], vec![1]],
+        ] {
+            assert!(visit(0, &edges, &mut vec![0; edges.len()], &mut Vec::new()).is_err());
+        }
+    }
+    #[test]
+    fn identities_reject_paths_reserved_names_and_ambiguous_executables() {
+        assert_eq!(executable_name("APP.ExE").unwrap(), "app.exe");
+        for name in [
+            "",
+            "../app.exe",
+            "C:app.exe",
+            "a/b.exe",
+            "x.dll",
+            ".exe",
+            "app exe",
+        ] {
+            assert!(executable_name(name).is_err());
+        }
+    }
+
+    #[test]
+    fn module_context_exposes_the_executable_in_dll_startup_and_checks_export_ownership() {
+        let mut image = super::super::tests::layout();
+        image.dll = true;
+        let table = crate::ExportTable {
+            dll_name: "leaf.dll".into(),
+            ordinal_base: 17,
+            entries: vec![crate::Export {
+                ordinal: 17,
+                names: vec!["Data".into()],
+                target: ExportTarget::Address { rva: 0x1000 },
+            }],
+        };
+        image.cpu.executable.set(0x400000);
+        *image.cpu.modules.borrow_mut() = vec![
+            Module32 {
+                name: "app.exe".into(),
+                base: 0x400000,
+                exports: None,
+            },
+            Module32 {
+                name: "leaf.dll".into(),
+                base: 0x200000,
+                exports: Some(table.clone()),
+            },
+        ];
+        for phase in [Phase32::Preparing, Phase32::Running, Phase32::Detaching] {
+            image.cpu.phase.set(phase);
+            assert_eq!(image.module_handle(0, false).unwrap(), Some(0x400000));
+            assert_eq!(image.module_handle(0, true).unwrap(), Some(0x400000));
+            assert_eq!(image.export_address(0x200000, 17).unwrap(), Some(0x201000));
+            assert_eq!(image.export_address(0x200000, 18).unwrap(), None);
+            assert_eq!(image.export_address(0x400000, 17).unwrap(), None);
+            assert!(image.export_address(0xdead0000, 17).is_err());
+        }
+        assert_eq!(
+            target(Some(&table), &ImportSymbol::Name("Data".into())).unwrap(),
+            0x1000
+        );
+        assert!(target(Some(&table), &ImportSymbol::Name("data".into())).is_err());
+        assert!(target(Some(&table), &ImportSymbol::Ordinal(0)).is_err());
+        assert!(target(None, &ImportSymbol::Ordinal(17)).is_err());
+    }
+}

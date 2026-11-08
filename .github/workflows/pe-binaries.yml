@@ -93,6 +93,21 @@ jobs:
         with:
           name: pe-peports32-alkyhol
           path: local/pe/peports32-alkyhol.json
+      - name: Execute a complete PE32 static EXE and DLL graph through process termination
+        run: |
+          python tools/build_pe32_process.py
+          python tools/run_pe32_process.py --directory local/pe/pe32-process --output local/pe/pe32-process-alkyhol.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe32-process-fixture
+          path: |
+            local/pe/pe32-process/*.dll
+            local/pe/pe32-process/program.exe
+            local/pe/pe32-process/pe32-process-fixture.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe32-process-alkyhol
+          path: local/pe/pe32-process-alkyhol.json
       - name: Execute the frozen owned DLL through Alkyhol, including DllMain and exports
         run: python tools/run_pe_library.py --dll local/pe/export-fixture/alkyhol_exports.dll --output local/pe/library-runtime.json
       - name: Execute a genuine failed DLL initializer and its ordered cleanup with imported APIs
@@ -853,6 +868,16 @@ jobs:
           path: local/pe/peports-windows.json
       - uses: actions/download-artifact@v4
         with:
+          name: pe32-process-fixture
+          path: local/pe/pe32-process
+      - name: Observe the identical static i386 process with the native Windows loader
+        run: python tools/run_pe32_process.py --directory local/pe/pe32-process --output local/pe/pe32-process-windows.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe32-process-windows
+          path: local/pe/pe32-process-windows.json
+      - uses: actions/download-artifact@v4
+        with:
           name: pe-peports32-release
           path: local/pe/peports32
       - name: Execute the identical released i386 peports with native Windows startup and APIs
@@ -1185,4 +1210,13 @@ jobs:
         with:
           name: pe-peports32-windows
           path: local/pe/observations
-      - run: python tools/compare_peports32_binary.py --initial-native-capture local/pe/observations/peports32-windows.json local/pe/observations/peports32-alkyhol.json
+      - run: python tools/compare_peports32_binary.py local/pe/observations/peports32-windows.json local/pe/observations/peports32-alkyhol.json
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe32-process-alkyhol
+          path: local/pe/observations
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe32-process-windows
+          path: local/pe/observations
+      - run: python tools/compare_pe32_process.py --initial-native-capture local/pe/observations/pe32-process-windows.json local/pe/observations/pe32-process-alkyhol.json
