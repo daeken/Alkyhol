@@ -126,6 +126,19 @@ impl State {
     }
 }
 pub(super) fn create(image: &LoadedImage32<'_>, args: &[u32; 8]) -> u32 {
+    if args[0] != 0 && image.cpu.diagnostic.is_some() {
+        if args[0].is_multiple_of(4) && image.permits(args[0] as usize, 12, false) {
+            let fields = unsafe { (args[0] as *const [u32; 3]).read() };
+            eprintln!(
+                "PE32 diagnostic mutex SECURITY_ATTRIBUTES: length={}; descriptor=0x{:08x}; inherit={}",
+                fields[0], fields[1], fields[2]
+            );
+        } else {
+            eprintln!(
+                "PE32 diagnostic mutex SECURITY_ATTRIBUTES: outside aligned readable guest storage"
+            );
+        }
+    }
     if args[0] != 0 || args[1] != 0 {
         unsupported("mutex security attributes or initial ownership are unsupported");
     }

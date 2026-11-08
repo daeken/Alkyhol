@@ -36,7 +36,6 @@ impl Directory {
         };
         let (host, metadata) = match resolved {
             Ok(value) => value,
-            Err(2 | 3) => return Ok(Err(3)),
             Err(error) => return Ok(Err(error)),
         };
         if !metadata.is_dir() {
@@ -173,7 +172,7 @@ mod tests {
             Directory::open(&format!("{windows}\\absent"))
                 .unwrap()
                 .err(),
-            Some(3)
+            Some(2)
         );
         assert_eq!(
             Directory::open(&format!("{windows}\\file")).unwrap().err(),

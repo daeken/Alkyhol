@@ -26,8 +26,8 @@ def build(d):
 def decode(data,a,b):
     if len(data)%4:raise ValueError('truncated current-directory transport')
     words=list(struct.unpack('<'+'I'*(len(data)//4),data));e=0xface1234;g=0x715e7a11
-    def observe(n,byte):return [n+1,e,n+1,0x7171,e,n,e,1,0,g,g,1,e,1,1,byte,1,e]
-    expected=[0x43445732,4,1,e,*observe(a,65),1,e,*observe(b,66),0,3,0,267,*observe(b,66),a,b,0]
+    def observe(n,byte):return [n+1,e,n+1,0x7171,e,n,e,1,0,g,g,1,0,1,1,byte,1,e]
+    expected=[0x43445732,4,1,e,*observe(a,65),1,e,*observe(b,66),0,2,0,267,*observe(b,66),a,b,0]
     expected[-1]=len(expected)
     if words!=expected:raise ValueError(f'current directory change/query/error/buffer/relative-file evidence differs: {words}')
     # Path lengths differ by host; all remaining observed words must agree.

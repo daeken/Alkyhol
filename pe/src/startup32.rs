@@ -474,6 +474,11 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
             if h == usize::MAX {
                 return u32::MAX;
             }
+            if image.cpu.current_directory.borrow().is_some() {
+                // Actual native directory observer: this admitted existing
+                // read-only open clears error state on success.
+                ffi::SetLastError(0);
+            }
             if h > u32::MAX as usize || (0x70000001..=0x70000003).contains(&h) {
                 unsupported("host handle cannot be represented in PE32");
             }

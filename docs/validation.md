@@ -4,6 +4,26 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## Native directory observation corrects two previously unmeasured error details
+
+The first [native directory job at `c880378`](https://github.com/daeken/Alkyhol/actions/runs/42512402029)
+executes the entire owned PE successfully and preserves all 67 raw words before
+its checker fails. Native `SetCurrentDirectoryW` on the known missing leaf
+returns error **2**, not the preparatory host hypothesis of 3. The real native
+existing read-only `CreateFileW` calls clear last error on success; the prior
+host bridge preserved it. The provider and new observation checker now use those
+measured details. The original producer, binary and all earlier frozen evidence
+are unchanged. Size/short/full queries, Unicode lengths, guards, failed-change
+atomicity, relative A/B reads and close error preservation already agree.
+The initial job remains failed; a fresh native pass is pending.
+
+At clean revision `c880378`, the physical M4 original EXE executes its actual
+`SetCurrentDirectoryW` and proceeds to another `CreateMutexW`, this time passing
+non-NULL `SECURITY_ATTRIBUTES`. That form still stops explicitly. A diagnostic
+now captures its three checked Win32 fields before rejection; it does not grant
+unsupported security/inheritance semantics. Original file identity and local
+profile/unpacked-dependency caveats remain; no menu/rendering is observed.
+
 ## Backed directory state prepared for the reached original startup call
 
 The PE32 `SetCurrentDirectoryW` provider now opens and retains a real directory
