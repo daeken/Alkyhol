@@ -4,7 +4,15 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
-## PE32 legacy load configuration / compiler GS: native Windows and physical M4 development
+## PE32 legacy load configuration / compiler GS: native Windows, hosted Mac and physical M4
+
+Strict-reference revision `1a844a6` passes all three
+[PE jobs](https://github.com/daeken/Alkyhol/actions/runs/42442892062) and all 24
+[conformance jobs](https://github.com/daeken/Alkyhol/actions/runs/42442892051).
+Downloaded clean Windows/hosted Mac reports and fresh clean physical M4 execution
+at that same revision pass both strict comparisons: all eleven positive records
+and the separately classified controlled compiler-check trap, with exact frozen
+source/PE identities, actual forced relocation and successful-return FS cleanup.
 
 The frozen native canonical record at `pe/reference/pe32-load-config-windows-v1.json`
 comes from `f566909`: all seven positive executables return 16 DWORDs, and the
@@ -39,7 +47,7 @@ enter the slow checker. A deliberately invalid compiler frame enters the owned
 checker and executes UD2: the physical host observes SIGILL (-4), with exactly the
 native begin marker. Raw Windows/Unix trap statuses remain separate; this is a
 controlled negative test, not a successful run or Windows SEH dispatch evidence.
-Strict same-clean-revision paired CI/physical comparison is pending.
+Strict same-clean-revision paired CI/physical comparison passes as recorded above.
 
 The focused metadata/entropy units, eight protocol tests, original unchanged PE
 execution and Clippy pass locally. Full checks are batched at milestones by the
