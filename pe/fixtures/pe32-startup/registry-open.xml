@@ -1,0 +1,5 @@
+<registry view="32">
+  <scope hive="HKCU" path="Software\AlkyholOwnedDaoStartup\{E97B4171-7A2B-4A82-A867-9AF56BFF70F4}" exists="true">
+    <key name="Present"/>
+  </scope>
+</registry>

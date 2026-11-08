@@ -4,6 +4,17 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## Native registry evidence prepared at the next original startup call
+
+For the reached `RegOpenKeyExW` frontier, the owned observer now builds against
+actual Advapi32 imports. Native CI creates only its dedicated temporary HKCU
+fixture, observes open/relative/case/32-bit-view lookup, a known absent child,
+output guards and handle closing, then removes its owned keys. It refuses to
+overwrite a pre-existing fixture. An independent SDK width check is included.
+Compilation and two transport tests pass locally; native observations and a
+backed registry implementation remain separate pending work. No game key data
+is embedded in these public sources or sent to CI.
+
 ## Native ordinary/LAA memory-profile checks now pass on identical PEs
 
 The [native startup job at `83ee2c5`](https://github.com/daeken/Alkyhol/actions/runs/42506046791)

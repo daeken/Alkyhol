@@ -93,6 +93,8 @@ jobs:
         run: |
           python tools/observe_pe32_system_info.py
           python tools/observe_pe32_system_info.py --host
+      - name: Build owned registry observations for the next original DAO call
+        run: python tools/observe_pe32_registry_open.py
       - uses: actions/upload-artifact@v4
         with:
           name: pe32-startup-microtests
@@ -152,6 +154,7 @@ jobs:
             local/pe/startup-microtests/heap-lock-host.json
             local/pe/startup-microtests/system-info-inputs.json
             local/pe/startup-microtests/system-info-host.json
+            local/pe/startup-microtests/registry-open-inputs.json
             local/pe/startup-microtests/ctx-layout-empty-importer.dll
             local/pe/startup-microtests/ctx-layout-*.manifest
   native-pe32-startup:
@@ -239,6 +242,12 @@ jobs:
       - name: Observe actual ordinary and large-address-aware system information and CPUID
         if: ${{ success() || failure() }}
         run: python tools/observe_pe32_system_info.py --native
+      - name: Check registry ABI widths independently against the x86 Windows SDK
+        if: ${{ success() || failure() }}
+        run: cl /nologo /c /W4 /WX /std:c++17 pe/fixtures/pe32-startup/registry-open-layout.cpp /Folocal/pe/startup-microtests/registry-open-layout.obj
+      - name: Observe real owned native registry open, miss and close behavior
+        if: ${{ success() || failure() }}
+        run: python tools/observe_pe32_registry_open.py --native
       - uses: actions/upload-artifact@v4
         if: always()
         with:
