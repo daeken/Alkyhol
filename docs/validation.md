@@ -4,7 +4,20 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
-## PE32 compiler static TLS data: native Windows and physical M4 development
+## PE32 compiler static TLS data: native Windows and physical M4
+
+All 27 CI jobs pass at strict-reference revision `f07f550`: three
+[PE jobs](https://github.com/daeken/Alkyhol/actions/runs/42438791566) and all 24
+[conformance jobs](https://github.com/daeken/Alkyhol/actions/runs/42438791677).
+Downloaded clean native Windows/hosted Mac reports and fresh clean physical M4
+execution at that same revision agree on all 24 raw DWORDs and exact frozen
+source/executed PE identities. Both strict paired comparisons pass, including
+actual forced relocation, host segment cleanup and one-body second-entry rejection.
+Existing frozen PE32/PE64, released application, DLL/source/SDK/COM, shader and
+Metal comparisons remain green. This covers SizeOfZeroFill=0 with no callbacks;
+the separate nonzero-zero-fill discrepancy remains unresolved and unsupported.
+The local game clears static TLS data preflight but still stops at unsupported
+load configuration before entry. No game code executed.
 
 Native Windows at `8efdd37` executes the separately identified `pe32-tls-data`
 observer and returns all 24 raw DWORDs. All three
@@ -22,7 +35,7 @@ a relocated global-pointer initializer, proper alignment and template containmen
 Mutating private TLS data leaves the original image template unchanged. The pointer
 writes the actual mapped global, and last-error state remains coherent. Physical
 M4 development normal/forced-rebase execution agrees on all 24 words. Strict
-same-clean-revision CI/physical comparison is pending. A host-only repeat request
+same-clean-revision CI/physical comparison passes at `f07f550` as recorded above. A host-only repeat request
 must emit one complete baseline body, restore selectors/clear its FS descriptor,
 and reject the second entry with explicit status 78; this is not native CRT restart.
 
