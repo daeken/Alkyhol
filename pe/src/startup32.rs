@@ -23,7 +23,13 @@ fn startup_info(handles: [usize; 3]) -> [u8; 68] {
 pub(super) struct Block {
     mapping: LowMapping,
     size: usize,
-    argv: bool,
+    kind: BlockKind,
+}
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum BlockKind {
+    Command,
+    Argv,
+    Environment,
 }
 pub(super) fn permits(cpu: &Cpu32, address: usize, len: usize, write: bool) -> bool {
     let Some(end) = address.checked_add(len) else {
@@ -31,7 +37,7 @@ pub(super) fn permits(cpu: &Cpu32, address: usize, len: usize, write: bool) -> b
     };
     cpu.blocks.borrow().iter().any(|b| {
         let base = b.mapping.base as usize;
-        (!write || b.argv) && address >= base && end <= base + b.size
+        (!write || b.kind == BlockKind::Argv) && address >= base && end <= base + b.size
     })
 }
 fn fail(error: u32) -> u32 {
@@ -93,7 +99,7 @@ pub(super) fn module_name(image: &LoadedImage32<'_>, address: u32) -> crate::Res
     String::from_utf16(&wide[..wide.len() - 1])
         .map_err(|_| "invalid PE32 UTF-16 module name".into())
 }
-fn allocate(cpu: &Cpu32, bytes: &[u8], argv: bool) -> u32 {
+fn allocate(cpu: &Cpu32, bytes: &[u8], kind: BlockKind) -> u32 {
     if bytes.is_empty() || bytes.len() > LIMIT || cpu.blocks.borrow().len() >= 64 {
         unsupported("Win32 startup allocation limit");
     }
@@ -102,7 +108,7 @@ fn allocate(cpu: &Cpu32, bytes: &[u8], argv: bool) -> u32 {
     unsafe {
         ptr::copy_nonoverlapping(bytes.as_ptr(), mapping.base, bytes.len());
     }
-    if !argv {
+    if kind != BlockKind::Argv {
         mapping
             .protect(0, rounded, 1)
             .unwrap_or_else(|e| unsupported(&e));
@@ -111,7 +117,7 @@ fn allocate(cpu: &Cpu32, bytes: &[u8], argv: bool) -> u32 {
     cpu.blocks.borrow_mut().push(Block {
         mapping,
         size: bytes.len(),
-        argv,
+        kind,
     });
     base
 }
@@ -208,7 +214,15 @@ pub(super) fn io(image: &LoadedImage32<'_>, args: &[u32; 8], write: bool) -> u32
     result as u32
 }
 fn convert(image: &LoadedImage32<'_>, args: &[u32; 8], wide_source: bool) -> u32 {
-    if args[0] != 65001 || !(if wide_source { [0, 128] } else { [0, 8] }).contains(&args[1]) {
+    let page = if args[0] == 0 {
+        super::ansi32::ACP
+    } else {
+        args[0]
+    };
+    if page == super::ansi32::ACP {
+        return convert_ansi(image, args, wide_source);
+    }
+    if page != 65001 || !(if wide_source { [0, 128] } else { [0, 8] }).contains(&args[1]) {
         return fail(50);
     }
     let capacity = args[5] as i32;
@@ -246,7 +260,7 @@ fn convert(image: &LoadedImage32<'_>, args: &[u32; 8], wide_source: bool) -> u32
         ) -> i32 = unsafe { std::mem::transmute(function("WideCharToMultiByte")) };
         result = unsafe {
             call(
-                args[0],
+                page,
                 args[1],
                 source.as_ptr(),
                 source.len() as i32,
@@ -270,7 +284,7 @@ fn convert(image: &LoadedImage32<'_>, args: &[u32; 8], wide_source: bool) -> u32
             unsafe { std::mem::transmute(function("MultiByteToWideChar")) };
         result = unsafe {
             call(
-                args[0],
+                page,
                 args[1],
                 source.as_ptr(),
                 source.len() as i32,
@@ -286,6 +300,78 @@ fn convert(image: &LoadedImage32<'_>, args: &[u32; 8], wide_source: bool) -> u32
     }
     result as u32
 }
+fn convert_ansi(image: &LoadedImage32<'_>, args: &[u32; 8], wide: bool) -> u32 {
+    if !(if wide {
+        &[0, 0x400][..]
+    } else {
+        &[0, 1, 8][..]
+    })
+    .contains(&args[1])
+    {
+        return fail(50);
+    }
+    let capacity = args[5] as i32;
+    if capacity < 0 || (capacity > 0 && (args[4] == 0 || args[2] == args[4])) {
+        return fail(87);
+    }
+    let width = if wide { 1 } else { 2 };
+    if capacity as usize > LIMIT / width {
+        return fail(50);
+    }
+    if capacity > 0 {
+        if !(args[4] as usize).is_multiple_of(width) {
+            return fail(87);
+        }
+        checked(image, args[4], capacity as usize * width, true);
+    }
+    if wide {
+        let default = if args[6] == 0 {
+            b'?'
+        } else {
+            checked(image, args[6], 1, false);
+            unsafe { (args[6] as *const u8).read() }
+        };
+        if args[7] != 0 {
+            if !args[7].is_multiple_of(4) {
+                return fail(87);
+            }
+            checked(image, args[7], 4, true);
+        }
+        let Some(units) = read_units::<u16>(image, args[2], args[3] as i32) else {
+            return 0;
+        };
+        let (bytes, used) = super::ansi32::encode(&units, args[1] == 0x400, default)
+            .unwrap_or_else(|e| unsupported(&e));
+        if capacity != 0 && (capacity as usize) < bytes.len() {
+            return fail(122);
+        }
+        if args[7] != 0 {
+            unsafe {
+                (args[7] as *mut u32).write(u32::from(used));
+            }
+        }
+        if capacity != 0 {
+            unsafe {
+                ptr::copy_nonoverlapping(bytes.as_ptr(), args[4] as *mut u8, bytes.len());
+            }
+        }
+        bytes.len() as u32
+    } else {
+        let Some(bytes) = read_units::<u8>(image, args[2], args[3] as i32) else {
+            return 0;
+        };
+        let units = super::ansi32::decode(&bytes);
+        if capacity != 0 && (capacity as usize) < units.len() {
+            return fail(122);
+        }
+        if capacity != 0 {
+            unsafe {
+                ptr::copy_nonoverlapping(units.as_ptr(), args[4] as *mut u16, units.len());
+            }
+        }
+        units.len() as u32
+    }
+}
 pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u32 {
     match id {
         7 => {
@@ -295,7 +381,7 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
             let command = crate::process::command_snapshot()
                 .unwrap_or_else(|| unsupported("missing process command line"));
             let bytes: Vec<u8> = command.into_iter().flat_map(u16::to_le_bytes).collect();
-            let base = allocate(&image.cpu, &bytes, false);
+            let base = allocate(&image.cpu, &bytes, BlockKind::Command);
             image.cpu.command.set(base);
             base
         }
@@ -314,7 +400,7 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
                 return fail(50);
             };
             let bytes = argv_bytes(&arguments, 0).unwrap_or_else(|e| unsupported(&e));
-            let base = allocate(&image.cpu, &bytes, true);
+            let base = allocate(&image.cpu, &bytes, BlockKind::Argv);
             let bytes = argv_bytes(&arguments, base).unwrap_or_else(|e| unsupported(&e));
             unsafe {
                 ptr::copy_nonoverlapping(bytes.as_ptr(), base as *mut u8, bytes.len());
@@ -394,7 +480,7 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
             let mut blocks = image.cpu.blocks.borrow_mut();
             if let Some(index) = blocks
                 .iter()
-                .position(|b| b.argv && b.mapping.base as u32 == args[0])
+                .position(|b| b.kind == BlockKind::Argv && b.mapping.base as u32 == args[0])
             {
                 blocks.remove(index);
                 0
@@ -455,10 +541,7 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
             let Some(name) = read_units::<u8>(image, args[0], -1) else {
                 return 0;
             };
-            if !name.is_ascii() {
-                return fail(50);
-            }
-            let wide: Vec<u16> = name.iter().map(|&v| u16::from(v)).collect();
+            let wide = super::ansi32::decode(&name);
             let call: unsafe extern "win64" fn(*const u16, *mut u16, u32) -> u32 =
                 unsafe { std::mem::transmute(function("GetEnvironmentVariableW")) };
             let required = unsafe { call(wide.as_ptr(), ptr::null_mut(), 0) };
@@ -470,22 +553,22 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
             }
             let mut value = vec![0u16; required as usize];
             let length = unsafe { call(wide.as_ptr(), value.as_mut_ptr(), required) };
-            if length >= required || value.iter().any(|&v| v > 127) {
+            if length >= required {
                 return fail(50);
             }
-            if args[2] <= length {
-                return required;
+            let (bytes, _) = super::ansi32::encode(&value[..length as usize + 1], false, b'?')
+                .unwrap_or_else(|e| unsupported(&e));
+            if args[2] < bytes.len() as u32 {
+                return bytes.len() as u32;
             }
             if args[1] == 0 {
                 return fail(87);
             }
-            checked(image, args[1], length as usize + 1, true);
-            for (i, unit) in value.into_iter().take(length as usize + 1).enumerate() {
-                unsafe {
-                    (args[1] as *mut u8).add(i).write(unit as u8);
-                }
+            checked(image, args[1], bytes.len(), true);
+            unsafe {
+                ptr::copy_nonoverlapping(bytes.as_ptr(), args[1] as *mut u8, bytes.len());
             }
-            length
+            bytes.len() as u32 - 1
         }
         40 => {
             checked(image, args[0], 68, true);
@@ -508,6 +591,57 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
                 return 1;
             }
             fail(6)
+        }
+        43 => {
+            let units = crate::process::environment_block().unwrap_or_else(|e| unsupported(&e));
+            let bytes: Vec<u8> = units.into_iter().flat_map(u16::to_le_bytes).collect();
+            allocate(&image.cpu, &bytes, BlockKind::Environment)
+        }
+        44 => {
+            let mut blocks = image.cpu.blocks.borrow_mut();
+            let Some(index) = blocks
+                .iter()
+                .position(|b| b.kind == BlockKind::Environment && b.mapping.base as u32 == args[0])
+            else {
+                return fail(87);
+            };
+            blocks.remove(index);
+            1
+        }
+        45 => {
+            if image.cpu.command_ansi.get() != 0 {
+                return image.cpu.command_ansi.get();
+            }
+            let units = crate::process::command_snapshot()
+                .unwrap_or_else(|| unsupported("missing process command line"));
+            let (bytes, _) =
+                super::ansi32::encode(&units, false, b'?').unwrap_or_else(|e| unsupported(&e));
+            let base = allocate(&image.cpu, &bytes, BlockKind::Command);
+            image.cpu.command_ansi.set(base);
+            base
+        }
+        48 => {
+            let page = if args[0] == 0 {
+                super::ansi32::ACP
+            } else {
+                args[0]
+            };
+            let maximum: u32 = match page {
+                super::ansi32::ACP => 1,
+                65001 => 4,
+                _ => return fail(87),
+            };
+            if args[1] == 0 || !args[1].is_multiple_of(4) {
+                return fail(87);
+            }
+            checked(image, args[1], 20, true);
+            let mut bytes = [0u8; 20];
+            bytes[..4].copy_from_slice(&maximum.to_le_bytes());
+            bytes[4] = b'?';
+            unsafe {
+                ptr::copy_nonoverlapping(bytes.as_ptr(), args[1] as *mut u8, bytes.len());
+            }
+            1
         }
         _ => unreachable!(),
     }
@@ -558,7 +692,7 @@ mod tests {
         let saved = ffi::GetLastError();
         for wide in [false, true] {
             for (args, error) in [
-                ([1252, 0, 0xdead0000, 4, 0, 0, 0, 0], 50),
+                ([932, 0, 0xdead0000, 4, 0, 0, 0, 0], 50),
                 ([65001, 1, 0xdead0000, 4, 0, 0, 0, 0], 50),
                 ([65001, 0, 0, 4, 0, 0, 0, 0], 87),
                 ([65001, 0, 0xdead0000, 0, 0, 0, 0, 0], 87),
@@ -583,17 +717,21 @@ mod tests {
     #[test]
     fn startup_permissions_exclude_padding_and_free_rejects_unowned_and_command_addresses() {
         let image = super::super::tests::layout();
-        for (base, argv) in [(0x700000, false), (0x710000, true)] {
+        for (base, kind) in [
+            (0x700000, BlockKind::Command),
+            (0x710000, BlockKind::Argv),
+            (0x720000, BlockKind::Environment),
+        ] {
             image.cpu.blocks.borrow_mut().push(Block {
                 mapping: LowMapping {
                     base: base as *mut u8,
                     len: PAGE,
                 },
                 size: 28,
-                argv,
+                kind,
             });
             assert!(permits(&image.cpu, base, 28, false));
-            assert_eq!(permits(&image.cpu, base, 28, true), argv);
+            assert_eq!(permits(&image.cpu, base, 28, true), kind == BlockKind::Argv);
             assert!(!permits(&image.cpu, base, 29, false));
             assert!(!permits(&image.cpu, base - 1, 1, false));
             assert!(!permits(&image.cpu, base + 28, 1, false));
@@ -603,12 +741,19 @@ mod tests {
         ffi::SetLastError(0xfeedbeef);
         assert_eq!(dispatch(&image, 15, &[0; 8]), 0);
         assert_eq!(ffi::GetLastError(), 0xfeedbeef);
-        for pointer in [0x700000, 0x710004, 0xdead0000] {
+        for pointer in [0x700000, 0x710004, 0x720000, 0xdead0000] {
             let mut args = [0; 8];
             args[0] = pointer;
             assert_eq!(dispatch(&image, 15, &args), pointer);
             assert_eq!(ffi::GetLastError(), 87);
-            assert_eq!(image.cpu.blocks.borrow().len(), 2);
+            assert_eq!(image.cpu.blocks.borrow().len(), 3);
+        }
+        for pointer in [0, 0x700000, 0x710000, 0x720002, 0xdead0000] {
+            let mut args = [0; 8];
+            args[0] = pointer;
+            assert_eq!(dispatch(&image, 44, &args), 0);
+            assert_eq!(ffi::GetLastError(), 87);
+            assert_eq!(image.cpu.blocks.borrow().len(), 3);
         }
         assert_eq!(handle(&image, 0xffffffff), usize::MAX);
         assert_eq!(handle(&image, 0xfffffffe), usize::MAX - 1);

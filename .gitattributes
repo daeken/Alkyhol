@@ -69,3 +69,6 @@ pe/fixtures/pe32-process/* text eol=lf
 pe/reference/pe32-process-windows-v1.json -text whitespace=cr-at-eol
 
 pe/fixtures/pe32-startup/* text eol=lf
+
+pe/data/windows-1252/bestfit1252.txt -text whitespace=cr-at-eol
+pe/data/windows-1252/LICENSE.txt -text

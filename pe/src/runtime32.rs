@@ -14,6 +14,8 @@ use std::{
 #[path = "seh32.rs"]
 mod seh32;
 pub use seh32::ExceptionImage32;
+#[path = "ansi32.rs"]
+mod ansi32;
 #[path = "diagnostic32.rs"]
 mod diagnostic32;
 #[path = "fiber32.rs"]
@@ -50,7 +52,7 @@ unsafe extern "C" {
 }
 const PAGE: usize = 4096;
 const STACK: usize = 1024 * 1024;
-const APIS: [(&str, u16); 43] = [
+const APIS: [(&str, u16); 49] = [
     ("GetLastError", 0),
     ("SetLastError", 4),
     ("GetStdHandle", 4),
@@ -94,6 +96,12 @@ const APIS: [(&str, u16); 43] = [
     ("GetStartupInfoA", 4),
     ("GetFileType", 4),
     ("SetHandleCount", 4),
+    ("GetEnvironmentStringsW", 0),
+    ("FreeEnvironmentStringsW", 4),
+    ("GetCommandLineA", 0),
+    ("GetACP", 0),
+    ("IsValidCodePage", 4),
+    ("GetCPInfo", 8),
 ];
 const EXIT_API: u32 = 14;
 // Win32 promises a reversible process-specific representation, not a published
@@ -317,6 +325,7 @@ struct Cpu32 {
     teb: LowMapping,
     blocks: RefCell<Vec<startup32::Block>>,
     command: Cell<u32>,
+    command_ansi: Cell<u32>,
     exit: Cell<Option<u32>>,
     files: RefCell<std::collections::BTreeSet<usize>>,
     phase: Cell<Phase32>,
@@ -372,6 +381,7 @@ impl Cpu32 {
             teb,
             blocks: RefCell::new(Vec::new()),
             command: Cell::new(0),
+            command_ansi: Cell::new(0),
             exit: Cell::new(None),
             files: RefCell::new(Default::default()),
             phase: Cell::new(Phase32::Isolated),
@@ -1383,6 +1393,10 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
             // Documented obsolete DOS API: Win32 deliberately has no effect
             // and returns the exact requested count. This is its API contract.
             42 => args[0],
+            43..=45 => startup32::dispatch(image, id, &args),
+            46 => ansi32::ACP,
+            47 => u32::from(matches!(args[0], ansi32::ACP | 65001)),
+            48 => startup32::dispatch(image, id, &args),
             _ => unreachable!(),
         }
     })
@@ -1426,6 +1440,7 @@ mod tests {
                 },
                 blocks: RefCell::new(Vec::new()),
                 command: Cell::new(0),
+                command_ansi: Cell::new(0),
                 exit: Cell::new(None),
                 files: RefCell::new(Default::default()),
                 phase: Cell::new(Phase32::Isolated),

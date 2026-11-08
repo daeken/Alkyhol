@@ -34,3 +34,13 @@ EXPORTS
   GetStartupInfoA
   GetFileType
   SetHandleCount
+  GetEnvironmentStringsW
+  FreeEnvironmentStringsW
+  GetCommandLineA
+  GetCommandLineW
+  GetACP
+  IsValidCodePage
+  GetCPInfo
+  WideCharToMultiByte
+  MultiByteToWideChar
+  GetStringTypeW

@@ -31,6 +31,18 @@ _Static_assert(sizeof(struct Startup)==68,"Win32 STARTUPINFOA width");
 __declspec(dllimport) void __stdcall GetStartupInfoA(struct Startup *);
 __declspec(dllimport) U32 __stdcall GetFileType(void *);
 __declspec(dllimport) U32 __stdcall SetHandleCount(U32);
+__declspec(dllimport) unsigned short *__stdcall GetEnvironmentStringsW(void);
+__declspec(dllimport) int __stdcall FreeEnvironmentStringsW(unsigned short *);
+__declspec(dllimport) const char *__stdcall GetCommandLineA(void);
+__declspec(dllimport) const unsigned short *__stdcall GetCommandLineW(void);
+__declspec(dllimport) U32 __stdcall GetACP(void);
+__declspec(dllimport) int __stdcall IsValidCodePage(U32);
+struct CpInfo { U32 maximum;unsigned char default_char[2],lead[12]; };
+_Static_assert(sizeof(struct CpInfo)==20,"Win32 CPINFO width");
+__declspec(dllimport) int __stdcall GetCPInfo(U32,struct CpInfo *);
+__declspec(dllimport) int __stdcall WideCharToMultiByte(U32,U32,const unsigned short *,int,char *,int,const char *,int *);
+__declspec(dllimport) int __stdcall MultiByteToWideChar(U32,U32,const char *,int,unsigned short *,int);
+__declspec(dllimport) int __stdcall GetStringTypeW(U32,const unsigned short *,int,unsigned short *);
 __declspec(dllimport) void *__stdcall GetProcessHeap(void);
 __declspec(dllimport) void *__stdcall HeapCreate(U32,U32,U32);
 __declspec(dllimport) void *__stdcall HeapAlloc(void *,U32,U32);
@@ -53,7 +65,48 @@ static void __stdcall cleanup(void *value) {
 }
 #endif
 U32 entry(void) {
-#if MODE==10
+#if MODE==13
+    /* Native-only observation for the next actually reached CRT blocker. */
+    char bytes[256];unsigned short wide[256],types[256];
+    for(U32 i=0;i<256;++i)bytes[i]=(char)i;
+    if(MultiByteToWideChar(1252,0,bytes,256,wide,256)!=256||!GetStringTypeW(1,wide,256,types))__builtin_trap();
+    U32 magic=0x4e4c5331;emit(&magic,1);emit((const U32 *)types,128);
+#elif MODE==12
+    const unsigned short input[4]={0x100,0x20ac,0x2603,0};
+    char bytes[8];int used=0;unsigned short wide[4];struct CpInfo cp;
+    U32 words[16]={0x414e3332};
+    words[1]=WideCharToMultiByte(1252,0,input,-1,0,0,0,0)==4;
+    words[2]=WideCharToMultiByte(1252,0,input,-1,bytes,8,0,&used)==4;
+    words[3]=(unsigned char)bytes[0]==0x41&&(unsigned char)bytes[1]==0x80&&bytes[2]=='?'&&bytes[3]==0&&used;
+    char replacement='!';used=0;
+    words[4]=WideCharToMultiByte(1252,0x400,input,-1,bytes,8,&replacement,&used)==4&&bytes[0]=='!'&&bytes[2]=='!'&&used;
+    const char encoded[4]={(char)0x80,(char)0x81,(char)0xe9,0};
+    words[5]=MultiByteToWideChar(1252,0,encoded,4,wide,4)==4;
+    words[6]=wide[0]==0x20ac&&wide[1]==0x81&&wide[2]==0xe9&&wide[3]==0;
+    bytes[1]='z';words[7]=WideCharToMultiByte(1252,0,input,-1,bytes,1,0,0)==0&&GetLastError()==122&&bytes[1]=='z';
+    words[8]=GetCPInfo(1252,&cp)&&cp.maximum==1&&cp.default_char[0]=='?'&&cp.default_char[1]==0;
+    words[9]=1;for(U32 i=0;i<12;++i)if(cp.lead[i])words[9]=0;
+    words[10]=GetCPInfo(65001,&cp)&&cp.maximum==4;
+    words[11]=IsValidCodePage(1252)&&IsValidCodePage(65001)&&!IsValidCodePage(~0u);
+    const unsigned short ascii[2]={'Q',0};
+    words[12]=WideCharToMultiByte(0,0,ascii,-1,bytes,8,0,0)==2&&bytes[0]=='Q'&&bytes[1]==0;
+    words[13]=GetACP()!=0;words[14]=1;words[15]=sizeof(void *);emit(words,16);
+#elif MODE==11
+    unsigned short *first=GetEnvironmentStringsW(),*second=GetEnvironmentStringsW();
+    if(!first||!second)__builtin_trap();
+    U32 found_ascii=0,found_unicode=0,found_empty=0,ended=0;
+    const unsigned short *names[3]={(const unsigned short *)L"ALKYHOL_STARTUP_MICRO=active",(const unsigned short *)L"ALKYHOL_STARTUP_UNICODE=\u03bb\U0001f338",(const unsigned short *)L"ALKYHOL_STARTUP_EMPTY="};
+    for(U32 at=0;at<32768;){
+        if(first[at]==0){ended=at>0&&first[at-1]==0;break;}
+        for(U32 n=0;n<3;++n){U32 i=0;while(names[n][i]&&first[at+i]==names[n][i])++i;if(!names[n][i]&&!first[at+i]){if(n==0)found_ascii=1;if(n==1)found_unicode=1;if(n==2)found_empty=1;}}
+        while(at<32768&&first[at])++at;++at;
+    }
+    const char *a=GetCommandLineA();const unsigned short *w=GetCommandLineW();
+    U32 matching=a&&w;for(U32 i=0;matching&&i<32768;++i){if((unsigned char)a[i]!=w[i])matching=0;if(!w[i])break;if(i==32767)matching=0;}
+    U32 words[12]={0x45423332,first!=0,second!=0,found_ascii,found_unicode,found_empty,ended,
+        FreeEnvironmentStringsW(first)!=0,second[0]!=0,FreeEnvironmentStringsW(second)!=0,
+        matching&&a==GetCommandLineA()&&w==GetCommandLineW()&&a[0]!=0&&w[0]!=0,4};emit(words,12);
+#elif MODE==10
     struct { struct Startup startup; U32 sentinel; } storage;
     storage.sentinel=0x1c2d3e4f;GetStartupInfoA(&storage.startup);
     struct Startup *s=&storage.startup;

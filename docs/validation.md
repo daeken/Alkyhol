@@ -4,6 +4,47 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## DAO environment and legacy ANSI code-page milestone
+
+On the physical M4, original bundled CRT execution now passes environment-block
+acquisition, sizing/conversion/copy/free, command-line acquisition and Windows-1252
+code-page setup. The next actual blocker is GetStringTypeW in CRT character
+classification. The game EXE's own entry has **not executed**. Original identities,
+raw argument/RVA captures and extracted dependencies stay local and ignored.
+
+The ANSI profile is explicitly Windows-1252. Unmodified Microsoft's 256-entry byte
+mapping and 698-entry best-fit mapping come from Unicode's public WindowsBestFit
+archive; the file identity, URL and Unicode License V3 are retained under
+pe/data/windows-1252/. This is mapping provenance, not native semantic evidence.
+CP_ACP, GetACP, IsValidCodePage and GetCPInfo consistently describe the installed
+1252/65001 profile. Other pages/flags and Windows-1252 surrogate conversion remain
+unsupported. The established explicit UTF-8 path is preserved.
+
+Twelve targeted host startup cases pass. New owned PE32 cases check a real Unicode
+environment snapshot including empty values and a surrogate pair, separate copies
+and correct free ownership, cached A/W command text, Windows-1252 best-fit/default
+replacement, conversion sizing, bounds and CPINFO layout. Eight positive binaries
+(92 normalized DWORDs) go unchanged to native Windows; their new native results
+are pending. A separate native-only PE records 256 CTYPE1 WORDs for the next
+GetStringTypeW blocker. It is built but never counted as host execution/parity;
+no classifier results have been guessed or fabricated to advance the game.
+
+Local validation passes 139 PE host tests, 16 compile/documentation checks,
+322 Python tests and Clippy. Byte/Unicode data preservation, BMP best-fit selection,
+empty environment termination and typed free rejection have targeted host checks;
+they are distinguished from the pending native observations above.
+
+For completed predecessor `408f11d`, all six identical positive PE files passed
+native Windows (64 DWORDs), hosted Mac and physical M4. All three
+[PE jobs](https://github.com/daeken/Alkyhol/actions/runs/42459905829) and all 24
+[conformance jobs](https://github.com/daeken/Alkyhol/actions/runs/42459905828) passed.
+That is finite module/TLS/callback/locking/stream evidence, not native original-game
+startup, rendering or game compatibility.
+
+References: [environment block contract](https://learn.microsoft.com/windows/win32/api/processenv/nf-processenv-getenvironmentstringsw),
+[matching release API](https://learn.microsoft.com/en-us/windows/win32/api/processenv/nf-processenv-freeenvironmentstringsw),
+and [mapping provenance](../pe/data/windows-1252/README.md).
+
 ## DAO CRT module/TLS/locking and standard-I/O milestone
 
 DAO remains the sole application driver. The original bundled CRT now executes
@@ -21,7 +62,7 @@ wraparound, configured STARTUPINFOA streams and real pipe types. Unknown dynamic
 exports and builtin ordinals stop with status 78 before post-call output. The four
 negative cases are host instrumentation evidence only. Six positive PEs contain 64
 normalized output DWORDs and are supplied unchanged to the existing Windows CI job;
-new native results are pending. No original game bytes or derived inventories enter
+native results passed at `408f11d` as recorded above. No original game bytes or derived inventories enter
 these tests. Thread/fiber switching, contended guest synchronization and automatic
 thread-exit FLS cleanup are not claimed. Pending FLS cleanup stops explicitly.
 

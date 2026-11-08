@@ -156,6 +156,24 @@ pub(crate) fn with_function_tables<T>(
 ) -> T {
     PROCESS.with(|slot| f(slot.borrow_mut().as_mut().map(|state| &mut state.functions)))
 }
+pub(crate) fn environment_block() -> Result<Vec<u16>> {
+    PROCESS.with(|p| {
+        let state = p.borrow();
+        let state = state.as_ref().ok_or("no installed process environment")?;
+        let mut units = Vec::new();
+        for (name, value) in &state.environment {
+            units.extend(name.encode_utf16());
+            units.push(b'=' as u16);
+            units.extend(value);
+            units.push(0);
+        }
+        if units.is_empty() {
+            units.push(0);
+        }
+        units.push(0);
+        Ok(units)
+    })
+}
 fn fail(error: u32) -> i32 {
     ffi::SetLastError(error);
     0
@@ -1034,6 +1052,14 @@ mod tests {
         s.encode_utf16().chain([0]).collect()
     }
     #[test]
+    fn empty_environment_is_double_terminated_and_requires_a_live_context() {
+        assert!(environment_block().is_err());
+        let guard = ProcessContext::install(&["x.exe".into()], &[]).unwrap();
+        assert_eq!(environment_block().unwrap(), [0, 0]);
+        drop(guard);
+        assert!(environment_block().is_err());
+    }
+    #[test]
     fn shell_argv_is_contiguous_utf16_owned_storage_freed_by_its_full_width_address() {
         let guard = context();
         let argv: unsafe extern "win64" fn(*const u16, *mut i32) -> *mut *mut u16 = unsafe {
@@ -1142,6 +1168,12 @@ mod tests {
     #[test]
     fn command_environment_and_module_buffers_obey_windows_size_rules() {
         let _guard = context();
+        assert_eq!(
+            environment_block().unwrap(),
+            "EMPTY=\0PKG_CONFIG_PATH=pc/λ🌸\0\0"
+                .encode_utf16()
+                .collect::<Vec<_>>()
+        );
         unsafe {
             assert_eq!(
                 wide(GetCommandLineW()).unwrap(),
