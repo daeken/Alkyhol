@@ -29,6 +29,8 @@ jobs:
         run: python tools/observe_pe32_activation_startup.py --host
       - name: Build owned private assembly metadata cases for the remaining original CRT blocker
         run: python tools/observe_pe32_assembly_metadata.py
+      - name: Build owned empty-DLL, token-exact and three-file activation cases
+        run: python tools/observe_pe32_assembly_layout.py
       - uses: actions/upload-artifact@v4
         with:
           name: pe32-startup-microtests
@@ -55,6 +57,9 @@ jobs:
             local/pe/startup-microtests/ctx-meta-inputs.json
             local/pe/startup-microtests/ctx-meta-*.manifest
             local/pe/startup-microtests/ctx-meta-token-importer.dll
+            local/pe/startup-microtests/ctx-layout-inputs.json
+            local/pe/startup-microtests/ctx-layout-empty-importer.dll
+            local/pe/startup-microtests/ctx-layout-*.manifest
   native-pe32-startup:
     needs: pe32-startup
     runs-on: windows-latest
@@ -86,6 +91,8 @@ jobs:
         run: python tools/observe_pe32_activation_startup.py --native
       - name: Record native private assembly version and integrity-metadata behavior; no host compatibility claim
         run: python tools/observe_pe32_assembly_metadata.py --native
+      - name: Observe actual empty-DLL scopes, token identities and three-file redirection sections
+        run: python tools/observe_pe32_assembly_layout.py --native
       - uses: actions/upload-artifact@v4
         if: always()
         with:

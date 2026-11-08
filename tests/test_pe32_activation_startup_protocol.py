@@ -47,6 +47,19 @@ class ActivationStartupProtocolTests(unittest.TestCase):
         wrong=dict(self.paths);wrong[1]=self.paths[2]
         with self.assertRaises(ValueError):decode(data,wrong)
 
+    def test_empty_context_observation_cannot_weaken_existing_key_contract(self):
+        data=self.fixture();start=self.query_offsets[6];end=self.query_offsets[7]+19*4
+        for _ in range(2):end+=4+struct.unpack_from('<I',data,end)[0]
+        queries=bytearray()
+        for flags in [0,1]:
+            q=[flags,0,14007,64]+[0x715e7a11]*6+[0xffffffff,1,1,0,1,0x715e7a11,1,0x715e7a11,0xffffffff]
+            queries+=struct.pack('<19I',*q)+struct.pack('<2I',0,0)
+        changed=data[:start]+queries+data[end:]
+        with self.assertRaisesRegex(ValueError,'did not expose'):decode(changed,self.paths)
+        observed=decode(changed,self.paths,require_explicit_key=False)
+        self.assertEqual([q['words'][1] for q in observed[3]['queries']],[0,0])
+        with self.assertRaises(ValueError):compare(observed)
+
     def test_guard_corruption_and_inconsistent_section_data_cannot_pass(self):
         data=self.fixture();offset=self.query_offsets[0]
         changed=bytearray(data);struct.pack_into('<I',changed,offset+15*4,0)

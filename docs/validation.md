@@ -6,18 +6,29 @@ See the latest direct-Metal record for current implementation evidence.
 
 ## Rust PE32 activation scopes execute the frozen Windows observer
 
-The next native-only experiment, `observe_pe32_assembly_metadata.py`, is queued
-alongside this implementation. It keeps the same owned EXE/provider/C code and
-varies only assembly metadata: a newer private assembly version, deliberately
-incorrect SHA-1 metadata with noInheritable, and an unsigned token-bearing private
-assembly whose version differs from the matching token-bearing requester. This
-tests whether those actual Windows private-deployment rules require publisher
-policy or integrity enforcement before choosing a CRT binding model. The local
-PE/manifest build and two synthetic XML/input-integrity tests pass; **Windows
-results are pending**. Nonzero native process statuses are retained as outcomes,
-not successful compatibility; timeouts or partial execution fail the observer.
-No original game/runtime data is used and no host restriction has been relaxed
-based on this unexecuted experiment.
+The native metadata experiment at `3e755c7` completed in the
+[Windows startup job](https://github.com/daeken/Alkyhol/actions/runs/42478104697).
+Windows rejected both the newer-version private assembly and the combined
+newer-version/token case before observer output, with process status
+`0xc0150002`. The exact-version case with deliberately incorrect SHA-1 metadata
+and noInheritable executed all seven lifecycle events successfully; every scope,
+query scalar and complete section byte matched the baseline. Thus private
+version matching cannot simply be relaxed to use the supplied newer CRT. This
+finite private-loader observation also distinguishes file-hash metadata from a
+runtime integrity check; it does not establish catalog verification, shared
+WinSxS installation or policy trust.
+
+The raw CRLF report is frozen in
+`pe/reference/pe32-assembly-metadata-windows-v1.json`, SHA-256
+`b6d946b0858252e9e18eb6688b61962ac5cadab602a8f5cd8f9a12ba59e06b4c`.
+Builds and reruns require exact original owned inputs and all three native
+outcomes. No original game/runtime data is used. The follow-up native-only
+`observe_pe32_assembly_layout.py` now builds the three remaining layouts relevant
+to the actual graph: an empty resource-2 DLL, a three-file assembly (two files
+remain unimported), and an exact-version token-bearing private assembly. These
+new Windows observations are pending; no host restriction has been relaxed
+based on them. Synthetic checks preserve the existing frozen key requirement
+while permitting the separate empty-context observer to record real misses.
 
 The direct blocker is still DAO's original signed CRT assembly/publisher-policy
 binding. Game entry has **not run**. The next runtime component now executes:
@@ -55,8 +66,8 @@ Each stops with status 78, no observation output and its specific reason. Parser
 scope-inheritance and complete-section tests cover the corresponding logical
 units. The full pre-final PE suite passed 176 tests/checks; a subsequent focused
 run includes the additional role/version refusal test. All 343 Python tests and
-Clippy pass. CI now executes this exact host/native comparator; its new revision's
-result is pending, separately from these local M4 results.
+Clippy pass. The host and native startup jobs passed at `8affdd7` and `3e755c7`, including
+the complete frozen comparator; broader CI results remain recorded separately.
 
 A local run of the original DAO graph with the default profile still reaches the
 same original FindActCtxSectionStringW frontier and stops 78. Opting into the new

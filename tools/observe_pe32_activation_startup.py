@@ -41,7 +41,7 @@ class Reader:
         if not value.endswith('\0') or '\0' in value[:-1]:raise ValueError('invalid path termination')
         return value[:-1]
 
-def decode(data,paths):
+def decode(data,paths,*,require_explicit_key=True):
     r=Reader(data);handles={0:0};records=[]
     def identity(raw):
         if raw not in handles:handles[raw]=len(handles)
@@ -66,7 +66,7 @@ def decode(data,paths):
                                    'data_hex':body.hex(),'section_hex':section.hex()})
         records.append(row)
     if r.at!=len(data):raise ValueError('extra or dropped native activation events')
-    if any(q['words'][1]!=1 for q in records[3]['queries']):
+    if require_explicit_key and any(q['words'][1]!=1 for q in records[3]['queries']):
         raise ValueError('explicit activation did not expose the owned private assembly')
     return records
 

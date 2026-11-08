@@ -43,12 +43,29 @@ def inputs(directory):
     return {'contract':'owned private assembly metadata experiment v1','base':verify_base(directory),
             'files':{name:digest(directory/name) for name in names()}}
 
+def frozen_metadata():
+    path=ROOT/'pe/reference/pe32-assembly-metadata-windows-v1.json'
+    if digest(path)!='b6d946b0858252e9e18eb6688b61962ac5cadab602a8f5cd8f9a12ba59e06b4c':
+        raise ValueError('changed frozen native assembly metadata observations')
+    records=json.loads(path.read_bytes())
+    if [r['case'] for r in records]!=CASES or [r['status'] for r in records]!=[0xc0150002,0,0xc0150002]:
+        raise ValueError('frozen private assembly outcomes differ')
+    return records
+
+def compare_metadata(reports):
+    def normalized(rows):
+        return [{'case':r['case'],'status':r['status'],'stderr_hex':r['stderr_hex'],
+                 'records':comparable(r['records']) if 'records' in r else r['stdout_hex']} for r in rows]
+    if normalized(reports)!=normalized(frozen_metadata()):
+        raise ValueError('native private assembly metadata behavior differs from the frozen observations')
+
 def verify(directory):
     value=json.loads((directory/'ctx-meta-inputs.json').read_text())
     if value!=inputs(directory):raise ValueError('metadata experiment source/PE/manifest identities changed')
     for name,xml in manifests().items():
         if (directory/f'ctx-meta-{name}.manifest').read_bytes()!=xml.encode('utf-8'):
             raise ValueError('metadata experiment manifest differs from its declared owned case')
+    if value!=frozen_metadata()[0]['inputs']:raise ValueError('changed frozen assembly metadata inputs')
     return value
 
 def build(directory):
@@ -102,6 +119,7 @@ def native(directory):
             print(case+': Windows process status '+str(result.returncode)+'; native-only observation, not host support')
     finally:
         ctypes.windll.kernel32.SetErrorMode(old)
+    compare_metadata(reports)
 
 if __name__=='__main__':
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('--output',type=Path,default=ROOT/'local/pe/startup-microtests');p.add_argument('--native',action='store_true')

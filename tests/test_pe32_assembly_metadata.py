@@ -39,7 +39,7 @@ class AssemblyMetadataInputsTests(unittest.TestCase):
             dll=directory/'ctx-meta-token-importer.dll';dll.write_bytes(b'owned synthetic transport only')
             manifest=directory/'ctx-meta-newer-version.manifest';inventory=directory/'ctx-meta-inputs.json'
             inventory.write_text(json.dumps(observer.inputs(directory)))
-            observer.verify(directory)
+            with patch.object(observer,'frozen_metadata',return_value=[{'inputs':observer.inputs(directory)}]):observer.verify(directory)
             manifest.write_bytes(manifest.read_bytes().replace(b'2.0.0.0',b'9.0.0.0'))
             inventory.write_text(json.dumps(observer.inputs(directory)))
             with self.assertRaisesRegex(ValueError,'declared owned case'):observer.verify(directory)
@@ -47,5 +47,23 @@ class AssemblyMetadataInputsTests(unittest.TestCase):
             inventory.write_text(json.dumps(observer.inputs(directory)))
             dll.write_bytes(b'changed synthetic transport')
             with self.assertRaisesRegex(ValueError,'identities changed'):observer.verify(directory)
+
+    def test_frozen_native_rejections_and_success_cannot_be_changed(self):
+        import copy
+        rows=observer.frozen_metadata();observer.compare_metadata(rows)
+        self.assertEqual([r['status'] for r in rows],[0xc0150002,0,0xc0150002])
+        changed=copy.deepcopy(rows);changed[0]['status']=0
+        with self.assertRaises(ValueError):observer.compare_metadata(changed)
+        changed=copy.deepcopy(rows);changed[1]['records'][0]['current_context_id']=0
+        with self.assertRaises(ValueError):observer.compare_metadata(changed)
+
+    def test_remaining_layout_cases_keep_exact_owned_token_and_file_names(self):
+        import observe_pe32_assembly_layout as layout
+        ns={'a':'urn:schemas-microsoft-com:asm.v1'};values=layout.manifests()
+        root=ET.fromstring(values['three-files'])
+        self.assertEqual([n.get('name') for n in root.findall('a:file',ns)],['ctx-provider.dll','ctx-secondary.dll','ctx-unused.dll'])
+        identity=ET.fromstring(values['token-exact']).find('a:assemblyIdentity',ns)
+        request=ET.fromstring(observer.manifests()['token-importer']).find('a:dependency/a:dependentAssembly/a:assemblyIdentity',ns)
+        self.assertEqual(identity.attrib,request.attrib)
 
 if __name__=='__main__':unittest.main()
