@@ -4,7 +4,7 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
-## Registered static DLL lifecycle: physical M4 development
+## Registered static DLL lifecycle: native Windows and physical M4
 
 Two new owned unchanged DLLs expose original static function-table pointers during
 ATTACH/DETACH, reject guest deletion and retain lookup. Physical M4/Rosetta normal
@@ -12,8 +12,14 @@ and forced-rebase development runs agree on all 40 raw DWORDs, actual exported
 Probe result/name-ordinal alias, successful dynamic lifecycle and rejected-attach
 cleanup. The new context-borrowing RegisteredLibrary registers before attach,
 keeps metadata through cleanup and removes entries before unmapping. Independent
-native Windows execution is pending; no native parity claim is made yet.
-All 92 PE host tests/11 compiler checks, 28 portable tests, 245 Python tests and
+native Windows/hosted Mac records and clean physical M4 execution at `331beeb`
+agree on both DLL/source identities, all 40 raw DWORDs and actual exported
+result/name-ordinal alias and attach success/rejection. All three
+[PE jobs](https://github.com/daeken/Alkyhol/actions/runs/42427644748) pass. The
+actual native record is frozen at `pe/reference/registered-dll-windows-v1.json`
+and required by default; a missing-reference/joint-input-drift guard brings the
+Python suite to 246.
+All 92 PE host tests/11 compiler checks, 28 portable tests, 246 Python tests and
 Clippy pass locally.
 Existing loader APIs retain their old static-table gate. Host tests separately
 check failure/capacity rollback before initialization, visibility after drop,

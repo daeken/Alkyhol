@@ -82,10 +82,9 @@ def main():
         if hashlib.sha256(snapshots[case]).hexdigest()!=digest:raise ValueError('DLL identity changed')
     for name,digest in manifest['sources'].items():
         if hashlib.sha256((ROOT/name).read_bytes()).hexdigest()!=digest:raise ValueError('DLL source changed')
-    if REFERENCE.exists():
-        reference=json.loads(REFERENCE.read_text(encoding='utf-8'))
-        for field in ['binaries','sources']:
-            if manifest[field]!=reference[field]:raise ValueError('changed frozen registered DLL fixture')
+    reference=json.loads(REFERENCE.read_text(encoding='utf-8'))
+    for field in ['binaries','sources']:
+        if manifest[field]!=reference[field]:raise ValueError('changed frozen registered DLL fixture')
     if windows:backend=NATIVE
     elif platform.system()=='Darwin':
         backend=HOST

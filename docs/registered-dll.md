@@ -36,8 +36,10 @@ the Mac observer uses RegisteredLibrary. All 40 raw DWORDs across both DLLs,
 exported result/alias and success/rejection predicates are compared exactly,
 alongside both DLL/source hashes, clean revision and normal/forced-rebase host
 observations. Failed-load last-error values, OS loader internals and post-unmap
-native lookups are outside this observer. Independent Windows results are pending
-the first CI execution; physical M4/Rosetta development runs pass. See
+native lookups are outside this observer. Downloaded clean native Windows/hosted Mac reports and clean physical M4 runs
+at `331beeb` agree on every raw trace word, call/status result and exact DLL/source
+identity. The actual native record at `pe/reference/registered-dll-windows-v1.json`
+is frozen and required by default. See
 [validation](validation.md) for actual results and tested revisions.
 
 Host units separately check live static visibility and protected deletion during

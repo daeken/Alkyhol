@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "backend": "native Windows static DLL lifecycle",
+  "binaries": {
+    "accepted": "9bd72e865b11a5ebddd9d8097811c121807dc9952d8bf232ea1f29a66d9d488d",
+    "rejected": "153a53019d6a0b9124dfc273fe6b43fa32c01d1584d43851c5e4d9c8884306e7"
+  },
+  "sources": {
+    "pe/fixtures/registered-dll/library.c": "5a352ec69db1414c63eefbaf7a1c1aa9a38044a98f613a45a518668554e46689",
+    "pe/fixtures/registered-dll/kernel32.def": "145cf0d9f45bce030c3c0d63772f335e8cd513db540c5393b1a877f18ffd1215",
+    "pe/fixtures/registered-dll/frames.S": "7be363a3f9ff4fa4c14422d01a6f2358aeda1b023a0071d512449cbf968a0c23",
+    "pe/fixtures/registered-dll/exports.def": "64895e2d40213b52fce90c6a12cc00cebe7ba14fe8d8e35ebf3edaeff5af0b4b"
+  },
+  "normal": [
+    {
+      "case": "accepted",
+      "loaded": true,
+      "probe": 1117854733,
+      "alias": true,
+      "trace_hex": "4154534401000000010000000100000001000000020000000100000001000000000000000100000041545344000000000200000001000000010000000200000001000000010000000000000001000000"
+    },
+    {
+      "case": "rejected",
+      "loaded": false,
+      "probe": null,
+      "alias": null,
+      "trace_hex": "4154534401000000010000000100000001000000020000000100000001000000000000000100000041545344000000000200000001000000010000000200000001000000010000000000000001000000"
+    }
+  ],
+  "rebased": null,
+  "revision": "331beeb45ebda66cd580644702c9252c43e41c6c",
+  "tracked_tree_clean": true
+}

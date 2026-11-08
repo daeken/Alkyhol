@@ -5,10 +5,12 @@ from pathlib import Path
 import subprocess
 import sys
 import unittest
+import tempfile
+from unittest import mock
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'tools'))
 from build_pe_registered_dll import SOURCES
-from run_pe_registered_dll import NATIVE,HOST,EXPECTED,TRACE,decode
+from run_pe_registered_dll import REFERENCE,NATIVE,HOST,EXPECTED,TRACE,decode
 from compare_pe_registered_dll import compare
 
 
@@ -59,6 +61,16 @@ class RegisteredDllProtocolTests(unittest.TestCase):
             values=self.reports()
             for record in values:record[field]=copy.deepcopy(value)
             with self.assertRaises(ValueError):compare(values,reference=self.reports()[0])
+
+    def test_default_frozen_native_record_and_inputs_are_required(self):
+        native=json.loads(REFERENCE.read_text(encoding='utf-8'))
+        host=copy.deepcopy(native);host.update(backend=HOST,rebased=copy.deepcopy(native['normal']))
+        self.assertEqual(compare([native,host]),40)
+        with tempfile.TemporaryDirectory() as temp:
+            with mock.patch('compare_pe_registered_dll.REFERENCE',Path(temp)/'missing.json'):
+                with self.assertRaises(FileNotFoundError):compare([native,host])
+        for record in [native,host]:record['binaries']['accepted']='e'*64
+        with self.assertRaises(ValueError):compare([native,host])
 
 
 if __name__=='__main__':unittest.main()
