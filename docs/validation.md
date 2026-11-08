@@ -4,6 +4,30 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## Native experiment for DAO's actual DLL activation blocker
+
+DAO still stops in its original CRT's FindActCtxSectionStringW call; game entry
+has **not run**. The next owned observer now mirrors the relevant loader pattern:
+an empty-default EXE imports a resource-2 DLL, which statically imports a provider
+without an embedded manifest. The provider exists only in a versioned private
+assembly folder, so a flat-directory fallback cannot masquerade as binding.
+All code/manifests are original MIT fixtures, not extracted game/runtime data.
+
+macOS builds these unchanged i386 PEs with open Clang/LLD. **This is a native-only
+observer, not host activation execution or new game compatibility.** Windows will
+record both DLL initializers, EXE default/explicit/restored contexts and reverse
+teardown. It retains opaque-handle identity relationships, complete module paths,
+all keyed-data scalar fields, exact redirection bytes and their containing section.
+Payload bounds, source paths, guards, complete lifecycle and explicit activation
+must validate; an error, missing event or exhausted budget cannot pass.
+
+The existing SDK layout check independently covers the 32/64-byte structures used
+by the observer. Three synthetic transport tests check truncation, pointer-ID
+normalization, wrong sources, damaged guards and inconsistent section/data bytes;
+they are not native observations. The owned fixture builds locally; its first
+Windows execution is pending. Original DLL bindings and the current fail-closed
+runtime have not been changed to assume a global union of manifests.
+
 ## DAO reaches its original dependent-assembly lookup
 
 On the physical M4 at clean `9a0474f`, the original CRT now executes GetSystemDirectoryW and calls

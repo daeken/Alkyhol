@@ -1,0 +1,20 @@
+/* Original MIT native-only observer for the actual DAO CRT activation blocker. */
+typedef unsigned int U32;
+typedef unsigned short W;
+typedef void *H;
+struct Context {U32 size,flags;const W *source;W arch,language;const W *directory,*resource,*application;H module;};
+struct Keyed {U32 size,version;H data;U32 length;H global;U32 global_length;H base;U32 total_length;H context;U32 roster,flags;H metadata[5];};
+_Static_assert(sizeof(H)==4&&sizeof(struct Context)==32&&sizeof(struct Keyed)==64,"native Win32 ABI");
+__declspec(dllimport) H __stdcall GetStdHandle(U32);
+__declspec(dllimport) int __stdcall WriteFile(H,const void *,U32,U32 *,H);
+__declspec(dllimport) U32 __stdcall GetLastError(void);
+__declspec(dllimport) void __stdcall SetLastError(U32);
+__declspec(dllimport) U32 __stdcall GetModuleFileNameW(H,W *,U32);
+__declspec(dllimport) H __stdcall GetModuleHandleW(const W *);
+__declspec(dllimport) int __stdcall GetCurrentActCtx(H *);
+__declspec(dllimport) void __stdcall ReleaseActCtx(H);
+__declspec(dllimport) int __stdcall FindActCtxSectionStringW(U32,const void *,U32,const W *,struct Keyed *);
+__declspec(dllimport) H __stdcall CreateActCtxW(const struct Context *);
+__declspec(dllimport) int __stdcall ActivateActCtx(H,U32 *);
+__declspec(dllimport) int __stdcall DeactivateActCtx(U32,U32);
+void observe(U32 actor,U32 reason,H module);
