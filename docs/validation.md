@@ -6,6 +6,16 @@ See the latest direct-Metal record for current implementation evidence.
 
 ## Original D3DX9 constructors execute through the CRT gateway
 
+For the next actually reached `_CIsqrt` blocker, an owned native observer now
+loads raw 80-bit operands and calls the real x86 intrinsic directly from
+assembly. It captures 17 numeric inputs in 12 precision/rounding contexts,
+including an underlying x87 stack witness, control/status words, MXCSR, last
+error and errno. The observer does not convert through a C `double` signature.
+Native execution is pending; no sqrt backend implementation or math parity is
+claimed from its build or transport tests. The Microsoft [intrinsic contract](https://learn.microsoft.com/en-us/cpp/c-runtime-library/cisqrt?view=msvc-170)
+documents the specialized x86 convention. Inputs are original numeric fixtures,
+not extracted game data.
+
 On the physical M4, the original D3DX9 helper now calls `msvcrt.dll!malloc` and
 receives actual owned low-address storage. The game EXE remains unchanged and
 its entry has **not run**. Its reached GetVersion call now uses the existing
