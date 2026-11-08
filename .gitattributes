@@ -44,6 +44,7 @@ pe/fixtures/static-functions/* text eol=lf
 pe/fixtures/unwind-prologue/* text eol=lf
 pe/fixtures/registered-dll/* text eol=lf
 pe/fixtures/pe32/* text eol=lf
+pe/fixtures/pe32-exports/* text eol=lf
 
 # PE32 geometry fixture generator is part of cross-host source identity.
 tools/build_pe32_geometry.py text eol=lf

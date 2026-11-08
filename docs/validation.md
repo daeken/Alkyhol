@@ -4,6 +4,18 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## PE32 executable self exports: native observation pending
+
+A new original MIT no-CRT PE32 observer queries the current executable through
+GetModuleHandleA/W(NULL) and GetProcAddress, then calls stdcall exports by resolved
+name/ordinal pointers. Its 26 raw DWORDs include module/pointer identity, named
+aliases, initialized/BSS export reads and a real BSS write, ordinal-only lookup,
+case-sensitive/missing-name and out-of-range ordinal results, plus last-error
+observations. Sources and exact executable bytes travel to native Windows; no
+game code/data is involved. Initial native execution is pending. This capture
+commit does not change Alkyhol startup gates or add host export APIs. Separate
+collector tests reject byte-length/status/stderr errors and snapshot/source drift.
+
 ## PE32 certificate metadata loading: native Windows and physical M4
 
 All 27 CI jobs pass at strict-reference revision `70ef3d4`: three

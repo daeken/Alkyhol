@@ -1,0 +1,9 @@
+LIBRARY KERNEL32.dll
+EXPORTS
+GetLastError
+SetLastError
+GetStdHandle
+WriteFile
+GetModuleHandleA
+GetModuleHandleW
+GetProcAddress

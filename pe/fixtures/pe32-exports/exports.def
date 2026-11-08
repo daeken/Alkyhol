@@ -1,0 +1,7 @@
+NAME alkyhol_pe32_exports.exe
+EXPORTS
+Transform=_Transform@8 @17
+Alias=_Transform@8 @18
+Data=export_data @19 DATA
+Hidden=_Hidden@4 @20 NONAME
+Bss=export_bss @21 DATA
