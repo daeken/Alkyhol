@@ -12,7 +12,10 @@ SYMBOLS=[('GetStdHandle',4),('WriteFile',20),('GetLastError',0),('SetLastError',
 def inputs(d):return {'sources':{**{(SOURCE/n).relative_to(ROOT).as_posix():digest(SOURCE/n) for n in SOURCES},'tools/pe32_resource_icon_data.py':digest(ROOT/'tools/pe32_resource_icon_data.py')},'files':{n:digest(d/n) for n in FILES}}
 def verify(d):
     r=json.loads((d/'resource-icon-inputs.json').read_text())
-    if r!=inputs(d):raise ValueError('resource-icon producer/PE identity changed')
+    actual=inputs(d)
+    if r!=actual:
+        changed=[key for kind in r for key in r[kind] if r[kind][key]!=actual[kind].get(key)]
+        raise ValueError('resource-icon producer/PE identity changed: '+repr(changed))
     return r
 def build(d):
     d.mkdir(parents=True,exist_ok=True);clang=shutil.which('clang');lld=rust_tool('rust-lld');libs=[]

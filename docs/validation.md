@@ -34,6 +34,13 @@ This implements the bounded [LoadIconW](https://learn.microsoft.com/en-us/window
 resource/object operation; it is not a placeholder successful icon handle.
 Original game icons, decoded pixels and resource inventories remain local.
 
+The first [native icon job at `59e560a`](https://github.com/daeken/Alkyhol/actions/runs/42516743206)
+compiled the SDK observer but rejected producer identity before running the PE.
+The newly hashed Python pixel generator lacked an explicit checkout line-ending
+rule. Its bytes are now required to remain LF on both hosts, matching the shared
+C producers; identity failures also name the differing owned inputs. No checksum
+check was removed. This first run is not native icon execution/pixel evidence.
+
 ## Original DAO acquires its mutex and reaches UI icon resource loading
 
 At clean runtime revision `e7481d0`, the physical M4 unchanged original EXE
