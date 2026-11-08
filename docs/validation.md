@@ -4,7 +4,17 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
-## PE32 executable self exports: native Windows and physical M4 development
+## PE32 executable self exports: native Windows and physical M4
+
+All 27 CI jobs pass at strict-reference revision `7b7dcff`: three
+[PE jobs](https://github.com/daeken/Alkyhol/actions/runs/42435424200) and all 24
+[conformance jobs](https://github.com/daeken/Alkyhol/actions/runs/42435424012).
+Downloaded clean native Windows/hosted Mac reports and fresh clean physical M4
+execution at that same revision agree on all 26 raw DWORDs and frozen source/
+executed PE identities. Both strict paired comparisons pass, including actual
+normal/forced-rebase host execution. Existing frozen PE32/PE64, released binaries,
+DLL/source/SDK/COM, shader and Metal comparisons remain green. This is self-export
+API/ABI evidence; no game code executes.
 
 Native Windows at `272fb60` executes the original owned PE32 self-export observer
 and returns all 26 raw DWORDs. All three
@@ -34,7 +44,8 @@ handles and export queries on absent tables fail honestly. AMD64 EXE startup gat
 and the original owned PE32 bytes remain unchanged.
 
 Physical M4 development execution agrees on all 26 output words in normal and
-forced-rebase runs. Strict same-clean-revision CI/physical comparison is pending.
+forced-rebase runs. Strict same-clean-revision CI/physical comparison passes at
+`7b7dcff` as recorded above.
 The comparator requires the frozen native profile, exact inputs/sources/revision,
 raw bytes and decoded words, actual relocation and separate diagnostic contracts;
 crashes, changed results, missing references and joint input drift cannot pass.
