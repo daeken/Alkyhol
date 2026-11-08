@@ -4,6 +4,55 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## DAO real module origins and path queries
+
+On the physical M4, the original CRT now executes GetModuleFileNameW and
+GetLongPathNameW and reaches **GetSystemDirectoryW**, the next measured unsupported
+import. The activation query itself and the game EXE entry have **not executed**.
+Original identities, source paths, module/RVA/argument captures and extracted DLLs
+remain ignored/local.
+
+`ProcessImage32::load_files` reads the explicitly supplied regular files and
+retains their actual canonical origins before any DLL initializer. Its Z: namespace
+directly mirrors the real host root; it does not infer module paths from basenames
+or claim a Windows installation/system directory. Existing bytes-only loaders stay
+separate and refuse filename queries without genuine origin metadata. The startup
+probe selects this explicitly with `--file-origins`; DLL search remains absent.
+
+GetModuleFileNameW supports NULL/current-EXE and actual owned EXE/DLL bases,
+UTF-16 lengths, terminators, modern truncation/insufficient-buffer results and
+checked output bounds. GetLongPathNameW currently supports only exact registered,
+already-long module paths, reverified against their real source files, with sizing
+and staged in-place copies. Arbitrary paths, short aliases, unknown modules,
+missing origins and invalid outputs stop explicitly; no synthetic filesystem
+absence, alias expansion or source path is invented.
+
+An owned unchanged i386 EXE/DLL fixture calls the filename API during the real DLL
+initializer, then tests NULL/explicit EXE and DLL handles, full/exact/truncated/zero
+capacities, last error, guards, UTF-16 supplementary characters and long-path
+sizing/in-place behavior. Normal and forced-relocation M4 runs agree on 105
+normalized DWORDs. Each complete returned path is separately checked against its
+independently known actual source; full absolute paths and their lengths are
+machine-specific and are not compared for cross-machine byte equality. Four
+host-only restrictions stop for their specific expected reason, including a
+bytes-only DLL stopping before EXE entry. Native Windows comparison is pending.
+
+Local checks pass 154 PE host tests plus 17 compile/documentation checks,
+335 Python tests, Clippy, all 25 prior startup cases and six new path executions.
+The existing frozen activation/source/PE identities remain unchanged. At
+predecessor `d1c31f9`, both dedicated startup jobs passed the strict frozen
+activation comparator; the historical PE job separately hit an upstream u-config
+HTTP 504 and skipped its dependent historical comparisons.
+
+The next system-directory API needs an explicit, backed guest-system directory
+configuration. It must not relabel the CRT source directory as the system directory
+to bypass the subsequent original activation check. Side-by-side binding remains
+unknown/unimplemented for the original DLL graph.
+
+References: [GetModuleFileNameW](https://learn.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-getmodulefilenamew),
+[GetLongPathNameW](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getlongpathnamew)
+and [GetSystemDirectoryW](https://learn.microsoft.com/en-us/windows/win32/api/sysinfoapi/nf-sysinfoapi-getsystemdirectoryw).
+
 ## DAO bounded activation lookup and next original CRT call
 
 On the physical M4 at clean `7b39f23`, the original CRT now resolves FindActCtxSectionStringW to

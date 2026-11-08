@@ -24,6 +24,8 @@ mod diagnostic32;
 mod fiber32;
 #[path = "heap32.rs"]
 mod heap32;
+#[path = "module_path32.rs"]
+mod module_path32;
 #[path = "nls32.rs"]
 mod nls32;
 #[path = "process32.rs"]
@@ -56,7 +58,7 @@ unsafe extern "C" {
 }
 const PAGE: usize = 4096;
 const STACK: usize = 1024 * 1024;
-const APIS: [(&str, u16); 56] = [
+const APIS: [(&str, u16); 58] = [
     ("GetLastError", 0),
     ("SetLastError", 4),
     ("GetStdHandle", 4),
@@ -113,6 +115,8 @@ const APIS: [(&str, u16); 56] = [
     ("GetSystemTimeAsFileTime", 4),
     ("HeapSize", 12),
     ("FindActCtxSectionStringW", 20),
+    ("GetModuleFileNameW", 12),
+    ("GetLongPathNameW", 12),
 ];
 const EXIT_API: u32 = 14;
 // Win32 promises a reversible process-specific representation, not a published
@@ -330,6 +334,7 @@ struct Module32 {
     base: u32,
     size: usize,
     exports: Option<ExportTable>,
+    origin: Option<module_path32::Origin>,
 }
 struct Cpu32 {
     stack: LowMapping,
@@ -1437,6 +1442,8 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
                 .size(args[0], args[1], args[2])
                 .unwrap_or_else(|e| unsupported(&e)),
             55 => activation32::find(image, &args),
+            56 => module_path32::filename(image, &args),
+            57 => module_path32::long_name(image, &args),
             _ => unreachable!(),
         }
     })

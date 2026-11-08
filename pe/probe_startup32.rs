@@ -9,16 +9,14 @@ fn main() {
         let mut external = Vec::new();
         let mut forced = false;
         let mut strict = false;
+        let mut file_origins = false;
         let mut options = args[1..].iter();
         while let Some(option) = options.next() {
             match option.as_str() {
                 "--dll" => {
                     let value = options.next().ok_or("--dll requires NAME=PATH")?;
                     let (name, path) = value.split_once('=').ok_or("--dll requires NAME=PATH")?;
-                    modules.push((
-                        name.to_owned(),
-                        std::fs::read(path).map_err(|e| e.to_string())?,
-                    ));
+                    modules.push((name.to_owned(), path.to_owned()));
                 }
                 "--external" => external.push(
                     options
@@ -28,10 +26,15 @@ fn main() {
                 ),
                 "--rebase" => forced = true,
                 "--strict" => strict = true,
+                "--file-origins" => file_origins = true,
                 _ => return Err("unknown startup diagnostic option".into()),
             }
         }
-        let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
+        let bytes = if file_origins {
+            Vec::new()
+        } else {
+            std::fs::read(path).map_err(|e| e.to_string())?
+        };
         let name = std::path::Path::new(path)
             .file_name()
             .and_then(|n| n.to_str())
@@ -47,14 +50,41 @@ fn main() {
             })
             .collect::<alkyhol_pe::Result<Vec<_>>>()?;
         let process = ProcessContext::install(&[path.to_owned()], &environment)?;
-        let modules: Vec<_> = modules
+        let file_modules: Vec<_> = modules
+            .iter()
+            .map(|(name, path)| (name.as_str(), std::path::Path::new(path)))
+            .collect();
+        let byte_modules = if file_origins {
+            Vec::new()
+        } else {
+            modules
+                .iter()
+                .map(|(name, path)| {
+                    Ok((
+                        name.clone(),
+                        std::fs::read(path).map_err(|e| e.to_string())?,
+                    ))
+                })
+                .collect::<alkyhol_pe::Result<Vec<_>>>()?
+        };
+        let modules: Vec<_> = byte_modules
             .iter()
             .map(|(name, b)| (name.as_str(), b.as_slice()))
             .collect();
         eprintln!(
             "PE32 diagnostic mode: guarded external imports; every fault stops; no exception recovery"
         );
-        let mut image = if strict {
+        let mut image = if file_origins {
+            unsafe {
+                ProcessImage32::load_files(
+                    std::path::Path::new(path),
+                    &file_modules,
+                    if strict { None } else { Some(&external) },
+                    forced,
+                    &process,
+                )
+            }
+        } else if strict {
             unsafe { ProcessImage32::load((name, &bytes), &modules, forced, &process) }
         } else {
             unsafe {

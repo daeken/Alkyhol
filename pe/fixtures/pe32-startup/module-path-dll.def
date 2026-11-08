@@ -1,0 +1,3 @@
+LIBRARY module-path.dll
+EXPORTS
+  SourceModule

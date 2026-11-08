@@ -246,7 +246,7 @@ impl<'a> ProcessImage32<'a> {
         process: &'a ProcessContext,
     ) -> Result<Self> {
         let plan = Plan::new(executable, dlls, rebase)?;
-        unsafe { Self::load_plan(plan, rebase, process, false) }
+        unsafe { Self::load_plan(plan, rebase, process, false, &BTreeMap::new()) }
     }
     /// Instrument a trusted startup path with guarded external-service imports.
     /// This is diagnostic execution, NOT Windows compatibility: missing service
@@ -265,13 +265,67 @@ impl<'a> ProcessImage32<'a> {
         process: &'a ProcessContext,
     ) -> Result<Self> {
         let plan = Plan::with_external(executable, dlls, rebase, Some(external))?;
-        unsafe { Self::load_plan(plan, rebase, process, true) }
+        unsafe { Self::load_plan(plan, rebase, process, true, &BTreeMap::new()) }
+    }
+    /// Load a caller-supplied file graph and retain each actual canonical source
+    /// path before initializers run. Z: mirrors the real host root. No DLL search,
+    /// system-directory substitution, or paths inferred from basenames/bytes.
+    /// `Some(external)` selects the explicit guarded diagnostic profile;
+    /// `None` selects strict import preflight. Existing byte loaders stay separate.
+    ///
+    /// # Safety
+    /// The same trusted native-code/initializer contract as load applies to all
+    /// supplied files. This reads and executes those files, not a security sandbox.
+    ///
+    /// ```compile_fail,E0505
+    /// # use alkyhol_pe::{ProcessImage32,ProcessContext};
+    /// # fn example(path:&std::path::Path)->alkyhol_pe::Result<()> {
+    /// let process=ProcessContext::install(&["program.exe".into()],&[])?;
+    /// let image=unsafe {ProcessImage32::load_files(path,&[],None,false,&process)}?;
+    /// drop(process);
+    /// drop(image);
+    /// # Ok(()) }
+    /// ```
+    pub unsafe fn load_files(
+        executable: &std::path::Path,
+        dlls: &[(&str, &std::path::Path)],
+        external: Option<&[String]>,
+        rebase: bool,
+        process: &'a ProcessContext,
+    ) -> Result<Self> {
+        if dlls.len() > 64 {
+            return Err("PE32 process exceeds 64 explicit DLLs".into());
+        }
+        let (exe_bytes, exe_origin) = super::module_path32::read(executable)?;
+        let name = exe_origin
+            .host
+            .file_name()
+            .and_then(|v| v.to_str())
+            .ok_or("non-Unicode EXE basename")?;
+        let mut paths = BTreeMap::new();
+        paths.insert(executable_name(name)?, exe_origin.clone());
+        let mut files = Vec::new();
+        for &(name, path) in dlls {
+            let name = crate::runtime::dll_basename(name)?;
+            let (bytes, origin) = super::module_path32::read(path)?;
+            if paths.insert(name.clone(), origin).is_some() {
+                return Err("duplicate module source name".into());
+            }
+            files.push((name, bytes));
+        }
+        let dlls: Vec<_> = files
+            .iter()
+            .map(|(name, bytes)| (name.as_str(), bytes.as_slice()))
+            .collect();
+        let plan = Plan::with_external((name, &exe_bytes), &dlls, rebase, external)?;
+        unsafe { Self::load_plan(plan, rebase, process, external.is_some(), &paths) }
     }
     unsafe fn load_plan(
         plan: Plan<'_>,
         rebase: bool,
         process: &'a ProcessContext,
         diagnostic: bool,
+        origins: &BTreeMap<String, super::module_path32::Origin>,
     ) -> Result<Self> {
         let mut cpu = Cpu32::new()?;
         // Keep unknown manifest/binding state deferred until an activation query.
@@ -335,6 +389,7 @@ impl<'a> ProcessImage32<'a> {
         *cpu.modules.borrow_mut() = modules
             .into_iter()
             .map(|(name, index)| Module32 {
+                origin: origins.get(&name).cloned(),
                 name,
                 base: mappings[index].image.base as u32,
                 size: mappings[index].image.len,
@@ -483,12 +538,14 @@ mod tests {
                 base: 0x400000,
                 size: 0x10000,
                 exports: None,
+                origin: None,
             },
             Module32 {
                 name: "leaf.dll".into(),
                 base: 0x200000,
                 size: 0x10000,
                 exports: Some(table.clone()),
+                origin: None,
             },
         ];
         for phase in [Phase32::Preparing, Phase32::Running, Phase32::Detaching] {
