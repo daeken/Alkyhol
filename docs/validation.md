@@ -4,6 +4,16 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## PE32 certificate metadata loading: native observation pending
+
+A new owned corpus varies only the non-mapped certificate-directory pair and two
+explicit certificate appends in separate copies of the frozen PE32 observer.
+Eight native outcomes will be recorded, with raw failures preserved and a required
+successful absent-directory baseline. The generator rejects game inputs and
+force-integrity cases. Initial native execution is pending. This is a loading
+observer, not signature verification, and does not change current loader gates.
+All original binary/source references remain unchanged. See [PE32](pe32.md).
+
 ## PE32 SizeOfImage geometry: native Windows and physical M4 development
 
 All 27 CI jobs pass at strict-reference revision `d08bcc4`: three

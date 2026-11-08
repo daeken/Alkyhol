@@ -190,6 +190,14 @@ jobs:
           path: |
             local/pe/pe32-geometry/*.exe
             local/pe/pe32-geometry/geometry-fixture.json
+      - name: Build owned non-enforced certificate metadata cases
+        run: python tools/build_pe32_certificates.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe32-certificates-fixture
+          path: |
+            local/pe/pe32-certificates/*.exe
+            local/pe/pe32-certificates/certificates-fixture.json
       - name: Observe curated partial-prologue contexts with assembler-generated metadata
         run: |
           python tools/build_pe_unwind_prologue.py
@@ -519,6 +527,16 @@ jobs:
         with:
           name: pe32-geometry-windows
           path: local/pe/geometry-windows.json
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe32-certificates-fixture
+          path: local/pe/pe32-certificates
+      - name: Record native loading of certificate metadata without force-integrity requests
+        run: python tools/run_pe32_certificates.py --directory local/pe/pe32-certificates --output local/pe/certificates-windows.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe32-certificates-windows
+          path: local/pe/certificates-windows.json
       - uses: actions/download-artifact@v4
         with:
           name: pe-unwind-prologue-fixture
