@@ -61,6 +61,19 @@ pub struct ExportTable {
     /// Sparse ordinal holes are omitted; explicit ordinals retain their bias.
     pub entries: Vec<Export>,
 }
+/// Checked PE32 static TLS metadata in image-relative coordinates. Inspection
+/// neither initializes TLS nor calls callbacks. Runtime support is separate.
+/// Requested zero-fill/total extents describe the file, not a native heap query.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StaticTls32 {
+    pub template_rva: usize,
+    pub template_size: usize,
+    pub zero_fill: usize,
+    pub total_size: usize,
+    pub index_rva: usize,
+    pub alignment: usize,
+    pub callbacks: Vec<usize>,
+}
 #[derive(Debug)]
 pub struct Image<'a> {
     pub bytes: &'a [u8],
@@ -646,6 +659,155 @@ impl<'a> Image<'a> {
             entries,
         }))
     }
+    /// Inspect bounded, relocatable PE32 static TLS without executing callbacks.
+    /// Metadata must be readonly, pointer fields have exact HIGHLOW fixups, and
+    /// the writable index cannot overlap loader writes or template bytes.
+    pub fn static_tls32(&self) -> Result<Option<StaticTls32>> {
+        if !self.i386 {
+            return Err("PE32 TLS inspection requires i386".into());
+        }
+        let (rva, length) = self.directories[9];
+        if length == 0 {
+            return Ok(None);
+        }
+        if length != 24 || !rva.is_multiple_of(4) {
+            return Err("invalid PE32 TLS directory shape".into());
+        }
+        let directory = self.file_range(rva, 24)?;
+        let fixups = self.relocations()?;
+        let iats = self
+            .imports()?
+            .into_iter()
+            .map(|i| i.iat)
+            .collect::<Vec<_>>();
+        let overlaps = |a: usize, n: usize, b: usize, m: usize| a < b + m && b < a + n;
+        let metadata = |at: usize, len: usize, expected: &[usize]| -> Result<&'a [u8]> {
+            let bytes = self.file_range(at, len)?;
+            if !self.sections.iter().any(|s| {
+                at >= s.rva && at + len <= s.rva + s.raw_size && s.rights & 0xe0000000 == 0x40000000
+            }) || expected.iter().any(|w| fixups.binary_search(w).is_err())
+                || fixups
+                    .iter()
+                    .any(|&w| overlaps(at, len, w, 4) && !expected.contains(&w))
+                || iats.iter().any(|&w| overlaps(at, len, w, 4))
+            {
+                return Err("PE32 TLS metadata must be readonly with exact pointer fixups and no IAT writes".into());
+            }
+            Ok(bytes)
+        };
+        let address = |va: u32| -> Result<usize> {
+            let offset = u64::from(va)
+                .checked_sub(self.base)
+                .ok_or("TLS VA precedes image")?;
+            if offset > self.size as u64 {
+                return Err("TLS VA exceeds image".into());
+            }
+            Ok(offset as usize)
+        };
+        let fields = [
+            u32_at(directory, 0)?,
+            u32_at(directory, 4)?,
+            u32_at(directory, 8)?,
+            u32_at(directory, 12)?,
+        ];
+        let expected = fields
+            .iter()
+            .enumerate()
+            .filter(|(_, value)| **value != 0)
+            .map(|(i, _)| rva + i * 4)
+            .collect::<Vec<_>>();
+        metadata(rva, 24, &expected)?;
+        let (template_rva, template_size) = if fields[0] == 0 && fields[1] == 0 {
+            (0, 0)
+        } else {
+            if fields[0] == 0 || fields[1] < fields[0] {
+                return Err("invalid TLS template VA extent".into());
+            }
+            let start = address(fields[0])?;
+            let end = address(fields[1])?;
+            let len = end - start;
+            self.file_range(start, len)?;
+            if !self.sections.iter().any(|s| {
+                start >= s.rva && end <= s.rva + s.raw_size && s.rights & 0x60000000 == 0x40000000
+            }) {
+                return Err(
+                    "TLS template must be initialized readable non-executable section data".into(),
+                );
+            }
+            (start, len)
+        };
+        let zero_fill = u32_at(directory, 16)? as usize;
+        let total_size = template_size
+            .checked_add(zero_fill)
+            .ok_or("TLS allocation overflow")?;
+        if total_size == 0 || total_size > 1024 * 1024 {
+            return Err("TLS allocation exceeds supported 1-byte..1-MiB extent".into());
+        }
+        let flags = u32_at(directory, 20)?;
+        let code = (flags >> 20) & 15;
+        if flags & !0x00f00000 != 0 || code == 15 {
+            return Err("unsupported TLS characteristics/alignment".into());
+        }
+        let alignment = if code == 0 { 16 } else { 1usize << (code - 1) };
+        let index_rva = address(fields[2])?;
+        if fields[2] == 0
+            || !index_rva.is_multiple_of(4)
+            || !self.sections.iter().any(|s| {
+                index_rva >= s.rva
+                    && index_rva + 4 <= s.rva + s.size
+                    && s.rights & 0xe0000000 == 0xc0000000
+            })
+            || fixups
+                .iter()
+                .chain(&iats)
+                .any(|&w| overlaps(index_rva, 4, w, 4))
+            || overlaps(index_rva, 4, template_rva, template_size)
+        {
+            return Err(
+                "TLS index must be aligned writable data without template/loader-write overlap"
+                    .into(),
+            );
+        }
+        let mut callbacks = Vec::new();
+        if fields[3] != 0 {
+            let array = address(fields[3])?;
+            if !array.is_multiple_of(4) {
+                return Err("unaligned TLS callback array".into());
+            }
+            let mut terminated = false;
+            for i in 0..256 {
+                let at = array + i * 4;
+                let va = u32_at(self.file_range(at, 4)?, 0)?;
+                if va == 0 {
+                    metadata(at, 4, &[])?;
+                    terminated = true;
+                    break;
+                }
+                metadata(at, 4, &[at])?;
+                let target = address(va)?;
+                if !self.sections.iter().any(|s| {
+                    target >= s.rva
+                        && target < s.rva + s.raw_size
+                        && s.rights & 0x60000000 == 0x60000000
+                }) {
+                    return Err("TLS callback must target initialized executable code".into());
+                }
+                callbacks.push(target);
+            }
+            if !terminated {
+                return Err("unterminated bounded TLS callback array".into());
+            }
+        }
+        Ok(Some(StaticTls32 {
+            template_rva,
+            template_size,
+            zero_fill,
+            total_size,
+            index_rva,
+            alignment,
+            callbacks,
+        }))
+    }
     /// Inspect a bounded static AMD64 table and supported v1 body recipes.
     /// Records/code/unwind slots must be backed by readonly/executable image data.
     /// This does not map/register code or enable exception dispatch.
@@ -789,6 +951,16 @@ impl<'a> Image<'a> {
             (15, "reserved directory"),
         ] {
             if self.directories[i].1 != 0 {
+                if i == 9 && self.i386 {
+                    let tls = self.static_tls32()?.ok_or("missing PE32 TLS metadata")?;
+                    if !tls.callbacks.is_empty() {
+                        return Err("PE32 TLS callbacks are unsupported".into());
+                    }
+                    if tls.zero_fill != 0 {
+                        return Err("PE32 nonzero TLS SizeOfZeroFill is unsupported pending native investigation".into());
+                    }
+                    continue;
+                }
                 return Err(format!("unsupported startup feature: {name}"));
             }
         }

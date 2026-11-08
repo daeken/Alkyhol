@@ -61,6 +61,7 @@ fn i386_header_width_extents_and_all_truncated_prefixes_are_checked() {
     assert_eq!(image.bitness(), 32);
     assert_eq!(image.base, 0x400000);
     assert_eq!(image.entry, 0x1000);
+    assert_eq!(image.static_tls32().unwrap(), None);
     image.check_startup().unwrap();
     assert!(Image::parse(&b).is_err());
     assert!(Image::parse_dll(&b).is_err());
@@ -324,4 +325,174 @@ fn self_exports_allow_immutable_metadata_code_and_data_without_weakening_startup
         directory(&mut bad, index, 0x2100, 4);
         assert!(Image::parse_i386(&bad).unwrap().check_startup().is_err());
     }
+}
+
+fn tls_image() -> Vec<u8> {
+    let mut b = fixture();
+    b.resize(0xc00, 0);
+    p16(&mut b, 0x86, 3);
+    p32(&mut b, OPT + 56, 0x4000);
+    let s = OPT + 224 + 80;
+    for (offset, value) in [
+        (8, 0x200),
+        (12, 0x3000),
+        (16, 0x200),
+        (20, 0xa00),
+        (36, 0x40000040),
+    ] {
+        p32(&mut b, s + offset, value);
+    }
+    directory(&mut b, 9, 0x3100, 24);
+    for (at, value) in [
+        (0xb00, 0x402100),
+        (0xb04, 0x40210c),
+        (0xb08, 0x402300),
+        (0xb0c, 0x403180),
+        (0xb10, 16),
+        (0xb14, 0x00500000),
+        (0x700, 0x31415926),
+        (0x708, 0x402310),
+    ] {
+        p32(&mut b, at, value);
+    }
+    directory(&mut b, 5, 0x2200, 40);
+    p32(&mut b, 0x80c, 0x3000);
+    p32(&mut b, 0x810, 16);
+    for (at, value) in [
+        (0x814, 0x3100),
+        (0x816, 0x3104),
+        (0x818, 0x3108),
+        (0x81a, 0x310c),
+    ] {
+        p16(&mut b, at, value);
+    }
+    p32(&mut b, 0x81c, 0x2000);
+    p32(&mut b, 0x820, 12);
+    p16(&mut b, 0x824, 0x3108);
+    b
+}
+
+#[test]
+fn static_tls_metadata_retains_template_fixups_zero_fill_alignment_and_writable_index() {
+    let b = tls_image();
+    let image = Image::parse_i386(&b).unwrap();
+    let tls = image.static_tls32().unwrap().unwrap();
+    assert_eq!(
+        tls,
+        alkyhol_pe::StaticTls32 {
+            template_rva: 0x2100,
+            template_size: 12,
+            zero_fill: 16,
+            total_size: 28,
+            index_rva: 0x2300,
+            alignment: 16,
+            callbacks: vec![]
+        }
+    );
+    assert!(
+        image
+            .check_startup()
+            .unwrap_err()
+            .contains("SizeOfZeroFill")
+    );
+    let mut basic = b.clone();
+    p32(&mut basic, 0xb10, 0);
+    Image::parse_i386(&basic).unwrap().check_startup().unwrap();
+    assert_eq!(image.bytes, b);
+    for (flags, alignment) in [(0, 16), (0x00100000, 1), (0x00e00000, 8192)] {
+        let mut b = b.clone();
+        p32(&mut b, 0xb14, flags);
+        assert_eq!(
+            Image::parse_i386(&b)
+                .unwrap()
+                .static_tls32()
+                .unwrap()
+                .unwrap()
+                .alignment,
+            alignment
+        );
+    }
+    let mut b = b.clone();
+    p32(&mut b, 0xb0c, 0);
+    p16(&mut b, 0x81a, 0);
+    assert!(
+        Image::parse_i386(&b)
+            .unwrap()
+            .static_tls32()
+            .unwrap()
+            .unwrap()
+            .callbacks
+            .is_empty()
+    );
+    p32(&mut b, 0xb10, 0);
+    p32(&mut b, 0xb08, 0x402600);
+    p32(&mut b, OPT + 224 + 40 + 8, 0x800); // Index in declared zero-filled data.
+    Image::parse_i386(&b).unwrap().check_startup().unwrap();
+}
+
+#[test]
+fn malformed_tls_shapes_flags_extents_permissions_and_loader_write_aliases_fail() {
+    let original = tls_image();
+    for (at, value) in [
+        (OPT + 100 + 9 * 8, 20),
+        (OPT + 100 + 9 * 8, 25),
+        (0xb00, 0x3fffff),
+        (0xb04, 0x4020ff),
+        (0xb04, 0x402500),
+        (0xb08, 0),
+        (0xb08, 0x402301),
+        (0xb08, 0x403000),
+        (0xb08, 0x401000),
+        (0xb08, 0x402100),
+        (0xb08, 0x4020a0),
+        (0xb0c, 0x403181),
+        (0xb10, u32::MAX),
+        (0xb10, 1024 * 1024),
+        (0xb14, 1),
+        (0xb14, 0x00f00000),
+        (OPT + 224 + 80 + 36, 0xc0000040),
+        (0x610, 0x3100),
+    ] {
+        let mut b = original.clone();
+        p32(&mut b, at, value);
+        assert!(
+            Image::parse_i386(&b).unwrap().static_tls32().is_err(),
+            "{at:x}/{value:x}"
+        );
+    }
+    for at in [0x814, 0x816, 0x818, 0x81a] {
+        let mut b = original.clone();
+        p16(&mut b, at, 0);
+        assert!(Image::parse_i386(&b).unwrap().static_tls32().is_err());
+    }
+    let mut b = original.clone();
+    p16(&mut b, 0x824, 0x3300); // Index loader-write overlap.
+    assert!(Image::parse_i386(&b).unwrap().static_tls32().is_err());
+    let mut b = original;
+    p32(&mut b, 0xb04, 0x402100);
+    p32(&mut b, 0xb10, 0);
+    assert!(Image::parse_i386(&b).unwrap().static_tls32().is_err());
+}
+
+#[test]
+fn callbacks_are_checked_metadata_and_never_silently_skipped_at_startup() {
+    let mut b = tls_image();
+    p32(&mut b, 0xb80, 0x401000);
+    directory(&mut b, 5, 0x2200, 44);
+    p32(&mut b, 0x810, 20);
+    p16(&mut b, 0x81c, 0x3180);
+    p16(&mut b, 0x81e, 0);
+    p32(&mut b, 0x820, 0x2000);
+    p32(&mut b, 0x824, 12);
+    p16(&mut b, 0x828, 0x3108);
+    let image = Image::parse_i386(&b).unwrap();
+    assert_eq!(image.static_tls32().unwrap().unwrap().callbacks, [0x1000]);
+    assert!(image.check_startup().unwrap_err().contains("callbacks"));
+    for value in [0x402100, 0x403000, 0x500000] {
+        let mut bad = b.clone();
+        p32(&mut bad, 0xb80, value);
+        assert!(Image::parse_i386(&bad).unwrap().static_tls32().is_err());
+    }
+    p16(&mut b, 0x81c, 0);
+    assert!(Image::parse_i386(&b).unwrap().static_tls32().is_err());
 }

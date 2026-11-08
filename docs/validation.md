@@ -4,27 +4,70 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
-## PE32 compiler TLS: nonzero zero-fill discrepancy and separate data probe
+## PE32 compiler static TLS data: native Windows and physical M4 development
 
-Native Windows at `c01a053` executes the original compiler TLS observer, but its
-OR of the 16 bytes requested through SizeOfZeroFill is **255**, not the expected
-zero. Initialized/zero-initialized compiler variables, pointer initialization and
-the other recorded fields agree with the source expectations. The full actual
-native report is retained unchanged at
-`pe/reference/pe32-tls-zerofill-observation-windows-v1.json`. This is a diagnostic
-observation, not an accepted native/Alkyhol parity profile. The cause, allocation
-extent and stability of those post-template bytes remain unmeasured. Do not turn
-255 into required zero-fill semantics or claim specification behavior from it.
+Native Windows at `8efdd37` executes the separately identified `pe32-tls-data`
+observer and returns all 24 raw DWORDs. All three
+[PE jobs](https://github.com/daeken/Alkyhol/actions/runs/42438139539) and all 24
+[conformance jobs](https://github.com/daeken/Alkyhol/actions/runs/42438139490) pass
+on that observation revision, before the new Alkyhol TLS data comparison. The
+complete actual native report is frozen unchanged at
+`pe/reference/pe32-tls-data-windows-v1.json`. Exact source/executed PE identities
+are required by default. The existing frozen corpora and original inputs remain
+unchanged. No game code/data enters CI.
 
-The original source and PE remain unchanged. The native collector now requests
-three independent executions and preserves every raw result for investigation.
-A **separate** original fixture, `pe32-tls-data`, requests SizeOfZeroFill=0 and reads
-only within the declared template/private TLS data. It additionally checks that
-mutating the private compiler variable leaves the original image template intact.
-Its initial native capture is pending. This does not change or weaken the first
-probe's record; it establishes a separately identified common compiler-data case.
-This observation commit leaves all Alkyhol TLS startup gates intact. No game data
-is included. Nonzero SizeOfZeroFill and callbacks remain separate unresolved work.
+This fixture requests SizeOfZeroFill=0 and an empty callback array. Real compiler
+SECREL/index/FS accesses observe initialized and zero-initialized TLS variables,
+a relocated global-pointer initializer, proper alignment and template containment.
+Mutating private TLS data leaves the original image template unchanged. The pointer
+writes the actual mapped global, and last-error state remains coherent. Physical
+M4 development normal/forced-rebase execution agrees on all 24 words. Strict
+same-clean-revision CI/physical comparison is pending. A host-only repeat request
+must emit one complete baseline body, restore selectors/clear its FS descriptor,
+and reject the second entry with explicit status 78; this is not native CRT restart.
+
+Alkyhol now validates PE32 TLS metadata (VA-to-RVA conversion, exact pointer
+relocations, immutable metadata, bounded/aligned extents, writable index and alias
+checks). Metadata inspection can retain checked callbacks without executing them.
+Startup rejects every nonempty callback list and nonzero SizeOfZeroFill. Supported
+initialization copies the mapped template **after** HIGHLOW fixups/import binding
+into separate aligned low storage, writes opaque index zero for this isolated EXE,
+and installs its TEB vector. This finite evidence compares indexed data behavior,
+not native slot numbering or allocation layout. Dynamic TLS APIs, DLL TLS, guest
+threads, callbacks, CRT and the game remain unimplemented.
+
+All 109 PE host tests/12 compiler checks, 38 portable tests, 290 Python tests and
+Clippy pass locally. New synthetic assertions check metadata/VA shape, flags,
+permissions, index/template/IAT/HIGHLOW aliases, requested zero fill, callback
+validation/rejection and logical buffer bounds. Protocol negatives enforce all
+raw/decoded words, source/payload/revision identity, actual relocation, native/host
+diagnostics, one-body repeat rejection, missing references and joint drift. Existing
+PE32 integer/stdcall, self-export and FS/TEB development runs retain frozen behavior.
+The local game clears static TLS data preflight and now stops at unsupported
+load configuration before entry. This does not execute or initialize game code.
+
+## PE32 nonzero TLS zero-fill discrepancy: diagnostic evidence only
+
+Native Windows at `c01a053` executes the original `pe32-tls` observer, but its OR
+of 16 bytes requested through SizeOfZeroFill is **255**, not the expected zero.
+The complete actual record is retained unchanged at
+`pe/reference/pe32-tls-zerofill-observation-windows-v1.json`. At `8efdd37`, three
+additional independent executions of the unchanged PE observe **255, 255, 247**;
+the complete raw report is retained unchanged at
+`pe/reference/pe32-tls-zerofill-repeats-windows-v1.json`. Source/PE identities agree.
+These are diagnostic captures, not accepted native/Alkyhol parity profiles.
+Cause, actual allocation extent and safe post-template access remain unmeasured.
+Do not turn those values into expected initialization semantics or ignore them
+inside a successful comparison. Alkyhol explicitly rejects this runtime feature.
+
+The separately pinned `pe32-tls-data` requests no additional bytes and reads only
+declared template/private data. Its byte-for-byte comparison does not weaken the
+original probe or qualify as nonzero-zero-fill parity. Compiler-zero-initialized
+variables within the template are a distinct, successfully measured case. All
+three [PE jobs](https://github.com/daeken/Alkyhol/actions/runs/42437522172) and all 24
+[conformance jobs](https://github.com/daeken/Alkyhol/actions/runs/42437522174) pass
+on the first capture revision; the diagnostic step checks execution/output capture,
+not zero-fill conformance. See [PE32](pe32.md).
 
 ## PE32 FS/TEB: native Windows and physical M4
 

@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "backend": "native Windows PE32 static TLS data",
+  "pe_sha256": "967e546b33fdaddd01c107d0d3e0dfce5cb68f3bf4ef0a6d999945660d4de12a",
+  "executed_pe_sha256": "967e546b33fdaddd01c107d0d3e0dfce5cb68f3bf4ef0a6d999945660d4de12a",
+  "sources": {
+    "pe/fixtures/pe32-tls-data/contract.c": "61968fc07b467025cbd297ab054ce0c48607935139ae611de94fe6a37b80a23e",
+    "pe/fixtures/pe32-tls-data/kernel32.def": "387a43121afd31dc1e37548f6125c97e359290f7e6ddb82beec909c417479dfb"
+  },
+  "normal": {
+    "status": 0,
+    "stdout_hex": "49333254040000000100000001000000010000000100000001000000265941310000000001000000df9b571326594131d4c3b2a155667788e0ac68240100000001000000010000000100000001000000010000004433221126594131ccbbaa99",
+    "words": [
+      1412576073,
+      4,
+      1,
+      1,
+      1,
+      1,
+      1,
+      826366246,
+      0,
+      1,
+      324508639,
+      826366246,
+      2712847316,
+      2289526357,
+      610839776,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      287454020,
+      826366246,
+      2578103244
+    ],
+    "stderr_hex": ""
+  },
+  "rebased": null,
+  "revision": "8efdd373096e6bcfa8512398c83aaadace500dfc",
+  "tracked_tree_clean": true
+}

@@ -6,7 +6,7 @@ mod image;
 mod unwind_info;
 pub use image::{
     Export, ExportTable, ExportTarget, Image, Import, ImportSymbol, RuntimeFunction,
-    RuntimeFunctionTable, Section,
+    RuntimeFunctionTable, Section, StaticTls32,
 };
 
 #[cfg(all(target_os = "macos", target_arch = "x86_64"))]

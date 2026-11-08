@@ -1,5 +1,5 @@
 //! Experimental PE32 integer/stdcall path in a 64-bit Rosetta host.
-//! Minimal FS/TEB self/stack/last-error fields; no TLS, PEB, CRT, DLLs or SEH.
+//! Minimal FS/TEB and single-thread static TLS data (SizeOfZeroFill=0); no callbacks, PEB, CRT or DLLs.
 use crate::{ExportTable, ExportTarget, Image, ImportSymbol, ProcessContext, Result};
 use std::{
     cell::Cell,
@@ -209,9 +209,14 @@ fn unsupported(reason: &str) -> ! {
     eprintln!("Alkyhol PE32 unsupported: {reason}");
     std::process::exit(78)
 }
+struct TlsBlock {
+    mapping: LowMapping,
+    size: usize,
+}
 /// Trusted i386 EXE mapping with separate low stack and stdcall API gates.
 /// The process guard and all mappings remain alive until drop. Minimal FS/TEB
-/// self/stack/last-error fields are supplied. No guest threads, TLS, PEB, callbacks,
+/// self/stack/last-error fields and single-thread static TLS data are supplied.
+/// No guest threads, PEB, callbacks,
 /// SEH, arbitrary syscalls or escaping pointers.
 /// The host executable must use a small __PAGEZERO (see translate_pe32.py).
 ///
@@ -230,6 +235,8 @@ pub struct LoadedImage32<'a> {
     gates: LowMapping,
     stack: LowMapping,
     teb: LowMapping,
+    tls: Option<TlsBlock>,
+    tls_entered: Cell<bool>,
     entry: u32,
     relocated: bool,
     code: u16,
@@ -247,6 +254,7 @@ impl<'a> LoadedImage32<'a> {
         }
         let parsed = Image::parse_i386(bytes)?;
         parsed.check_startup()?;
+        let tls_info = parsed.static_tls32()?;
         let imports = parsed.imports()?;
         let fixups = parsed.relocations()?;
         let mut bindings = Vec::new();
@@ -298,6 +306,16 @@ impl<'a> LoadedImage32<'a> {
             stack.base as u32 + PAGE as u32,
             STACK as u32,
         )?;
+        let tls = tls_info
+            .as_ref()
+            .map(|info| -> Result<TlsBlock> {
+                let size = (info.total_size + PAGE - 1) & !(PAGE - 1);
+                Ok(TlsBlock {
+                    mapping: LowMapping::new(size, info.alignment.max(PAGE), 0)?,
+                    size: info.total_size,
+                })
+            })
+            .transpose()?;
         let mut cs64 = 0u16;
         unsafe {
             std::arch::asm!("mov {0:x}, cs",out(reg) cs64,options(nomem,nostack,preserves_flags));
@@ -359,6 +377,28 @@ impl<'a> LoadedImage32<'a> {
                     .cast::<u32>()
                     .write_unaligned(gates.base as u32 + 256 + id as u32 * 32);
             }
+            if let (Some(info), Some(block)) = (&tls_info, &tls) {
+                // Copy the mapped template after relocations and import binding,
+                // including any pointer initializer's adjusted image address.
+                image
+                    .base
+                    .add(info.index_rva)
+                    .cast::<u32>()
+                    .write_unaligned(0);
+                ptr::copy_nonoverlapping(
+                    image.base.add(info.template_rva),
+                    block.mapping.base,
+                    info.template_size,
+                );
+                teb.base
+                    .add(0x2c)
+                    .cast::<u32>()
+                    .write_unaligned(teb.base as u32 + 0x100);
+                teb.base
+                    .add(0x100)
+                    .cast::<u32>()
+                    .write_unaligned(block.mapping.base as u32);
+            }
             stack
                 .base
                 .add(PAGE + STACK - 4)
@@ -399,6 +439,8 @@ impl<'a> LoadedImage32<'a> {
             gates,
             stack,
             teb,
+            tls,
+            tls_entered: Cell::new(false),
             entry,
             relocated,
             code,
@@ -416,6 +458,12 @@ impl<'a> LoadedImage32<'a> {
         let Some(end) = address.checked_add(len) else {
             return false;
         };
+        if let Some(block) = &self.tls {
+            let first = block.mapping.base as usize;
+            if address >= first && end <= first + block.size {
+                return true;
+            }
+        }
         let teb = self.teb.base as usize;
         if address >= teb && end <= teb + self.teb.len {
             return true;
@@ -476,6 +524,9 @@ impl<'a> LoadedImage32<'a> {
             if !slot.get().is_null() {
                 return Err("nested PE32 entry unsupported".into());
             }
+            if self.tls.is_some() && self.tls_entered.get() {
+                return Err("PE32 static TLS images support one entry".into());
+            }
             let before = segment_state();
             if before[3] != 0 {
                 return Err("PE32 requires an unused host FS selector".into());
@@ -490,6 +541,9 @@ impl<'a> LoadedImage32<'a> {
                     .add(PAGE + STACK - 4)
                     .cast::<u32>()
                     .write_unaligned(self.gates.base as u32);
+            }
+            if self.tls.is_some() {
+                self.tls_entered.set(true);
             }
             let result = unsafe {
                 alkyhol_enter_pe32(self.entry, sp, u32::from(self.code), u32::from(self.data))
@@ -653,6 +707,8 @@ mod tests {
                 base: 0x600000usize as *mut u8,
                 len: PAGE,
             },
+            tls: None,
+            tls_entered: Cell::new(false),
             entry: 0,
             relocated: false,
             code: 0,
@@ -797,5 +853,21 @@ mod tests {
         alkyhol::ffi::SetLastError(previous);
         let _occupied = FS_SLOT.lock().unwrap();
         assert!(TebLease::install(0x600000).is_err());
+    }
+    #[test]
+    fn tls_buffer_permissions_use_the_logical_template_extent_without_page_padding() {
+        let mut image = layout();
+        image.tls = Some(TlsBlock {
+            mapping: LowMapping {
+                base: 0x700000usize as *mut u8,
+                len: PAGE,
+            },
+            size: 28,
+        });
+        assert!(image.permits(0x700000, 28, false));
+        assert!(image.permits(0x700018, 4, true));
+        assert!(!image.permits(0x700000, 29, true));
+        assert!(!image.permits(0x70001c, 1, false));
+        assert!(!image.permits(0x6fffff, 1, false));
     }
 }

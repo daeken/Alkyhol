@@ -214,6 +214,12 @@ jobs:
             local/pe/pe32-tls/pe32-tls-fixture.json
       - name: Build separate compiler TLS data observer without extra zero fill
         run: python tools/build_pe32_tls_data.py
+      - name: Execute original compiler TLS data normally rebased and with explicit reentry rejection
+        run: python tools/run_pe32_tls_data.py --fixture local/pe/pe32-tls-data/pe32-tls-data.exe --output local/pe/pe32-tls-data-alkyhol.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe32-tls-data-alkyhol
+          path: local/pe/pe32-tls-data-alkyhol.json
       - uses: actions/upload-artifact@v4
         with:
           name: pe32-tls-data-fixture
@@ -965,3 +971,12 @@ jobs:
           name: pe32-teb-windows
           path: local/pe/observations
       - run: python tools/compare_pe32_teb.py local/pe/observations/pe32-teb-windows.json local/pe/observations/pe32-teb-alkyhol.json
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe32-tls-data-alkyhol
+          path: local/pe/observations
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe32-tls-data-windows
+          path: local/pe/observations
+      - run: python tools/compare_pe32_tls_data.py local/pe/observations/pe32-tls-data-windows.json local/pe/observations/pe32-tls-data-alkyhol.json
