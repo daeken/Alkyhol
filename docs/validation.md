@@ -4,6 +4,36 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## Resource-backed icons prepared for the actual DAO UI import
+
+The PE32 `LoadIconW` provider retains immutable icon resources from each checked
+module, selects one exact 32-logical-pixel, 32bpp candidate, validates its group
+and BI_RGB DIB extents, and owns real decoded top-down BGRA/AND-mask data behind
+a shared process token. Repeated loads return that existing object. A known
+missing integer resource returns failure; system icons, named resources,
+ambiguous languages/size candidates, PNG/compressed/palette/scaled variants and
+mutable resources stop explicitly. The classic 32px profile is finite; no
+arbitrary current-display selection is claimed. Original color/alpha/mask
+values are retained, with no alpha repair or geometry/render-quality changes.
+
+`ProcessImage32::icon_images` and the explicitly requested probe `--icon-audit`
+produce read-only diagnostic copies, tested by an actual owned PE loader. The
+owned multi-image resource selects its 32px entry rather than its 16px entry;
+all 1,024 source pixels and mask bytes agree with the independent producer.
+Two Rust units cover exact/ambiguous selection, row orientation, alpha/mask
+preservation and malformed headers/extents. Two unsupported call forms stop.
+Native loader error/cache observations and a separate Windows SDK/GDI readback
+of the same owned PE resource are wired into CI and pending. The predefined
+pixel comparison checks RGB/mask bytes; GetDIBits BI_RGB's reserved fourth byte
+is retained raw and is not treated as an alpha guarantee. Host alpha checks
+remain a separate category. No icon has yet been drawn in an Alkyhol window.
+Local checks pass: 208 PE Rust checks including doctests on the Rosetta target,
+398 Python tests, project Clippy, formatting and the real owned icon/audit probes.
+
+This implements the bounded [LoadIconW](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-loadiconw)
+resource/object operation; it is not a placeholder successful icon handle.
+Original game icons, decoded pixels and resource inventories remain local.
+
 ## Original DAO acquires its mutex and reaches UI icon resource loading
 
 At clean runtime revision `e7481d0`, the physical M4 unchanged original EXE

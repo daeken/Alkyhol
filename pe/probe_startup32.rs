@@ -10,6 +10,7 @@ fn main() {
         let mut forced = false;
         let mut strict = false;
         let mut file_origins = false;
+        let mut icon_audit = None;
         let mut profile = ProcessOptions32::default();
         let mut options = args[1..].iter();
         while let Some(option) = options.next() {
@@ -28,6 +29,13 @@ fn main() {
                 "--rebase" => forced = true,
                 "--strict" => strict = true,
                 "--file-origins" => file_origins = true,
+                "--icon-audit" => {
+                    icon_audit = Some(std::path::PathBuf::from(
+                        options
+                            .next()
+                            .ok_or("--icon-audit requires a local output file")?,
+                    ));
+                }
                 "--host-machine-info" => profile.host_machine_info = true,
                 "--object-directory" => {
                     profile.object_directory = Some(
@@ -178,7 +186,28 @@ fn main() {
                 )
             }
         }?;
-        unsafe { image.enter() }
+        let status = unsafe { image.enter() }?;
+        if let Some(path) = icon_audit {
+            let images = image.icon_images();
+            let mut bytes = Vec::new();
+            for value in [0x4149434fu32, images.len() as u32] {
+                bytes.extend(value.to_le_bytes());
+            }
+            for icon in images {
+                for value in [
+                    icon.width,
+                    icon.height,
+                    icon.bgra.len() as u32,
+                    icon.and_mask.len() as u32,
+                ] {
+                    bytes.extend(value.to_le_bytes());
+                }
+                bytes.extend(icon.bgra);
+                bytes.extend(icon.and_mask);
+            }
+            std::fs::write(path, bytes).map_err(|e| e.to_string())?;
+        }
+        Ok(status)
     })();
     match result {
         Ok(status) if status <= 255 => std::process::exit(status as i32),

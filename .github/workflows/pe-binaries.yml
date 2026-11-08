@@ -117,6 +117,10 @@ jobs:
         run: |
           python tools/observe_pe32_mutex_ownership.py
           python tools/observe_pe32_mutex_ownership.py --host
+      - name: Load real owned icon resources at the reached DAO UI call
+        run: |
+          python tools/observe_pe32_resource_icon.py
+          python tools/observe_pe32_resource_icon.py --host
       - uses: actions/upload-artifact@v4
         with:
           name: pe32-startup-microtests
@@ -189,6 +193,9 @@ jobs:
             local/pe/startup-microtests/mutex-default-attributes-host.json
             local/pe/startup-microtests/mutex-ownership-inputs.json
             local/pe/startup-microtests/mutex-ownership-host.json
+            local/pe/startup-microtests/resource-icon-inputs.json
+            local/pe/startup-microtests/resource-icon-host.json
+            local/pe/startup-microtests/resource-icon-host.bin
             local/pe/startup-microtests/ctx-layout-empty-importer.dll
             local/pe/startup-microtests/ctx-layout-*.manifest
   native-pe32-startup:
@@ -297,11 +304,19 @@ jobs:
       - name: Observe identical PE32 mutex ownership across real native processes
         if: ${{ success() || failure() }}
         run: python tools/observe_pe32_mutex_ownership.py --native
+      - name: Build the independent SDK/GDI icon pixel observer
+        if: ${{ success() || failure() }}
+        run: cl /nologo /W4 /WX /std:c++17 pe/fixtures/pe32-startup/resource-icon-reference.cpp /Folocal/pe/startup-microtests/resource-icon-reference.obj /Felocal/pe/startup-microtests/resource-icon-reference.exe user32.lib gdi32.lib
+      - name: Observe native LoadIcon cache/errors and actual GDI RGB/mask readback
+        if: ${{ success() || failure() }}
+        run: python tools/observe_pe32_resource_icon.py --native
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: pe32-startup-native-results
-          path: local/pe/startup-microtests/native-*.json
+          path: |
+            local/pe/startup-microtests/native-*.json
+            local/pe/startup-microtests/resource-icon-native.bin
   alkyhol-pe:
     runs-on: macos-latest
     steps:

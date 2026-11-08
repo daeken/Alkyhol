@@ -277,6 +277,17 @@ pub enum TimeZone32 {
     Utc,
 }
 impl<'a> ProcessImage32<'a> {
+    /// Read-only diagnostic copies of actual loaded resource icons. This is
+    /// decoded resource evidence, not a claim that a native window drew them.
+    pub fn icon_images(&self) -> Vec<super::IconImage32> {
+        self.mappings
+            .last()
+            .expect("process root")
+            .cpu
+            .icons
+            .borrow()
+            .images()
+    }
     /// Check the complete closed graph without mapping or executing any module.
     /// This is metadata/import inspection, not a runtime compatibility result.
     pub fn preflight(
@@ -552,6 +563,9 @@ impl<'a> ProcessImage32<'a> {
                     regions: &[],
                 },
             )?;
+            cpu.icons
+                .borrow_mut()
+                .register(mapping.image.base as u32, &node.image);
             modules.push((node.name.clone(), mappings.len()));
             mappings.push(mapping);
         }

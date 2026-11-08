@@ -34,6 +34,9 @@ mod fiber32;
 mod files32;
 #[path = "heap32.rs"]
 mod heap32;
+#[path = "icon32.rs"]
+mod icon32;
+pub use icon32::IconImage32;
 #[path = "machine32.rs"]
 mod machine32;
 #[path = "math32.rs"]
@@ -78,7 +81,7 @@ unsafe extern "C" {
 }
 const PAGE: usize = 4096;
 const STACK: usize = 1024 * 1024;
-const APIS: [(&str, u16); 115] = [
+const APIS: [(&str, u16); 116] = [
     ("GetLastError", 0),
     ("SetLastError", 4),
     ("GetStdHandle", 4),
@@ -194,6 +197,7 @@ const APIS: [(&str, u16); 115] = [
     ("GetCurrentDirectoryW", 8),
     ("WaitForSingleObjectEx", 12),
     ("ReleaseMutex", 4),
+    ("LoadIconW", 8),
 ];
 const EXIT_API: u32 = 14;
 // Win32 promises a reversible process-specific representation, not a published
@@ -218,7 +222,7 @@ fn api_id(module: &str, symbol: &ImportSymbol) -> Option<usize> {
                     "msvcrt.dll"
                 } else if *id == 8 {
                     "shell32.dll"
-                } else if *id == 100 {
+                } else if matches!(*id, 100 | 115) {
                     "user32.dll"
                 } else if matches!(*id, 107 | 108) {
                     "advapi32.dll"
@@ -483,6 +487,7 @@ struct Cpu32 {
     registry: Option<RefCell<registry32::State>>,
     mutexes: Option<RefCell<mutex32::State>>,
     current_directory: RefCell<Option<directory32::Directory>>,
+    icons: RefCell<icon32::State>,
     utc_timezone: bool,
 }
 impl Cpu32 {
@@ -570,6 +575,7 @@ impl Cpu32 {
             registry: None,
             mutexes: None,
             current_directory: RefCell::new(None),
+            icons: RefCell::new(Default::default()),
             utc_timezone: false,
         })
     }
@@ -1777,6 +1783,7 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
             111 => directory32::set(image, args[0]),
             112 => directory32::get(image, &args),
             113 | 114 => mutex32::ownership(image, &args, id == 113),
+            115 => icon32::load(image, &args),
             _ => unreachable!(),
         }
     })
@@ -1899,6 +1906,7 @@ mod tests {
                 registry: None,
                 mutexes: None,
                 current_directory: RefCell::new(None),
+                icons: RefCell::new(Default::default()),
                 utc_timezone: false,
             }),
             tls: None,
