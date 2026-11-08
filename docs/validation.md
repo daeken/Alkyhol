@@ -4,7 +4,50 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
-## Original D3DX9 constructor passes the first x87 intrinsic
+## Original D3DX9 constructor passes arctangent
+
+On the physical M4, the original constructor executes beyond `_CIatan` and now
+stops at **msvcrt.dll!_lock**. The table and DLL initialization have not completed;
+**game EXE entry has not run**. Original EXE/CRT bytes are unchanged, and the
+existing unpacked local dependency caveat remains. No game compatibility is claimed.
+
+The [native startup job at `5f2a746`](https://github.com/daeken/Alkyhol/actions/runs/42495734383)
+completed 204 actual arctangent observations through the unchanged raw 80-bit
+transport. Its operator-specific imports were independently checked with LLVM.
+The full native report is `pe/reference/pe32-ci-atan-windows-v1.json`, SHA-256
+`ce77f0714d4d0d7e85e415c00888d9288cf7eafd6803d778bb252fbbd28286b2`.
+The literal owned PE is `pe/reference/pe32-ci-atan-v1.exe`, SHA-256
+`f69a886c8305efa3fbb62deab9ca439bcbac081987437d021e205933155c60d0`.
+All six producer sources and the full native baseline remain pinned; no sqrt
+producer, fixture or acceptance field was changed for the new operator.
+
+The initial two-control host candidate **failed** comparison: native C1 differed
+under 0x027F, and the tiny operand lacked native sticky precision under both
+controls. Results agreed for the corresponding observed operands, but those
+state differences prevent parity. The failed report and candidate PE/source are
+retained locally. The cause of the C1 difference has not been independently
+isolated, and 0x027F is explicitly rejected by the supported backend.
+
+The admitted 0x037F fully masked round-to-nearest profile computes on the actual
+x87 stack, narrows the return value to binary64 as observed, and preserves sticky
+precision for nonzero finite operands while retaining the rest of the FP
+environment. Canonical signed operands in the binary64 finite magnitude range
+and signed zeros are admitted; the needed extra physical stack slot is checked.
+All **11 corresponding native rows** now agree on the physical M4, including
+80-bit results, stack/control/status, MXCSR and both error states. A separate
+16-row identical-PE witness adds five signed/boundary cases; those additional
+native comparisons are pending. Five host-only exclusions (other precision,
+too-small extended magnitude, NaN, too-large magnitude and 0x027F) stop with 78
+for the actual profile reason. This is not general arctangent, math-error-hook or
+floating-point startup equivalence.
+
+Local checks pass: 191 PE Rust tests/checks including doctests on the x86_64
+Rosetta target, 372 Python tests, Clippy with project warnings denied, formatting,
+the five atan profile/restriction cases plus the valid witness, the existing
+sqrt cases and CRT cases. The actual original graph advances to the `_lock`
+import. The five added signed/boundary rows still need native execution.
+
+## Original D3DX9 constructor passes the first x87 intrinsic (earlier milestone)
 
 For the next reached `_CIatan` call, an operator-specific native observer reuses
 the unchanged owned numeric/state transport through explicit C/assembly wrappers.

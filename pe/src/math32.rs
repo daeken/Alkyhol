@@ -1,19 +1,44 @@
 //! Copy a checked, position-independent i386 x87 template into owned RX gates.
 use super::{PAGE, unsupported};
 std::arch::global_asm!(include_str!("ci_sqrt32.S"), options(att_syntax));
+std::arch::global_asm!(include_str!("ci_atan32.S"), options(att_syntax));
 unsafe extern "C" {
     static alkyhol_ci_sqrt32_start: u8;
     static alkyhol_ci_sqrt32_end: u8;
     static alkyhol_ci_sqrt32_failure: u8;
+    static alkyhol_ci_atan32_start: u8;
+    static alkyhol_ci_atan32_end: u8;
+    static alkyhol_ci_atan32_failure: u8;
 }
 pub(super) const OFFSET: usize = 3584;
+pub(super) const ATAN_OFFSET: usize = 3840;
 pub(super) fn emit(template: &mut [u8], base: u32, failure: u32) -> crate::Result<()> {
     let start = std::ptr::addr_of!(alkyhol_ci_sqrt32_start) as usize;
     let end = std::ptr::addr_of!(alkyhol_ci_sqrt32_end) as usize;
     let patch = std::ptr::addr_of!(alkyhol_ci_sqrt32_failure) as usize - start;
+    install(
+        template,
+        base,
+        failure,
+        [start, end, patch, OFFSET, ATAN_OFFSET],
+    )
+}
+pub(super) fn emit_atan(template: &mut [u8], base: u32, failure: u32) -> crate::Result<()> {
+    let start = std::ptr::addr_of!(alkyhol_ci_atan32_start) as usize;
+    let end = std::ptr::addr_of!(alkyhol_ci_atan32_end) as usize;
+    let patch = std::ptr::addr_of!(alkyhol_ci_atan32_failure) as usize - start;
+    install(
+        template,
+        base,
+        failure,
+        [start, end, patch, ATAN_OFFSET, PAGE],
+    )
+}
+fn install(template: &mut [u8], base: u32, failure: u32, layout: [usize; 5]) -> crate::Result<()> {
+    let [start, end, patch, offset, limit] = layout;
     let size = end
         .checked_sub(start)
-        .filter(|&n| n > 0 && OFFSET + n <= PAGE)
+        .filter(|&n| n > 0 && offset + n <= limit && limit <= PAGE)
         .ok_or("invalid x87 gateway template size")?;
     if patch + 4 > size
         || template.len() != PAGE
@@ -26,12 +51,28 @@ pub(super) fn emit(template: &mut [u8], base: u32, failure: u32) -> crate::Resul
     {
         return Err("invalid x87 gateway storage/patch".into());
     }
-    template[OFFSET..OFFSET + size]
+    template[offset..offset + size]
         .copy_from_slice(unsafe { std::slice::from_raw_parts(start as *const u8, size) });
-    template[OFFSET + patch..OFFSET + patch + 4].copy_from_slice(&failure.to_le_bytes());
+    template[offset + patch..offset + patch + 4].copy_from_slice(&failure.to_le_bytes());
     Ok(())
 }
 pub(super) fn rejected(image: &super::LoadedImage32<'_>, snapshot: u32, caller: u32) -> ! {
+    rejection(
+        image,
+        snapshot,
+        caller,
+        "_CIsqrt operand/control state outside the measured nonnegative finite x87 profile",
+    )
+}
+pub(super) fn rejected_atan(image: &super::LoadedImage32<'_>, snapshot: u32, caller: u32) -> ! {
+    rejection(
+        image,
+        snapshot,
+        caller,
+        "_CIatan operand/control state outside the measured finite x87 profile",
+    )
+}
+fn rejection(image: &super::LoadedImage32<'_>, snapshot: u32, caller: u32, message: &str) -> ! {
     if !snapshot.is_multiple_of(16) || !image.permits(snapshot as usize, 512, false) {
         unsupported("invalid x87 rejection snapshot");
     }
@@ -45,7 +86,7 @@ pub(super) fn rejected(image: &super::LoadedImage32<'_>, snapshot: u32, caller: 
             &b[32..42]
         );
     }
-    unsupported("_CIsqrt operand/control state outside the measured nonnegative finite x87 profile")
+    unsupported(message)
 }
 
 #[cfg(test)]
@@ -72,5 +113,18 @@ mod tests {
         for target in [0, 0x200000, 0x2000ff, 0x200101, 0x200df0, 0x201000] {
             assert!(emit(&mut vec![0; PAGE], 0x200000, target).is_err());
         }
+    }
+    #[test]
+    fn both_numeric_templates_keep_separate_owned_code_ranges() {
+        let mut code = vec![0xa5; PAGE];
+        emit(&mut code, 0x200000, 0x200c40).unwrap();
+        let before = code.clone();
+        emit_atan(&mut code, 0x200000, 0x200ca0).unwrap();
+        assert_eq!(&before[..ATAN_OFFSET], &code[..ATAN_OFFSET]);
+        let start = std::ptr::addr_of!(alkyhol_ci_atan32_start) as usize;
+        let patch = std::ptr::addr_of!(alkyhol_ci_atan32_failure) as usize - start + ATAN_OFFSET;
+        assert_eq!(&code[patch..patch + 4], &0x200ca0u32.to_le_bytes());
+        assert!(emit_atan(&mut vec![0; PAGE - 1], 0x200000, 0x200ca0).is_err());
+        assert!(emit_atan(&mut code, 0x200000, 0x200ca1).is_err());
     }
 }

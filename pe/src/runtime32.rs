@@ -66,7 +66,7 @@ unsafe extern "C" {
 }
 const PAGE: usize = 4096;
 const STACK: usize = 1024 * 1024;
-const APIS: [(&str, u16); 92] = [
+const APIS: [(&str, u16); 94] = [
     ("GetLastError", 0),
     ("SetLastError", 4),
     ("GetStdHandle", 4),
@@ -159,6 +159,8 @@ const APIS: [(&str, u16); 92] = [
     ("_CIsqrt", 0),
     ("<private x87 rejection>", 8),
     ("_errno", 0),
+    ("_CIatan", 0),
+    ("<private atan rejection>", 8),
 ];
 const EXIT_API: u32 = 14;
 // Win32 promises a reversible process-specific representation, not a published
@@ -177,7 +179,7 @@ fn api_id(module: &str, symbol: &ImportSymbol) -> Option<usize> {
     APIS.iter()
         .enumerate()
         .find(|(id, (name, _))| {
-            *id != 90
+            !matches!(*id, 90 | 93)
                 && *name == symbol
                 && module.eq_ignore_ascii_case(if cdecl_api(*id) {
                     "msvcrt.dll"
@@ -190,7 +192,7 @@ fn api_id(module: &str, symbol: &ImportSymbol) -> Option<usize> {
         .map(|(id, _)| id)
 }
 fn cdecl_api(id: usize) -> bool {
-    matches!(id, 78..=86 | 88..=91)
+    matches!(id, 78..=86 | 88..=93)
 }
 fn cleanup_bytes(id: usize, arguments: u16) -> u16 {
     if cdecl_api(id) { 0 } else { arguments }
@@ -755,15 +757,25 @@ impl<'a> LoadedImage32<'a> {
         for (id, &(_, argument_bytes)) in APIS.iter().enumerate() {
             let mut at = 256 + id * 32;
             let mut base = gates.base as u32 + at as u32;
-            if id == 89 {
-                let target = gates.base as u32 + math32::OFFSET as u32;
+            if matches!(id, 89 | 92) {
+                let target = gates.base as u32
+                    + if id == 89 {
+                        math32::OFFSET
+                    } else {
+                        math32::ATAN_OFFSET
+                    } as u32;
                 template[at] = 0xe9;
                 template[at + 1..at + 5]
                     .copy_from_slice(&target.wrapping_sub(base + 5).to_le_bytes());
-                math32::emit(
+                let emit = if id == 89 {
+                    math32::emit
+                } else {
+                    math32::emit_atan
+                };
+                emit(
                     &mut template,
                     gates.base as u32,
-                    gates.base as u32 + 256 + 90 * 32,
+                    gates.base as u32 + 256 + if id == 89 { 90 } else { 93 } * 32,
                 )?;
                 at += 5;
                 base += 5;
@@ -1647,6 +1659,8 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
             89 => unsupported("_CIsqrt requires its x87 gateway"),
             90 => math32::rejected(image, args[0], args[1]),
             91 => crt32::dispatch(image, id, &args),
+            92 => unsupported("_CIatan requires its x87 gateway"),
+            93 => math32::rejected_atan(image, args[0], args[1]),
             _ => unreachable!(),
         }
     })
@@ -1669,6 +1683,16 @@ mod tests {
         let math_id = api_id("msvcrt.dll", &ImportSymbol::Name("_CIsqrt".into())).unwrap();
         assert_eq!(math_id, 89);
         assert_eq!(APIS[math_id].1, 0); // Real operands/results live on the x87 stack.
+        assert!(
+            api_id(
+                "msvcrt.dll",
+                &ImportSymbol::Name("<private atan rejection>".into())
+            )
+            .is_none()
+        );
+        let atan = api_id("msvcrt.dll", &ImportSymbol::Name("_CIatan".into())).unwrap();
+        assert_eq!(atan, 92);
+        assert_eq!(APIS[atan].1, 0);
         for name in [
             "malloc",
             "_set_error_mode",
