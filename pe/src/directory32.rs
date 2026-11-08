@@ -105,6 +105,32 @@ pub(super) fn get(image: &LoadedImage32<'_>, args: &[u32; 8]) -> u32 {
     }
     units.len() as u32
 }
+/// Explicit dot-relative INI names follow the real process-owned directory.
+/// Bare names require Windows-directory searching and remain unsupported.
+pub(super) fn private_profile_path(image: &LoadedImage32<'_>, text: &str) -> Result<String> {
+    if text.starts_with("Z:\\") || text.starts_with("z:\\") {
+        return Ok(text.to_owned());
+    }
+    let leaf = profile_leaf(text)?;
+    let state = image.cpu.current_directory.borrow();
+    let directory = state
+        .as_ref()
+        .ok_or("private-profile relative path requires an explicitly set current directory")?;
+    directory.check()?;
+    Ok(format!(
+        "{}\\{leaf}",
+        directory.windows.trim_end_matches('\\')
+    ))
+}
+fn profile_leaf(text: &str) -> Result<&str> {
+    let leaf = text.strip_prefix(".\\").ok_or(
+        "private-profile paths require absolute Z: or explicit dot-relative leaf spelling",
+    )?;
+    if leaf.is_empty() || leaf.contains(['\\', '/']) {
+        return Err("private-profile dot-relative path must name one ordinary leaf".into());
+    }
+    Ok(leaf)
+}
 /// Once cwd is set, existing read-only file opens use actual guest directory
 /// state. Unknown aliases and creation/write semantics stop rather than falling
 /// back to the host process directory. Older profiles retain their own contract.
@@ -184,6 +210,19 @@ mod tests {
         assert!(directory.check().is_err());
         drop(directory);
         std::fs::remove_dir_all(moved).unwrap();
+    }
+    #[test]
+    fn profile_relative_spelling_requires_an_explicit_dot_and_one_leaf() {
+        assert_eq!(profile_leaf(".\\settings.ini").unwrap(), "settings.ini");
+        for text in [
+            "settings.ini",
+            ".\\",
+            ".\\inner\\settings.ini",
+            ".\\inner/settings.ini",
+            "C:\\settings.ini",
+        ] {
+            assert!(profile_leaf(text).is_err());
+        }
     }
     #[test]
     fn unknown_paths_are_not_normalized_or_mapped_to_invented_drives() {

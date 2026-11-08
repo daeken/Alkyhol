@@ -37,6 +37,7 @@ fn main() {
                     ));
                 }
                 "--host-machine-info" => profile.host_machine_info = true,
+                "--private-profile-files" => profile.private_profile_files = true,
                 "--object-directory" => {
                     profile.object_directory = Some(
                         options
@@ -114,6 +115,7 @@ fn main() {
             || profile.system_windows_directory.is_some()
             || profile.windows_directory.is_some()
             || profile.documents_directory.is_some()
+            || profile.private_profile_files
             || profile.host_machine_info
             || profile.registry_catalog.is_some()
             || profile.object_directory.is_some()

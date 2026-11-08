@@ -24,6 +24,7 @@ struct GuestProfile32 {
     windows: Option<Vec<u16>>,
     user_windows: Option<Vec<u16>>,
     documents: Option<super::shell_folder32::Documents>,
+    private_profile_files: bool,
     utc: bool,
     host_machine_info: bool,
     registry: Option<super::registry32::State>,
@@ -254,6 +255,11 @@ pub struct ProcessOptions32 {
     /// CSIDL_PERSONAL with current-path flags and a NULL token is admitted.
     /// This declares fresh guest state, not a recovered Windows user profile.
     pub documents_directory: Option<std::path::PathBuf>,
+    /// Explicit file-only INI profile: no IniFileMapping registry redirection.
+    /// Currently admits scalar queries of actually absent absolute Z: files or
+    /// dot-relative leaves in the explicitly set guest current directory.
+    /// Existing files, enumeration and Windows-directory searching stop.
+    pub private_profile_files: bool,
     /// Opt into host-backed x86 machine information and enforced ordinary/LAA
     /// address bands. Other CPU vendors, page sizes and >32 CPU groups stop.
     pub host_machine_info: bool,
@@ -490,6 +496,7 @@ impl<'a> ProcessImage32<'a> {
                     windows,
                     user_windows,
                     documents,
+                    private_profile_files: options.private_profile_files,
                     utc: matches!(options.time_zone, Some(TimeZone32::Utc)),
                     host_machine_info: options.host_machine_info,
                     registry,
@@ -526,6 +533,7 @@ impl<'a> ProcessImage32<'a> {
         cpu.system_windows_directory = directories.windows;
         cpu.windows_directory = directories.user_windows;
         cpu.documents = directories.documents;
+        cpu.private_profile_files = directories.private_profile_files;
         cpu.utc_timezone = directories.utc;
         cpu.registry = directories.registry.map(std::cell::RefCell::new);
         cpu.mutexes = directories.mutexes.map(std::cell::RefCell::new);

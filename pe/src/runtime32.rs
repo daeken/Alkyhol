@@ -49,6 +49,8 @@ mod module_path32;
 mod mutex32;
 #[path = "nls32.rs"]
 mod nls32;
+#[path = "private_profile32.rs"]
+mod private_profile32;
 #[path = "process32.rs"]
 mod process32;
 #[path = "registry32.rs"]
@@ -85,7 +87,7 @@ unsafe extern "C" {
 }
 const PAGE: usize = 4096;
 const STACK: usize = 1024 * 1024;
-const APIS: [(&str, u16); 121] = [
+const APIS: [(&str, u16); 122] = [
     ("GetLastError", 0),
     ("SetLastError", 4),
     ("GetStdHandle", 4),
@@ -207,6 +209,7 @@ const APIS: [(&str, u16); 121] = [
     ("ResetEvent", 4),
     ("CreateSemaphoreW", 16),
     ("SHGetFolderPathW", 20),
+    ("GetPrivateProfileStringW", 24),
 ];
 // The first 120 API slots retain their original offsets. The second bank
 // begins after both x87 bodies, leaving their machine code and failure gates
@@ -503,6 +506,7 @@ struct Cpu32 {
     system_windows_directory: Option<Vec<u16>>,
     windows_directory: Option<Vec<u16>>,
     documents: Option<shell_folder32::Documents>,
+    private_profile_files: bool,
     unhandled_filter: Cell<u32>,
     machine: Option<machine32::Machine>,
     registry: Option<RefCell<registry32::State>>,
@@ -594,6 +598,7 @@ impl Cpu32 {
             system_windows_directory: None,
             windows_directory: None,
             documents: None,
+            private_profile_files: false,
             unhandled_filter: Cell::new(0),
             machine,
             registry: None,
@@ -1814,6 +1819,7 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
             115 => icon32::load(image, &args),
             116..=119 => event32::dispatch(image, id, &args),
             120 => shell_folder32::get(image, &args),
+            121 => private_profile32::get(image, &args),
             _ => unreachable!(),
         }
     })
@@ -1958,6 +1964,7 @@ mod tests {
                 system_windows_directory: None,
                 windows_directory: None,
                 documents: None,
+                private_profile_files: false,
                 unhandled_filter: Cell::new(0),
                 machine: None,
                 registry: None,

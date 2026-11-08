@@ -4,6 +4,35 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## Bounded absent-file INI reads for the reached DAO configuration call
+
+The development diagnostic now captures all six `GetPrivateProfileStringW`
+arguments and checked input strings. The reached call uses a nonempty scalar
+section/key, an empty default, a 512-WCHAR buffer and a dot-relative leaf. That
+leaf is actually absent in the current backed directory. Private names, paths,
+original identities and this explicitly dirty discovery capture stay local.
+
+`--private-profile-files` explicitly declares file-only guest INI state without
+registry IniFileMapping redirection. This bounded gateway verifies real absence
+before returning the caller's default. Existing contents never turn into a
+fallback: parsing remains unsupported. Absolute Z: paths and explicit dot-relative
+leaves are resolved using the real process-owned current directory. Bare-name
+Windows-directory searching, enumeration, zero-size buffers, unknown aliases,
+existing files and unmeasured trailing control whitespace stop explicitly.
+This implements the absent-file scalar branch of the
+[Win32 contract](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-getprivateprofilestringw),
+not a general INI parser or recovered Windows registry/profile.
+
+Physical M4 executes ten owned PE queries covering NULL/empty defaults, Unicode,
+leading/trailing spaces, truncation, capacity one, exact fit and missing parent.
+It checks return count, error 2, output bounds, NUL, guards and stdcall stack;
+eight host-only exclusions stop explicitly. Native Windows will execute the
+identical PE and independently verify dot-relative lookup using a controlled
+existing INI through its native API. Native results and the next clean original
+DAO run are pending. Local checks pass: 215 Rust PE checks including doctests,
+403 Python tests and project Clippy/formatting. All five preceding PE CI jobs
+pass on `a32dfa5` ([42522013961](https://github.com/daeken/Alkyhol/actions/runs/42522013961)).
+
 ## Original DAO passes its Documents query and reaches INI configuration
 
 At clean revision `97d77d7`, physical M4 executes the unchanged original EXE's

@@ -133,6 +133,10 @@ jobs:
         run: |
           python tools/observe_pe32_documents_folder.py
           python tools/observe_pe32_documents_folder.py --host
+      - name: Execute scalar INI defaults only after checking actual file absence
+        run: |
+          python tools/observe_pe32_private_profile_missing.py
+          python tools/observe_pe32_private_profile_missing.py --host
       - uses: actions/upload-artifact@v4
         with:
           name: pe32-startup-microtests
@@ -214,6 +218,8 @@ jobs:
             local/pe/startup-microtests/unnamed-semaphore-host.json
             local/pe/startup-microtests/documents-folder-inputs.json
             local/pe/startup-microtests/documents-folder-host.json
+            local/pe/startup-microtests/private-profile-missing-inputs.json
+            local/pe/startup-microtests/private-profile-missing-host.json
             local/pe/startup-microtests/ctx-layout-empty-importer.dll
             local/pe/startup-microtests/ctx-layout-*.manifest
   native-pe32-startup:
@@ -337,6 +343,9 @@ jobs:
       - name: Compare the identical Documents PE against the real Windows user profile
         if: ${{ success() || failure() }}
         run: python tools/observe_pe32_documents_folder.py --native
+      - name: Observe the identical missing-INI PE and native current-directory anchor
+        if: ${{ success() || failure() }}
+        run: python tools/observe_pe32_private_profile_missing.py --native
       - uses: actions/upload-artifact@v4
         if: always()
         with:
