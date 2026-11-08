@@ -19,6 +19,12 @@ identities. The owned PE SHA-256 is
 The actual native record is frozen at `pe/reference/pe32-windows-v1.json` and
 required by default. These are integer/API/loader observations, not CRT, FS/TEB,
 game startup or graphics.
+All 27 CI jobs pass at `63b6f53`: three
+[PE jobs](https://github.com/daeken/Alkyhol/actions/runs/42429463492) and all 24
+[conformance jobs](https://github.com/daeken/Alkyhol/actions/runs/42429463527).
+Subsequent boundary hardening snapshots Win32 argument values before host calls
+and rejects unaligned stack/count pointers. It does not add new native alias or
+unaligned-pointer observations; the original frozen PE/source inputs stay intact.
 All 96 PE host tests/12 compiler checks, 31 portable tests, 252 Python tests
 and Clippy pass.
 See [PE32](pe32.md) for address-space, metadata, API and trust restrictions.

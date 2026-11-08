@@ -362,10 +362,17 @@ extern "C" fn dispatch(id: u32, arguments: *const u32) -> u32 {
         let Some(&(_, bytes)) = APIS.get(id as usize) else {
             unsupported("unknown gateway");
         };
-        if !image.permits(arguments as usize, bytes as usize, false) {
+        if !(arguments as usize).is_multiple_of(4)
+            || !image.permits(arguments as usize, bytes as usize, false)
+        {
             unsupported("argument stack outside checked storage");
         }
-        let args = unsafe { std::slice::from_raw_parts(arguments, bytes as usize / 4) };
+        // Snapshot values rather than borrowing guest argument memory across a
+        // host call: a valid output pointer may alias those stack words.
+        let mut args = [0u32; 5];
+        for (index, value) in args.iter_mut().enumerate().take(bytes as usize / 4) {
+            *value = unsafe { arguments.add(index).read_unaligned() };
+        }
         match id {
             0 => alkyhol::ffi::GetLastError(),
             1 => {
@@ -397,6 +404,7 @@ extern "C" fn dispatch(id: u32, arguments: *const u32) -> u32 {
                     unsupported("overlapped Win32 I/O");
                 }
                 if args[2] > 1024 * 1024
+                    || !args[3].is_multiple_of(4)
                     || !image.permits(args[1] as usize, args[2] as usize, false)
                     || !image.permits(args[3] as usize, 4, true)
                 {
