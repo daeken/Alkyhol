@@ -4,6 +4,24 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## Native ordinary/LAA memory-profile checks now pass on identical PEs
+
+The [native startup job at `83ee2c5`](https://github.com/daeken/Alkyhol/actions/runs/42506046791)
+passed SDK layout, both original SYSTEM_INFO observations and both separate
+real-storage witnesses. The hosted Rust/PE startup jobs also pass. Downloaded
+native artifacts have exactly the same complete source/PE identities as the
+physical M4 observations. Every system-information field validates against that
+host's actual CPUID and independently observed CPU count; both real-storage
+contracts agree after checking all raw addresses against their reported bands.
+Raw differing CPU facts and ASLR addresses remain preserved per host.
+
+On the physical M4, CPUID is the x86 environment actually exposed by Rosetta,
+while the available-processor count is the host observation. This does not turn
+an Apple CPU into native Intel hardware or claim general topology/scheduling
+parity. The committed original EXE run at `83ee2c5` again reaches the real
+`RegOpenKeyExW` stop with its EXE hash unchanged. Registry contents and missing
+keys have not been guessed; that is the next application-driven frontier.
+
 ## Original DAO startup passes host-backed system information and reaches registry access
 
 On the physical M4, the unchanged original EXE executes past its actual
