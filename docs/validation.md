@@ -4,6 +4,44 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## DAO CTYPE1 classification from measured native data
+
+The physical M4 now executes the original CRT's GetStringTypeW probe and its actual
+256-character classification batch. The next observed call is LCMapStringW during
+case mapping. The game EXE entry has **not executed**. Original-game capture details
+remain ignored/local; the public evidence below uses only our own PE fixtures.
+
+At clean `9e852ec`, eight unchanged positive PEs passed native Windows (92
+normalized DWORDs). The separate original CTYPE1 observer captured 256 raw WORDs
+from native Windows. All three [PE jobs](https://github.com/daeken/Alkyhol/actions/runs/42460883696)
+and all 24 [conformance jobs](https://github.com/daeken/Alkyhol/actions/runs/42460883747)
+passed. The complete unmodified native startup report, including its source/PE
+identities and CRLF bytes, is frozen at pe/reference/pe32-startup-windows-v1.json.
+Its bytes, all existing PE identities and original three source files are required;
+there is no initial-capture bypass. Those original C/DEF files remain unchanged.
+
+The runtime uses those measured CTYPE1 data for the Windows-1252 Unicode repertoire,
+with provenance in pe/data/ctype1/README.md. It applies the data to supported
+sequences; it does not recognize test vectors or use host-locale approximations.
+Unknown code units and CTYPE2/3 fail explicitly. The identical frozen observer now
+executes on physical M4 and agrees with all 256 native WORDs. Separate owned PE
+cases test reordered/duplicate units, embedded NUL, NUL termination and output
+bounds, plus actual stops for unknown units/info levels. These new edge cases
+are host assertions pending their native observations, not general NLS parity.
+
+Local validation passes 140 PE host tests plus 16 compile/documentation checks,
+322 Python tests, Clippy and all sixteen targeted host startup cases. A new
+native-only LCMapStringW observer
+captures both batch results and per-unit lower/upper mappings for the next actual
+blocker. It is built but not counted as host execution or successful API support.
+The existing startup checks and identical-PE Windows execution now have separate
+jobs from historical PE regressions; historical jobs and frozen comparators remain.
+
+References: [GetStringTypeW contract](https://learn.microsoft.com/en-us/windows/win32/api/stringapiset/nf-stringapiset-getstringtypew)
+and [measured data provenance](../pe/data/ctype1/README.md). Finite native API
+observations and original CRT diagnostic execution do not establish game behavior
+or original-game native Windows equivalence.
+
 ## DAO environment and legacy ANSI code-page milestone
 
 On the physical M4, original bundled CRT execution now passes environment-block
@@ -24,10 +62,10 @@ Twelve targeted host startup cases pass. New owned PE32 cases check a real Unico
 environment snapshot including empty values and a surrogate pair, separate copies
 and correct free ownership, cached A/W command text, Windows-1252 best-fit/default
 replacement, conversion sizing, bounds and CPINFO layout. Eight positive binaries
-(92 normalized DWORDs) go unchanged to native Windows; their new native results
-are pending. A separate native-only PE records 256 CTYPE1 WORDs for the next
-GetStringTypeW blocker. It is built but never counted as host execution/parity;
-no classifier results have been guessed or fabricated to advance the game.
+(92 normalized DWORDs) passed native Windows at `9e852ec`. Its separate native-only
+PE also recorded 256 CTYPE1 WORDs; that initial native-only observation has now
+become the finite host comparison recorded above. No classifier results were
+guessed or fabricated to advance the game.
 
 Local validation passes 139 PE host tests, 16 compile/documentation checks,
 322 Python tests and Clippy. Byte/Unicode data preservation, BMP best-fit selection,

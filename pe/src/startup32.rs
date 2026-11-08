@@ -643,6 +643,23 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
             }
             1
         }
+        49 => {
+            if args[0] != 1 {
+                unsupported("PE32 CTYPE2/3 classification is unsupported");
+            }
+            if args[3] == 0 || !args[3].is_multiple_of(2) || args[1] == args[3] {
+                return fail(87);
+            }
+            let Some(units) = read_units::<u16>(image, args[1], args[2] as i32) else {
+                return 0;
+            };
+            checked(image, args[3], units.len() * 2, true);
+            let values = super::nls32::ctype1(&units).unwrap_or_else(|e| unsupported(&e));
+            unsafe {
+                ptr::copy_nonoverlapping(values.as_ptr(), args[3] as *mut u16, values.len());
+            }
+            1
+        }
         _ => unreachable!(),
     }
 }
