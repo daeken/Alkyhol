@@ -190,6 +190,14 @@ jobs:
           path: |
             local/pe/pe32-exports/alkyhol_pe32_exports.exe
             local/pe/pe32-exports/pe32-exports-fixture.json
+      - name: Build owned FS/TEB observer for independent native execution
+        run: python tools/build_pe32_teb.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe32-teb-fixture
+          path: |
+            local/pe/pe32-teb/pe32-teb.exe
+            local/pe/pe32-teb/pe32-teb-fixture.json
       - name: Build owned SizeOfImage variants for independent native loader observation
         run: python tools/build_pe32_geometry.py
       - name: Execute owned PE32 geometry cases normally and with forced relocation
@@ -547,6 +555,16 @@ jobs:
         with:
           name: pe32-exports-windows
           path: local/pe/pe32-exports-windows.json
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe32-teb-fixture
+          path: local/pe/pe32-teb
+      - name: Record actual Win32 FS reads and TEB last-error coherence
+        run: python tools/run_pe32_teb.py --fixture local/pe/pe32-teb/pe32-teb.exe --output local/pe/pe32-teb-windows.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe32-teb-windows
+          path: local/pe/pe32-teb-windows.json
       - uses: actions/download-artifact@v4
         with:
           name: pe32-geometry-fixture

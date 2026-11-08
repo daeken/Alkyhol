@@ -4,6 +4,17 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## PE32 FS/TEB: native observation pending
+
+A new original MIT no-CRT PE32 probe reads FS-relative self/stack fields and
+checks direct FS last-error reads/writes against real GetLastError/SetLastError
+calls, including 10,000 transitions. It emits 16 raw DWORDs; no game code/data is
+involved. Its initial native Windows execution is pending. This capture revision
+does not change Alkyhol's CPU gates, FS state, startup gates or TLS behavior.
+Collector tests separately reject byte-length/status/stderr failures and input/
+source drift. A supported FS/TEB subset is a prerequisite for later static TLS,
+not evidence that TLS callbacks, CRT or the game already work.
+
 ## PE32 executable self exports: native Windows and physical M4
 
 All 27 CI jobs pass at strict-reference revision `7b7dcff`: three
