@@ -108,6 +108,14 @@ pub(super) fn set_ansi(image: &LoadedImage32<'_>, address: u32) -> u32 {
         }
     }
 }
+pub(super) fn current(image: &LoadedImage32<'_>) -> Result<String> {
+    let state = image.cpu.current_directory.borrow();
+    let directory = state
+        .as_ref()
+        .ok_or("path resolution requires an explicitly set current directory")?;
+    directory.check()?;
+    Ok(directory.windows.clone())
+}
 pub(super) fn get_ansi(image: &LoadedImage32<'_>, args: &[u32; 8]) -> u32 {
     let state = image.cpu.current_directory.borrow();
     let directory = state

@@ -187,3 +187,5 @@ pe/reference/pe32-profile-roundtrip-5-v1.exe -text
 pe/reference/pe32-profile-roundtrip-6-v1.exe -text
 pe/fixtures/pe32-startup/runtime-family.c text eol=lf
 pe/fixtures/pe32-startup/runtime-family.def text eol=lf
+pe/fixtures/pe32-startup/full-path.c text eol=lf
+pe/fixtures/pe32-startup/full-path.def text eol=lf

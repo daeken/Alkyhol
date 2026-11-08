@@ -53,6 +53,8 @@ mod module_path32;
 mod mutex32;
 #[path = "nls32.rs"]
 mod nls32;
+#[path = "path32.rs"]
+mod path32;
 #[path = "private_profile32.rs"]
 mod private_profile32;
 #[path = "process32.rs"]
@@ -91,7 +93,7 @@ unsafe extern "C" {
 }
 const PAGE: usize = 4096;
 const STACK: usize = 1024 * 1024;
-const APIS: [(&str, u16); 138] = [
+const APIS: [(&str, u16); 140] = [
     ("GetLastError", 0),
     ("SetLastError", 4),
     ("GetStdHandle", 4),
@@ -230,6 +232,8 @@ const APIS: [(&str, u16); 138] = [
     ("GetFileAttributesA", 4),
     ("WaitForSingleObject", 8),
     ("CreateFileA", 28),
+    ("GetFullPathNameW", 16),
+    ("GetFullPathNameA", 16),
 ];
 // The first 120 API slots retain their original offsets. The second bank
 // begins after both x87 bodies, leaving their machine code and failure gates
@@ -1860,6 +1864,7 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
                 }
             }
             137 => startup32::create_file(image, &args, true),
+            138 | 139 => path32::full(image, &args, id == 139),
             _ => unreachable!(),
         }
     })

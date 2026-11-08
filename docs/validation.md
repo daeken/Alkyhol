@@ -45,7 +45,19 @@ A separate stateful core-family PE checks real event consumption, semaphore
 release/error atomicity, interlocked wraparound, shared ANSI directory state,
 file sizes/attributes and existing-file missing-key reads; eight exclusions
 check handle kinds, checked pointers, alignment, names and missing path state.
-The core-family native comparison and the combined original DAO run are pending.
+At clean `04ec60e`, the combined original DAO run creates its real settings
+file and continues through the newly supported ANSI current-directory call to
+`GetFullPathNameW`. This is progress toward the requested window/D3D9 boundary,
+not completion of that request. The native core-family PE executes successfully
+in [42526478743](https://github.com/daeken/Alkyhol/actions/runs/42526478743), but
+its first comparator catches missing-key/section LastError **2**, differing from
+existing-value LastError 0. The runtime and expected finite observations now
+preserve that measured distinction; raw first results remain local. Native
+rerun is pending. `GetFullPathNameW/A` now use the real process-owned directory,
+perform lexical dot/parent normalization without inventing file existence, and
+check A/W buffer sizing and file-part pointers. Owned A/W execution and two
+logical units pass; its native comparison is pending. Windows creation and
+D3D9 initialization are still unobserved.
 Local checks pass: 219 Rust PE checks including doctests, 410 Python tests,
 Clippy/formatting, the exact settings lifecycle, the core-family PE and prior
 missing-INI/current-directory comparisons. Original game inputs/inventories stay

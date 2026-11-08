@@ -31,7 +31,7 @@ def decode(data):
     expected=[0x46414d32,4,1,0x7fffffff,0x80000000,0x80000000,0x7fffffff,0xffffffff,1,
               1,0,258,1,0,1,1,1,0,0,0,258,1,0,298,g,0,87,g,0,87,g,1,
               1,1,1,1,1,0,183,16,16,32,32,1,8,0,8,1,8,0,0x715e7a11,0x715e7a11,1,
-              0xffffffff,2,0xffffffff,2,0xffffffff,3,1,8,0,1,0,0,1,1,0]
+              0xffffffff,2,0xffffffff,2,0xffffffff,3,1,8,2,1,0,2,1,1,0]
     expected[-1]=len(expected)
     if w!=expected:raise ValueError('runtime family shared state, ABI, errors or output guards differ: '+repr(w))
     return w

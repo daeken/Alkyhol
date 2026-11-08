@@ -110,12 +110,14 @@ pub(super) fn get(image: &LoadedImage32<'_>, args: &[u32; 8]) -> u32 {
                 .unwrap_or_else(|e| unsupported(&e));
             let section = text(&section).unwrap_or_else(|e| unsupported(&e));
             let key = text(&key).unwrap_or_else(|e| unsupported(&e));
-            let value = ini
-                .get(&section, &key)
-                .unwrap_or_else(|e| unsupported(&e))
-                .map(|v| v.encode_utf16().collect())
-                .unwrap_or_else(|| default_value(fallback).unwrap_or_else(|e| unsupported(&e)));
-            (value, 0)
+            let found = ini.get(&section, &key).unwrap_or_else(|e| unsupported(&e));
+            match found {
+                Some(value) => (value.encode_utf16().collect(), 0),
+                None => (
+                    default_value(fallback).unwrap_or_else(|e| unsupported(&e)),
+                    2,
+                ),
+            }
         }
     };
     let count = fallback.len().min(args[4] as usize - 1);
