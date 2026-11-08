@@ -47,8 +47,7 @@ FLS callback behavior is separately regression-checked.
 Default abort/reporting, errno/new-handler allocation failure, free/realloc,
 arbitrary guest threads and C++ exception unwinding remain unsupported. The new
 CRT PE/state and callback-exit observations have been added to the existing
-Windows comparison workflow; native execution and full 80-word comparison are
-pending. The first native attempt at `0f49bf7` failed before output with
+Windows comparison workflow. The first native attempt at `0f49bf7` failed before output with
 0xC0000139 (entry point not found). A separate kernel-only observer completed in
 the [native startup job at `a9be6e7`](https://github.com/daeken/Alkyhol/actions/runs/42489647337)
 and isolated the unavailable import: **__get_app_type is absent**, returning
@@ -78,6 +77,19 @@ stdcall FLS callbacks). The frozen export collector is native-only. The actual
 DAO graph passes corrected optional-export handling, CRT configuration, D3DX9
 malloc, GetVersion and the original constructor dispatch before stopping at
 _CIsqrt. No constructor is skipped and no math result is fabricated.
+
+The corrected [native startup job at `b3b862f`](https://github.com/daeken/Alkyhol/actions/runs/42490671383)
+now passes. Its **80 normalized words** match the hosted Rosetta observation;
+the identical CI-produced PEs also pass on the physical M4 and agree with all
+80 native words and all four callback/initializer exit codes (37/38/37/37).
+The state/storage/constructor PE SHA-256 is
+`5eadf38f46d1d627f94dc9a46de7c978f04fb67a4aa137dd4b4fe22aad8881ac`.
+Both default-handler tokens are actually NULL in this native observation, and
+the optional `__get_app_type` lookup returns the measured NULL/error 127 result
+on both backends. Pointer identities are compared through caller checks rather
+than cross-machine addresses. All eight host-only unsupported cases still stop
+with 78 for their exact expected reasons. This establishes the finite owned CRT
+contract, not original-game execution on Windows or general CRT/C++ EH parity.
 
 ## Dependency startup reaches original D3DX9 initialization (earlier milestone)
 
