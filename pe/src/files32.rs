@@ -153,7 +153,10 @@ pub(super) fn first(image: &LoadedImage32<'_>, args: &[u32; 8]) -> u32 {
     if searches.len() >= 128 {
         unsupported("PE32 search handle budget exceeded");
     }
-    let token = LowMapping::new(PAGE, PAGE, 0).unwrap_or_else(|e| unsupported(&e));
+    let token = image
+        .cpu
+        .mapping(PAGE, PAGE, 0)
+        .unwrap_or_else(|e| unsupported(&e));
     token
         .protect(0, PAGE, 0)
         .unwrap_or_else(|e| unsupported(&e));

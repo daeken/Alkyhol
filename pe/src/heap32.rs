@@ -23,8 +23,15 @@ struct Object {
 pub(super) struct Heap {
     default: Option<u32>,
     objects: BTreeMap<u32, Object>,
+    bounds: Option<super::machine32::Bounds>,
 }
 impl Heap {
+    pub(super) fn with_bounds(bounds: Option<super::machine32::Bounds>) -> Self {
+        Self {
+            bounds,
+            ..Self::default()
+        }
+    }
     pub(super) fn handle(&mut self) -> Result<u32> {
         if let Some(handle) = self.default {
             return Ok(handle);
@@ -43,7 +50,7 @@ impl Heap {
             alkyhol::ffi::SetLastError(8);
             return Ok(0);
         }
-        let memory = match LowMapping::new(PAGE, PAGE, 0) {
+        let memory = match LowMapping::new_in(PAGE, PAGE, 0, self.bounds) {
             Ok(v) => v,
             Err(_) => {
                 alkyhol::ffi::SetLastError(8);
@@ -54,7 +61,7 @@ impl Heap {
         let mut regions = Vec::new();
         if initial != 0 {
             let length = (initial as usize).div_ceil(PAGE) * PAGE;
-            let region = match LowMapping::new(length, PAGE, 0) {
+            let region = match LowMapping::new_in(length, PAGE, 0, self.bounds) {
                 Ok(v) => v,
                 Err(_) => {
                     alkyhol::ffi::SetLastError(8);
@@ -109,7 +116,7 @@ impl Heap {
                 .any(|r| r.cursor + capacity <= r.memory.len)
             {
                 let length = capacity.max(65536).div_ceil(PAGE) * PAGE;
-                let Ok(memory) = LowMapping::new(length, PAGE, 0) else {
+                let Ok(memory) = LowMapping::new_in(length, PAGE, 0, self.bounds) else {
                     return Ok(0);
                 };
                 object.regions.push(Region { memory, cursor: 0 });

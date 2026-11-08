@@ -100,6 +100,7 @@ pub struct Image<'a> {
     is_dll: bool,
     i386: bool,
     dll_characteristics: u16,
+    pub(crate) large_address_aware: bool,
     diagnostic: bool,
 }
 
@@ -326,6 +327,7 @@ impl<'a> Image<'a> {
             is_dll,
             i386,
             dll_characteristics: u16_at(bytes, opt + 70)?,
+            large_address_aware: u16_at(bytes, pe + 22)? & 0x20 != 0,
             diagnostic: false,
         };
         if !(is_dll && entry == 0)

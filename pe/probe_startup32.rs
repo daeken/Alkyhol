@@ -28,6 +28,7 @@ fn main() {
                 "--rebase" => forced = true,
                 "--strict" => strict = true,
                 "--file-origins" => file_origins = true,
+                "--host-machine-info" => profile.host_machine_info = true,
                 "--timezone" => {
                     if options.next().map(String::as_str) != Some("UTC") {
                         return Err(
@@ -84,6 +85,7 @@ fn main() {
         if (profile.system_directory.is_some()
             || profile.system_windows_directory.is_some()
             || profile.windows_directory.is_some()
+            || profile.host_machine_info
             || profile.time_zone.is_some()
             || profile.activation_assemblies.is_some())
             && !file_origins

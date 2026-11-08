@@ -109,7 +109,9 @@ fn allocate(cpu: &Cpu32, bytes: &[u8], kind: BlockKind) -> u32 {
         unsupported("Win32 startup allocation limit");
     }
     let rounded = (bytes.len() + PAGE - 1) & !(PAGE - 1);
-    let mapping = LowMapping::new(rounded, PAGE, 0).unwrap_or_else(|e| unsupported(&e));
+    let mapping = cpu
+        .mapping(rounded, PAGE, 0)
+        .unwrap_or_else(|e| unsupported(&e));
     unsafe {
         ptr::copy_nonoverlapping(bytes.as_ptr(), mapping.base, bytes.len());
     }

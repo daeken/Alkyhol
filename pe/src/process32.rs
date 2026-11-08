@@ -24,6 +24,7 @@ struct GuestProfile32 {
     windows: Option<Vec<u16>>,
     user_windows: Option<Vec<u16>>,
     utc: bool,
+    host_machine_info: bool,
 }
 fn executable_name(name: &str) -> Result<String> {
     if name.len() > 255
@@ -246,6 +247,9 @@ pub struct ProcessOptions32 {
     /// Independently configured Windows-directory role for this guest user.
     /// No Terminal Services redirection or alias to the shared root is inferred.
     pub windows_directory: Option<std::path::PathBuf>,
+    /// Opt into host-backed x86 machine information and enforced ordinary/LAA
+    /// address bands. Other CPU vendors, page sizes and >32 CPU groups stop.
+    pub host_machine_info: bool,
     /// Explicit guest timezone. Default is unknown/unsupported for local-time
     /// APIs; host-local DST behavior is never guessed.
     pub time_zone: Option<TimeZone32>,
@@ -445,6 +449,7 @@ impl<'a> ProcessImage32<'a> {
                     windows,
                     user_windows,
                     utc: matches!(options.time_zone, Some(TimeZone32::Utc)),
+                    host_machine_info: options.host_machine_info,
                 },
                 options
                     .activation_assemblies
@@ -465,7 +470,14 @@ impl<'a> ProcessImage32<'a> {
         directories: GuestProfile32,
         assembly_profile: Option<AssemblyInputs<'_>>,
     ) -> Result<Self> {
-        let mut cpu = Cpu32::new()?;
+        let machine = if directories.host_machine_info {
+            Some(super::machine32::Machine::host(
+                plan.nodes[0].image.large_address_aware,
+            )?)
+        } else {
+            None
+        };
+        let mut cpu = Cpu32::new_with_machine(machine)?;
         cpu.system_directory = directories.system;
         cpu.system_windows_directory = directories.windows;
         cpu.windows_directory = directories.user_windows;
@@ -558,8 +570,11 @@ impl<'a> ProcessImage32<'a> {
                     (mappings[*index].image.base as u32, template)
                 })
                 .collect();
-            *cpu.bound_activation.borrow_mut() =
-                Some(super::activation32::State::new(templates, &owners)?);
+            *cpu.bound_activation.borrow_mut() = Some(super::activation32::State::new(
+                templates,
+                &owners,
+                cpu.machine.as_ref().map(|m| m.bounds),
+            )?);
         }
         *cpu.modules.borrow_mut() = modules
             .into_iter()

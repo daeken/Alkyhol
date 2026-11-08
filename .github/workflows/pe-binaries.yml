@@ -89,8 +89,10 @@ jobs:
         run: |
           python tools/observe_pe32_heap_lock.py
           python tools/observe_pe32_heap_lock.py --host
-      - name: Build native-only system-information evidence for the next actual DAO blocker
-        run: python tools/observe_pe32_system_info.py
+      - name: Execute the host-backed x86 machine profile reached by original DAO startup
+        run: |
+          python tools/observe_pe32_system_info.py
+          python tools/observe_pe32_system_info.py --host
       - uses: actions/upload-artifact@v4
         with:
           name: pe32-startup-microtests
@@ -149,6 +151,7 @@ jobs:
             local/pe/startup-microtests/heap-lock-inputs.json
             local/pe/startup-microtests/heap-lock-host.json
             local/pe/startup-microtests/system-info-inputs.json
+            local/pe/startup-microtests/system-info-host.json
             local/pe/startup-microtests/ctx-layout-empty-importer.dll
             local/pe/startup-microtests/ctx-layout-*.manifest
   native-pe32-startup:

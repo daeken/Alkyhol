@@ -4,6 +4,57 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## Original DAO startup passes host-backed system information and reaches registry access
+
+On the physical M4, the unchanged original EXE executes past its actual
+`GetSystemInfo` call using an explicitly selected host-machine profile. It next
+stops at **ADVAPI32.dll!RegOpenKeyExW** in original startup. This is further EXE
+startup, not an observed menu/render loop or game compatibility. Original files,
+module/RVA/argument captures and derived inventories stay local; the documented
+locally unpacked dependency caveat remains.
+
+The complete 36-byte structure describes the admitted x86 guest environment:
+actual CPUID family/model/stepping, independently checked active processor count,
+a contiguous virtual CPU mask, 4 KiB pages and 64 KiB reservation granularity.
+The root EXE's real LARGE_ADDRESS_AWARE bit selects the ordinary 2 GiB or LAA
+4 GiB address band (both exclude the native top/bottom reserved bands).
+This is an explicit `--host-machine-info` / `ProcessOptions32::host_machine_info`
+profile. It admits the observed Intel family-6 and AMD family-25 CPU profiles, 1..32 processors
+and 4 KiB host pages; other descriptors stop rather than inventing a machine.
+It does not implement general guest scheduling or VirtualAlloc lifecycle.
+
+Those limits are enforced on owned image/gate/TLS, stack/TEB, heap, startup-buffer
+and activation-section mappings; their reservation bases align to 64 KiB.
+They are not just reported constants. Default profiles retain their previous
+mapping contract. Real storage checks run in separately linked small-PAGEZERO PE
+witnesses: ordinary Rust test binaries cannot allocate these low guest mappings.
+The added witness checks actual image, stack, structure, heap and command-line
+addresses against the reported band, image/heap alignment, volatile first/last
+heap-byte writes/readback, release, stack balance and guards. Both ordinary/LAA
+versions pass on the physical M4. Two excluded profiles stop for their actual
+missing-profile or bad-output reason.
+
+The [native startup job at `474575b`](https://github.com/daeken/Alkyhol/actions/runs/42504218530)
+passed the independent x86 SDK layout check and recorded every ordinary/LAA
+SYSTEM_INFO byte plus actual CPUID leaves on its native AMD family-25 host.
+The report is pinned as `pe/reference/pe32-system-info-windows-v1.json`, SHA-256
+`9e6d3399fb6d2c2798aa3bad982b0a89ea83cd8eadccb1d4065dc96d3ab6a6ee`.
+Literal owned ordinary/LAA PEs are `pe32-system-info-v1.exe` (SHA-256
+`a4ba580aae1f25c6877ac71065724a5cc50feccd1270ebf94720e66547b40cd6`)
+and `pe32-system-info-large-v1.exe` (SHA-256
+`9e4f778705b1c3608f7b1a904f69a5661cac570346cfdc3623c3972c9616bca6`).
+Original producer/PE identities are unchanged. Every structure field is checked
+against its own actual CPU/parent count and selected address model; differing
+raw CPU facts remain explicitly per host. This is finite profile evidence,
+not identical hardware or general system-information equivalence. The additional
+real-storage witnesses still await native execution.
+
+Local checks pass: 196 PE Rust tests/checks including doctests on the Rosetta
+x86_64 target, 392 Python tests, Clippy with project warnings denied, formatting,
+the complete original SYSTEM_INFO PEs and separate real-storage probes. The
+native workflow now requires the peer host record rather than accepting a
+missing cross-host comparison. No unsupported call returns fabricated success.
+
 ## Native startup checks pass at the allocator milestone; next API evidence prepared
 
 [PE execution CI at `2bab359`](https://github.com/daeken/Alkyhol/actions/runs/42503166104)

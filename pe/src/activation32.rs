@@ -102,11 +102,13 @@ pub(super) struct State {
     current: Result<u32>,
     stack: Vec<(u32, Result<u32>, u32)>,
     next_cookie: u32,
+    bounds: Option<super::machine32::Bounds>,
 }
 impl State {
     pub(super) fn new(
         templates: Vec<(u32, Result<Option<Template>>)>,
         owners: &[usize],
+        bounds: Option<super::machine32::Bounds>,
     ) -> Result<Self> {
         if templates.is_empty() || templates.len() != owners.len() {
             return Err("invalid activation scope graph".into());
@@ -118,6 +120,7 @@ impl State {
             current: Ok(0),
             stack: Vec::new(),
             next_cookie: 1,
+            bounds,
         };
         let mut tokens = Vec::new();
         for (base, template) in &templates {
@@ -160,14 +163,14 @@ impl State {
             let (bytes, offsets) = section(&template.files, template.roster);
             let length = bytes.len();
             let rounded = (length + PAGE - 1) & !(PAGE - 1);
-            let data = LowMapping::new(rounded, PAGE, 0)?;
+            let data = LowMapping::new_in(rounded, PAGE, 0, self.bounds)?;
             unsafe {
                 ptr::copy_nonoverlapping(bytes.as_ptr(), data.base, length);
             }
             data.protect(0, rounded, 1)?;
             (Some(data), length, offsets)
         };
-        let token = LowMapping::new(PAGE, PAGE, 0)?;
+        let token = LowMapping::new_in(PAGE, PAGE, 0, self.bounds)?;
         token.protect(0, PAGE, 0)?;
         let handle = token.base as u32;
         self.contexts.insert(

@@ -32,6 +32,8 @@ mod fiber32;
 mod files32;
 #[path = "heap32.rs"]
 mod heap32;
+#[path = "machine32.rs"]
+mod machine32;
 #[path = "math32.rs"]
 mod math32;
 #[path = "module_path32.rs"]
@@ -70,7 +72,7 @@ unsafe extern "C" {
 }
 const PAGE: usize = 4096;
 const STACK: usize = 1024 * 1024;
-const APIS: [(&str, u16); 106] = [
+const APIS: [(&str, u16); 107] = [
     ("GetLastError", 0),
     ("SetLastError", 4),
     ("GetStdHandle", 4),
@@ -177,6 +179,7 @@ const APIS: [(&str, u16); 106] = [
     ("SetUnhandledExceptionFilter", 4),
     ("HeapLock", 4),
     ("HeapUnlock", 4),
+    ("GetSystemInfo", 4),
 ];
 const EXIT_API: u32 = 14;
 // Win32 promises a reversible process-specific representation, not a published
@@ -326,6 +329,23 @@ struct LowMapping {
     len: usize,
 }
 impl LowMapping {
+    fn new_in(
+        len: usize,
+        alignment: usize,
+        hint: usize,
+        bounds: Option<machine32::Bounds>,
+    ) -> Result<Self> {
+        let alignment = if bounds.is_some() {
+            alignment.max(65536)
+        } else {
+            alignment
+        };
+        let mapping = Self::new(len, alignment, hint)?;
+        if bounds.is_some_and(|b| !b.contains(mapping.base as usize, mapping.len)) {
+            return Err("mapping outside the admitted PE32 application address interval".into());
+        }
+        Ok(mapping)
+    }
     fn new(len: usize, alignment: usize, hint: usize) -> Result<Self> {
         let reserve = len
             .checked_add(alignment)
@@ -441,6 +461,7 @@ struct Cpu32 {
     system_windows_directory: Option<Vec<u16>>,
     windows_directory: Option<Vec<u16>>,
     unhandled_filter: Cell<u32>,
+    machine: Option<machine32::Machine>,
     utc_timezone: bool,
 }
 impl Cpu32 {
@@ -461,8 +482,20 @@ impl Cpu32 {
         alkyhol::ffi::SetLastError(error);
     }
     fn new() -> Result<Self> {
-        let stack = LowMapping::new(STACK + 2 * PAGE, PAGE, 0)?;
-        let teb = LowMapping::new(PAGE, PAGE, 0)?;
+        Self::new_with_machine(None)
+    }
+    fn mapping(&self, len: usize, alignment: usize, hint: usize) -> Result<LowMapping> {
+        LowMapping::new_in(
+            len,
+            alignment,
+            hint,
+            self.machine.as_ref().map(|m| m.bounds),
+        )
+    }
+    fn new_with_machine(machine: Option<machine32::Machine>) -> Result<Self> {
+        let bounds = machine.as_ref().map(|m| m.bounds);
+        let stack = LowMapping::new_in(STACK + 2 * PAGE, PAGE, 0, bounds)?;
+        let teb = LowMapping::new_in(PAGE, PAGE, 0, bounds)?;
         let bytes = teb_bytes(
             teb.base as u32,
             stack.base as u32 + PAGE as u32,
@@ -491,7 +524,7 @@ impl Cpu32 {
             builtins: RefCell::new(Default::default()),
             executable: Cell::new(0),
             diagnostic: None,
-            heap: RefCell::new(Default::default()),
+            heap: RefCell::new(heap32::Heap::with_bounds(bounds)),
             crt: RefCell::new(Default::default()),
             fls: RefCell::new(Default::default()),
             dynamic_tls: RefCell::new([false; 64]),
@@ -508,6 +541,7 @@ impl Cpu32 {
             system_windows_directory: None,
             windows_directory: None,
             unhandled_filter: Cell::new(0),
+            machine,
             utc_timezone: false,
         })
     }
@@ -698,7 +732,12 @@ impl<'a> LoadedImage32<'a> {
             bindings.push((import.iat, binding));
         }
         let (code, data) = selectors()?;
-        let image = LowMapping::new(
+        let bounds = context
+            .cpu
+            .as_ref()
+            .and_then(|c| c.machine.as_ref())
+            .map(|m| m.bounds);
+        let image = LowMapping::new_in(
             parsed.size,
             65536,
             if rebase {
@@ -710,6 +749,7 @@ impl<'a> LoadedImage32<'a> {
             } else {
                 parsed.base as usize
             },
+            bounds,
         )?;
         let relocated = image.base as u64 != parsed.base;
         if rebase && !relocated {
@@ -718,7 +758,7 @@ impl<'a> LoadedImage32<'a> {
         if relocated && fixups.is_empty() {
             return Err("PE32 preferred base unavailable and no HIGHLOW fixups".into());
         }
-        let gates = LowMapping::new(math32::GATE_SIZE, PAGE, 0)?;
+        let gates = LowMapping::new_in(math32::GATE_SIZE, PAGE, 0, bounds)?;
         let cpu = match context.cpu {
             Some(cpu) => cpu,
             None => Rc::new(Cpu32::new()?),
@@ -728,7 +768,7 @@ impl<'a> LoadedImage32<'a> {
                 let name = import.module.to_ascii_lowercase();
                 let mut builtins = cpu.builtins.borrow_mut();
                 if let std::collections::btree_map::Entry::Vacant(entry) = builtins.entry(name) {
-                    let token = LowMapping::new(PAGE, PAGE, 0)?;
+                    let token = cpu.mapping(PAGE, PAGE, 0)?;
                     token.protect(0, PAGE, 0)?;
                     entry.insert(token);
                 }
@@ -744,7 +784,7 @@ impl<'a> LoadedImage32<'a> {
             .map(|info| -> Result<TlsBlock> {
                 let size = (info.total_size + PAGE - 1) & !(PAGE - 1);
                 Ok(TlsBlock {
-                    mapping: LowMapping::new(size, info.alignment.max(PAGE), 0)?,
+                    mapping: cpu.mapping(size, info.alignment.max(PAGE), 0)?,
                     size: info.total_size,
                 })
             })
@@ -1703,6 +1743,7 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
                 .borrow_mut()
                 .lock(args[0], alkyhol::ffi::GetCurrentThreadId(), id == 104)
                 .unwrap_or_else(|e| unsupported(&e)),
+            106 => machine32::information(image, args[0]),
             _ => unreachable!(),
         }
     })
@@ -1817,6 +1858,7 @@ mod tests {
                 system_windows_directory: None,
                 windows_directory: None,
                 unhandled_filter: Cell::new(0),
+                machine: None,
                 utc_timezone: false,
             }),
             tls: None,
