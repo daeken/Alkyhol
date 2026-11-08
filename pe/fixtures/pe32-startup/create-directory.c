@@ -29,7 +29,7 @@ U entry(void){
     (void)CreateDirectoryW(L"relative",0);__builtin_trap();
 #else
     create(L"\\first");create(L"\\first");create(L"\\first\\child");create(L"\\missing\\child");
-    create(L"\\file");create(L"");create(L"\\file\\child");create(L"\\first\\child");
+    create(L"\\file");create(L"");create(L"\\file\\child");create(L"\\first\\child\\");create(L"\\trailing\\");
     path[prefix-5]=0;SetLastError(0xface1234);put(CreateDirectoryW(path,0)!=0);put(GetLastError());
     put(stack()==before);put(used+1);U done=0;if(!WriteFile(GetStdHandle((U)-11),words,used*4,&done,0)||done!=used*4)__builtin_trap();return 0;
 #endif

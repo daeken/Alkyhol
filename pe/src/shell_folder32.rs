@@ -43,6 +43,14 @@ impl Documents {
         if text.encode_utf16().count() >= 248 {
             return Err("directory creation exceeds the bounded path-length profile".into());
         }
+        // Preserve the caller's single final separator; it names the same
+        // directory. Other normalization remains unsupported.
+        let trailing = text.len() > 3 && text.ends_with('\\');
+        let text = if trailing {
+            &text[..text.len() - 1]
+        } else {
+            text
+        };
         let root = String::from_utf16(&self.units).map_err(|_| "invalid Documents role")?;
         if text == root {
             return Ok(Err(183));
@@ -63,7 +71,15 @@ impl Documents {
             return Err("directory creation requires measured ASCII descendant names".into());
         }
         match files32::existing(text)? {
-            Ok(_) => return Ok(Err(183)),
+            Ok((_, metadata)) => {
+                if trailing && !metadata.is_dir() {
+                    return Err(
+                        "directory creation with a trailing separator on a file is unmeasured"
+                            .into(),
+                    );
+                }
+                return Ok(Err(183));
+            }
             Err(3) => return Ok(Err(3)),
             Err(2) => (),
             Err(error) => {
@@ -198,6 +214,16 @@ mod tests {
             Ok(())
         );
         assert!(inside.join("new/child").is_dir());
+        assert_eq!(
+            documents.create(&format!("{base}\\new\\child\\")).unwrap(),
+            Err(183)
+        );
+        assert_eq!(
+            documents.create(&format!("{base}\\trailing\\")).unwrap(),
+            Ok(())
+        );
+        assert!(inside.join("trailing").is_dir());
+        assert!(documents.create(&format!("{base}\\new\\\\")).is_err());
         assert_eq!(
             documents
                 .create(&format!("{base}\\missing\\child"))

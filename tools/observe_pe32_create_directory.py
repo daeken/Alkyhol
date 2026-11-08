@@ -26,10 +26,10 @@ def build(d):
     (d/'create-directory-inputs.json').write_text(json.dumps(inputs(d),indent=2)+'\n')
 
 def decode(data):
-    if len(data)!=88:raise ValueError('incomplete directory creation report')
-    words=list(struct.unpack('<22I',data))
-    if words[:2]!=[0x4d4b4432,4] or words[-2:]!=[1,22]:raise ValueError('directory creation ABI/stack mismatch')
-    expected=[(1,None),(0,183),(1,None),(0,3),(0,183),(0,183),(0,3),(0,183),(0,183)]
+    if len(data)!=96:raise ValueError('incomplete directory creation report')
+    words=list(struct.unpack('<24I',data))
+    if words[:2]!=[0x4d4b4432,4] or words[-2:]!=[1,24]:raise ValueError('directory creation ABI/stack mismatch')
+    expected=[(1,None),(0,183),(1,None),(0,3),(0,183),(0,183),(0,3),(0,183),(1,None),(0,183)]
     contract=[];success_errors=[]
     for i,(success,error) in enumerate(expected):
         result,last=words[2+i*2:4+i*2]
@@ -56,8 +56,8 @@ def execute(d,native=False):
         if mode==0:
             if r.returncode or r.stderr!=(b'' if native else HOST_BANNER):raise ValueError('directory observer failed; raw output retained')
             row['decoded']=decode(r.stdout)
-            row['filesystem']={'first':(root/'first').is_dir(),'child':(root/'first'/'child').is_dir(),'missing_parent_created':(root/'missing').exists(),'file_hex':(root/'file').read_bytes().hex()}
-            if row['filesystem']!={'first':True,'child':True,'missing_parent_created':False,'file_hex':FIXTURE.hex()}:raise ValueError('real directory effects differ from returned results')
+            row['filesystem']={'first':(root/'first').is_dir(),'child':(root/'first'/'child').is_dir(),'trailing':(root/'trailing').is_dir(),'missing_parent_created':(root/'missing').exists(),'file_hex':(root/'file').read_bytes().hex()}
+            if row['filesystem']!={'first':True,'child':True,'trailing':True,'missing_parent_created':False,'file_hex':FIXTURE.hex()}:raise ValueError('real directory effects differ from returned results')
             save()
         else:
             reasons={1:b'directory creation security attributes are unsupported',2:b'directory creation is restricted to the explicit Documents backing',3:b'PE32 find supports exact ordinary paths',4:b'PE32 find symbolic links/reparse points are unsupported',5:b'directory creation requires measured ASCII descendant names',6:b'directory creation is restricted to the explicit Documents backing',7:b'directory creation requires an explicit Documents backing'}

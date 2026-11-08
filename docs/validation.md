@@ -4,6 +4,26 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## Original DAO creates real profile directories; final separator support
+
+At clean revision `6d242f1`, the unchanged original EXE walks its real existing
+ancestors and creates actual descendant directories inside the explicitly owned
+fresh Documents backing. It then calls `CreateDirectoryW` on an existing created
+directory with a final backslash. That spelling was rejected by the initial
+strict walker; it is now admitted as the same directory. No other path
+normalization is inferred. The local profile tree and raw original arguments
+remain ignored captures; the original install is outside the write capability.
+No window/menu/rendering is observed, and the next clean original run is pending.
+
+The native startup job at `6d242f1` passes the first directory-constructor PE
+([42523576430](https://github.com/daeken/Alkyhol/actions/runs/42523576430)),
+including real mutations, existing ancestors, file collisions and missing parent.
+The expanded identical-PE comparison now includes both existing and newly created
+paths with a final separator. Its native rerun is pending. Local execution,
+two targeted Rust filesystem units, 406 Python tests and Clippy pass after this
+format correction. The initial full Rust suite passed 216 checks including
+doctests. Earlier native INI comparisons remain green.
+
 ## Scoped real directory creation for the next original DAO blocker
 
 The development diagnostic captures the actual `CreateDirectoryW` path and NULL
