@@ -4,7 +4,17 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
-## Isolated PE32 DLL milestone: physical M4 development; native comparison pending
+## Isolated PE32 DLL milestone: native Windows, hosted Mac and physical M4
+
+At clean revision `346f3e0`, actual Windows i386, hosted Mac and physical M4
+execution of the identical DLLs agree on all **80 raw DWORDs**. Both downloaded
+native/hosted and native/physical comparisons pass, including input identities,
+forced HIGHLOW relocation and the separate host stack-cleanup negative. The
+complete actual native report is frozen unchanged at
+`pe/reference/pe32-library-windows-v1.json` and required by default. No initial
+capture bypass remains. The [PE workflow](https://github.com/daeken/Alkyhol/actions/runs/42444241381)
+passes all three jobs. The [conformance workflow](https://github.com/daeken/Alkyhol/actions/runs/42444241402)
+is still running when this record is written; its full conclusion is not claimed.
 
 The physical M4 executes the unchanged owned accepted/rejected PE32 DLLs through
 real dynamic attach, integer exports and detach. Normal/forced-rebase runs emit
@@ -18,12 +28,12 @@ execution of the existing frozen PE32 integer/stdcall, FS/TEB and compiler-TLS-d
 observers also retains their prior outputs and host cleanup checks after the CPU
 return-gate change. These development reports are separate from clean native CI.
 
-The new native i386 driver consumes those identical DLLs through Windows
+The native i386 driver consumes those identical DLLs through Windows
 LoadLibrary/GetProcAddress/FreeLibrary. The existing workflow now transfers and
 compares every raw word, exact DLL/driver/source identities, clean revision,
-forced relocation and separate host ABI-negative cleanup. Its first native
-observation is pending; no native DLL parity is claimed yet. Once captured, the
-full unchanged native record will be frozen and required by default.
+forced relocation and separate host ABI-negative cleanup. This is finite dynamic
+DLL lifecycle/calling-convention evidence; it does not establish arbitrary DLL,
+exception or game compatibility.
 
 This isolated API is a foundation for dependency startup, not a process loader.
 DLL dependencies/TLS, SafeSEH/SEH, CRT and game startup remain unsupported.

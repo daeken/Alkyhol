@@ -32,7 +32,7 @@ class DllProtocol(unittest.TestCase):
     def test_complete_records_and_frozen_native_identity(self):
         native,host=pair()
         self.assertEqual(compare(native,host,copy.deepcopy(native)),80)
-        self.assertEqual(compare(native,host,None),80) # Initial capture only.
+        with self.assertRaises(ValueError):compare(native,host,None)
 
     def test_process_failure_truncation_and_fabricated_decoding_never_pass(self):
         for field,value in [('returncode',-11),('returncode',1),('stdout',b'\0'*319),('stderr',b'warning')]:

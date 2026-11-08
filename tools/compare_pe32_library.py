@@ -33,9 +33,8 @@ def compare(windows,host,reference):
     if windows.get('rebased') is not None or windows.get('mismatch_rejected') is not None:
         raise ValueError('unexpected native-only host diagnostics')
     native=record(windows.get('normal'),80,0,b'')
-    if reference is not None:
-        if reference.get('backend')!=NATIVE or reference.get('tracked_tree_clean') is not True or any(reference.get(k)!=windows[k] for k in ['sources','files','normal']):
-            raise ValueError('frozen native DLL observation changed')
+    if type(reference) is not dict or reference.get('backend')!=NATIVE or reference.get('tracked_tree_clean') is not True or any(reference.get(k)!=windows[k] for k in ['sources','files','normal']):
+        raise ValueError('missing or changed frozen native DLL observation')
     for key,forced in [('normal',False),('rebased',True)]:
         if record(host.get(key),80,0,RESTORED+str(forced).lower().encode()+b'\n')!=native:
             raise ValueError('actual native/Alkyhol DLL lifecycle or exports differ')
@@ -51,8 +50,6 @@ def compare(windows,host,reference):
 
 if __name__=='__main__':
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('windows',type=Path);p.add_argument('host',type=Path)
-    p.add_argument('--initial-capture',action='store_true',help='first native observation only; forbidden after freezing')
     a=p.parse_args()
-    if a.initial_capture and REFERENCE.exists():raise ValueError('cannot bypass the frozen DLL reference')
-    reference=None if a.initial_capture else json.loads(REFERENCE.read_text(encoding='utf-8'))
+    reference=json.loads(REFERENCE.read_text(encoding='utf-8'))
     print('Identical PE32 DLLs agree on',compare(json.loads(a.windows.read_text(encoding='utf-8')),json.loads(a.host.read_text(encoding='utf-8')),reference),'DWORDs, including failed attach/detach; host rejects a real stack-cleanup mismatch')
