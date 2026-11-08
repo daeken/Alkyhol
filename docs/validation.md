@@ -37,8 +37,20 @@ owned probe now retains a finite 100-million-iteration ceiling and the same
 20-second parent deadline, and emits its accumulated words plus a failure-stage
 tag before either explicit diagnostic trap. All PID, rate, boot-time, error,
 guard and atomic acceptance checks are unchanged. The revised PE passes on the
-physical M4; its native execution remains pending. No frozen baseline is altered
-to accept the failed run.
+physical M4. No frozen baseline is altered to accept the failed run.
+
+The revised observer subsequently completed in the [native startup job at
+`905214e`](https://github.com/daeken/Alkyhol/actions/runs/42487490117). Its exact PE,
+SHA-256 `c41b400516ed906e10fd91cc3811a77f2abf841466ad826be00858788e165acd`,
+also executes successfully on the physical M4 after downloading the unchanged CI
+input artifact. Both executions pass the unchanged PID, boot-time bracket,
+counter-rate, atomic-bit, guard and last-error checks. Windows reports a 10 MHz
+counter and the M4 gateway reports its real 1 GHz provider; these are separate
+per-host clocks, not identical counter words. Both report a 32 ms tick interval;
+measured counter intervals are 20.8626 ms on Windows and 31.867875 ms on the M4,
+within the existing 25 ms quantization bound. The exact cause of the earlier
+unreported trap remains unisolated. Native calendar checks and the other startup
+comparators also pass at `905214e`; the broader workflow is separate.
 
 This milestone passes 186 PE Rust tests/checks including doctests on the physical
 M4's x86_64 Rosetta target, 361 Python tests, project Clippy with warnings denied,
