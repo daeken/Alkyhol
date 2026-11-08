@@ -11,4 +11,9 @@ name = "alkyhol-pe"
 version = "0.1.0"
 dependencies = [
  "alkyhol",
+ "roxmltree",
 ]
+
+[[package]]
+name = "roxmltree"
+version = "0.20.0"

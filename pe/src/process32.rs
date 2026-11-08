@@ -274,6 +274,12 @@ impl<'a> ProcessImage32<'a> {
         diagnostic: bool,
     ) -> Result<Self> {
         let mut cpu = Cpu32::new()?;
+        // Keep unknown manifest/binding state deferred until an activation query.
+        // Existing paths do not gain a fabricated empty/default context.
+        *cpu.activation.borrow_mut() = crate::activation_manifest::empty_default(
+            &plan.nodes[0].image,
+            &plan.nodes[1..].iter().map(|n| &n.image).collect::<Vec<_>>(),
+        );
         if diagnostic {
             cpu.diagnostic = Some(super::diagnostic32::Traps::new(plan.deferred.clone())?);
         }

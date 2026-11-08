@@ -1,0 +1,3 @@
+LIBRARY owned-context.dll
+EXPORTS
+  OwnedDependency

@@ -4,6 +4,47 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## DAO bounded activation lookup and next original CRT call
+
+On the physical M4, the original CRT now resolves FindActCtxSectionStringW to
+a real checked gateway, continues through its original module-handle queries,
+and reaches **GetModuleFileNameW**. That is the next measured unsupported import.
+The activation query itself and the game EXE entry have **not executed**.
+Original module/RVA/argument captures remain ignored/local.
+
+The new activation gateway implements only missing DLL keys in a verified empty
+embedded default context, with flags 0/1, NULL extension GUID, section 2 and
+40/64-byte keyed-data structures. It bounds the actual guest UTF-16 key and output
+storage, leaves output bytes untouched and returns FALSE/error 14007. It does
+not infer an empty context from a missing manifest: external/system defaults,
+multiple manifest languages, nonempty EXE manifests and nonempty DLL manifests
+remain explicitly unsupported. In particular, DAO's original DLL assembly binding
+is still unknown; exporting this partial API does not fabricate its result.
+
+Namespace-aware XML parsing uses unmodified, vendored, open-source roxmltree
+0.20.0 (MIT/Apache-2.0, with its upstream ISC tree credit). The published archive
+SHA-256 is `6c20b6793b5c2fa6553b250154b78d6d0db37e72700ae35fad9387a46f487c97`.
+Source/license hashes are checked; builds need no new downloads. Alkyhol disables
+DTDs, bounds manifest size/node count and rejects every unsupported element or
+attribute. Parsing is not assembly resolution or language fallback.
+
+One unchanged owned PE exercises dynamic/direct gateway identity and four
+empty-context calls (both sizes and flags), producing 33 exact DWORDs on M4.
+Five host-only restrictions stop after a boot marker: nonempty EXE/DLL contexts,
+absent embedded default, read-only output and unsupported flags. They are not
+executed natively or counted as Windows failure semantics. The new positive PE
+is queued for native comparison; prior frozen native observations already cover
+the flags-0 missing-key/output-preservation behavior, not this new complete record.
+
+Local validation passes 151 PE host tests and 16 compile/documentation checks,
+331 Python tests, Clippy, all 25 prior startup cases and six new activation cases.
+The unmodified third-party parser emits compiler deprecation/lifetime warnings
+on the newer Rust toolchain; Alkyhol's own Clippy checks pass with warnings denied.
+All five [PE jobs](https://github.com/daeken/Alkyhol/actions/runs/42468373009)
+passed on predecessor `4cecfeb`, including the strict frozen activation comparator
+and the previously download-blocked historical comparisons. That is separate
+from the new gateway's pending native result.
+
 ## DAO activation-context resource groundwork
 
 The next actual DAO blocker remains the dynamic lookup of

@@ -17,15 +17,20 @@ jobs:
         run: python tools/check_pe32_startup.py
       - name: Inspect owned PE resources for the DAO activation-context blocker
         run: python tools/check_pe32_activation.py
+      - name: Execute the activation lookup bridge and reject unknown EXE/DLL contexts
+        run: python tools/check_pe32_activation_miss.py
       - uses: actions/upload-artifact@v4
         with:
           name: pe32-startup-microtests
           path: |
             local/pe/startup-microtests/*.exe
+            local/pe/startup-microtests/owned-context.dll
             local/pe/startup-microtests/microtest-inputs.json
             local/pe/startup-microtests/microtest-results.json
             local/pe/startup-microtests/activation-inputs.json
             local/pe/startup-microtests/activation-host.json
+            local/pe/startup-microtests/activation-miss-inputs.json
+            local/pe/startup-microtests/activation-miss-host.json
   native-pe32-startup:
     needs: pe32-startup
     runs-on: windows-latest
@@ -47,6 +52,8 @@ jobs:
         run: cl /nologo /c /W4 /WX /std:c++17 pe/fixtures/pe32-startup/activation-layout.cpp /Folocal/pe/startup-microtests/activation-layout.obj
       - name: Observe actual Win32 activation-context behavior using the identical owned PE
         run: python tools/check_pe32_activation.py --native
+      - name: Compare identical empty-context lookup PE with the Rust bridge
+        run: python tools/check_pe32_activation_miss.py --native
       - uses: actions/upload-artifact@v4
         if: always()
         with:

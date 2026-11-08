@@ -49,7 +49,7 @@ fn checked(image: &LoadedImage32<'_>, address: u32, len: usize, write: bool) {
         unsupported("startup buffer outside checked guest storage");
     }
 }
-fn read_units<T: Copy + Default + PartialEq>(
+pub(super) fn read_units<T: Copy + Default + PartialEq>(
     image: &LoadedImage32<'_>,
     address: u32,
     length: i32,

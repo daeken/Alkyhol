@@ -1,0 +1,23 @@
+{
+  "crate": "roxmltree",
+  "version": "0.20.0",
+  "archive_url": "https://crates.io/api/v1/crates/roxmltree/0.20.0/download",
+  "archive_sha256": "6c20b6793b5c2fa6553b250154b78d6d0db37e72700ae35fad9387a46f487c97",
+  "files": {
+    "Cargo.toml": "c24ce997568082ddfb3b40315d55eb2e0d405e3882785fc5dd281b7569349220",
+    "Cargo.toml.orig": "cbc7fecc6004293cc491afad0bab0bdbb8eef02e14879db2ce747074d92687ef",
+    "LICENSE-APACHE": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+    "LICENSE-MIT": "fffe218c1e349e1d482a05677f2ce850502f88298174d77f6ac7c04821db7899",
+    "README.md": "4fe693e39a50b30070b276e1f8bf6a5e9017b62423d766d986ae3f269f89b19d",
+    "src/lib.rs": "9f44e1aa88815bbc74413105cdd42144c1e2889b331cbaccb6f9d94d0d30e6f5",
+    "src/parse.rs": "83c0102685f26de8e31128f0c058901ab187f517242f7dd08644deba5cfdbcde",
+    "src/tokenizer.rs": "3ceb27053e862bf7b856ee85b5bed59774bc7519abd14c6e16f9c8f41d6aedc0",
+    "src/tokenizer_tests.rs": "5cffe1fcb8764457140707147689f04db108a9121eb94e9a43900c0eae700165"
+  },
+  "additional_license": {
+    "file": "LICENSE-ego-tree",
+    "source": "https://raw.githubusercontent.com/causal-agent/ego-tree/master/LICENSE",
+    "sha256": "ddea4e94a1c35ed9826e54e13a5b50b8f81b21665a00ca07c8861f1859e56b6b",
+    "reason": "src/lib.rs credits its heavily modified tree structure to ISC-licensed ego-tree"
+  }
+}
