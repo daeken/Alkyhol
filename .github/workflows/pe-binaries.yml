@@ -162,6 +162,20 @@ jobs:
         with:
           name: pe-static-functions-alkyhol
           path: local/pe/static-functions-alkyhol.json
+      - name: Execute unchanged i386 PE32 with real stdcall API gates
+        run: |
+          python tools/build_pe32_fixture.py
+          python tools/run_pe32_probe.py --fixture local/pe/pe32/pe32.exe --output local/pe/pe32-alkyhol.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe-pe32-fixture
+          path: |
+            local/pe/pe32/pe32.exe
+            local/pe/pe32/pe32-fixture.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe-pe32-alkyhol
+          path: local/pe/pe32-alkyhol.json
       - name: Observe curated partial-prologue contexts with assembler-generated metadata
         run: |
           python tools/build_pe_unwind_prologue.py
@@ -473,6 +487,16 @@ jobs:
           path: local/pe/static-functions-windows.json
       - uses: actions/download-artifact@v4
         with:
+          name: pe-pe32-fixture
+          path: local/pe/pe32
+      - name: Execute identical i386 PE32 on native Windows
+        run: python tools/run_pe32_probe.py --fixture local/pe/pe32/pe32.exe --output local/pe/pe32-windows.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe-pe32-windows
+          path: local/pe/pe32-windows.json
+      - uses: actions/download-artifact@v4
+        with:
           name: pe-unwind-prologue-fixture
           path: local/pe/unwind-prologue
       - name: Observe native Windows restoration at recorded prologue boundaries
@@ -763,3 +787,13 @@ jobs:
           name: pe-registered-dll-windows
           path: local/pe/observations
       - run: python tools/compare_pe_registered_dll.py local/pe/observations/registered-dll-windows.json local/pe/observations/registered-dll-alkyhol.json
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe-pe32-alkyhol
+          path: local/pe/observations
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe-pe32-windows
+          path: local/pe/observations
+      - run: python tools/compare_pe32_probe.py local/pe/observations/pe32-windows.json local/pe/observations/pe32-alkyhol.json

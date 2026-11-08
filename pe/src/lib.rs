@@ -39,3 +39,8 @@ mod library_set;
 pub use library_set::LibrarySet;
 
 pub type Result<T> = std::result::Result<T, String>;
+
+#[cfg(all(target_os = "macos", target_arch = "x86_64"))]
+mod runtime32;
+#[cfg(all(target_os = "macos", target_arch = "x86_64"))]
+pub use runtime32::LoadedImage32;

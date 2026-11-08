@@ -59,6 +59,11 @@ def embedded_payload(data):
 
 
 def translate(source, output):
+    return _package(source, output, ROOT/'pe/launcher.rs',
+                    'unchanged PE64 in x86-64 Mach-O / Alkyhol loader')
+
+
+def _package(source, output, launcher, kind, extra_link_args=()):
     if platform.system() != 'Darwin':
         raise RuntimeError('Mach-O packaging currently requires macOS and Xcode command line tools')
     source, output = source.resolve(), output.resolve()
@@ -74,17 +79,17 @@ def translate(source, output):
         payload = Path(temp) / 'payload.exe'
         shutil.copyfile(source, payload)
         digest = hashlib.sha256(payload.read_bytes()).hexdigest()
-        args = [rustc, '--edition=2024', '--target', TARGET, str(ROOT / 'pe/launcher.rs'),
+        args = [rustc, '--edition=2024', '--target', TARGET, str(launcher),
                 '--extern', 'alkyhol_pe=' + str(build / 'libalkyhol_pe.rlib'),
                 '-L', 'dependency=' + str(build / 'deps'), '-o', str(output)]
         # cc is the linker driver: every ld argument gets its own -Xlinker pair.
-        for arg in ['-sectcreate', '__ALKYHOL', '__pefile', str(payload), '-segprot', '__ALKYHOL', 'r', 'r']:
+        for arg in [*extra_link_args, '-sectcreate', '__ALKYHOL', '__pefile', str(payload), '-segprot', '__ALKYHOL', 'r', 'r']:
             args += ['-C', 'link-arg=-Xlinker', '-C', 'link-arg=' + arg]
         subprocess.run(args, cwd=ROOT, check=True)
     embedded_digest = hashlib.sha256(embedded_payload(output.read_bytes())).hexdigest()
     if embedded_digest != digest:
         raise RuntimeError('linked Mach-O payload differs from original PE snapshot')
-    report = {'schema_version': 1, 'kind': 'unchanged PE64 in x86-64 Mach-O / Alkyhol loader',
+    report = {'schema_version': 1, 'kind': kind,
               'pe_sha256': digest, 'embedded_pe_sha256': embedded_digest, 'macho_sha256': hashlib.sha256(output.read_bytes()).hexdigest(),
               'target': TARGET, 'executed': False}
     output.with_name(output.name + '.json').write_text(json.dumps(report, indent=2) + '\n')

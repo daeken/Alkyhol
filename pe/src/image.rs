@@ -71,6 +71,7 @@ pub struct Image<'a> {
     pub sections: Vec<Section>,
     directories: [(usize, usize); 16],
     is_dll: bool,
+    i386: bool,
 }
 
 fn range(bytes: &[u8], start: usize, len: usize) -> Result<&[u8]> {
@@ -109,13 +110,27 @@ impl<'a> Image<'a> {
     pub fn parse_dll(bytes: &'a [u8]) -> Result<Self> {
         Self::parse_kind(bytes, true)
     }
+    /// Inspect a conventional i386 PE32 EXE for the separate experimental runtime.
+    /// This does not enable PE32 in the existing AMD64 loader APIs.
+    pub fn parse_i386(bytes: &'a [u8]) -> Result<Self> {
+        Self::parse_format(bytes, false, true)
+    }
+    /// Machine pointer width selected by the validated PE header.
+    pub fn bitness(&self) -> u8 {
+        if self.i386 { 32 } else { 64 }
+    }
     fn parse_kind(bytes: &'a [u8], is_dll: bool) -> Result<Self> {
+        Self::parse_format(bytes, is_dll, false)
+    }
+    fn parse_format(bytes: &'a [u8], is_dll: bool, i386: bool) -> Result<Self> {
         if range(bytes, 0, 2)? != b"MZ" {
             return Err("missing MZ signature".into());
         }
         let pe = u32_at(bytes, 0x3c)? as usize;
-        if range(bytes, pe, 4)? != b"PE\0\0" || u16_at(bytes, pe + 4)? != 0x8664 {
-            return Err("expected AMD64 PE signature".into());
+        if range(bytes, pe, 4)? != b"PE\0\0"
+            || u16_at(bytes, pe + 4)? != if i386 { 0x14c } else { 0x8664 }
+        {
+            return Err("unexpected PE machine/signature".into());
         }
         let count = u16_at(bytes, pe + 6)? as usize;
         let flags = u16_at(bytes, pe + 22)?;
@@ -126,8 +141,9 @@ impl<'a> Image<'a> {
         let opt_size = u16_at(bytes, pe + 20)? as usize;
         let opt = pe + 24;
         range(bytes, opt, opt_size)?;
-        if opt_size < 112 || u16_at(bytes, opt)? != 0x20b {
-            return Err("expected PE32+ optional header".into());
+        let directory_offset = if i386 { 96 } else { 112 };
+        if opt_size < directory_offset || u16_at(bytes, opt)? != if i386 { 0x10b } else { 0x20b } {
+            return Err("unexpected PE optional header format".into());
         }
         let align = u32_at(bytes, opt + 32)? as usize;
         let file_align = u32_at(bytes, opt + 36)? as usize;
@@ -148,9 +164,16 @@ impl<'a> Image<'a> {
         }
         let size = u32_at(bytes, opt + 56)? as usize;
         let headers = u32_at(bytes, opt + 60)? as usize;
-        let base = u64_at(bytes, opt + 24)?;
+        let base = if i386 {
+            u64::from(u32_at(bytes, opt + 28)?)
+        } else {
+            u64_at(bytes, opt + 24)?
+        };
         let entry = u32_at(bytes, opt + 16)? as usize;
         let table_end = opt + opt_size + count * 40;
+        if i386 && !size.is_multiple_of(align) {
+            return Err("PE32 unaligned SizeOfImage is not yet supported".into());
+        }
         if size == 0
             || size > MAX_IMAGE
             || !size.is_multiple_of(align)
@@ -159,19 +182,20 @@ impl<'a> Image<'a> {
             || !headers.is_multiple_of(file_align)
             || !base.is_multiple_of(65536)
             || base.checked_add(size as u64).is_none()
+            || (i386 && base + size as u64 > 0x100000000)
         {
             return Err("invalid image size/base/headers".into());
         }
         range(bytes, 0, headers)?;
         let mut directories = [(0, 0); 16];
-        let dirs = u32_at(bytes, opt + 108)? as usize;
-        if dirs > 16 || 112 + dirs * 8 > opt_size {
+        let dirs = u32_at(bytes, opt + directory_offset - 4)? as usize;
+        if dirs > 16 || directory_offset + dirs * 8 > opt_size {
             return Err("invalid directory count".into());
         }
         for (i, dir) in directories.iter_mut().enumerate().take(dirs) {
             *dir = (
-                u32_at(bytes, opt + 112 + i * 8)? as usize,
-                u32_at(bytes, opt + 116 + i * 8)? as usize,
+                u32_at(bytes, opt + directory_offset + i * 8)? as usize,
+                u32_at(bytes, opt + directory_offset + 4 + i * 8)? as usize,
             );
             if (dir.0 == 0) != (dir.1 == 0) {
                 return Err("partial directory entry".into());
@@ -232,6 +256,7 @@ impl<'a> Image<'a> {
             sections,
             directories,
             is_dll,
+            i386,
         };
         if !(is_dll && entry == 0)
             && !image
@@ -301,6 +326,8 @@ impl<'a> Image<'a> {
     /// must be zero; named hints and names must be file-backed. No resolution
     /// or promise about native sparse-ordinal behavior follows from parsing.
     pub fn imports(&self) -> Result<Vec<Import>> {
+        let width = if self.i386 { 4 } else { 8 };
+        let ordinal_flag = if self.i386 { 1u64 << 31 } else { 1u64 << 63 };
         let (rva, len) = self.directories[1];
         let mut result = Vec::new();
         let mut slots = BTreeSet::new();
@@ -316,22 +343,31 @@ impl<'a> Image<'a> {
             if u32_at(d, 4)? != 0 || u32_at(d, 8)? != 0 {
                 return Err("bound/forwarded import descriptors unsupported".into());
             }
-            let module = self.string(u32_at(d, 12)? as usize)?;
+            let module_rva = u32_at(d, 12)? as usize;
+            if module_rva == 0 {
+                return Err("null import module name RVA".into());
+            }
+            let module = self.string(module_rva)?;
             let iat = u32_at(d, 16)? as usize;
-            if iat == 0 || !iat.is_multiple_of(8) {
+            if iat == 0 || !iat.is_multiple_of(width) {
                 return Err("invalid IAT".into());
             }
             let lookup = if lookup == 0 { iat } else { lookup };
             let mut terminated = false;
             for i in 0..65536 {
-                let value = u64_at(self.file_range(lookup + i * 8, 8)?, 0)?;
-                self.data_target(iat + i * 8, 8)?;
+                let item = self.file_range(lookup + i * width, width)?;
+                let value = if self.i386 {
+                    u64::from(u32_at(item, 0)?)
+                } else {
+                    u64_at(item, 0)?
+                };
+                self.data_target(iat + i * width, width)?;
                 if value == 0 {
                     terminated = true;
                     break;
                 }
-                let symbol = if value & (1 << 63) != 0 {
-                    if value & !((1 << 63) | 0xffff) != 0 {
+                let symbol = if value & ordinal_flag != 0 {
+                    if value & !(ordinal_flag | 0xffff) != 0 {
                         return Err("nonzero reserved ordinal thunk bits".into());
                     }
                     ImportSymbol::Ordinal(value as u16)
@@ -342,13 +378,13 @@ impl<'a> Image<'a> {
                     self.file_range(value as usize, 2)?;
                     ImportSymbol::Name(self.string(value as usize + 2)?)
                 };
-                if !slots.insert(iat + i * 8) {
+                if !slots.insert(iat + i * width) {
                     return Err("overlapping IAT slots".into());
                 }
                 result.push(Import {
                     module: module.clone(),
                     symbol,
-                    iat: iat + i * 8,
+                    iat: iat + i * width,
                 });
             }
             if !terminated {
@@ -357,8 +393,10 @@ impl<'a> Image<'a> {
         }
         Err("unterminated import descriptors".into())
     }
-    /// List unique DIR64 fixups. Executable/header and overlapping fixups are rejected.
+    /// List unique DIR64 (AMD64) or HIGHLOW (i386) fixups. Headers and
+    /// overlapping writes are rejected; only i386 admits initialized code targets.
     pub fn relocations(&self) -> Result<Vec<usize>> {
+        let width = if self.i386 { 4 } else { 8 };
         let (rva, len) = self.directories[5];
         let mut result = BTreeSet::new();
         let mut off = 0;
@@ -377,11 +415,25 @@ impl<'a> Image<'a> {
                 let item = u16_at(self.file_range(rva + off + i, 2)?, 0)?;
                 match item >> 12 {
                     0 => (),
-                    10 => {
+                    kind if kind == if self.i386 { 3 } else { 10 } => {
                         let target = page + (item as usize & 0xfff);
-                        self.data_target(target, 8)?;
+                        if self.i386 {
+                            // PE32 absolute instruction operands need HIGHLOW
+                            // fixups before final W^X protections. No header/BSS writes.
+                            if !self
+                                .sections
+                                .iter()
+                                .any(|s| target >= s.rva && target + width <= s.rva + s.raw_size)
+                            {
+                                return Err(
+                                    "HIGHLOW fixup must target initialized section bytes".into()
+                                );
+                            }
+                        } else {
+                            self.data_target(target, width)?;
+                        }
                         if result
-                            .range(target.saturating_sub(7)..target + 8)
+                            .range(target.saturating_sub(width - 1)..target + width)
                             .next()
                             .is_some()
                         {
@@ -510,6 +562,9 @@ impl<'a> Image<'a> {
     /// Records/code/unwind slots must be backed by readonly/executable image data.
     /// This does not map/register code or enable exception dispatch.
     pub fn runtime_functions(&self) -> Result<Option<RuntimeFunctionTable>> {
+        if self.i386 {
+            return Err("AMD64 static function records do not apply to PE32".into());
+        }
         let (rva, length) = self.directories[3];
         if length == 0 {
             return Ok(None);
