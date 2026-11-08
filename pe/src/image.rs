@@ -125,6 +125,12 @@ impl<'a> Image<'a> {
     pub fn declared_size(&self) -> usize {
         self.declared_size
     }
+    /// Raw certificate file-offset/size metadata, never a signature/trust result.
+    /// PE32 ordinary loading may retain a pair outside the input file. No bytes
+    /// are read through this pair; callers must bound any separate inspection.
+    pub fn certificate_directory(&self) -> Option<(usize, usize)> {
+        (self.directories[4].1 != 0).then_some(self.directories[4])
+    }
     fn parse_kind(bytes: &'a [u8], is_dll: bool) -> Result<Self> {
         Self::parse_format(bytes, is_dll, false)
     }
@@ -163,6 +169,9 @@ impl<'a> Image<'a> {
         }
         if u16_at(bytes, opt + 70)? & 0x4000 != 0 {
             return Err("unsupported Guard CF image flag".into());
+        }
+        if i386 && u16_at(bytes, opt + 70)? & 0x80 != 0 {
+            return Err("PE32 Code Integrity enforcement is unsupported".into());
         }
         let subsystem = u16_at(bytes, opt + 68)?;
         if ![2, 3].contains(&subsystem) {
@@ -288,7 +297,13 @@ impl<'a> Image<'a> {
                 continue;
             }
             if i == 4 {
-                range(bytes, rva, len)?;
+                // Certificates are file metadata, not mapped image data. Native
+                // PE32 loading without FORCE_INTEGRITY accepts malformed and
+                // out-of-file pairs; retain the raw fields without dereferencing.
+                // Signature verification APIs remain unsupported, not successful.
+                if !i386 {
+                    range(bytes, rva, len)?;
+                }
             }
             // Certificate directory uses file offsets.
             else {

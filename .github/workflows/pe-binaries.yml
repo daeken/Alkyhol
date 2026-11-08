@@ -192,6 +192,12 @@ jobs:
             local/pe/pe32-geometry/geometry-fixture.json
       - name: Build owned non-enforced certificate metadata cases
         run: python tools/build_pe32_certificates.py
+      - name: Execute non-enforced certificate metadata cases normally and rebased
+        run: python tools/run_pe32_certificates.py --directory local/pe/pe32-certificates --output local/pe/certificates-alkyhol.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe32-certificates-alkyhol
+          path: local/pe/certificates-alkyhol.json
       - uses: actions/upload-artifact@v4
         with:
           name: pe32-certificates-fixture
@@ -848,3 +854,12 @@ jobs:
           name: pe32-geometry-windows
           path: local/pe/observations
       - run: python tools/compare_pe32_geometry.py local/pe/observations/geometry-windows.json local/pe/observations/geometry-alkyhol.json
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe32-certificates-alkyhol
+          path: local/pe/observations
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe32-certificates-windows
+          path: local/pe/observations
+      - run: python tools/compare_pe32_certificates.py local/pe/observations/certificates-windows.json local/pe/observations/certificates-alkyhol.json

@@ -1,0 +1,130 @@
+{
+  "schema_version": 1,
+  "backend": "native Windows PE32 image certificates",
+  "base_pe_sha256": "da101b3b451c8d511dd02e6316dc3101ef5c1b13cd56add33c029f9a476b191c",
+  "sources": {
+    "pe/fixtures/pe32/contract.c": "828d53442ef67bac1adb884024de19284e118aa7538a6f42620cce9788bc1c74",
+    "pe/fixtures/pe32/kernel32.def": "387a43121afd31dc1e37548f6125c97e359290f7e6ddb82beec909c417479dfb",
+    "pe/fixtures/pe32/canary.S": "8d0ca079d5928696bee45bdff738fa7b4b10cf1276e8ad3c6be516d6f2a5de00",
+    "tools/build_pe32_certificates.py": "59f4a9eed3cc669f4c5b5f14fdd7c7e8d463fb97723a02046dd73941117dcaa4"
+  },
+  "cases": [
+    {
+      "case": "absent",
+      "certificate_offset": 0,
+      "certificate_size": 0,
+      "file_size": 3072,
+      "pe_sha256": "da101b3b451c8d511dd02e6316dc3101ef5c1b13cd56add33c029f9a476b191c"
+    },
+    {
+      "case": "empty_certificate",
+      "certificate_offset": 3072,
+      "certificate_size": 8,
+      "file_size": 3080,
+      "pe_sha256": "6c860be70d2a77bf9b360f2cfc086a707ef5af4dadb09c70d1960387e5e01a59"
+    },
+    {
+      "case": "malformed_certificate",
+      "certificate_offset": 3072,
+      "certificate_size": 8,
+      "file_size": 3080,
+      "pe_sha256": "aea274c3f0ef700dc45dbdb71c4f9694ae733a058a672593a26ed99cec86b047"
+    },
+    {
+      "case": "offset_past_eof",
+      "certificate_offset": 7168,
+      "certificate_size": 16,
+      "file_size": 3072,
+      "pe_sha256": "3998a0000d11d3e743d43cb54ff24dd90e35f77cbf46e638894321dc28a23d75"
+    },
+    {
+      "case": "length_past_eof",
+      "certificate_offset": 3064,
+      "certificate_size": 16,
+      "file_size": 3072,
+      "pe_sha256": "b67fb92c5e8aa1fc1acef0ccf76b97275c3adeae5526d3582b99ce0208f9f6a3"
+    },
+    {
+      "case": "header_bytes",
+      "certificate_offset": 8,
+      "certificate_size": 16,
+      "file_size": 3072,
+      "pe_sha256": "8ec5e60a44b4b4a497d0ce2104609552182040c4e4ddb432564654d0dca3c63c"
+    },
+    {
+      "case": "unaligned_range",
+      "certificate_offset": 3065,
+      "certificate_size": 7,
+      "file_size": 3072,
+      "pe_sha256": "9145de5556db7cbb1fd797c88b0dc0a22f122724bffb863d3fb41dd9e3719b7d"
+    },
+    {
+      "case": "overflowing_range",
+      "certificate_offset": 4294967288,
+      "certificate_size": 16,
+      "file_size": 3072,
+      "pe_sha256": "fe55224fec3bd92fd06ff43b520ac308863bb8e1a315fc9006a1626dd3316847"
+    }
+  ],
+  "normal": [
+    {
+      "case": "absent",
+      "kind": "process",
+      "status": 0,
+      "stdout_hex": "363833490400000010270000777134120100000001000000d4c3b2a155667788",
+      "stderr_hex": ""
+    },
+    {
+      "case": "empty_certificate",
+      "kind": "process",
+      "status": 0,
+      "stdout_hex": "363833490400000010270000777134120100000001000000d4c3b2a155667788",
+      "stderr_hex": ""
+    },
+    {
+      "case": "malformed_certificate",
+      "kind": "process",
+      "status": 0,
+      "stdout_hex": "363833490400000010270000777134120100000001000000d4c3b2a155667788",
+      "stderr_hex": ""
+    },
+    {
+      "case": "offset_past_eof",
+      "kind": "process",
+      "status": 0,
+      "stdout_hex": "363833490400000010270000777134120100000001000000d4c3b2a155667788",
+      "stderr_hex": ""
+    },
+    {
+      "case": "length_past_eof",
+      "kind": "process",
+      "status": 0,
+      "stdout_hex": "363833490400000010270000777134120100000001000000d4c3b2a155667788",
+      "stderr_hex": ""
+    },
+    {
+      "case": "header_bytes",
+      "kind": "process",
+      "status": 0,
+      "stdout_hex": "363833490400000010270000777134120100000001000000d4c3b2a155667788",
+      "stderr_hex": ""
+    },
+    {
+      "case": "unaligned_range",
+      "kind": "process",
+      "status": 0,
+      "stdout_hex": "363833490400000010270000777134120100000001000000d4c3b2a155667788",
+      "stderr_hex": ""
+    },
+    {
+      "case": "overflowing_range",
+      "kind": "process",
+      "status": 0,
+      "stdout_hex": "363833490400000010270000777134120100000001000000d4c3b2a155667788",
+      "stderr_hex": ""
+    }
+  ],
+  "rebased": null,
+  "revision": "8a9e0fb06ad7e9e9f41159a35d60481b229a470b",
+  "tracked_tree_clean": true
+}

@@ -198,3 +198,56 @@ fn partial_final_i386_page_retains_header_size_and_bounds_the_rounded_mapping() 
     p32(&mut bytes, OPT + 56, 0x4001);
     assert!(Image::parse_i386(&bytes).is_err());
 }
+#[test]
+fn certificate_pairs_are_untrusted_nonmapped_metadata_and_integrity_requests_still_fail() {
+    let original = fixture();
+    assert_eq!(
+        Image::parse_i386(&original)
+            .unwrap()
+            .certificate_directory(),
+        None
+    );
+    for (offset, len) in [
+        (0x800, 8),
+        (0x2000, 16),
+        (8, 16),
+        (0x9f9, 7),
+        (0xfffffff8, 16),
+    ] {
+        let mut bytes = original.clone();
+        directory(&mut bytes, 4, offset, len);
+        let before = bytes.clone();
+        let image = Image::parse_i386(&bytes).unwrap();
+        assert_eq!(
+            image.certificate_directory(),
+            Some((offset as usize, len as usize))
+        );
+        assert_eq!(image.size, 0x3000);
+        assert_eq!(image.sections.len(), 2);
+        image.check_startup().unwrap();
+        assert_eq!(bytes, before);
+        p16(&mut bytes, OPT + 70, 0x80);
+        assert!(
+            Image::parse_i386(&bytes)
+                .unwrap_err()
+                .contains("Code Integrity")
+        );
+    }
+    for (offset, len) in [(0, 8), (8, 0)] {
+        let mut bytes = original.clone();
+        directory(&mut bytes, 4, offset, len);
+        assert!(Image::parse_i386(&bytes).is_err());
+    }
+    let mut bytes = original.clone();
+    p16(&mut bytes, OPT + 70, 0x80);
+    assert!(Image::parse_i386(&bytes).is_err());
+    for dir in [1, 2, 3, 5, 6, 9, 10, 13] {
+        let mut bytes = original.clone();
+        directory(&mut bytes, dir, 0xfffffff8, 16);
+        assert!(Image::parse_i386(&bytes).is_err(), "directory {dir}");
+    }
+    let mut bytes = original;
+    let section = OPT + 224 + 40;
+    p32(&mut bytes, section + 16, 0x800);
+    assert!(Image::parse_i386(&bytes).is_err());
+}

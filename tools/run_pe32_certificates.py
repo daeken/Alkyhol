@@ -52,8 +52,11 @@ def main():
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('--directory',type=Path,required=True);p.add_argument('--output',type=Path,required=True)
     args=p.parse_args()
     system=platform.system()
-    if system!='Windows':raise RuntimeError('initial certificate collector requires Windows')
+    if system not in ['Windows','Darwin']:raise RuntimeError('requires Windows or macOS')
     manifest,items=verify(args.directory.resolve())
+    reference=json.loads(REFERENCE.read_text(encoding='utf-8'))
+    for field in ['base_pe_sha256','sources','cases']:
+        if manifest[field]!=reference[field]:raise ValueError('changed frozen certificates inputs')
     if system=='Windows':
         backend=NATIVE
         kernel=ctypes.WinDLL('kernel32',use_last_error=True)
@@ -69,6 +72,17 @@ def main():
         baseline={'case':'absent','kind':'process','status':0,'stdout_hex':struct.pack('<8I',*EXPECTED_WORDS).hex(),'stderr_hex':''}
         if observations[0]!=baseline:raise ValueError('unchanged native baseline failed')
         rebased=None
+    else:
+        from translate_pe32 import translate,embedded_payload
+        backend=HOST;observations=[];rebased=[]
+        with tempfile.TemporaryDirectory(prefix='alkyhol-pe32-certificates-') as temp:
+            for row,data in items:
+                source=Path(temp)/(row['case']+'.exe');source.write_bytes(data)
+                executable=translate(source,Path(temp)/(row['case']+'-macos'))
+                if hashlib.sha256(embedded_payload(executable.read_bytes())).hexdigest()!=row['pe_sha256']:
+                    raise ValueError('executed certificates PE payload differs')
+                for target,flags in [(observations,[]),(rebased,['--rebase'])]:
+                    target.append({'case':row['case'],**capture([str(executable),'--loader-info',*flags],temp)})
     report={'schema_version':1,'backend':backend,'base_pe_sha256':manifest['base_pe_sha256'],
             'sources':manifest['sources'],'cases':manifest['cases'],'normal':observations,'rebased':rebased,
             'revision':subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),

@@ -4,15 +4,40 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
-## PE32 certificate metadata loading: native observation pending
+## PE32 certificate metadata loading: native Windows and physical M4 development
 
-A new owned corpus varies only the non-mapped certificate-directory pair and two
-explicit certificate appends in separate copies of the frozen PE32 observer.
-Eight native outcomes will be recorded, with raw failures preserved and a required
-successful absent-directory baseline. The generator rejects game inputs and
-force-integrity cases. Initial native execution is pending. This is a loading
-observer, not signature verification, and does not change current loader gates.
-All original binary/source references remain unchanged. See [PE32](pe32.md).
+Native Windows execution at `8a9e0fb` accepts all eight owned certificate-directory
+variants and returns the unchanged observer's eight DWORDs in every case. All
+three [PE jobs](https://github.com/daeken/Alkyhol/actions/runs/42433365332) and all 24
+[conformance jobs](https://github.com/daeken/Alkyhol/actions/runs/42433365353) pass
+on that initial observation revision, before the paired Alkyhol comparator.
+The complete downloaded native report is frozen unchanged at
+`pe/reference/pe32-certificates-windows-v1.json`. The generator changes only the
+non-mapped directory pair and two explicit eight-byte appends, accepts only the
+frozen owned base and rejects force-integrity inputs. No game input enters CI.
+
+PE32 ordinary loading now retains the raw certificate metadata without reading or
+mapping it, matching these finite native observations. `certificate_directory()`
+returns untrusted file-offset/size fields, not a signature/trust result. Explicit
+FORCE_INTEGRITY requests fail preflight as unsupported. Partial pairs, the AMD64
+certificate file-backing gate and every other mapped-directory/section bound
+remain checked. Signature verification APIs remain unsupported. Successful image
+loading does not establish a valid signature or successful trust verification.
+
+Physical M4 development runs agree on all eight exact outputs, normally and with
+forced rebase. The paired collector/comparator enforces same clean revision, exact
+frozen source/PE/case identity, raw output and actual forced relocation; crashes,
+unknown OS failures and observer failures cannot count as compatible rejections.
+Strict same-revision CI/physical comparison remains pending. All 99 PE host tests/
+12 compiler checks, 34 portable tests, 268 Python tests and Clippy pass locally.
+Synthetic tests additionally retain raw fields/input bytes, reject integrity
+requests and partial pairs, preserve unrelated bounds, and reject corrupted
+outputs, false relocation evidence, missing references and joint identity drift.
+
+The unchanged local game clears this next file-range gate and stops at unsupported
+startup features before entry. No game code executed; its files and derived
+inventories stay local. This is finite owned PE loading/Win32 integer ABI evidence,
+not game compatibility. See [PE32](pe32.md).
 
 ## PE32 SizeOfImage geometry: native Windows and physical M4 development
 

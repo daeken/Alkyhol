@@ -84,6 +84,23 @@ fn conventional_layout_and_zero_fill_are_preserved() {
     p.check_startup().unwrap();
 }
 #[test]
+fn amd64_certificate_metadata_retains_its_existing_file_backing_gate() {
+    let mut bytes = fixture();
+    assert_eq!(Image::parse(&bytes).unwrap().certificate_directory(), None);
+    directory(&mut bytes, 4, 0x7f8, 8);
+    let before = bytes.clone();
+    assert_eq!(
+        Image::parse(&bytes).unwrap().certificate_directory(),
+        Some((0x7f8, 8))
+    );
+    assert_eq!(bytes, before);
+    for (offset, len) in [(0x800, 8), (0xfffffff8, 16), (0, 8), (8, 0)] {
+        let mut bad = bytes.clone();
+        directory(&mut bad, 4, offset, len);
+        assert!(Image::parse(&bad).is_err());
+    }
+}
+#[test]
 fn all_truncated_prefixes_fail_without_panicking() {
     let b = fixture();
     for n in 0..b.len() {
