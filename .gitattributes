@@ -116,6 +116,13 @@ pe/reference/pe32-resource-icon-gdi-v1.bin -text
 pe/reference/pe32-resource-icon-0-v1.exe -text
 pe/reference/pe32-resource-icon-1-v1.exe -text
 pe/reference/pe32-resource-icon-2-v1.exe -text
+pe/reference/pe32-unnamed-event-windows-v1.json -text whitespace=cr-at-eol
+pe/reference/pe32-unnamed-event-0-v1.exe -text
+pe/reference/pe32-unnamed-event-1-v1.exe -text
+pe/reference/pe32-unnamed-event-2-v1.exe -text
+pe/reference/pe32-unnamed-event-3-v1.exe -text
+pe/reference/pe32-unnamed-event-4-v1.exe -text
+pe/reference/pe32-unnamed-event-5-v1.exe -text
 pe/reference/pe32-ci-sqrt-windows-v1.json -text whitespace=cr-at-eol
 pe/reference/pe32-ci-sqrt-v1.exe -text
 pe/reference/pe32-ci-atan-windows-v1.json -text whitespace=cr-at-eol

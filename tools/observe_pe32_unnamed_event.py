@@ -13,6 +13,7 @@ def inputs(d):return {'sources':{(SOURCE/n).relative_to(ROOT).as_posix():digest(
 def verify(d):
     r=json.loads((d/'unnamed-event-inputs.json').read_text())
     if r!=inputs(d):raise ValueError('unnamed-event source/PE identity changed')
+    if r!=frozen()['inputs']:raise ValueError('event identity differs from frozen native observation')
     return r
 def build(d):
     d.mkdir(parents=True,exist_ok=True);clang=shutil.which('clang');lld=rust_tool('rust-lld');lib=d/'unnamed-event.lib'
@@ -21,6 +22,9 @@ def build(d):
     for mode,name in enumerate(FILES):
         obj=d/(name+'.obj');subprocess.run([clang,'--target=i686-pc-windows-msvc','-O1','-ffreestanding','-fno-builtin','-fno-stack-protector','-fno-unwind-tables','-fno-asynchronous-unwind-tables','-Wall','-Wextra','-Werror','-Wno-unused-function',f'-DMODE={mode}','-c',str(SOURCE/'unnamed-event.c'),'-o',str(obj)],check=True)
         subprocess.run([lld,'-flavor','link','/nodefaultlib','/subsystem:console','/machine:x86','/dynamicbase','/fixed:no','/timestamp:0','/safeseh:no','/manifest:no','/entry:entry',str(obj),str(lib),*[f'/alternatename:__imp__{n}@{s}=__imp__{n}' for n,s in SYMBOLS],'/out:'+str(d/name)],check=True)
+        literal=ROOT/f'pe/reference/pe32-unnamed-event-{mode}-v1.exe'
+        if digest(literal)!=frozen()['inputs']['files'][name]:raise ValueError('changed literal native event PE')
+        shutil.copyfile(literal,d/name)
     (d/'unnamed-event-inputs.json').write_text(json.dumps(inputs(d),indent=2)+'\n');verify(d)
 def decode(data):
     e=0xface1234
@@ -30,6 +34,14 @@ def decode(data):
     got=list(struct.unpack('<'+'I'*len(expected),data))
     if got!=expected:raise ValueError('event state/error/stack observations differ: '+repr(got))
     return got
+def frozen():
+    path=ROOT/'pe/reference/pe32-unnamed-event-windows-v1.json'
+    if digest(path)!='3a57fecf255eb806b873669037a33183c0e0f61fb8ed6ecf678244f5ab887720':raise ValueError('changed native event record')
+    r=json.loads(path.read_bytes())
+    if r['backend']!='native Windows unnamed events' or len(r['reports'])!=1:raise ValueError('incomplete native event record')
+    row=r['reports'][0]
+    if row['case']!=0 or row['status'] or row['stderr_hex'] or decode(bytes.fromhex(row['stdout_hex']))!=row['words']:raise ValueError('failed native event observation')
+    return r
 def execute(d,native=False):
     identity=verify(d);probe=None if native else runner(d);reports=[];path=d/('native-unnamed-event.json' if native else 'unnamed-event-host.json')
     for mode in ([0] if native else range(6)):

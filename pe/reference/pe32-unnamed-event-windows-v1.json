@@ -1,0 +1,69 @@
+{
+  "backend": "native Windows unnamed events",
+  "inputs": {
+    "sources": {
+      "pe/fixtures/pe32-startup/unnamed-event.c": "a2390b91b94c7ab2130f298466e645d7ff1ee34411f7c4506099e6e6a605cee0",
+      "pe/fixtures/pe32-startup/unnamed-event.def": "b0aee54110d0d7fbe740716bd9f15ce90c4e34a70dc63935a70a74d96eb105f4"
+    },
+    "files": {
+      "unnamed-event-0.exe": "6aac53fd7b3fdaa3dd5de7225b5af6550838bfa179c3fe5ff3440a06de8fadf1",
+      "unnamed-event-1.exe": "421b584dd64f3191db9fea52c77bb8486d9a447f6fe474399cd38ae35b911b19",
+      "unnamed-event-2.exe": "244a765d4fc6016e0d179d12417ec9562e94e9b32e1f2409d3f127751dc73be0",
+      "unnamed-event-3.exe": "58326a795aaf2332fd19951e7e3a78f72c72938ad8036227cafc8cd599ef99ba",
+      "unnamed-event-4.exe": "55728348842e026953cd2045f47d6cb110682b964c5e18015c20f2f8a1835e23",
+      "unnamed-event-5.exe": "abfcb39e8a38dba589f31b36bb78e83dbdf4b22a061cad5546b337dfe1bc1218"
+    }
+  },
+  "reports": [
+    {
+      "case": 0,
+      "status": 0,
+      "stdout_hex": "323356450400000001000000000000000100000000000000020100003412cefa000000003412cefa020100003412cefa010000003412cefa000000003412cefa000000003412cefa010000003412cefa010000003412cefa020100003412cefa010000003412cefa010000003412cefa000000003412cefa020100003412cefa010000003412cefa020100003412cefa010000003412cefa010000003412cefa010000002a000000",
+      "stderr_hex": "",
+      "words": [
+        1163277106,
+        4,
+        1,
+        0,
+        1,
+        0,
+        258,
+        4207809076,
+        0,
+        4207809076,
+        258,
+        4207809076,
+        1,
+        4207809076,
+        0,
+        4207809076,
+        0,
+        4207809076,
+        1,
+        4207809076,
+        1,
+        4207809076,
+        258,
+        4207809076,
+        1,
+        4207809076,
+        1,
+        4207809076,
+        0,
+        4207809076,
+        258,
+        4207809076,
+        1,
+        4207809076,
+        258,
+        4207809076,
+        1,
+        4207809076,
+        1,
+        4207809076,
+        1,
+        42
+      ]
+    }
+  ]
+}

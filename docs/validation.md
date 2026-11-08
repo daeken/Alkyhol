@@ -4,6 +4,35 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## Original DAO creates its event and reaches a counting semaphore
+
+At clean revision `f34fd67`, physical M4 executes the original EXE's actual
+`CreateEventW` and records all four arguments. The name is NULL, confirming the
+unnamed profile rather than inferring it from the earlier three-word trap.
+The real manual-reset, initially nonsignaled object is created; original
+critical-section initialization continues to **KERNEL32.dll!CreateSemaphoreW**.
+No window/menu/rendering is observed. Original hashes, private arguments and
+captures remain local, with prior profile/unpacked-dependency caveats unchanged.
+
+All five CI jobs pass at this revision in
+[42519149166](https://github.com/daeken/Alkyhol/actions/runs/42519149166).
+All 42 native event words agree with physical M4 on identical PE/source hashes,
+including real manual/automatic state, zero-timeout consumption, set/reset
+idempotence, error state, close and stack balance. The complete native record
+is `pe/reference/pe32-unnamed-event-windows-v1.json`, SHA-256
+`3a57fecf255eb806b873669037a33183c0e0f61fb8ed6ecf678244f5ab887720`;
+all six literal owned PEs are selected explicitly. Five host exclusions remain
+separate from the native positive observation.
+
+For the newly reached semaphore, the same typed process-local bridge now owns
+real kernel counting state via `CreateSemaphoreW`, checked signed counts and
+zero-timeout non-alertable polls. Event modifiers reject semaphore handles.
+The owned producer checks a zero-count/large-maximum object, two permits consumed
+one at a time, timeout after exhaustion, invalid signed counts and closing.
+Its 28-word physical M4 check and four unsupported forms pass. Guest semaphore
+release, named/security/inheritance forms and blocking/APC waits remain
+unsupported; native semaphore comparison and a new original run are pending.
+
 ## Checked unnamed event bridge prepared for the actual DAO constructor
 
 The PE32 gateway now admits `CreateEventW` with NULL security/name parameters

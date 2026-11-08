@@ -83,7 +83,7 @@ unsafe extern "C" {
 }
 const PAGE: usize = 4096;
 const STACK: usize = 1024 * 1024;
-const APIS: [(&str, u16); 119] = [
+const APIS: [(&str, u16); 120] = [
     ("GetLastError", 0),
     ("SetLastError", 4),
     ("GetStdHandle", 4),
@@ -203,6 +203,7 @@ const APIS: [(&str, u16); 119] = [
     ("CreateEventW", 16),
     ("SetEvent", 4),
     ("ResetEvent", 4),
+    ("CreateSemaphoreW", 16),
 ];
 const EXIT_API: u32 = 14;
 // Win32 promises a reversible process-specific representation, not a published
@@ -1795,7 +1796,7 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
             }
             113 | 114 => mutex32::ownership(image, &args, id == 113),
             115 => icon32::load(image, &args),
-            116..=118 => event32::dispatch(image, id, &args),
+            116..=119 => event32::dispatch(image, id, &args),
             _ => unreachable!(),
         }
     })
