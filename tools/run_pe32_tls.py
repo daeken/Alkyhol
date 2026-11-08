@@ -38,10 +38,11 @@ def main():
     args=p.parse_args();pe=args.fixture.resolve();manifest=verify(pe)
     if platform.system()!='Windows':raise RuntimeError('initial TLS collector requires native Windows')
     with tempfile.TemporaryDirectory(prefix='alkyhol-pe32-tls-') as temp:
-        normal=decode(subprocess.run([str(pe)],cwd=temp,capture_output=True,timeout=30))
+        observed=[decode(subprocess.run([str(pe)],cwd=temp,capture_output=True,timeout=30)) for _ in range(3)]
+    normal=observed[0]
     report={'schema_version':1,'backend':NATIVE,'pe_sha256':manifest['pe_sha256'],
             'executed_pe_sha256':hashlib.sha256(pe.read_bytes()).hexdigest(),'sources':manifest['sources'],
-            'normal':normal,'rebased':None,
+            'normal':normal,'rebased':None,'additional_native_runs':observed[1:],
             'revision':subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),
             'tracked_tree_clean':not subprocess.check_output(['git','status','--porcelain','--untracked-files=no'],cwd=ROOT,text=True).strip()}
     args.output.parent.mkdir(parents=True,exist_ok=True);args.output.write_text(json.dumps(report,indent=2)+'\n',encoding='utf-8')

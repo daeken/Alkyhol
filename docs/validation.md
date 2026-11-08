@@ -4,17 +4,27 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
-## PE32 compiler static TLS: native observation pending
+## PE32 compiler TLS: nonzero zero-fill discrepancy and separate data probe
 
-A new original MIT no-CRT PE32 observer uses Clang-generated __declspec(thread)
-accesses, an initialized integer, a zero-initialized integer and a relocated global
-pointer initializer. A real TLS directory requests aligned template storage plus
-16 zero-fill bytes and an empty callback list. Its 24 raw DWORDs check initialization,
-mutation, pointer identity, template containment and last-error state. The x86
-compiler ABI's __tls_array is an absolute FS offset, not a successful stub or a
-storage variable. Initial native Windows execution is pending; this capture does
-not change Alkyhol TLS/startup gates. No game inputs or existing frozen fixtures
-are changed. TLS callbacks, guest threads and dynamic TLS APIs remain separate.
+Native Windows at `c01a053` executes the original compiler TLS observer, but its
+OR of the 16 bytes requested through SizeOfZeroFill is **255**, not the expected
+zero. Initialized/zero-initialized compiler variables, pointer initialization and
+the other recorded fields agree with the source expectations. The full actual
+native report is retained unchanged at
+`pe/reference/pe32-tls-zerofill-observation-windows-v1.json`. This is a diagnostic
+observation, not an accepted native/Alkyhol parity profile. The cause, allocation
+extent and stability of those post-template bytes remain unmeasured. Do not turn
+255 into required zero-fill semantics or claim specification behavior from it.
+
+The original source and PE remain unchanged. The native collector now requests
+three independent executions and preserves every raw result for investigation.
+A **separate** original fixture, `pe32-tls-data`, requests SizeOfZeroFill=0 and reads
+only within the declared template/private TLS data. It additionally checks that
+mutating the private compiler variable leaves the original image template intact.
+Its initial native capture is pending. This does not change or weaken the first
+probe's record; it establishes a separately identified common compiler-data case.
+This observation commit leaves all Alkyhol TLS startup gates intact. No game data
+is included. Nonzero SizeOfZeroFill and callbacks remain separate unresolved work.
 
 ## PE32 FS/TEB: native Windows and physical M4
 

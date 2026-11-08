@@ -212,6 +212,14 @@ jobs:
           path: |
             local/pe/pe32-tls/pe32-tls.exe
             local/pe/pe32-tls/pe32-tls-fixture.json
+      - name: Build separate compiler TLS data observer without extra zero fill
+        run: python tools/build_pe32_tls_data.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe32-tls-data-fixture
+          path: |
+            local/pe/pe32-tls-data/pe32-tls-data.exe
+            local/pe/pe32-tls-data/pe32-tls-data-fixture.json
       - name: Build owned SizeOfImage variants for independent native loader observation
         run: python tools/build_pe32_geometry.py
       - name: Execute owned PE32 geometry cases normally and with forced relocation
@@ -589,6 +597,16 @@ jobs:
         with:
           name: pe32-tls-windows
           path: local/pe/pe32-tls-windows.json
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe32-tls-data-fixture
+          path: local/pe/pe32-tls-data
+      - name: Record compiler TLS data without relying on post-template allocation behavior
+        run: python tools/run_pe32_tls_data.py --fixture local/pe/pe32-tls-data/pe32-tls-data.exe --output local/pe/pe32-tls-data-windows.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe32-tls-data-windows
+          path: local/pe/pe32-tls-data-windows.json
       - uses: actions/download-artifact@v4
         with:
           name: pe32-geometry-fixture
