@@ -18,6 +18,8 @@ pub use seh32::ExceptionImage32;
 mod activation32;
 #[path = "ansi32.rs"]
 mod ansi32;
+#[path = "bulk32.rs"]
+mod bulk32;
 #[path = "crt32.rs"]
 mod crt32;
 #[path = "cursor32.rs"]
@@ -39,6 +41,8 @@ mod heap32;
 #[path = "icon32.rs"]
 mod icon32;
 pub use icon32::IconImage32;
+#[path = "ini32.rs"]
+mod ini32;
 #[path = "machine32.rs"]
 mod machine32;
 #[path = "math32.rs"]
@@ -87,7 +91,7 @@ unsafe extern "C" {
 }
 const PAGE: usize = 4096;
 const STACK: usize = 1024 * 1024;
-const APIS: [(&str, u16); 123] = [
+const APIS: [(&str, u16); 138] = [
     ("GetLastError", 0),
     ("SetLastError", 4),
     ("GetStdHandle", 4),
@@ -211,6 +215,21 @@ const APIS: [(&str, u16); 123] = [
     ("SHGetFolderPathW", 20),
     ("GetPrivateProfileStringW", 24),
     ("CreateDirectoryW", 8),
+    ("WritePrivateProfileStringW", 16),
+    ("ReleaseSemaphore", 12),
+    ("CreateEventA", 16),
+    ("CreateSemaphoreA", 16),
+    ("InterlockedExchangeAdd", 8),
+    ("GetFileSize", 8),
+    ("GetFileSizeEx", 8),
+    ("GetCurrentThread", 0),
+    ("CreateDirectoryA", 8),
+    ("SetCurrentDirectoryA", 4),
+    ("GetCurrentDirectoryA", 8),
+    ("GetFileAttributesW", 4),
+    ("GetFileAttributesA", 4),
+    ("WaitForSingleObject", 8),
+    ("CreateFileA", 28),
 ];
 // The first 120 API slots retain their original offsets. The second bank
 // begins after both x87 bodies, leaving their machine code and failure gates
@@ -1822,6 +1841,25 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
             120 => shell_folder32::get(image, &args),
             121 => private_profile32::get(image, &args),
             122 => shell_folder32::create(image, &args),
+            123 => private_profile32::write(image, &args),
+            124 => event32::release(image, &args),
+            125 => event32::dispatch(image, 116, &args),
+            126 => event32::dispatch(image, 119, &args),
+            127 => bulk32::exchange_add(image, &args),
+            128 | 129 => bulk32::file_size(image, &args, id == 129),
+            130 => 0xfffffffe,
+            131 => shell_folder32::create_ansi(image, &args),
+            132 => directory32::set_ansi(image, args[0]),
+            133 => directory32::get_ansi(image, &args),
+            134 | 135 => bulk32::attributes(image, args[0], id == 135),
+            136 => {
+                if image.cpu.events.borrow().contains(args[0]) {
+                    event32::dispatch(image, 113, &args)
+                } else {
+                    mutex32::ownership(image, &args, true)
+                }
+            }
+            137 => startup32::create_file(image, &args, true),
             _ => unreachable!(),
         }
     })

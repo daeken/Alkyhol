@@ -86,6 +86,50 @@ pub(super) fn set(image: &LoadedImage32<'_>, address: u32) -> u32 {
         }
     }
 }
+pub(super) fn set_ansi(image: &LoadedImage32<'_>, address: u32) -> u32 {
+    if !image
+        .cpu
+        .modules
+        .borrow()
+        .iter()
+        .any(|m| m.origin.is_some())
+    {
+        unsupported("current directory requires the file-backed process profile");
+    }
+    let text = super::bulk32::ascii(image, address);
+    match Directory::open(&text).unwrap_or_else(|e| unsupported(&e)) {
+        Ok(directory) => {
+            *image.cpu.current_directory.borrow_mut() = Some(directory);
+            1
+        }
+        Err(error) => {
+            alkyhol::ffi::SetLastError(error);
+            0
+        }
+    }
+}
+pub(super) fn get_ansi(image: &LoadedImage32<'_>, args: &[u32; 8]) -> u32 {
+    let state = image.cpu.current_directory.borrow();
+    let directory = state
+        .as_ref()
+        .unwrap_or_else(|| unsupported("current directory has not been explicitly set"));
+    directory.check().unwrap_or_else(|e| unsupported(&e));
+    if !directory.windows.is_ascii() {
+        unsupported("ANSI current-directory query requires ASCII spelling");
+    }
+    let bytes = directory.windows.as_bytes();
+    if args[0] as usize <= bytes.len() {
+        return bytes.len() as u32 + 1;
+    }
+    if !image.permits(args[1] as usize, bytes.len() + 1, true) {
+        unsupported("ANSI current-directory output outside writable guest storage");
+    }
+    unsafe {
+        std::ptr::copy_nonoverlapping(bytes.as_ptr(), args[1] as *mut u8, bytes.len());
+        (args[1] as *mut u8).add(bytes.len()).write(0);
+    }
+    bytes.len() as u32
+}
 pub(super) fn get(image: &LoadedImage32<'_>, args: &[u32; 8]) -> u32 {
     let state = image.cpu.current_directory.borrow();
     let directory = state
@@ -104,6 +148,26 @@ pub(super) fn get(image: &LoadedImage32<'_>, args: &[u32; 8]) -> u32 {
         (args[1] as *mut u16).add(units.len()).write(0);
     }
     units.len() as u32
+}
+/// Ordinary file APIs use the process-owned directory for relative spellings.
+/// INI bare-name searching has different semantics and uses its own resolver.
+pub(super) fn ordinary_path(image: &LoadedImage32<'_>, text: &str) -> Result<String> {
+    if text.starts_with("Z:\\") || text.starts_with("z:\\") {
+        return Ok(text.into());
+    }
+    let relative = text.strip_prefix(".\\").unwrap_or(text);
+    if relative.is_empty() || relative.starts_with('\\') || relative.contains([':', '/']) {
+        return Err("ordinary file path namespace is unsupported".into());
+    }
+    let state = image.cpu.current_directory.borrow();
+    let directory = state
+        .as_ref()
+        .ok_or("ordinary file path requires a checked current directory")?;
+    directory.check()?;
+    Ok(format!(
+        "{}\\{relative}",
+        directory.windows.trim_end_matches('\\')
+    ))
 }
 /// Explicit dot-relative INI names follow the real process-owned directory.
 /// Bare names require Windows-directory searching and remain unsupported.
@@ -149,23 +213,7 @@ pub(super) fn read_path(
     }
     let text = String::from_utf16(&units[..units.len() - 1])
         .unwrap_or_else(|_| unsupported("current-directory filename is not valid UTF-16"));
-    let full = if text.starts_with("Z:\\") || text.starts_with("z:\\") {
-        text
-    } else {
-        if text.is_empty() || text.starts_with('\\') || text.contains(':') {
-            unsupported("current-directory file path namespace is unsupported");
-        }
-        format!(
-            "{}{}{}",
-            directory.windows,
-            if directory.windows.ends_with('\\') {
-                ""
-            } else {
-                "\\"
-            },
-            text
-        )
-    };
+    let full = ordinary_path(image, &text).unwrap_or_else(|e| unsupported(&e));
     let (host, metadata) = files32::existing(&full).unwrap_or_else(|e| unsupported(&e))?;
     if !metadata.is_file() {
         unsupported("current-directory file open requires an existing regular file");

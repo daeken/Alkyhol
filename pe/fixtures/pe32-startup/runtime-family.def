@@ -1,0 +1,25 @@
+LIBRARY KERNEL32.dll
+EXPORTS
+GetStdHandle
+WriteFile
+GetLastError
+SetLastError
+GetModuleFileNameA
+GetCurrentThread
+InterlockedExchangeAdd
+CreateEventA
+CreateSemaphoreA
+ReleaseSemaphore
+WaitForSingleObject
+CloseHandle
+SetEvent
+SetCurrentDirectoryA
+GetCurrentDirectoryA
+CreateDirectoryA
+GetFileAttributesA
+GetFileAttributesW
+CreateFileA
+GetFileSize
+GetFileSizeEx
+WritePrivateProfileStringW
+GetPrivateProfileStringW

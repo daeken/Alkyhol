@@ -152,6 +152,22 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
             .unwrap_or_else(|e| unsupported(&e))
     }
 }
+pub(super) fn release(image: &LoadedImage32<'_>, args: &[u32; 8]) -> u32 {
+    if !image.cpu.events.borrow().semaphores.contains(&args[0]) {
+        unsupported("semaphore release requires an owned live counting semaphore");
+    }
+    if args[2] != 0 && (!args[2].is_multiple_of(4) || !image.permits(args[2] as usize, 4, true)) {
+        unsupported("semaphore previous-count output outside writable guest storage");
+    }
+    let mut previous = 0i32;
+    let result =
+        unsafe { alkyhol::ffi::ReleaseSemaphore(args[0] as usize, args[1] as i32, &mut previous) }
+            as u32;
+    if result != 0 && args[2] != 0 {
+        unsafe { (args[2] as *mut i32).write(previous) };
+    }
+    result
+}
 #[cfg(test)]
 mod tests {
     use super::*;

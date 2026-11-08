@@ -169,6 +169,65 @@ fn function(name: &str) -> usize {
     crate::abi::resolve("kernel32.dll", name)
         .unwrap_or_else(|| unsupported("missing host startup API"))
 }
+pub(super) fn create_file(image: &LoadedImage32<'_>, args: &[u32; 8], ansi: bool) -> u32 {
+    if image.cpu.files.borrow().len() >= 4096 {
+        unsupported("PE32 open file limit");
+    }
+    if args[3] != 0 || args[6] != 0 {
+        unsupported("PE32 CreateFileW security/template unsupported");
+    }
+    let name = if ansi {
+        super::bulk32::ascii(image, args[0])
+            .encode_utf16()
+            .chain([0])
+            .collect()
+    } else {
+        let Some(name) = read_units::<u16>(image, args[0], -1) else {
+            return u32::MAX;
+        };
+        name
+    };
+    let name = match super::directory32::read_path(image, &name, args) {
+        Ok(name) => name,
+        Err(error) => {
+            ffi::SetLastError(error);
+            return u32::MAX;
+        }
+    };
+    let call: unsafe extern "win64" fn(
+        *const u16,
+        u32,
+        u32,
+        *const c_void,
+        u32,
+        u32,
+        usize,
+    ) -> usize = unsafe { std::mem::transmute(function("CreateFileW")) };
+    let h = unsafe {
+        call(
+            name.as_ptr(),
+            args[1],
+            args[2],
+            ptr::null(),
+            args[4],
+            args[5],
+            0,
+        )
+    };
+    if h == usize::MAX {
+        return u32::MAX;
+    }
+    if image.cpu.current_directory.borrow().is_some() {
+        // Actual native directory observer: this admitted existing
+        // read-only open clears error state on success.
+        ffi::SetLastError(0);
+    }
+    if h > u32::MAX as usize || (0x70000001..=0x70000003).contains(&h) {
+        unsupported("host handle cannot be represented in PE32");
+    }
+    image.cpu.files.borrow_mut().insert(h);
+    h as u32
+}
 pub(super) fn io(image: &LoadedImage32<'_>, args: &[u32; 8], write: bool) -> u32 {
     if args[4] != 0 {
         unsupported("overlapped PE32 I/O is unsupported");
@@ -442,57 +501,7 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
             result
         }
         10 => io(image, args, false),
-        11 => {
-            if image.cpu.files.borrow().len() >= 4096 {
-                unsupported("PE32 open file limit");
-            }
-            if args[3] != 0 || args[6] != 0 {
-                unsupported("PE32 CreateFileW security/template unsupported");
-            }
-            let Some(name) = read_units::<u16>(image, args[0], -1) else {
-                return u32::MAX;
-            };
-            let name = match super::directory32::read_path(image, &name, args) {
-                Ok(name) => name,
-                Err(error) => {
-                    ffi::SetLastError(error);
-                    return u32::MAX;
-                }
-            };
-            let call: unsafe extern "win64" fn(
-                *const u16,
-                u32,
-                u32,
-                *const c_void,
-                u32,
-                u32,
-                usize,
-            ) -> usize = unsafe { std::mem::transmute(function("CreateFileW")) };
-            let h = unsafe {
-                call(
-                    name.as_ptr(),
-                    args[1],
-                    args[2],
-                    ptr::null(),
-                    args[4],
-                    args[5],
-                    0,
-                )
-            };
-            if h == usize::MAX {
-                return u32::MAX;
-            }
-            if image.cpu.current_directory.borrow().is_some() {
-                // Actual native directory observer: this admitted existing
-                // read-only open clears error state on success.
-                ffi::SetLastError(0);
-            }
-            if h > u32::MAX as usize || (0x70000001..=0x70000003).contains(&h) {
-                unsupported("host handle cannot be represented in PE32");
-            }
-            image.cpu.files.borrow_mut().insert(h);
-            h as u32
-        }
+        11 => create_file(image, args, false),
         12 | 13 => convert(image, args, id == 13),
         14 => {
             match image.cpu.phase.get() {

@@ -131,6 +131,79 @@ impl Documents {
             _ => Err(format!("unsupported directory creation failure: {error}")),
         }
     }
+    pub(super) fn ini_file(
+        &self,
+        text: &str,
+        write: bool,
+    ) -> Result<std::result::Result<File, u32>> {
+        self.check()?;
+        let root = String::from_utf16(&self.units).map_err(|_| "invalid Documents role")?;
+        let relative = text
+            .strip_prefix(&format!("{root}\\"))
+            .ok_or("INI file access is restricted to the explicit Documents backing")?;
+        if !relative.is_ascii() || text.encode_utf16().count() >= 260 {
+            return Err("INI paths require bounded ASCII descendants".into());
+        }
+        let metadata = match files32::existing(text)? {
+            Ok((_, metadata)) => Some(metadata),
+            Err(2) if write => None,
+            Err(error) => return Ok(Err(error)),
+        };
+        if metadata
+            .as_ref()
+            .is_some_and(|m| !m.is_file() || m.nlink() != 1 || m.len() > 65536)
+        {
+            return Err("INI backing requires a bounded regular non-aliased file".into());
+        }
+        let mut parts: Vec<_> = relative.split('\\').collect();
+        let leaf =
+            CString::new(parts.pop().ok_or("missing INI leaf")?).map_err(|e| e.to_string())?;
+        let mut parent = self.file.try_clone().map_err(|e| e.to_string())?;
+        for component in parts {
+            let name = CString::new(component).map_err(|e| e.to_string())?;
+            let fd = unsafe {
+                openat(
+                    parent.as_raw_fd(),
+                    name.as_ptr(),
+                    O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC,
+                )
+            };
+            if fd < 0 {
+                return Err("INI parent changed during checked open".into());
+            }
+            parent = unsafe { File::from_raw_fd(fd) };
+        }
+        self.check()?;
+        let (_, live) = files32::existing(text.rsplit_once('\\').ok_or("missing INI parent")?.0)?
+            .map_err(|_| "INI parent disappeared")?;
+        let opened = parent.metadata().map_err(|e| e.to_string())?;
+        if !opened.is_dir() || (opened.dev(), opened.ino()) != (live.dev(), live.ino()) {
+            return Err("INI parent identity changed".into());
+        }
+        let flags = O_NOFOLLOW
+            | O_CLOEXEC
+            | if write { 2 } else { 0 }
+            | if metadata.is_none() { 0x200 | 0x800 } else { 0 };
+        let fd = unsafe { openat(parent.as_raw_fd(), leaf.as_ptr(), flags, 0o666u32) };
+        if fd < 0 {
+            let error = std::io::Error::last_os_error();
+            return match error.kind() {
+                std::io::ErrorKind::PermissionDenied => Ok(Err(5)),
+                _ => Err(format!("INI backing changed or open failed: {error}")),
+            };
+        }
+        let file = unsafe { File::from_raw_fd(fd) };
+        let opened = file.metadata().map_err(|e| e.to_string())?;
+        if !opened.is_file()
+            || opened.nlink() != 1
+            || metadata
+                .as_ref()
+                .is_some_and(|m| (m.dev(), m.ino()) != (opened.dev(), opened.ino()))
+        {
+            return Err("INI backing identity changed or is aliased".into());
+        }
+        Ok(Ok(file))
+    }
     fn check(&self) -> Result<()> {
         let opened = self.file.metadata().map_err(|e| e.to_string())?;
         let live = std::fs::symlink_metadata(&self.host).map_err(|e| e.to_string())?;
@@ -179,6 +252,22 @@ pub(super) fn create(image: &LoadedImage32<'_>, args: &[u32; 8]) -> u32 {
     }
     let text = String::from_utf16(&units[..units.len() - 1])
         .unwrap_or_else(|_| unsupported("directory creation path is invalid UTF-16"));
+    let documents = image.cpu.documents.as_ref().unwrap_or_else(|| {
+        unsupported("directory creation requires an explicit Documents backing")
+    });
+    match documents.create(&text).unwrap_or_else(|e| unsupported(&e)) {
+        Ok(()) => 1,
+        Err(error) => {
+            alkyhol::ffi::SetLastError(error);
+            0
+        }
+    }
+}
+pub(super) fn create_ansi(image: &LoadedImage32<'_>, args: &[u32; 8]) -> u32 {
+    let text = super::bulk32::ascii(image, args[0]);
+    if args[1] != 0 {
+        unsupported("directory creation security attributes are unsupported");
+    }
     let documents = image.cpu.documents.as_ref().unwrap_or_else(|| {
         unsupported("directory creation requires an explicit Documents backing")
     });
@@ -255,6 +344,44 @@ mod tests {
         assert_eq!(std::fs::read_dir(&outside).unwrap().count(), 0);
         std::fs::rename(&inside, root.join("moved")).unwrap();
         assert!(documents.create(&format!("{base}\\after-move")).is_err());
+        drop(documents);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn ini_capability_uses_real_files_and_rejects_aliases_and_external_writes() {
+        use std::io::{Read, Write};
+        let root = std::env::temp_dir().join(format!("alkyhol-ini-cap-{}", std::process::id()));
+        std::fs::create_dir(&root).unwrap();
+        let inside = root.join("Documents");
+        std::fs::create_dir(&inside).unwrap();
+        let documents = Documents::open(&inside).unwrap();
+        let base = String::from_utf16(&documents.units).unwrap();
+        let path = format!("{base}\\settings.ini");
+        assert_eq!(documents.ini_file(&path, false).unwrap().err(), Some(2));
+        let mut file = documents.ini_file(&path, true).unwrap().unwrap();
+        file.write_all(b"[S]\r\nK=value\r\n").unwrap();
+        drop(file);
+        let mut bytes = Vec::new();
+        documents
+            .ini_file(&path, false)
+            .unwrap()
+            .unwrap()
+            .read_to_end(&mut bytes)
+            .unwrap();
+        assert_eq!(bytes, b"[S]\r\nK=value\r\n");
+        let external = root.join("external");
+        std::fs::write(&external, b"outside preserved").unwrap();
+        std::fs::hard_link(&external, inside.join("hard")).unwrap();
+        std::os::unix::fs::symlink(&external, inside.join("link")).unwrap();
+        for target in [
+            format!("{base}\\hard"),
+            format!("{base}\\link"),
+            format!("{base}-outside\\file"),
+            format!("{base}\\..\\external"),
+        ] {
+            assert!(documents.ini_file(&target, true).is_err());
+        }
+        assert_eq!(std::fs::read(external).unwrap(), b"outside preserved");
         drop(documents);
         std::fs::remove_dir_all(root).unwrap();
     }

@@ -1,7 +1,30 @@
 //! Explicit file-only private-profile reads. Unknown contents never become
 //! defaults: only actual checked file/path absence admits the fallback branch.
-use super::{LoadedImage32, directory32, files32, startup32, unsupported};
+use super::{LoadedImage32, directory32, files32, ini32, startup32, unsupported};
 use crate::Result;
+use std::{
+    fs::File,
+    io::{Read, Seek, SeekFrom, Write},
+};
+struct Locked(File);
+impl Drop for Locked {
+    fn drop(&mut self) {
+        let _ = self.0.unlock();
+    }
+}
+fn contents(file: &mut File) -> Result<Vec<u8>> {
+    let mut bytes = Vec::new();
+    file.take(65537)
+        .read_to_end(&mut bytes)
+        .map_err(|e| e.to_string())?;
+    if bytes.len() > 65536 {
+        return Err("INI backing grew beyond its budget".into());
+    }
+    Ok(bytes)
+}
+fn text(units: &[u16]) -> Result<String> {
+    String::from_utf16(units).map_err(|_| "INI scalar input is invalid UTF-16".into())
+}
 
 fn default_value(mut units: Vec<u16>) -> Result<Vec<u16>> {
     while units.last() == Some(&32) {
@@ -12,6 +35,7 @@ fn default_value(mut units: Vec<u16>) -> Result<Vec<u16>> {
     }
     Ok(units)
 }
+#[cfg(test)]
 fn missing(path: &str) -> Result<u32> {
     match files32::existing(path)? {
         Err(error @ (2 | 3)) => Ok(error),
@@ -61,8 +85,39 @@ pub(super) fn get(image: &LoadedImage32<'_>, args: &[u32; 8]) -> u32 {
     let path = String::from_utf16(&path)
         .unwrap_or_else(|_| unsupported("private-profile filename is invalid UTF-16"));
     let path = directory32::private_profile_path(image, &path).unwrap_or_else(|e| unsupported(&e));
-    let error = missing(&path).unwrap_or_else(|e| unsupported(&e));
-    let fallback = default_value(fallback).unwrap_or_else(|e| unsupported(&e));
+    let (fallback, error) = match files32::existing(&path).unwrap_or_else(|e| unsupported(&e)) {
+        Err(2) => (
+            default_value(fallback).unwrap_or_else(|e| unsupported(&e)),
+            2,
+        ),
+        Err(3) => (
+            default_value(fallback).unwrap_or_else(|e| unsupported(&e)),
+            3,
+        ),
+        Err(error) => unsupported(&format!("private-profile I/O error {error} is unsupported")),
+        Ok(_) => {
+            let documents = image.cpu.documents.as_ref().unwrap_or_else(|| {
+                unsupported("existing private-profile files require measured INI parsing")
+            });
+            let file = documents
+                .ini_file(&path, false)
+                .unwrap_or_else(|e| unsupported(&e))
+                .unwrap_or_else(|_| unsupported("INI file disappeared before read"));
+            file.try_lock_shared()
+                .unwrap_or_else(|_| unsupported("INI backing is locked by another writer"));
+            let mut file = Locked(file);
+            let ini = ini32::Ini::parse(&contents(&mut file.0).unwrap_or_else(|e| unsupported(&e)))
+                .unwrap_or_else(|e| unsupported(&e));
+            let section = text(&section).unwrap_or_else(|e| unsupported(&e));
+            let key = text(&key).unwrap_or_else(|e| unsupported(&e));
+            let value = ini
+                .get(&section, &key)
+                .unwrap_or_else(|e| unsupported(&e))
+                .map(|v| v.encode_utf16().collect())
+                .unwrap_or_else(|| default_value(fallback).unwrap_or_else(|e| unsupported(&e)));
+            (value, 0)
+        }
+    };
     let count = fallback.len().min(args[4] as usize - 1);
     unsafe {
         std::ptr::copy_nonoverlapping(fallback.as_ptr(), args[3] as *mut u16, count);
@@ -70,6 +125,67 @@ pub(super) fn get(image: &LoadedImage32<'_>, args: &[u32; 8]) -> u32 {
     }
     alkyhol::ffi::SetLastError(error);
     count as u32
+}
+pub(super) fn write(image: &LoadedImage32<'_>, args: &[u32; 8]) -> u32 {
+    let values: Vec<_> = args[..4]
+        .iter()
+        .map(|&at| {
+            if at == 0 {
+                None
+            } else {
+                Some(units(image, at))
+            }
+        })
+        .collect();
+    if image.cpu.diagnostic.is_some() {
+        eprintln!("PE32 diagnostic private profile write: input_units={values:x?}");
+    }
+    if !image.cpu.private_profile_files {
+        unsupported("private-profile writes require an explicit file-only INI profile");
+    }
+    if values.iter().any(Option::is_none) {
+        unsupported("INI deletion, flush and NULL arguments remain unsupported");
+    }
+    let strings: Vec<_> = values
+        .iter()
+        .map(|v| text(v.as_ref().unwrap()).unwrap_or_else(|e| unsupported(&e)))
+        .collect();
+    ini32::name(&strings[0])
+        .and_then(|_| ini32::name(&strings[1]))
+        .and_then(|_| ini32::value(&strings[2]))
+        .unwrap_or_else(|e| unsupported(&e));
+    let path =
+        directory32::private_profile_path(image, &strings[3]).unwrap_or_else(|e| unsupported(&e));
+    let documents = image
+        .cpu
+        .documents
+        .as_ref()
+        .unwrap_or_else(|| unsupported("INI writes require explicit Documents backing"));
+    let file = match documents
+        .ini_file(&path, true)
+        .unwrap_or_else(|e| unsupported(&e))
+    {
+        Ok(file) => file,
+        Err(error) => {
+            alkyhol::ffi::SetLastError(error);
+            return 0;
+        }
+    };
+    file.try_lock()
+        .unwrap_or_else(|_| unsupported("INI backing is locked by another reader or writer"));
+    let mut file = Locked(file);
+    let mut ini = ini32::Ini::parse(&contents(&mut file.0).unwrap_or_else(|e| unsupported(&e)))
+        .unwrap_or_else(|e| unsupported(&e));
+    ini.set(&strings[0], &strings[1], &strings[2])
+        .unwrap_or_else(|e| unsupported(&e));
+    let bytes = ini.bytes().unwrap_or_else(|e| unsupported(&e));
+    file.0
+        .seek(SeekFrom::Start(0))
+        .and_then(|_| file.0.set_len(0))
+        .and_then(|_| file.0.write_all(&bytes))
+        .and_then(|_| file.0.sync_data())
+        .unwrap_or_else(|e| unsupported(&format!("INI backing write failed: {e}")));
+    1
 }
 #[cfg(test)]
 mod tests {

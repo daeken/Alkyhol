@@ -142,7 +142,13 @@ jobs:
           python tools/observe_pe32_create_directory.py
           python tools/observe_pe32_create_directory.py --host
       - name: Build native-first scalar settings lifecycle evidence for the next DAO batch
-        run: python tools/observe_pe32_profile_roundtrip.py
+        run: |
+          python tools/observe_pe32_profile_roundtrip.py
+          python tools/observe_pe32_profile_roundtrip.py --host
+      - name: Execute DAO core API families with real shared state
+        run: |
+          python tools/observe_pe32_runtime_family.py
+          python tools/observe_pe32_runtime_family.py --host
       - uses: actions/upload-artifact@v4
         with:
           name: pe32-startup-microtests
@@ -229,6 +235,10 @@ jobs:
             local/pe/startup-microtests/create-directory-inputs.json
             local/pe/startup-microtests/create-directory-host.json
             local/pe/startup-microtests/profile-roundtrip-inputs.json
+            local/pe/startup-microtests/profile-roundtrip-host.json
+            local/pe/startup-microtests/profile-roundtrip-restrictions.json
+            local/pe/startup-microtests/runtime-family-inputs.json
+            local/pe/startup-microtests/runtime-family-host.json
             local/pe/startup-microtests/ctx-layout-empty-importer.dll
             local/pe/startup-microtests/ctx-layout-*.manifest
   native-pe32-startup:
@@ -361,6 +371,9 @@ jobs:
       - name: Capture native settings writes, paired reads and persistent INI bytes
         if: ${{ success() || failure() }}
         run: python tools/observe_pe32_profile_roundtrip.py --native
+      - name: Compare the identical DAO core-family PE against native Windows
+        if: ${{ success() || failure() }}
+        run: python tools/observe_pe32_runtime_family.py --native
       - uses: actions/upload-artifact@v4
         if: always()
         with:

@@ -4,6 +4,53 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## Integrated non-D3D9 startup work: persistent settings and core API families
+
+The user's current goal is one integrated non-D3D9 implementation through the
+original program's real window creation and explicit D3D9 initialization stop.
+Individual API milestones are implementation checkpoints, not completion of that
+request. No real DAO window or D3D9 boundary has yet been observed.
+
+The first bulk batch adds 15 exports: `WritePrivateProfileStringW`,
+`ReleaseSemaphore`, `CreateEventA`, `CreateSemaphoreA`, `InterlockedExchangeAdd`,
+`GetFileSize`, `GetFileSizeEx`, `GetCurrentThread`, `CreateDirectoryA`,
+`SetCurrentDirectoryA`, `GetCurrentDirectoryA`, `GetFileAttributesW/A`,
+`WaitForSingleObject` and `CreateFileA`. Existing scalar INI reads now parse real
+owned files instead of rejecting every existing file. State is shared with the
+existing checked directory, synchronization and file gateways. ANSI paths remain
+ASCII-only; file opens retain the existing read-only/share-all/normal-attribute
+profile, and waits retain the zero-timeout/non-alertable profile. This does not
+claim all imports, threading, windowing or D3D9 are implemented.
+
+Seven successive original owned PEs were observed on native Windows before the
+writer implementation in
+[42524988291](https://github.com/daeken/Alkyhol/actions/runs/42524988291).
+The unmodified report is `pe/reference/pe32-profile-roundtrip-windows-v1.json`,
+SHA-256 `f114d548fc190551f33d1eb30fc1e1e918fff0e4e7b11611760a5af18a015b38`.
+Physical M4 selects the same literal seven PEs and matches every 168-byte output
+and every intermediate INI file byte. Case-insensitive updates preserve original
+section/key spelling and order; empty values persist, and new keys are inserted
+before the next section. Read LastError is zero and write LastError retains the
+sentinel in these observed cases. The grammar is bounded ASCII/CRLF without
+comments, duplicates, quoted/edge-whitespace values or Unicode encodings. Unknown
+syntax fails before rewriting; it never becomes an absent value or a default.
+These contracts follow the measured scalar profile of
+[WritePrivateProfileStringW](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-writeprivateprofilestringw).
+
+INI access is anchored to the explicitly selected Documents capability through
+checked no-follow parent/file handles, identity/link-count checks and real file
+locks. Completed writes are flushed to disk. Five host restrictions verify no
+mutation on missing profile, outside target, unknown syntax, symlink or hardlink.
+A separate stateful core-family PE checks real event consumption, semaphore
+release/error atomicity, interlocked wraparound, shared ANSI directory state,
+file sizes/attributes and existing-file missing-key reads; eight exclusions
+check handle kinds, checked pointers, alignment, names and missing path state.
+The core-family native comparison and the combined original DAO run are pending.
+Local checks pass: 219 Rust PE checks including doctests, 410 Python tests,
+Clippy/formatting, the exact settings lifecycle, the core-family PE and prior
+missing-INI/current-directory comparisons. Original game inputs/inventories stay
+local; this changes no D3D9 implementation and makes no game compatibility claim.
+
 ## Original DAO completes profile-directory setup and reaches INI writes
 
 At clean revision `6d242f1`, physical M4 executes the unchanged original EXE's
