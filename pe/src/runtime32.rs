@@ -70,7 +70,7 @@ unsafe extern "C" {
 }
 const PAGE: usize = 4096;
 const STACK: usize = 1024 * 1024;
-const APIS: [(&str, u16); 104] = [
+const APIS: [(&str, u16); 106] = [
     ("GetLastError", 0),
     ("SetLastError", 4),
     ("GetStdHandle", 4),
@@ -175,6 +175,8 @@ const APIS: [(&str, u16); 104] = [
     ("GetWindowsDirectoryA", 8),
     ("GetSystemDirectoryA", 8),
     ("SetUnhandledExceptionFilter", 4),
+    ("HeapLock", 4),
+    ("HeapUnlock", 4),
 ];
 const EXIT_API: u32 = 14;
 // Win32 promises a reversible process-specific representation, not a published
@@ -716,7 +718,7 @@ impl<'a> LoadedImage32<'a> {
         if relocated && fixups.is_empty() {
             return Err("PE32 preferred base unavailable and no HIGHLOW fixups".into());
         }
-        let gates = LowMapping::new(PAGE, PAGE, 0)?;
+        let gates = LowMapping::new(math32::GATE_SIZE, PAGE, 0)?;
         let cpu = match context.cpu {
             Some(cpu) => cpu,
             None => Rc::new(Cpu32::new()?),
@@ -751,7 +753,7 @@ impl<'a> LoadedImage32<'a> {
         unsafe {
             std::arch::asm!("mov {0:x}, cs",out(reg) cs64,options(nomem,nostack,preserves_flags));
         }
-        let mut template = vec![0u8; PAGE];
+        let mut template = vec![0u8; math32::GATE_SIZE];
         // 32-bit near return -> far jump into low 64-bit gate -> host continuation.
         template[..2].copy_from_slice(&[0xff, 0x2d]);
         template[2..6].copy_from_slice(&((gates.base as u32) + 8).to_le_bytes());
@@ -813,7 +815,7 @@ impl<'a> LoadedImage32<'a> {
             template[at + 24..at + 26].copy_from_slice(&cs64.to_le_bytes());
         }
         unsafe {
-            ptr::copy_nonoverlapping(template.as_ptr(), gates.base, PAGE);
+            ptr::copy_nonoverlapping(template.as_ptr(), gates.base, math32::GATE_SIZE);
             ptr::copy_nonoverlapping(bytes.as_ptr(), image.base, parsed.headers);
             for section in &parsed.sections {
                 ptr::copy_nonoverlapping(
@@ -875,7 +877,7 @@ impl<'a> LoadedImage32<'a> {
                 .cast::<u32>()
                 .write_unaligned(gates.base as u32);
         }
-        gates.protect(0, PAGE, 5)?;
+        gates.protect(0, math32::GATE_SIZE, 5)?;
         image.protect(0, parsed.size, 0)?;
         image.protect(0, parsed.headers, 1)?;
         let mut regions = Vec::new();
@@ -1695,6 +1697,12 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
             101 => module_path32::windows_directory_ansi(image, &args),
             102 => module_path32::system_directory_ansi(image, &args),
             103 => exception_filter32::replace(image, args[0]),
+            104 | 105 => image
+                .cpu
+                .heap
+                .borrow_mut()
+                .lock(args[0], alkyhol::ffi::GetCurrentThreadId(), id == 104)
+                .unwrap_or_else(|e| unsupported(&e)),
             _ => unreachable!(),
         }
     })

@@ -16,6 +16,8 @@ struct Object {
     regions: Vec<Region>,
     blocks: BTreeMap<u32, Block>,
     free: Vec<(u32, usize)>,
+    lock: super::sync32::Section,
+    serialized: bool,
 }
 #[derive(Default)]
 pub(super) struct Heap {
@@ -72,6 +74,8 @@ impl Heap {
                 regions,
                 blocks: BTreeMap::new(),
                 free: Vec::new(),
+                lock: super::sync32::Section::new(0),
+                serialized: flags & 1 == 0,
             },
         );
         Ok(handle)
@@ -152,7 +156,12 @@ impl Heap {
             .ok_or("PE32 HeapReAlloc requires a live owned allocation base")?;
         let old_size = block.size;
         if size > 512 * 1024 * 1024 {
-            return Ok(0); // Failure leaves the original allocation and last error intact.
+            // The owned native impossible-size sequence observes error 8.
+            // Other budget failures retain the prior bounded allocation profile.
+            if size == u32::MAX {
+                alkyhol::ffi::SetLastError(8);
+            }
+            return Ok(0); // The original allocation remains live and unchanged.
         }
         if size as usize <= block.capacity {
             if flags & 8 != 0 && size as usize > old_size {
@@ -185,6 +194,21 @@ impl Heap {
         }
         self.free(heap, flags & 1, address)?;
         Ok(replacement)
+    }
+    pub(super) fn lock(&mut self, heap: u32, thread: u32, enter: bool) -> Result<u32> {
+        let object = self
+            .objects
+            .get_mut(&heap)
+            .ok_or("unknown PE32 heap lock handle")?;
+        if !object.serialized {
+            return Err("PE32 heap lock requires a serialized owned heap".into());
+        }
+        if enter {
+            object.lock.enter(thread)?;
+        } else {
+            object.lock.leave(thread)?;
+        }
+        Ok(1) // Real owned recursion/ownership state changed.
     }
     pub(super) fn free(&mut self, heap: u32, flags: u32, address: u32) -> Result<u32> {
         let object = self
@@ -265,20 +289,35 @@ mod tests {
                 ),
             ]),
             free: Vec::new(),
+            lock: super::super::sync32::Section::new(0),
+            serialized: true,
         };
         heap.objects.insert(0x10000, object);
+        assert!(heap.lock(0x10000, 7, false).is_err());
+        assert_eq!(heap.lock(0x10000, 7, true).unwrap(), 1);
+        assert_eq!(heap.lock(0x10000, 7, true).unwrap(), 1);
+        assert!(heap.lock(0x10000, 8, true).is_err());
+        assert!(heap.lock(0x10000, 8, false).is_err());
+        heap.lock(0x10000, 7, false).unwrap();
+        assert!(heap.lock(0x10000, 8, true).is_err());
+        heap.lock(0x10000, 7, false).unwrap();
+        assert!(heap.lock(0x10001, 7, true).is_err());
+        heap.objects.get_mut(&0x10000).unwrap().serialized = false;
+        assert!(heap.lock(0x10000, 7, true).is_err());
+        heap.objects.get_mut(&0x10000).unwrap().serialized = true;
         let error = alkyhol::ffi::GetLastError();
         alkyhol::ffi::SetLastError(0x1234);
         assert_eq!(heap.size(0x10000, 0, 0x20000).unwrap(), 37);
         assert_eq!(heap.size(0x10000, 1, 0x30000).unwrap(), 0);
         // Rejected relocation must retain size/ownership and never touch memory.
         assert_eq!(heap.reallocate(0x10000, 16, 0x20000, 41).unwrap(), 0);
+        assert_eq!(alkyhol::ffi::GetLastError(), 0x1234);
         assert_eq!(heap.reallocate(0x10000, 0, 0x20000, u32::MAX).unwrap(), 0);
         assert_eq!(heap.size(0x10000, 0, 0x20000).unwrap(), 37);
         assert!(heap.reallocate(0x10000, 4, 0x20000, 41).is_err());
         assert!(heap.reallocate(0x10000, 0, 0x20001, 41).is_err());
         assert!(heap.reallocate(0x10001, 0, 0x20000, 41).is_err());
-        assert_eq!(alkyhol::ffi::GetLastError(), 0x1234);
+        assert_eq!(alkyhol::ffi::GetLastError(), 8);
         for (h, f, p) in [
             (0x10000, 0, 0x20001),
             (0x10001, 0, 0x20000),

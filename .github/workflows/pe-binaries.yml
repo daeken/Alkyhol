@@ -85,6 +85,10 @@ jobs:
         run: |
           python tools/observe_pe32_exception_filter.py
           python tools/observe_pe32_exception_filter.py --host
+      - name: Execute serialized heap ownership reached by original DAO entry
+        run: |
+          python tools/observe_pe32_heap_lock.py
+          python tools/observe_pe32_heap_lock.py --host
       - uses: actions/upload-artifact@v4
         with:
           name: pe32-startup-microtests
@@ -140,6 +144,8 @@ jobs:
             local/pe/startup-microtests/ansi-directories-host.json
             local/pe/startup-microtests/exception-filter-inputs.json
             local/pe/startup-microtests/exception-filter-host.json
+            local/pe/startup-microtests/heap-lock-inputs.json
+            local/pe/startup-microtests/heap-lock-host.json
             local/pe/startup-microtests/ctx-layout-empty-importer.dll
             local/pe/startup-microtests/ctx-layout-*.manifest
   native-pe32-startup:
@@ -218,6 +224,9 @@ jobs:
       - name: Observe top-level filter replacement and clear without claiming exception delivery
         if: ${{ success() || failure() }}
         run: python tools/observe_pe32_exception_filter.py --native
+      - name: Observe serialized heap recursion and allocation while owned on native Windows
+        if: ${{ success() || failure() }}
+        run: python tools/observe_pe32_heap_lock.py --native
       - uses: actions/upload-artifact@v4
         if: always()
         with:

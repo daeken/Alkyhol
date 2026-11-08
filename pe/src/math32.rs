@@ -10,8 +10,10 @@ unsafe extern "C" {
     static alkyhol_ci_atan32_end: u8;
     static alkyhol_ci_atan32_failure: u8;
 }
-pub(super) const OFFSET: usize = 3584;
-pub(super) const ATAN_OFFSET: usize = 3840;
+// API stubs occupy the first page; numeric bodies have their own second page.
+pub(super) const GATE_SIZE: usize = 2 * PAGE;
+pub(super) const OFFSET: usize = PAGE;
+pub(super) const ATAN_OFFSET: usize = PAGE + 256;
 pub(super) fn emit(template: &mut [u8], base: u32, failure: u32) -> crate::Result<()> {
     let start = std::ptr::addr_of!(alkyhol_ci_sqrt32_start) as usize;
     let end = std::ptr::addr_of!(alkyhol_ci_sqrt32_end) as usize;
@@ -31,18 +33,18 @@ pub(super) fn emit_atan(template: &mut [u8], base: u32, failure: u32) -> crate::
         template,
         base,
         failure,
-        [start, end, patch, ATAN_OFFSET, PAGE],
+        [start, end, patch, ATAN_OFFSET, ATAN_OFFSET + 256],
     )
 }
 fn install(template: &mut [u8], base: u32, failure: u32, layout: [usize; 5]) -> crate::Result<()> {
     let [start, end, patch, offset, limit] = layout;
     let size = end
         .checked_sub(start)
-        .filter(|&n| n > 0 && offset + n <= limit && limit <= PAGE)
+        .filter(|&n| n > 0 && offset + n <= limit && limit <= GATE_SIZE)
         .ok_or("invalid x87 gateway template size")?;
     if patch + 4 > size
-        || template.len() != PAGE
-        || base.checked_add(PAGE as u32).is_none()
+        || template.len() != GATE_SIZE
+        || base.checked_add(GATE_SIZE as u32).is_none()
         || failure < base.saturating_add(256)
         || !(failure - base - 256).is_multiple_of(32)
         || failure
@@ -94,7 +96,7 @@ mod tests {
     use super::*;
     #[test]
     fn template_relocates_only_its_private_checked_failure_target() {
-        let mut first = vec![0xa5; PAGE];
+        let mut first = vec![0xa5; GATE_SIZE];
         let mut second = first.clone();
         emit(&mut first, 0x200000, 0x200c40).unwrap();
         emit(&mut second, 0x300000, 0x300c40).unwrap();
@@ -108,15 +110,16 @@ mod tests {
     }
     #[test]
     fn incomplete_overflowing_or_unowned_gateway_patches_are_rejected() {
-        assert!(emit(&mut vec![0; PAGE - 1], 0x200000, 0x200c40).is_err());
-        assert!(emit(&mut vec![0; PAGE], 0xfffff800, 0xfffffc00).is_err());
+        assert!(emit(&mut vec![0; PAGE], 0x200000, 0x200c40).is_err());
+        assert!(emit(&mut vec![0; GATE_SIZE - 1], 0x200000, 0x200c40).is_err());
+        assert!(emit(&mut vec![0; GATE_SIZE], 0xfffff800, 0xfffffc00).is_err());
         for target in [0, 0x200000, 0x2000ff, 0x200101, 0x200df0, 0x201000] {
-            assert!(emit(&mut vec![0; PAGE], 0x200000, target).is_err());
+            assert!(emit(&mut vec![0; GATE_SIZE], 0x200000, target).is_err());
         }
     }
     #[test]
     fn both_numeric_templates_keep_separate_owned_code_ranges() {
-        let mut code = vec![0xa5; PAGE];
+        let mut code = vec![0xa5; GATE_SIZE];
         emit(&mut code, 0x200000, 0x200c40).unwrap();
         let before = code.clone();
         emit_atan(&mut code, 0x200000, 0x200ca0).unwrap();
@@ -124,7 +127,8 @@ mod tests {
         let start = std::ptr::addr_of!(alkyhol_ci_atan32_start) as usize;
         let patch = std::ptr::addr_of!(alkyhol_ci_atan32_failure) as usize - start + ATAN_OFFSET;
         assert_eq!(&code[patch..patch + 4], &0x200ca0u32.to_le_bytes());
-        assert!(emit_atan(&mut vec![0; PAGE - 1], 0x200000, 0x200ca0).is_err());
+        assert!(emit_atan(&mut vec![0; GATE_SIZE - 1], 0x200000, 0x200ca0).is_err());
+        assert!(emit_atan(&mut vec![0; PAGE], 0x200000, 0x200ca0).is_err());
         assert!(emit_atan(&mut code, 0x200000, 0x200ca1).is_err());
     }
 }

@@ -4,6 +4,72 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## Original EXE allocator startup advances to GetSystemInfo
+
+The physical M4 executes the unchanged original EXE past `HeapLock`, into its
+original custom allocator initialization, and through a matching `HeapUnlock`.
+The next measured unsupported import is **KERNEL32.dll!GetSystemInfo**. A first
+30-second attempt exhausted its diagnostic budget; a separate attempt with a
+300-second budget advanced to this real API stop. No initializer, allocation or
+synchronization call was skipped. The existing 512 MiB per-allocation profile
+bound remains active: the original allocator's own retry logic handles budget
+failures. This is not evidence of native allocation-size/performance parity.
+The game has not reached an observed menu or render loop. Exact game bytes,
+identities, arguments and instruction observations remain local.
+
+Heap locks now carry real per-heap recursion and owning-thread state, and matching
+releases mutate that state. Unknown handles, unbalanced/wrong-owner release,
+contention requiring guest scheduling and nonserialized heaps stop explicitly.
+The latter's native behavior is
+[undefined](https://learn.microsoft.com/en-us/windows/win32/api/heapapi/nf-heapapi-heaplock).
+The 28-word owned process/private heap witness passes on the physical M4 for
+recursion, allocations/resizing/free while owned, releases, stack and error state;
+three restriction PEs stop for their actual reason. Cross-thread blocking and
+native comparison of this new witness remain separate unverified work.
+
+Adding the next reached APIs filled the first gate layout. Stubs now occupy one
+owned page and the unchanged x87 bodies occupy disjoint ranges in a second RX
+page. Template/patch bounds, page extent and overflow checks remain enforced.
+All **24 sqrt and 16 atan admitted-profile rows** still agree byte-for-byte with
+the native `a3bb58f` observations after this move, including full recorded state.
+The frozen numeric PEs, producers and acceptance fields are unchanged.
+
+Local checks pass: 194 PE Rust tests/checks including doctests on the Rosetta
+x86_64 target, 385 Python tests before the two new heap evidence tests, those
+additional tests, Clippy and formatting. The actual original graph reaches the
+new `GetSystemInfo` frontier; native validation of new heap locking is pending.
+
+## Native API observations verify entry helpers and correct heap failure state
+
+The [native startup job at `a3bb58f`](https://github.com/daeken/Alkyhol/actions/runs/42502001666)
+passed onexit/startup (53 words), cursor ABI/guards/error (nine comparable words,
+with coordinates explicitly per host), both ANSI directory contracts (nine
+comparable words each, with actual paths independently checked), and top-level
+filter registration (11 words). Source and identical-PE identities agree with
+the physical M4 records. These finite observations do not establish exception
+filter delivery, screen/DPI equivalence, full directory semantics or game parity.
+
+The same job correctly failed the heap-resize comparison. Its successful raw
+64-word native execution observes error **8** after the impossible-size resize
+sequence and retains that state after size/prefix/free checks. The prior host
+assumption that this sequence preserves the incoming error was wrong. The bounded
+backend now records the native-observed error for that impossible-size failure;
+the original block remains live and unchanged. Other allocation-budget/failure
+profiles are not declared native-equivalent.
+
+The unedited successful native raw report is pinned as
+`pe/reference/pe32-heap-realloc-windows-v1.json`, SHA-256
+`479ab62b9259690906c9cc3b5570fc36e84ddbdfd2beb27370e5f0be5cb065cb`.
+The literal owned PE is `pe/reference/pe32-heap-realloc-v1.exe`, SHA-256
+`9554b9ee95c3f06161495b73cfb2b67b342e0c327ceb8bef163a7863f368dbd5`.
+All original producer/PE identities remain pinned. All 64 observed words now
+agree on the physical M4. A **separate** new ten-word witness samples last error
+immediately after the failed call; its host assertions pass, but native execution
+is pending. The original producer and composed-sequence observation are unchanged.
+This avoids silently claiming that the old delayed sample isolated every API's
+individual error effect. The native job remains failed; no full-CI success claim
+is made for that revision.
+
 ## DAO EXE startup records its top-level filter and reaches heap locking
 
 The unchanged original game entry now executes past its reached
