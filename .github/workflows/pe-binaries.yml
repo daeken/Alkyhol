@@ -226,6 +226,14 @@ jobs:
           path: |
             local/pe/pe32-tls-data/pe32-tls-data.exe
             local/pe/pe32-tls-data/pe32-tls-data-fixture.json
+      - name: Build original legacy load-config cases with compiler-generated GS checks
+        run: python tools/build_pe32_load_config.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe32-load-config-fixture
+          path: |
+            local/pe/pe32-load-config/*.exe
+            local/pe/pe32-load-config/load-config-fixture.json
       - name: Build owned SizeOfImage variants for independent native loader observation
         run: python tools/build_pe32_geometry.py
       - name: Execute owned PE32 geometry cases normally and with forced relocation
@@ -613,6 +621,18 @@ jobs:
         with:
           name: pe32-tls-data-windows
           path: local/pe/pe32-tls-data-windows.json
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe32-load-config-fixture
+          path: local/pe/pe32-load-config
+      - name: Assert actual SDK legacy IMAGE_LOAD_CONFIG_DIRECTORY32 field layouts
+        run: cl /nologo /std:c++17 /W4 /WX /c pe/fixtures/pe32-load-config/sdk-layout.cpp /Folocal/pe/pe32-load-config/sdk-layout.obj
+      - name: Observe native load-config cookie handling and deliberate compiler-frame rejection
+        run: python tools/run_pe32_load_config.py --directory local/pe/pe32-load-config --output local/pe/pe32-load-config-windows.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe32-load-config-windows
+          path: local/pe/pe32-load-config-windows.json
       - uses: actions/download-artifact@v4
         with:
           name: pe32-geometry-fixture

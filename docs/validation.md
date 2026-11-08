@@ -4,6 +4,24 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## PE32 legacy load configuration and compiler GS: native observation pending
+
+A new original MIT corpus contains eight unchanged PE32 executables covering
+absent/no-cookie load configuration, 64/72-byte legacy records, default/custom/
+zero/small cookie seeds, and an intentionally invalid compiler-protected frame.
+The compiled GS epilogue calls an owned checker that compares the actual frame
+cookie against the module cookie; mismatch executes UD2. Positive probes record
+16 DWORDs of cookie properties, real protected calls, unchanged surrounding data
+and last-error state, without treating opaque random cookie bytes as equal.
+The deliberate-trap case retains its raw outcome separately from normal results;
+an unexplained crash is not a successful program run or Windows SEH evidence.
+
+Initial native execution is pending. A real Windows SDK/MSVC compile checks the
+explicit IMAGE_LOAD_CONFIG_DIRECTORY32 offsets and DWORD widths independently.
+The capture revision does not change Alkyhol startup gates or seed cookies. No
+game code/data enters this corpus. Collector guards preserve process statuses,
+launch failures and timeouts distinctly and reject case/source/payload drift.
+
 ## PE32 compiler static TLS data: native Windows and physical M4
 
 All 27 CI jobs pass at strict-reference revision `f07f550`: three
