@@ -4,7 +4,51 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
-## Dependency startup reaches original D3DX9 initialization
+## Original D3DX9 startup obtains real CRT allocation
+
+On the physical M4, the original D3DX9 helper now calls `msvcrt.dll!malloc` and
+receives actual owned low-address storage. The game EXE remains unchanged and
+its entry has **not run**. The next measured unsupported call is **GetVersion**
+during that DLL's initialization. The local unpacked dependency caveat remains;
+this is not game compatibility or unchanged-all-DLL execution.
+
+The CRT call required real cdecl gateways with caller stack cleanup. It also
+makes the implemented system CRT namespace visible during original bundled CRT
+initialization. Its reached configuration lookups now operate on owned error-mode,
+application-type, terminate-handler and unexpected-handler state; they do not
+silently report that namespace or those registered exports as missing. Handler
+targets are checked against executable guest storage. NULL is the documented
+restorable default for these setters, not a fabricated successful callback.
+See Microsoft's [malloc](https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/malloc?view=msvc-170),
+[error policy](https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/set-error-mode?view=msvc-170)
+and [termination policy](https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/set-terminate-crt?view=msvc-170)
+contracts. No third-party implementation code was copied.
+
+An owned PE exercises 0/1/17/4099/65539-byte allocations, 8-byte alignment,
+nonoverlapping data retention/checksums, actual cdecl stack restoration, policy
+mutation/getters, previous-handler identities and last-error preservation. Three
+separate owned PEs execute real cdecl callbacks and propagate actual ExitProcess
+statuses 37/38/37, including an unexpected handler returning into terminate.
+Six additional host-only paths stop for their measured reasons: default abort,
+returning terminate callback, invalid callback target, oversized allocation,
+invalid error-mode value and invalid application type. They are not run against
+native Windows and are not claimed as native error semantics. Existing stdcall
+FLS callback behavior is separately regression-checked.
+
+Default abort/reporting, errno/new-handler allocation failure, free/realloc,
+arbitrary guest threads and C++ exception unwinding remain unsupported. The new
+CRT PE/state and callback-exit observations have been added to the existing
+Windows comparison workflow; native execution and full 73-word comparison are
+pending. Host assertions are not a native original-game observation. Original
+files, traces, identities and launch inputs remain ignored/local.
+
+Local checks pass: 188 PE Rust tests/checks including doctests on the x86_64
+Rosetta target, 364 Python tests, project Clippy with warnings denied, formatting,
+all ten new CRT PEs and the existing 25 startup cases (including real stdcall FLS
+callbacks). The actual DAO graph again passes the CRT configuration work and
+D3DX9 malloc call before stopping at GetVersion.
+
+## Dependency startup reaches original D3DX9 initialization (earlier milestone)
 
 On the physical M4, DLL initialization now advances beyond FMOD and enters the
 original D3DX9 helper. The reached DisableThreadLibraryCalls calls update real

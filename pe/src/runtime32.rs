@@ -18,6 +18,8 @@ pub use seh32::ExceptionImage32;
 mod activation32;
 #[path = "ansi32.rs"]
 mod ansi32;
+#[path = "crt32.rs"]
+mod crt32;
 #[path = "diagnostic32.rs"]
 mod diagnostic32;
 #[path = "fiber32.rs"]
@@ -62,7 +64,7 @@ unsafe extern "C" {
 }
 const PAGE: usize = 4096;
 const STACK: usize = 1024 * 1024;
-const APIS: [(&str, u16); 78] = [
+const APIS: [(&str, u16); 88] = [
     ("GetLastError", 0),
     ("SetLastError", 4),
     ("GetStdHandle", 4),
@@ -141,6 +143,16 @@ const APIS: [(&str, u16); 78] = [
     ("InterlockedCompareExchange", 12),
     ("InterlockedExchange", 8),
     ("DisableThreadLibraryCalls", 4),
+    ("malloc", 4),
+    ("_set_error_mode", 4),
+    ("?set_terminate@@YAP6AXXZP6AXXZ@Z", 4),
+    ("_get_terminate", 0),
+    ("?set_unexpected@@YAP6AXXZP6AXXZ@Z", 4),
+    ("_get_unexpected", 0),
+    ("?terminate@@YAXXZ", 0),
+    ("?unexpected@@YAXXZ", 0),
+    ("__set_app_type", 4),
+    ("__get_app_type", 0),
 ];
 const EXIT_API: u32 = 14;
 // Win32 promises a reversible process-specific representation, not a published
@@ -160,13 +172,21 @@ fn api_id(module: &str, symbol: &ImportSymbol) -> Option<usize> {
         .enumerate()
         .find(|(id, (name, _))| {
             *name == symbol
-                && module.eq_ignore_ascii_case(if *id == 8 {
+                && module.eq_ignore_ascii_case(if cdecl_api(*id) {
+                    "msvcrt.dll"
+                } else if *id == 8 {
                     "shell32.dll"
                 } else {
                     "kernel32.dll"
                 })
         })
         .map(|(id, _)| id)
+}
+fn cdecl_api(id: usize) -> bool {
+    matches!(id, 78..=87)
+}
+fn cleanup_bytes(id: usize, arguments: u16) -> u16 {
+    if cdecl_api(id) { 0 } else { arguments }
 }
 static SELECTORS: OnceLock<Result<(u16, u16)>> = OnceLock::new();
 fn selectors() -> Result<(u16, u16)> {
@@ -380,6 +400,7 @@ struct Cpu32 {
     executable: Cell<u32>,
     diagnostic: Option<diagnostic32::Traps>,
     heap: RefCell<heap32::Heap>,
+    crt: RefCell<crt32::State>,
     fls: RefCell<fiber32::Slots>,
     dynamic_tls: RefCell<[bool; 64]>,
     callback_stack: Cell<u32>,
@@ -400,6 +421,7 @@ impl Cpu32 {
         }
         self.fls.borrow_mut().clear();
         self.heap.borrow_mut().clear();
+        *self.crt.borrow_mut() = Default::default();
     }
     fn close_files(&self) {
         let error = alkyhol::ffi::GetLastError();
@@ -441,6 +463,7 @@ impl Cpu32 {
             executable: Cell::new(0),
             diagnostic: None,
             heap: RefCell::new(Default::default()),
+            crt: RefCell::new(Default::default()),
             fls: RefCell::new(Default::default()),
             dynamic_tls: RefCell::new([false; 64]),
             callback_stack: Cell::new(0),
@@ -729,7 +752,8 @@ impl<'a> LoadedImage32<'a> {
             template[at + 10..at + 12].copy_from_slice(&[0xff, 0x2d]);
             template[at + 12..at + 16].copy_from_slice(&(base + 20).to_le_bytes());
             template[at + 16] = 0xc2;
-            template[at + 17..at + 19].copy_from_slice(&argument_bytes.to_le_bytes());
+            template[at + 17..at + 19]
+                .copy_from_slice(&cleanup_bytes(id, argument_bytes).to_le_bytes());
             template[at + 20..at + 24].copy_from_slice(&(gates.base as u32 + 64).to_le_bytes());
             template[at + 24..at + 26].copy_from_slice(&cs64.to_le_bytes());
         }
@@ -1043,6 +1067,23 @@ impl<'a> LoadedImage32<'a> {
     // Reuse the exclusively leased TEB, but place the frame below the suspended
     // guest ESP. Never overwrite the outer frame or reinitialize static TLS.
     unsafe fn callback(&self, entry: u32, value: u32) -> Result<()> {
+        if unsafe { self.callback_frame(entry, &[value], CallingConvention32::Stdcall) }?.is_none()
+        {
+            return Err("non-returning exit from an FLS callback is unsupported".into());
+        }
+        Ok(())
+    }
+    // Some is an ordinary return; None is an actual non-returning ExitProcess
+    // escape. The caller must propagate or explicitly reject that outcome.
+    unsafe fn callback_frame(
+        &self,
+        entry: u32,
+        args: &[u32],
+        convention: CallingConvention32,
+    ) -> Result<Option<u32>> {
+        if args.len() > 1 {
+            return Err("PE32 synchronous callbacks support at most one DWORD".into());
+        }
         if self.cpu.callback_depth.get() >= 16 {
             return Err("PE32 callback nesting limit".into());
         }
@@ -1071,7 +1112,9 @@ impl<'a> LoadedImage32<'a> {
         }
         unsafe {
             (frame as *mut u32).write(self.gates.base as u32);
-            ((frame + 4) as *mut u32).write(value);
+            for (i, &value) in args.iter().enumerate() {
+                ((frame + 4 + i as u32 * 4) as *mut u32).write(value);
+            }
             self.cpu
                 .teb
                 .base
@@ -1087,13 +1130,29 @@ impl<'a> LoadedImage32<'a> {
         self.cpu
             .callback_depth
             .set(self.cpu.callback_depth.get() - 1);
-        if segment_state() != before || (result >> 32) as u32 != frame + 8 {
-            return Err("PE32 callback did not restore selectors and stdcall stack".into());
+        if segment_state() != before {
+            return Err("PE32 callback did not restore selectors".into());
         }
         alkyhol::ffi::SetLastError(unsafe {
             self.cpu.teb.base.add(0x34).cast::<u32>().read_unaligned()
         });
-        Ok(())
+        let observed = (result >> 32) as u32;
+        if observed == 0 && self.cpu.exit.get().is_some() {
+            return Ok(None);
+        }
+        let expected = frame
+            + 4
+            + if matches!(convention, CallingConvention32::Stdcall) {
+                args.len() as u32 * 4
+            } else {
+                0
+            };
+        if observed != expected {
+            return Err(
+                "PE32 callback did not restore its declared calling-convention stack".into(),
+            );
+        }
+        Ok(Some(result as u32))
     }
     unsafe fn invoke(
         &self,
@@ -1370,9 +1429,15 @@ fn query_name(address: u32, mut read: impl FnMut(u32) -> Result<u8>) -> Result<S
 }
 extern "C" fn dispatch(id: u32, arguments: *const u32) -> u64 {
     let result = dispatch_inner(id, arguments);
-    // ExitProcess is a non-returning guest operation. The assembly gate uses
+    // ExitProcess and CRT termination escapes are non-returning guest operations.
+    // The assembly gate uses
     // a separate control bit, never a forged stdcall return-stack observation.
-    u64::from(result) | if id == EXIT_API { 1u64 << 32 } else { 0 }
+    u64::from(result)
+        | if id == EXIT_API || matches!(id, 84 | 85) {
+            1u64 << 32
+        } else {
+            0
+        }
 }
 fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
     if seh32::in_handler() {
@@ -1537,6 +1602,7 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
                     .unwrap_or_else(|e| unsupported(&e));
                 1
             }
+            78..=87 => crt32::dispatch(image, id, &args),
             _ => unreachable!(),
         }
     })
@@ -1545,6 +1611,26 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn cdecl_crt_gateways_keep_arguments_for_the_guest_caller() {
+        assert!(256 + APIS.len() * 32 <= PAGE);
+        for name in [
+            "malloc",
+            "_set_error_mode",
+            "?set_terminate@@YAP6AXXZP6AXXZ@Z",
+            "__set_app_type",
+        ] {
+            let symbol = ImportSymbol::Name(name.into());
+            let id = api_id("MSVCRT.DLL", &symbol).unwrap();
+            assert_eq!(APIS[id].1, 4);
+            assert_eq!(cleanup_bytes(id, APIS[id].1), 0);
+            assert!(api_id("kernel32.dll", &symbol).is_none());
+            assert!(api_id("msvcr80.dll", &symbol).is_none());
+        }
+        let id = api_id("kernel32.dll", &ImportSymbol::Name("WriteFile".into())).unwrap();
+        assert_eq!(cleanup_bytes(id, APIS[id].1), 20);
+        assert!(!cdecl_api(APIS.len()));
+    }
     #[test]
     fn pointer_encoding_roundtrips_the_entire_dword_without_dereferencing() {
         for cookie in [0, 1, 31, 0x12345678, u32::MAX] {
@@ -1590,6 +1676,7 @@ mod tests {
                 executable: Cell::new(0),
                 diagnostic: None,
                 heap: RefCell::new(Default::default()),
+                crt: RefCell::new(Default::default()),
                 fls: RefCell::new(Default::default()),
                 dynamic_tls: RefCell::new([false; 64]),
                 callback_stack: Cell::new(0),

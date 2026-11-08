@@ -1,0 +1,12 @@
+LIBRARY msvcrt.dll
+EXPORTS
+malloc
+_set_error_mode
+"?set_terminate@@YAP6AXXZP6AXXZ@Z"
+_get_terminate
+"?set_unexpected@@YAP6AXXZP6AXXZ@Z"
+_get_unexpected
+"?terminate@@YAXXZ"
+"?unexpected@@YAXXZ"
+__set_app_type
+__get_app_type

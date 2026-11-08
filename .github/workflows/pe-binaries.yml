@@ -53,6 +53,10 @@ jobs:
         run: |
           python tools/observe_pe32_startup_clock.py
           python tools/observe_pe32_startup_clock.py --host
+      - name: Check CRT cdecl allocation, state and real nested callback exits reached by DAO
+        run: |
+          python tools/observe_pe32_crt_state.py
+          python tools/observe_pe32_crt_state.py --host
       - uses: actions/upload-artifact@v4
         with:
           name: pe32-startup-microtests
@@ -92,6 +96,8 @@ jobs:
             local/pe/startup-microtests/calendar-filetime-host.json
             local/pe/startup-microtests/startup-clock-inputs.json
             local/pe/startup-microtests/startup-clock-host.json
+            local/pe/startup-microtests/crt-state-inputs.json
+            local/pe/startup-microtests/crt-state-host.json
             local/pe/startup-microtests/ctx-layout-empty-importer.dll
             local/pe/startup-microtests/ctx-layout-*.manifest
   native-pe32-startup:
@@ -143,6 +149,8 @@ jobs:
         run: python tools/observe_pe32_calendar_filetime.py --native
       - name: Observe actual per-host PID, boot/counter rates and compare-exchange values
         run: python tools/observe_pe32_startup_clock.py --native
+      - name: Observe identical owned CRT cdecl allocation/state and nested callback exit PEs
+        run: python tools/observe_pe32_crt_state.py --native
       - uses: actions/upload-artifact@v4
         if: always()
         with:
