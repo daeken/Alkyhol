@@ -23,6 +23,7 @@ struct GuestProfile32 {
     system: Option<Vec<u16>>,
     windows: Option<Vec<u16>>,
     user_windows: Option<Vec<u16>>,
+    documents: Option<super::shell_folder32::Documents>,
     utc: bool,
     host_machine_info: bool,
     registry: Option<super::registry32::State>,
@@ -249,6 +250,10 @@ pub struct ProcessOptions32 {
     /// Independently configured Windows-directory role for this guest user.
     /// No Terminal Services redirection or alias to the shared root is inferred.
     pub windows_directory: Option<std::path::PathBuf>,
+    /// Explicit existing Documents directory for the current guest user. Only
+    /// CSIDL_PERSONAL with current-path flags and a NULL token is admitted.
+    /// This declares fresh guest state, not a recovered Windows user profile.
+    pub documents_directory: Option<std::path::PathBuf>,
     /// Opt into host-backed x86 machine information and enforced ordinary/LAA
     /// address bands. Other CPU vendors, page sizes and >32 CPU groups stop.
     pub host_machine_info: bool,
@@ -430,6 +435,11 @@ impl<'a> ProcessImage32<'a> {
             .as_deref()
             .map(|path| super::module_path32::directory_role(path, "user Windows directory"))
             .transpose()?;
+        let documents = options
+            .documents_directory
+            .as_deref()
+            .map(super::shell_folder32::Documents::open)
+            .transpose()?;
         let registry = options
             .registry_catalog
             .as_deref()
@@ -479,6 +489,7 @@ impl<'a> ProcessImage32<'a> {
                     system: system_directory,
                     windows,
                     user_windows,
+                    documents,
                     utc: matches!(options.time_zone, Some(TimeZone32::Utc)),
                     host_machine_info: options.host_machine_info,
                     registry,
@@ -514,6 +525,7 @@ impl<'a> ProcessImage32<'a> {
         cpu.system_directory = directories.system;
         cpu.system_windows_directory = directories.windows;
         cpu.windows_directory = directories.user_windows;
+        cpu.documents = directories.documents;
         cpu.utc_timezone = directories.utc;
         cpu.registry = directories.registry.map(std::cell::RefCell::new);
         cpu.mutexes = directories.mutexes.map(std::cell::RefCell::new);

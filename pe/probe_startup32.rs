@@ -95,6 +95,10 @@ fn main() {
                             .into(),
                     );
                 }
+                "--documents-directory" => {
+                    profile.documents_directory = Some(options.next()
+                        .ok_or("--documents-directory requires an existing guest Documents directory")?.into());
+                }
                 "--windows-directory" => {
                     profile.windows_directory = Some(
                         options
@@ -109,6 +113,7 @@ fn main() {
         if (profile.system_directory.is_some()
             || profile.system_windows_directory.is_some()
             || profile.windows_directory.is_some()
+            || profile.documents_directory.is_some()
             || profile.host_machine_info
             || profile.registry_catalog.is_some()
             || profile.object_directory.is_some()

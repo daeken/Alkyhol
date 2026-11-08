@@ -53,6 +53,8 @@ mod nls32;
 mod process32;
 #[path = "registry32.rs"]
 mod registry32;
+#[path = "shell_folder32.rs"]
+mod shell_folder32;
 #[path = "startup32.rs"]
 mod startup32;
 #[path = "sync32.rs"]
@@ -83,7 +85,7 @@ unsafe extern "C" {
 }
 const PAGE: usize = 4096;
 const STACK: usize = 1024 * 1024;
-const APIS: [(&str, u16); 120] = [
+const APIS: [(&str, u16); 121] = [
     ("GetLastError", 0),
     ("SetLastError", 4),
     ("GetStdHandle", 4),
@@ -204,7 +206,19 @@ const APIS: [(&str, u16); 120] = [
     ("SetEvent", 4),
     ("ResetEvent", 4),
     ("CreateSemaphoreW", 16),
+    ("SHGetFolderPathW", 20),
 ];
+// The first 120 API slots retain their original offsets. The second bank
+// begins after both x87 bodies, leaving their machine code and failure gates
+// fixed for every existing import and frozen PE observation.
+const fn api_offset(id: usize) -> usize {
+    const FIRST_BANK: usize = (math32::OFFSET - 256) / 32;
+    if id < FIRST_BANK {
+        256 + id * 32
+    } else {
+        math32::ATAN_OFFSET + 256 + (id - FIRST_BANK) * 32
+    }
+}
 const EXIT_API: u32 = 14;
 // Win32 promises a reversible process-specific representation, not a published
 // bit pattern. Keep every operation DWORD-wide; encoded values are opaque.
@@ -226,7 +240,7 @@ fn api_id(module: &str, symbol: &ImportSymbol) -> Option<usize> {
                 && *name == symbol
                 && module.eq_ignore_ascii_case(if cdecl_api(*id) {
                     "msvcrt.dll"
-                } else if *id == 8 {
+                } else if matches!(*id, 8 | 120) {
                     "shell32.dll"
                 } else if matches!(*id, 100 | 115) {
                     "user32.dll"
@@ -488,6 +502,7 @@ struct Cpu32 {
     system_directory: Option<Vec<u16>>,
     system_windows_directory: Option<Vec<u16>>,
     windows_directory: Option<Vec<u16>>,
+    documents: Option<shell_folder32::Documents>,
     unhandled_filter: Cell<u32>,
     machine: Option<machine32::Machine>,
     registry: Option<RefCell<registry32::State>>,
@@ -578,6 +593,7 @@ impl Cpu32 {
             system_directory: None,
             system_windows_directory: None,
             windows_directory: None,
+            documents: None,
             unhandled_filter: Cell::new(0),
             machine,
             registry: None,
@@ -856,11 +872,11 @@ impl<'a> LoadedImage32<'a> {
         });
         template[64 + slot..72 + slot]
             .copy_from_slice(&(dispatch as *const () as u64).to_le_bytes());
-        if 256 + APIS.len() * 32 > math32::OFFSET {
-            return Err("API table overlaps the x87 gateway".into());
+        if api_offset(APIS.len() - 1) + 32 > math32::GATE_SIZE {
+            return Err("API table exceeds its checked gateway banks".into());
         }
         for (id, &(_, argument_bytes)) in APIS.iter().enumerate() {
-            let mut at = 256 + id * 32;
+            let mut at = api_offset(id);
             let mut base = gates.base as u32 + at as u32;
             if matches!(id, 89 | 92) {
                 let target = gates.base as u32
@@ -880,7 +896,7 @@ impl<'a> LoadedImage32<'a> {
                 emit(
                     &mut template,
                     gates.base as u32,
-                    gates.base as u32 + 256 + if id == 89 { 90 } else { 93 } * 32,
+                    gates.base as u32 + api_offset(if id == 89 { 90 } else { 93 }) as u32,
                 )?;
                 at += 5;
                 base += 5;
@@ -916,7 +932,7 @@ impl<'a> LoadedImage32<'a> {
             }
             for (at, binding) in bindings {
                 let address = match binding {
-                    Binding32::Api(id) => cpu.service_gates.get() + 256 + id as u32 * 32,
+                    Binding32::Api(id) => cpu.service_gates.get() + api_offset(id) as u32,
                     Binding32::Direct(address) => address,
                 };
                 image.base.add(at).cast::<u32>().write_unaligned(address);
@@ -1160,7 +1176,7 @@ impl<'a> LoadedImage32<'a> {
             let id = api_id(name, &ImportSymbol::Name(symbol.clone())).ok_or_else(|| {
                 format!("PE32 dynamic host-service export is unsupported: {name}!{symbol}")
             })?;
-            return Ok(Some(self.cpu.service_gates.get() + 256 + id as u32 * 32));
+            return Ok(Some(self.cpu.service_gates.get() + api_offset(id) as u32));
         }
         let modules = self.cpu.modules.borrow();
         let exports = if modules.is_empty() {
@@ -1797,6 +1813,7 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
             113 | 114 => mutex32::ownership(image, &args, id == 113),
             115 => icon32::load(image, &args),
             116..=119 => event32::dispatch(image, id, &args),
+            120 => shell_folder32::get(image, &args),
             _ => unreachable!(),
         }
     })
@@ -1807,8 +1824,34 @@ mod tests {
     use super::*;
     #[test]
     fn cdecl_crt_gateways_keep_arguments_for_the_guest_caller() {
-        assert!(256 + APIS.len() * 32 <= PAGE);
-        assert!(256 + APIS.len() * 32 <= math32::OFFSET);
+        for id in 0..120 {
+            assert_eq!(api_offset(id), 256 + id * 32);
+        }
+        assert_eq!(api_offset(120), math32::ATAN_OFFSET + 256);
+        assert_eq!(api_offset(231) + 32, math32::GATE_SIZE);
+        assert!(api_offset(232) + 32 > math32::GATE_SIZE);
+        for id in 0..APIS.len() {
+            let at = api_offset(id);
+            assert!(at >= 256 && at + 32 <= math32::GATE_SIZE);
+            assert!(at + 32 <= math32::OFFSET || at >= math32::ATAN_OFFSET + 256);
+            if id > 0 {
+                assert!(api_offset(id - 1) + 32 <= at);
+            }
+        }
+        assert_eq!(
+            api_id(
+                "shell32.dll",
+                &ImportSymbol::Name("SHGetFolderPathW".into())
+            ),
+            Some(120)
+        );
+        assert_eq!(
+            api_id(
+                "kernel32.dll",
+                &ImportSymbol::Name("SHGetFolderPathW".into())
+            ),
+            None
+        );
         assert!(
             api_id(
                 "msvcrt.dll",
@@ -1914,6 +1957,7 @@ mod tests {
                 system_directory: None,
                 system_windows_directory: None,
                 windows_directory: None,
+                documents: None,
                 unhandled_filter: Cell::new(0),
                 machine: None,
                 registry: None,

@@ -129,6 +129,10 @@ jobs:
         run: |
           python tools/observe_pe32_unnamed_semaphore.py
           python tools/observe_pe32_unnamed_semaphore.py --host
+      - name: Execute the reached current-user Documents query with explicit backing
+        run: |
+          python tools/observe_pe32_documents_folder.py
+          python tools/observe_pe32_documents_folder.py --host
       - uses: actions/upload-artifact@v4
         with:
           name: pe32-startup-microtests
@@ -208,6 +212,8 @@ jobs:
             local/pe/startup-microtests/unnamed-event-host.json
             local/pe/startup-microtests/unnamed-semaphore-inputs.json
             local/pe/startup-microtests/unnamed-semaphore-host.json
+            local/pe/startup-microtests/documents-folder-inputs.json
+            local/pe/startup-microtests/documents-folder-host.json
             local/pe/startup-microtests/ctx-layout-empty-importer.dll
             local/pe/startup-microtests/ctx-layout-*.manifest
   native-pe32-startup:
@@ -328,6 +334,9 @@ jobs:
       - name: Compare identical counting-semaphore PEs against native permits and bounds
         if: ${{ success() || failure() }}
         run: python tools/observe_pe32_unnamed_semaphore.py --native
+      - name: Compare the identical Documents PE against the real Windows user profile
+        if: ${{ success() || failure() }}
+        run: python tools/observe_pe32_documents_folder.py --native
       - uses: actions/upload-artifact@v4
         if: always()
         with:

@@ -144,3 +144,6 @@ pe/vendor/** -text whitespace=-blank-at-eol,-blank-at-eof
 
 pe/data/windows-1252/bestfit1252.txt -text whitespace=cr-at-eol
 pe/data/windows-1252/LICENSE.txt -text
+
+pe/fixtures/pe32-startup/documents-folder*.c text eol=lf
+pe/fixtures/pe32-startup/documents-folder*.def text eol=lf
