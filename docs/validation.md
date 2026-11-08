@@ -4,7 +4,39 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## PE32 linked DLLs: physical M4 development; independent native comparison pending
+
+`LoadedLibrary32::load_linked` now binds named/ordinal code and writable data from
+explicitly borrowed initialized dependencies. Related mappings share one guarded
+guest stack and TEB, including direct FS accesses and last-error state. Actual
+dependency regions retain their real permissions in imported API buffer checks;
+code-call targets remain restricted to the queried module's initialized code.
+The borrow keeps dependencies alive through consumer detach. Distinct guest-thread
+contexts, duplicate/reserved/path basenames, missing imports/exports and reentrant
+loading fail before a consumer initializer. No DLL search/cache or successful stub
+is added; EXE dependency startup and exception dispatch remain unsupported.
+
+Physical M4 normal/forced-rebase execution of a new owned consumer with the
+**unchanged frozen original test DLL** returns the same 81 DWORDs. Its initializer,
+export and destructor call that dependency's actual code, including a genuine
+ordinal-only import. Shared data mutations survive across DLLs and a real WriteFile
+reads a buffer in the dependency's mapped data. The original DLL's FS identity
+check remains true when called through its consumer, exposing separate-TEB mistakes.
+Consumer detach calls the still-live dependency before the latter's detach.
+Host-only preflight negatives emit no extra initializer records. A compiler check
+rejects dropping the dependency while its consumer remains live. This is current
+physical development evidence; the newly transferred native Windows dependency
+comparison has not yet run. No game instruction has executed.
+All 119 PE host tests, 14 compiler checks, 306 Python tests and Clippy pass locally.
+The existing frozen PE32 integer/stdcall, static TLS data and isolated DLL
+observers retain their behavior on the physical M4 after sharing the CPU state.
+
 ## Isolated PE32 DLL milestone: native Windows, hosted Mac and physical M4
+
+Strict-reference revision `6f01c39` passes all three
+[PE jobs](https://github.com/daeken/Alkyhol/actions/runs/42444812611) and all 24
+[conformance jobs](https://github.com/daeken/Alkyhol/actions/runs/42444812577).
+This precedes the shared-thread dependency milestone above.
 
 At clean revision `346f3e0`, actual Windows i386, hosted Mac and physical M4
 execution of the identical DLLs agree on all **80 raw DWORDs**. Both downloaded

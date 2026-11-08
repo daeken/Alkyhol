@@ -1,0 +1,5 @@
+LIBRARY accepted.dll
+EXPORTS
+  Data @1 DATA
+  RunCdecl @2 NONAME
+  RunStdcall @3

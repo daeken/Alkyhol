@@ -232,6 +232,21 @@ jobs:
         run: |
           python tools/build_pe32_library.py
           python tools/run_pe32_library.py --directory local/pe/pe32-library --output local/pe/pe32-library-alkyhol.json
+      - name: Execute real PE32 dependent DLLs with a shared TEB and named/ordinal code/data imports
+        run: |
+          python tools/build_pe32_linked.py
+          python tools/run_pe32_linked.py --directory local/pe/pe32-linked --output local/pe/pe32-linked-alkyhol.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe32-linked-fixture
+          path: |
+            local/pe/pe32-linked/*.dll
+            local/pe/pe32-linked/driver.exe
+            local/pe/pe32-linked/pe32-linked-fixture.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe32-linked-alkyhol
+          path: local/pe/pe32-linked-alkyhol.json
       - uses: actions/upload-artifact@v4
         with:
           name: pe32-library-fixture
@@ -668,6 +683,16 @@ jobs:
           path: local/pe/pe32-library
       - name: Execute identical PE32 DLLs through the native Windows dynamic loader
         run: python tools/run_pe32_library.py --directory local/pe/pe32-library --output local/pe/pe32-library-windows.json
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe32-linked-fixture
+          path: local/pe/pe32-linked
+      - name: Execute unchanged PE32 consumer and dependency through the native Windows loader
+        run: python tools/run_pe32_linked.py --directory local/pe/pe32-linked --output local/pe/pe32-linked-windows.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe32-linked-windows
+          path: local/pe/pe32-linked-windows.json
       - uses: actions/upload-artifact@v4
         with:
           name: pe32-library-windows
@@ -1082,3 +1107,12 @@ jobs:
           name: pe32-library-windows
           path: local/pe/observations
       - run: python tools/compare_pe32_library.py local/pe/observations/pe32-library-windows.json local/pe/observations/pe32-library-alkyhol.json
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe32-linked-alkyhol
+          path: local/pe/observations
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe32-linked-windows
+          path: local/pe/observations
+      - run: python tools/compare_pe32_linked.py local/pe/observations/pe32-linked-windows.json local/pe/observations/pe32-linked-alkyhol.json --initial-capture

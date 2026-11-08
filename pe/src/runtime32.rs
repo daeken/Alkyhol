@@ -1,12 +1,13 @@
 //! Experimental PE32 integer/stdcall path in a 64-bit Rosetta host.
-//! Minimal FS/TEB, isolated DLL calls and single-thread EXE static TLS data.
-//! No guest callbacks, PEB, CRT, DLL dependencies or exception dispatch.
+//! Minimal FS/TEB, explicit shared-thread DLL dependencies and EXE static TLS.
+//! No guest callbacks, PEB, CRT, process DLL loader/cache or exception dispatch.
 use crate::{ExportTable, ExportTarget, Image, ImportSymbol, ProcessContext, Result};
 use std::{
     cell::Cell,
     ffi::c_void,
     marker::PhantomData,
     ptr,
+    rc::Rc,
     sync::{Mutex, MutexGuard, OnceLock},
 };
 std::arch::global_asm!(include_str!("transition32.S"), options(att_syntax));
@@ -215,6 +216,49 @@ struct TlsBlock {
     mapping: LowMapping,
     size: usize,
 }
+// Linked images on one guest thread share one stack and FS/last-error state.
+// An Rc keeps them thread-bound; the exclusive FS lease still guards CPU entry.
+struct Cpu32 {
+    stack: LowMapping,
+    teb: LowMapping,
+}
+impl Cpu32 {
+    fn new() -> Result<Self> {
+        let stack = LowMapping::new(STACK + 2 * PAGE, PAGE, 0)?;
+        let teb = LowMapping::new(PAGE, PAGE, 0)?;
+        let bytes = teb_bytes(
+            teb.base as u32,
+            stack.base as u32 + PAGE as u32,
+            STACK as u32,
+        )?;
+        unsafe {
+            ptr::copy_nonoverlapping(bytes.as_ptr(), teb.base, PAGE);
+        }
+        stack.protect(0, PAGE, 0)?;
+        stack.protect(PAGE + STACK, PAGE, 0)?;
+        Ok(Self { stack, teb })
+    }
+}
+enum Binding32 {
+    Api(usize),
+    Direct(u32),
+}
+fn dependency_cpu(dependencies: &[(&str, &LoadedLibrary32<'_>)]) -> Result<Option<Rc<Cpu32>>> {
+    if dependencies.len() > 64 {
+        return Err("PE32 dependency list exceeds 64 modules".into());
+    }
+    let mut names = std::collections::BTreeSet::new();
+    let shared = dependencies.first().map(|(_, lib)| &lib.mapping.cpu);
+    for &(name, library) in dependencies {
+        if !names.insert(crate::runtime::dll_basename(name)?) {
+            return Err("duplicate case-insensitive PE32 DLL dependency".into());
+        }
+        if shared.is_some_and(|cpu| !Rc::ptr_eq(cpu, &library.mapping.cpu)) {
+            return Err("PE32 dependencies must share one guest thread context".into());
+        }
+    }
+    Ok(shared.cloned())
+}
 const DEFAULT_GS_COOKIE: u32 = 0xbb40e64e;
 fn select_cookie(
     declared_size: usize,
@@ -261,8 +305,7 @@ pub struct LoadedImage32<'a> {
     image: LowMapping,
     exports: Option<ExportTable>,
     gates: LowMapping,
-    stack: LowMapping,
-    teb: LowMapping,
+    cpu: Rc<Cpu32>,
     tls: Option<TlsBlock>,
     tls_entered: Cell<bool>,
     entry: u32,
@@ -279,14 +322,19 @@ impl<'a> LoadedImage32<'a> {
     /// Preflight all features/imports, map checked sections and HIGHLOW fixups,
     /// build low stdcall gates and a guarded stack. No guest code runs here.
     pub fn load(bytes: &[u8], rebase: bool, _process: &'a ProcessContext) -> Result<Self> {
-        Self::load_kind(bytes, rebase, _process, false)
+        Self::load_kind(bytes, rebase, _process, false, &[])
     }
     fn load_kind(
         bytes: &[u8],
         rebase: bool,
         _process: &'a ProcessContext,
         dll: bool,
+        dependencies: &[(&str, &'a LoadedLibrary32<'a>)],
     ) -> Result<Self> {
+        if ACTIVE.with(|s| !s.get().is_null()) {
+            return Err("PE32 loading during guest entry is unsupported".into());
+        }
+        let shared = dependency_cpu(dependencies)?;
         if unsafe { getpagesize() } != PAGE as i32 {
             return Err("PE32 requires 4-KiB host pages".into());
         }
@@ -306,13 +354,24 @@ impl<'a> LoadedImage32<'a> {
         let fixups = parsed.relocations()?;
         let mut bindings = Vec::new();
         for import in imports {
-            let id = if import.module.eq_ignore_ascii_case("kernel32.dll") {
+            let binding = if import.module.eq_ignore_ascii_case("kernel32.dll") {
                 match &import.symbol {
-                    ImportSymbol::Name(n) => APIS.iter().position(|&(name, _)| name == n),
+                    ImportSymbol::Name(n) => APIS
+                        .iter()
+                        .position(|&(name, _)| name == n)
+                        .map(Binding32::Api),
                     _ => None,
                 }
             } else {
-                None
+                match dependencies
+                    .iter()
+                    .find(|(name, _)| name.eq_ignore_ascii_case(&import.module))
+                {
+                    Some((_, library)) => {
+                        Some(Binding32::Direct(library.import_address(&import.symbol)?))
+                    }
+                    None => None,
+                }
             }
             .ok_or_else(|| {
                 format!(
@@ -326,7 +385,7 @@ impl<'a> LoadedImage32<'a> {
             {
                 return Err("IAT overlaps HIGHLOW fixup".into());
             }
-            bindings.push((import.iat, id));
+            bindings.push((import.iat, binding));
         }
         let (code, data) = selectors()?;
         let image = LowMapping::new(
@@ -350,13 +409,12 @@ impl<'a> LoadedImage32<'a> {
             return Err("PE32 preferred base unavailable and no HIGHLOW fixups".into());
         }
         let gates = LowMapping::new(PAGE, PAGE, 0)?;
-        let stack = LowMapping::new(STACK + 2 * PAGE, PAGE, 0)?;
-        let teb = LowMapping::new(PAGE, PAGE, 0)?;
-        let initial_teb = teb_bytes(
-            teb.base as u32,
-            stack.base as u32 + PAGE as u32,
-            STACK as u32,
-        )?;
+        let cpu = match shared {
+            Some(cpu) => cpu,
+            None => Rc::new(Cpu32::new()?),
+        };
+        let stack = &cpu.stack;
+        let teb = &cpu.teb;
         let tls = tls_info
             .as_ref()
             .map(|info| -> Result<TlsBlock> {
@@ -407,7 +465,6 @@ impl<'a> LoadedImage32<'a> {
         }
         unsafe {
             ptr::copy_nonoverlapping(template.as_ptr(), gates.base, PAGE);
-            ptr::copy_nonoverlapping(initial_teb.as_ptr(), teb.base, PAGE);
             ptr::copy_nonoverlapping(bytes.as_ptr(), image.base, parsed.headers);
             for section in &parsed.sections {
                 ptr::copy_nonoverlapping(
@@ -423,12 +480,12 @@ impl<'a> LoadedImage32<'a> {
                     p.write_unaligned(p.read_unaligned().wrapping_add(delta));
                 }
             }
-            for (at, id) in bindings {
-                image
-                    .base
-                    .add(at)
-                    .cast::<u32>()
-                    .write_unaligned(gates.base as u32 + 256 + id as u32 * 32);
+            for (at, binding) in bindings {
+                let address = match binding {
+                    Binding32::Api(id) => gates.base as u32 + 256 + id as u32 * 32,
+                    Binding32::Direct(address) => address,
+                };
+                image.base.add(at).cast::<u32>().write_unaligned(address);
             }
             if let Some(config) = &load_config
                 && let Some(rva) = config.cookie_rva
@@ -470,8 +527,6 @@ impl<'a> LoadedImage32<'a> {
                 .write_unaligned(gates.base as u32);
         }
         gates.protect(0, PAGE, 5)?;
-        stack.protect(0, PAGE, 0)?;
-        stack.protect(PAGE + STACK, PAGE, 0)?;
         image.protect(0, parsed.size, 0)?;
         image.protect(0, parsed.headers, 1)?;
         let mut regions = Vec::new();
@@ -493,6 +548,13 @@ impl<'a> LoadedImage32<'a> {
                 ));
             }
         }
+        // A direct dependency may call its imported API gate while this image
+        // owns ACTIVE. All borrowed dependency data must retain its real rights.
+        for &(_, dependency) in dependencies {
+            regions.extend_from_slice(&dependency.mapping.regions);
+        }
+        regions.sort_unstable();
+        regions.dedup();
         let standard: unsafe extern "win64" fn(u32) -> usize = unsafe {
             std::mem::transmute(crate::abi::resolve("kernel32.dll", "GetStdHandle").unwrap())
         };
@@ -512,8 +574,7 @@ impl<'a> LoadedImage32<'a> {
             image,
             exports: parsed.exports()?,
             gates,
-            stack,
-            teb,
+            cpu,
             tls,
             tls_entered: Cell::new(false),
             entry,
@@ -541,11 +602,11 @@ impl<'a> LoadedImage32<'a> {
                 return true;
             }
         }
-        let teb = self.teb.base as usize;
-        if address >= teb && end <= teb + self.teb.len {
+        let teb = self.cpu.teb.base as usize;
+        if address >= teb && end <= teb + self.cpu.teb.len {
             return true;
         }
-        let first = self.stack.base as usize + PAGE;
+        let first = self.cpu.stack.base as usize + PAGE;
         if address >= first && end <= first + STACK {
             return true;
         }
@@ -624,12 +685,12 @@ impl<'a> LoadedImage32<'a> {
             if before[3] != 0 {
                 return Err("PE32 requires an unused host FS selector".into());
             }
-            let _teb_lease = TebLease::install(self.teb.base as u32)?;
+            let _teb_lease = TebLease::install(self.cpu.teb.base as u32)?;
             slot.set(ptr::from_ref(self).cast());
             let _guard = ActiveGuard;
-            let sp = self.stack.base as u32 + offset as u32;
+            let sp = self.cpu.stack.base as u32 + offset as u32;
             unsafe {
-                let frame = self.stack.base.add(offset).cast::<u32>();
+                let frame = self.cpu.stack.base.add(offset).cast::<u32>();
                 frame.write_unaligned(self.gates.base as u32);
                 ptr::copy_nonoverlapping(args.as_ptr(), frame.add(1), args.len());
             }
@@ -643,10 +704,10 @@ impl<'a> LoadedImage32<'a> {
                 unsupported("PE32 host segment selectors were not restored");
             }
             alkyhol::ffi::SetLastError(unsafe {
-                self.teb.base.add(0x34).cast::<u32>().read_unaligned()
+                self.cpu.teb.base.add(0x34).cast::<u32>().read_unaligned()
             });
             let returned_sp = (result >> 32) as u32;
-            let expected_sp = self.stack.base as u32 + expected_offset as u32;
+            let expected_sp = self.cpu.stack.base as u32 + expected_offset as u32;
             if returned_sp != expected_sp {
                 return Err(format!(
                     "PE32 {convention:?} call returned with an unbalanced guest stack"
@@ -679,8 +740,8 @@ fn call_stack(count: usize, convention: CallingConvention32) -> Result<(usize, u
     Ok((frame, expected))
 }
 
-/// An isolated trusted i386 DLL with real dynamic PROCESS_ATTACH/DETACH and
-/// integer exported calls on the same host thread. This is not a DLL bundle,
+/// A trusted i386 DLL with real dynamic PROCESS_ATTACH/DETACH and integer calls.
+/// Explicit borrowed dependencies share one guest stack/TEB. This is not a DLL bundle,
 /// filesystem search, process module cache or support for DLL TLS/SEH/CRT.
 /// The ProcessContext borrow remains live through guest DETACH and unmapping.
 ///
@@ -705,13 +766,38 @@ impl<'a> LoadedLibrary32<'a> {
     /// DLL code must obey LoadedImage32's trusted integer-only, single-thread
     /// native-code contract and retain no pointers after this object is dropped.
     pub unsafe fn load(bytes: &[u8], rebase: bool, process: &'a ProcessContext) -> Result<Self> {
+        unsafe { Self::load_linked(bytes, rebase, process, &[]) }
+    }
+    /// Bind an explicit set of already initialized DLL dependencies before
+    /// attaching this DLL on their shared guest thread. References keep those
+    /// mappings alive through this DLL's detach. No search/cache/forwarders.
+    ///
+    /// # Safety
+    /// The same trusted-code contract as `load` applies to the entire dependency
+    /// closure. Supplied basenames must identify the actual intended modules.
+    ///
+    /// ```compile_fail,E0505
+    /// # use alkyhol_pe::{ProcessContext, LoadedLibrary32};
+    /// # fn example(a: &[u8], b: &[u8]) -> alkyhol_pe::Result<()> {
+    /// let process = ProcessContext::install(&["linked32".into()], &[])?;
+    /// let leaf = unsafe { LoadedLibrary32::load(a, false, &process) }?;
+    /// let child = unsafe { LoadedLibrary32::load_linked(b, false, &process, &[("leaf.dll", &leaf)]) }?;
+    /// drop(leaf);
+    /// drop(child);
+    /// # Ok(()) }
+    /// ```
+    pub unsafe fn load_linked(
+        bytes: &[u8],
+        rebase: bool,
+        process: &'a ProcessContext,
+        dependencies: &[(&str, &'a LoadedLibrary32<'a>)],
+    ) -> Result<Self> {
         let mut library = Self {
-            mapping: LoadedImage32::load_kind(bytes, rebase, process, true)?,
+            mapping: LoadedImage32::load_kind(bytes, rebase, process, true, dependencies)?,
             attached: false,
         };
         if library.mapping.entry != 0 {
-            let accepted = unsafe { library.entry(1)? };
-            if accepted == 0 {
+            if unsafe { library.entry(1)? } == 0 {
                 unsafe {
                     library.entry(0)?;
                 }
@@ -720,6 +806,25 @@ impl<'a> LoadedLibrary32<'a> {
             library.attached = true;
         }
         Ok(library)
+    }
+    fn import_address(&self, symbol: &ImportSymbol) -> Result<u32> {
+        let export = self
+            .mapping
+            .exports
+            .as_ref()
+            .and_then(|t| {
+                t.entries.iter().find(|e| match symbol {
+                    ImportSymbol::Name(name) => e.names.contains(name),
+                    ImportSymbol::Ordinal(ordinal) => e.ordinal == u32::from(*ordinal),
+                })
+            })
+            .ok_or_else(|| format!("missing PE32 dependency export {symbol:?}"))?;
+        match export.target {
+            ExportTarget::Address { rva } => (self.mapping.image.base as u32)
+                .checked_add(rva as u32)
+                .ok_or_else(|| "PE32 dependency export address overflow".into()),
+            ExportTarget::Forwarder(_) => Err("PE32 dependency forwarders are unsupported".into()),
+        }
     }
     unsafe fn entry(&self, reason: u32) -> Result<u32> {
         unsafe {
@@ -803,7 +908,7 @@ extern "C" fn dispatch(id: u32, arguments: *const u32) -> u32 {
         };
         // Import calls observe direct guest FS writes. Reflect all host API
         // outcomes back into the same guest field, including early returns.
-        let error = unsafe { image.teb.base.add(0x34).cast::<u32>() };
+        let error = unsafe { image.cpu.teb.base.add(0x34).cast::<u32>() };
         alkyhol::ffi::SetLastError(unsafe { error.read_unaligned() });
         let _teb_error = TebError(error);
         let Some(&(_, bytes)) = APIS.get(id as usize) else {
@@ -916,14 +1021,16 @@ mod tests {
                 base: ptr::null_mut(),
                 len: 0,
             },
-            stack: LowMapping {
-                base: 0x400000usize as *mut u8,
-                len: STACK + 2 * PAGE,
-            },
-            teb: LowMapping {
-                base: 0x600000usize as *mut u8,
-                len: PAGE,
-            },
+            cpu: Rc::new(Cpu32 {
+                stack: LowMapping {
+                    base: 0x400000usize as *mut u8,
+                    len: STACK + 2 * PAGE,
+                },
+                teb: LowMapping {
+                    base: 0x600000usize as *mut u8,
+                    len: PAGE,
+                },
+            }),
             tls: None,
             tls_entered: Cell::new(false),
             entry: 0,
@@ -1140,5 +1247,87 @@ mod tests {
             assert!(call_stack(count, CallingConvention32::Cdecl).is_err());
             assert!(call_stack(count, CallingConvention32::Stdcall).is_err());
         }
+    }
+    #[test]
+    fn explicit_dependency_roster_requires_unique_basenames_and_one_actual_cpu_context() {
+        let a = std::mem::ManuallyDrop::new(LoadedLibrary32 {
+            mapping: std::mem::ManuallyDrop::into_inner(layout()),
+            attached: false,
+        });
+        let mut b = std::mem::ManuallyDrop::new(LoadedLibrary32 {
+            mapping: std::mem::ManuallyDrop::into_inner(layout()),
+            attached: false,
+        });
+        assert!(dependency_cpu(&[]).unwrap().is_none());
+        let cpu = dependency_cpu(&[("Leaf.DLL", &a)]).unwrap().unwrap();
+        assert!(Rc::ptr_eq(&cpu, &a.mapping.cpu));
+        for name in ["../leaf.dll", "leaf", "kernel32.dll", "", "/leaf.dll"] {
+            assert!(dependency_cpu(&[(name, &a)]).is_err());
+        }
+        assert!(dependency_cpu(&[("leaf.dll", &a), ("LEAF.DLL", &a)]).is_err());
+        assert!(dependency_cpu(&[("leaf.dll", &a), ("other.dll", &b)]).is_err());
+        // The synthetic mappings are never dereferenced or freed.
+        let _unused = std::mem::ManuallyDrop::new(std::mem::replace(
+            &mut b.mapping.cpu,
+            Rc::clone(&a.mapping.cpu),
+        ));
+        assert!(dependency_cpu(&[("leaf.dll", &a), ("other.dll", &b)]).is_ok());
+        assert!(dependency_cpu(&vec![("leaf.dll", &*a); 65]).is_err());
+    }
+    #[test]
+    fn dependency_symbol_resolution_keeps_names_ordinals_data_and_checked_addresses() {
+        let mut lib = std::mem::ManuallyDrop::new(LoadedLibrary32 {
+            mapping: std::mem::ManuallyDrop::into_inner(layout()),
+            attached: false,
+        });
+        lib.mapping.image.base = 0x100000usize as *mut u8;
+        assert!(
+            lib.import_address(&ImportSymbol::Name("Function".into()))
+                .is_err()
+        );
+        lib.mapping.exports = Some(ExportTable {
+            dll_name: "owned.dll".into(),
+            ordinal_base: 17,
+            entries: vec![
+                crate::Export {
+                    ordinal: 17,
+                    names: vec!["Function".into()],
+                    target: ExportTarget::Address { rva: 0x1000 },
+                },
+                crate::Export {
+                    ordinal: 18,
+                    names: vec!["Data".into()],
+                    target: ExportTarget::Address { rva: 0x2000 },
+                },
+            ],
+        });
+        assert_eq!(
+            lib.import_address(&ImportSymbol::Name("Function".into()))
+                .unwrap(),
+            0x101000
+        );
+        assert_eq!(
+            lib.import_address(&ImportSymbol::Name("Data".into()))
+                .unwrap(),
+            0x102000
+        );
+        assert_eq!(
+            lib.import_address(&ImportSymbol::Ordinal(18)).unwrap(),
+            0x102000
+        );
+        for symbol in [
+            ImportSymbol::Name("function".into()),
+            ImportSymbol::Name("Missing".into()),
+            ImportSymbol::Ordinal(0),
+            ImportSymbol::Ordinal(19),
+        ] {
+            assert!(lib.import_address(&symbol).is_err());
+        }
+        lib.mapping.exports.as_mut().unwrap().entries[0].target =
+            ExportTarget::Forwarder("other.F".into());
+        assert!(lib.import_address(&ImportSymbol::Ordinal(17)).is_err());
+        lib.mapping.exports.as_mut().unwrap().entries[0].target =
+            ExportTarget::Address { rva: 0xffff0000 };
+        assert!(lib.import_address(&ImportSymbol::Ordinal(17)).is_err());
     }
 }
