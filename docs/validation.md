@@ -4,56 +4,54 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
-## Original DAO creates real profile directories; final separator support
+## Original DAO completes profile-directory setup and reaches INI writes
 
-At clean revision `6d242f1`, the unchanged original EXE walks its real existing
-ancestors and creates actual descendant directories inside the explicitly owned
-fresh Documents backing. It then calls `CreateDirectoryW` on an existing created
-directory with a final backslash. That spelling was rejected by the initial
-strict walker; it is now admitted as the same directory. No other path
-normalization is inferred. The local profile tree and raw original arguments
-remain ignored captures; the original install is outside the write capability.
-No window/menu/rendering is observed, and the next clean original run is pending.
+At clean revision `6d242f1`, physical M4 executes the unchanged original EXE's
+actual `CreateDirectoryW` prefix walk and creates real directories under its
+explicitly selected fresh Documents backing. Existing ordinary ancestors are
+observed without a write outside that profile. At clean `7f27cd5`, the final
+separator on an existing directory is accepted and original startup reaches
+**KERNEL32.dll!WritePrivateProfileStringW**, which remains unsupported. Existing
+INI parsing also remains unsupported; no settings-file success is fabricated.
+No window/menu/rendering or successful gameplay is observed. Original hashes,
+private paths/arguments/tree and complete captures remain local, with prior
+fresh-profile and locally unpacked dependency caveats unchanged.
 
-The native startup job at `6d242f1` passes the first directory-constructor PE
-([42523576430](https://github.com/daeken/Alkyhol/actions/runs/42523576430)),
-including real mutations, existing ancestors, file collisions and missing parent.
-The expanded identical-PE comparison now includes both existing and newly created
-paths with a final separator. Its native rerun is pending. Local execution,
-two targeted Rust filesystem units, 406 Python tests and Clippy pass after this
-format correction. The initial full Rust suite passed 216 checks including
-doctests. Earlier native INI comparisons remain green.
+The [native startup job at `7f27cd5`](https://github.com/daeken/Alkyhol/actions/runs/42523873815)
+passes the expanded original owned directory-constructor PE. Physical M4 selects
+that run's seven literal PE artifacts with identical complete producer/PE hashes.
+**All 96 positive-observer bytes (24 DWORDs)** agree with native Windows, including
+actual creation, nesting, existing ancestors, duplicates, file collisions,
+missing/non-directory parents and existing/new paths with a final backslash.
+Independent filesystem checks confirm the returned directory state, absence of
+implicitly created parents and unchanged collision-file contents. The raw report
+is `pe/reference/pe32-create-directory-windows-v1.json`, SHA-256
+`c151a3b75b6f8fb3db741a35dfa567309891418f0fd993e5e107689b9ad1ebab`.
+Success preserves the supplied LastError sentinel in these three observed calls;
+this exact finite capture is retained without asserting a general documented
+success-LastError guarantee.
 
-## Scoped real directory creation for the next original DAO blocker
+Creation is restricted to exact ASCII descendants of the selected Documents
+backing. The held root and each parent identity are checked; no-follow parent
+handles and `mkdirat` anchor real writes to that capability. A single final
+backslash names the same directory; other path normalization is not inferred.
+Seven host exclusions reject security attributes, writes outside the backing,
+traversal, symlinks, Unicode descendants, relative paths and absent backing,
+with no escaped mutation. POSIX inherited permissions implement this bounded
+host policy; general NT security descriptors/ACL parity, aliases/reparse points,
+Unicode descendant names and trailing separators on regular files remain
+unsupported. This is a bounded implementation of
+[CreateDirectoryW](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createdirectoryw),
+not a general Windows filesystem or security compatibility claim.
 
-The development diagnostic captures the actual `CreateDirectoryW` path and NULL
-security argument. Original startup walks existing ancestors of its selected
-Documents directory before creating descendants. Existing ordinary ancestors
-now return their measured existence without a write outside that profile.
-Creation itself is restricted to exact ASCII descendants of the explicit
-Documents backing, anchored through no-follow directory handles and `mkdirat`.
-This leaves original install paths outside the write capability. POSIX inherited
-permissions implement this bounded host policy; general NT security descriptors,
-ACL parity, reparse points, case aliases and Unicode descendant names remain
-unsupported.
-
-Physical M4 executes an owned PE creating real parent/child directories, checking
-repeated calls, existing ancestors, file collisions and missing/non-directory
-parents. Python independently checks the resulting filesystem and unchanged
-collision file. Seven host exclusions reject security attributes, writes outside
-the backing, traversal, symlinks, Unicode descendants, relative paths and absent
-backing, with no escaped mutation. Native Windows is scheduled to execute the
-identical PE under the
-[CreateDirectoryW contract](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createdirectoryw).
-Success LastError remains a raw observation outside the documented failure
-channel; successful values are not normalized or asserted equivalent.
-The next clean original DAO run and native comparison remain pending.
-
-Local checks pass: 216 Rust PE checks including doctests, 406 Python tests and
-project Clippy/formatting. The preceding INI correction's hosted and native
-startup jobs pass on `7c6518c`
-([42522984117](https://github.com/daeken/Alkyhol/actions/runs/42522984117));
-its broader native job is still finishing.
+Local checks pass: the initial full Rust PE suite has 216 checks including
+doctests, both affected filesystem units pass after the separator change,
+407 Python tests pass, project Clippy/formatting pass and actual literal-PE
+execution matches the complete native record. Hosted startup, Rust PE and native
+startup jobs pass at `7f27cd5`; its broader native job is still finishing. All five
+preceding PE jobs pass on `7c6518c`
+([42522984117](https://github.com/daeken/Alkyhol/actions/runs/42522984117)),
+including the INI path-error correction.
 
 ## Original DAO passes 49 INI queries and reaches directory creation
 
@@ -76,7 +74,7 @@ untouched successful PE capture is preserved as
 `b5cf4426db5fdaca66b129614614cb3f7a21b3d9002274f63ca4e4f7de0e48e8`.
 The runtime now propagates checked file absence (2) versus path absence (3).
 This parent-path correction does not affect the 49 actual dot-relative leaf
-queries above. The native workflow rerun remains pending.
+queries above. The native workflow rerun passes at `7c6518c`, as recorded above.
 
 Physical M4 selects that run's eight literal owned PEs, with identical complete
 producer/PE hashes. **All 936 positive-observer bytes (234 DWORDs)** now agree

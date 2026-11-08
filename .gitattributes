@@ -167,3 +167,11 @@ pe/reference/pe32-private-profile-missing-6-v1.exe -text
 pe/reference/pe32-private-profile-missing-7-v1.exe -text
 pe/fixtures/pe32-startup/create-directory.c text eol=lf
 pe/fixtures/pe32-startup/create-directory.def text eol=lf
+pe/reference/pe32-create-directory-windows-v1.json -text whitespace=cr-at-eol
+pe/reference/pe32-create-directory-0-v1.exe -text
+pe/reference/pe32-create-directory-1-v1.exe -text
+pe/reference/pe32-create-directory-2-v1.exe -text
+pe/reference/pe32-create-directory-3-v1.exe -text
+pe/reference/pe32-create-directory-4-v1.exe -text
+pe/reference/pe32-create-directory-5-v1.exe -text
+pe/reference/pe32-create-directory-6-v1.exe -text

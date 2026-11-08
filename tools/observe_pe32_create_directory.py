@@ -14,6 +14,7 @@ def inputs(d):return {'sources':{(SOURCE/n).relative_to(ROOT).as_posix():digest(
 def verify(d):
     r=json.loads((d/'create-directory-inputs.json').read_text())
     if r!=inputs(d):raise ValueError('directory source/PE identity changed')
+    if r!=frozen()['inputs']:raise ValueError('directory identity differs from literal native observation')
     return r
 
 def build(d):
@@ -23,6 +24,9 @@ def build(d):
     for mode,name in enumerate(FILES):
         obj=d/(name+'.obj');subprocess.run([clang,'--target=i686-pc-windows-msvc','-O1','-ffreestanding','-fno-builtin','-fno-stack-protector','-fno-unwind-tables','-fno-asynchronous-unwind-tables','-Wall','-Wextra','-Werror','-Wno-unused-function',f'-DMODE={mode}','-c',str(SOURCE/'create-directory.c'),'-o',str(obj)],check=True)
         subprocess.run([lld,'-flavor','link','/nodefaultlib','/subsystem:console','/machine:x86','/dynamicbase','/fixed:no','/timestamp:0','/safeseh:no','/manifest:no','/entry:entry',str(obj),str(lib),*[f'/alternatename:__imp__{n}@{s}=__imp__{n}' for n,s in SYMBOLS],'/out:'+str(d/name)],check=True)
+        literal=ROOT/f'pe/reference/pe32-create-directory-{mode}-v1.exe'
+        if digest(literal)!=frozen()['inputs']['files'][name]:raise ValueError('changed literal native directory-constructor PE')
+        shutil.copyfile(literal,d/name)
     (d/'create-directory-inputs.json').write_text(json.dumps(inputs(d),indent=2)+'\n')
 
 def decode(data):
@@ -37,6 +41,16 @@ def decode(data):
         contract.append([result,error])
         if success:success_errors.append(last)
     return {'words':words,'contract':contract,'success_last_errors_observed_only':success_errors,'stack_balanced':words[-2]}
+
+def frozen():
+    path=ROOT/'pe/reference/pe32-create-directory-windows-v1.json'
+    if digest(path)!='c151a3b75b6f8fb3db741a35dfa567309891418f0fd993e5e107689b9ad1ebab':raise ValueError('changed native directory creation record')
+    r=json.loads(path.read_bytes())
+    if r['backend']!='native Windows owned directory creation' or len(r['reports'])!=1:raise ValueError('incomplete native directory creation report')
+    row=r['reports'][0]
+    if row['case'] or row['status'] or row['stderr_hex'] or decode(bytes.fromhex(row['stdout_hex']))!=row['decoded']:raise ValueError('failed native directory creation observation')
+    if row['filesystem']!={'first':True,'child':True,'trailing':True,'missing_parent_created':False,'file_hex':FIXTURE.hex()}:raise ValueError('failed native directory effects')
+    return r
 
 def execute(d,native=False):
     identity=verify(d);reports=[];probe=None if native else runner(d)
@@ -56,6 +70,9 @@ def execute(d,native=False):
         if mode==0:
             if r.returncode or r.stderr!=(b'' if native else HOST_BANNER):raise ValueError('directory observer failed; raw output retained')
             row['decoded']=decode(r.stdout)
+            # Exact finite native observation, including its recorded successful
+            # LastError values; this is not a general API guarantee.
+            if r.stdout!=bytes.fromhex(frozen()['reports'][0]['stdout_hex']):raise ValueError('directory output differs from complete native capture')
             row['filesystem']={'first':(root/'first').is_dir(),'child':(root/'first'/'child').is_dir(),'trailing':(root/'trailing').is_dir(),'missing_parent_created':(root/'missing').exists(),'file_hex':(root/'file').read_bytes().hex()}
             if row['filesystem']!={'first':True,'child':True,'trailing':True,'missing_parent_created':False,'file_hex':FIXTURE.hex()}:raise ValueError('real directory effects differ from returned results')
             save()

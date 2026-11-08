@@ -11,6 +11,13 @@ class DirectoryProtocol(unittest.TestCase):
         for i in [0,1,2,4,5,6,8,9,10,11,12,13,14,15,16,17,18,20,21,22,23]:
             changed=words.copy();changed[i]^=1
             with self.subTest(word=i),self.assertRaises(ValueError):directory.decode(struct.pack('<24I',*changed))
+    def test_native_record_and_all_literal_pe_inputs_are_intact(self):
+        record=directory.frozen()
+        self.assertEqual(record['reports'][0]['decoded']['success_last_errors_observed_only'],[0xface1234]*3)
+        for mode,name in enumerate(directory.FILES):
+            self.assertEqual(directory.digest(directory.ROOT/f'pe/reference/pe32-create-directory-{mode}-v1.exe'),record['inputs']['files'][name])
+        for name,expected in record['inputs']['sources'].items():
+            self.assertEqual(directory.digest(directory.ROOT/name),expected)
     def test_transport_must_cover_every_call_and_no_trailing_bytes(self):
         data=struct.pack('<24I',*self.words())
         for changed in [b'',data[:-1],data+b'\0']:

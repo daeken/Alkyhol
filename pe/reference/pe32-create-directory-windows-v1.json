@@ -1,0 +1,111 @@
+{
+  "backend": "native Windows owned directory creation",
+  "inputs": {
+    "sources": {
+      "pe/fixtures/pe32-startup/create-directory.c": "21a2a8ee03e61a1991efa5dbab875f35c0a0711d530ef1c8914e201f002757a5",
+      "pe/fixtures/pe32-startup/create-directory.def": "d3764788afba8904467436ccefe53af634a95e4b951aec837d77ee0d297c3ea3"
+    },
+    "files": {
+      "create-directory-0.exe": "adbac66bf357b2c747eee0b09bd5c40ca282c38c0b3075ed52dd6e8e45cd1fff",
+      "create-directory-1.exe": "20552171202a1206951e05751a8508030c6ecbbf91d9168e612401eac97ef175",
+      "create-directory-2.exe": "e46fd439cc33de366050be513cdb457cea9fe0187bb3a4eb09c1b03a667630e4",
+      "create-directory-3.exe": "ce17a0d4de2c2ba829c623c48c4194d012a0fee65e0c460fdf629e998e6a7129",
+      "create-directory-4.exe": "7028765acc20d9aba6aea0c709eac82a16ebed1557841722aacf6b2fb77e6edb",
+      "create-directory-5.exe": "0f13bd4eee9173f790afdc5ccba1ed44efd7c8f18ad575b725d96f79af2064f6",
+      "create-directory-6.exe": "f1ba497e63bf33b23e12bb60d25fd12724e50f60e140f21a55e449862ffcb6eb"
+    },
+    "fixture_hex": "6f776e656420726567756c61722d66696c6520636f6c6c6973696f6e2c206e65766572207265706c616365640a"
+  },
+  "reports": [
+    {
+      "case": 0,
+      "status": 0,
+      "stdout_hex": "32444b4d04000000010000003412cefa00000000b7000000010000003412cefa000000000300000000000000b700000000000000b7000000000000000300000000000000b7000000010000003412cefa00000000b70000000100000018000000",
+      "stderr_hex": "",
+      "owned_root": "D:\\a\\Alkyhol\\Alkyhol\\local\\pe\\startup-microtests\\mkdir-6gkwbukg\\root",
+      "decoded": {
+        "words": [
+          1296778290,
+          4,
+          1,
+          4207809076,
+          0,
+          183,
+          1,
+          4207809076,
+          0,
+          3,
+          0,
+          183,
+          0,
+          183,
+          0,
+          3,
+          0,
+          183,
+          1,
+          4207809076,
+          0,
+          183,
+          1,
+          24
+        ],
+        "contract": [
+          [
+            1,
+            null
+          ],
+          [
+            0,
+            183
+          ],
+          [
+            1,
+            null
+          ],
+          [
+            0,
+            3
+          ],
+          [
+            0,
+            183
+          ],
+          [
+            0,
+            183
+          ],
+          [
+            0,
+            3
+          ],
+          [
+            0,
+            183
+          ],
+          [
+            1,
+            null
+          ],
+          [
+            0,
+            183
+          ]
+        ],
+        "success_last_errors_observed_only": [
+          4207809076,
+          4207809076,
+          4207809076
+        ],
+        "stack_balanced": 1
+      },
+      "filesystem": {
+        "first": true,
+        "child": true,
+        "trailing": true,
+        "missing_parent_created": false,
+        "file_hex": "6f776e656420726567756c61722d66696c6520636f6c6c6973696f6e2c206e65766572207265706c616365640a"
+      }
+    }
+  ]
+}
