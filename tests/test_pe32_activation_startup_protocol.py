@@ -4,9 +4,20 @@ import sys
 import unittest
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'tools'))
-from observe_pe32_activation_startup import decode,EVENTS
+from observe_pe32_activation_startup import decode,EVENTS,compare,frozen
 
 class ActivationStartupProtocolTests(unittest.TestCase):
+    def test_actual_native_scope_and_payload_record_is_required(self):
+        import copy
+        records=copy.deepcopy(frozen()['records'])
+        for row in records:row['path']='validated path on a different host'
+        compare(records)
+        for field,value in [('current_context_id',0),('current_error',0)]:
+            changed=copy.deepcopy(records);changed[0][field]=value
+            with self.assertRaises(ValueError):compare(changed)
+        changed=copy.deepcopy(records);changed[0]['queries'][0]['data_hex']='00'
+        with self.assertRaises(ValueError):compare(changed)
+
     def fixture(self,first=0x1234,second=0x5678):
         self.paths={1:'C:\\owned\\Alkyhol.OwnedCRT\\ctx-provider.dll',2:'C:\\owned\\ctx-importer.dll',3:'C:\\owned\\ctx-startup.exe'}
         data=bytearray();self.query_offsets=[]

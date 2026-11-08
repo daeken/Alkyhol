@@ -74,9 +74,31 @@ def identities(directory):
     return {'sources':{(SOURCE/n).relative_to(ROOT).as_posix():digest(SOURCE/n) for n in SOURCES},
             'files':{n:digest(directory/n) for n in FILES}}
 
+def frozen():
+    path=ROOT/'pe/reference/pe32-activation-startup-windows-v1.json'
+    if digest(path)!='1c781050c8866bf4e7900086a4cd49814b418fc0c4ed8e6d0bf7f6fe6fa0f88e':
+        raise ValueError('changed frozen native loader activation observation')
+    value=json.loads(path.read_bytes())
+    if value['status'] or value['stderr_hex'] or value['backend']!='native Windows PE32 loader-scoped activation observer':
+        raise ValueError('invalid native loader activation evidence')
+    paths={r['actor']:r['path'] for r in value['records']}
+    if decode(bytes.fromhex(value['stdout_hex']),paths)!=value['records']:
+        raise ValueError('frozen decoded observations differ from their raw transport')
+    return value
+
+def comparable(records):
+    # Complete per-image paths are validated against each host's actual source
+    # before comparison. Opaque handles were already normalized by identity.
+    return [{k:v for k,v in row.items() if k!='path'} for row in records]
+
+def compare(records):
+    if comparable(records)!=comparable(frozen()['records']):
+        raise ValueError('native activation scope/payload differs from the frozen identical-PE observation')
+
 def verify(directory):
     value=json.loads((directory/'ctx-startup-inputs.json').read_text())
     if value!=identities(directory):raise ValueError('native activation source/PE/manifest identities changed')
+    if value!=frozen()['inputs']:raise ValueError('changed frozen loader activation source/PE/manifest identities')
     return value
 
 def build(directory):
@@ -104,6 +126,7 @@ def build(directory):
                     '/alternatename:__imp__ImporterValue@0=__imp__ImporterValue','/out:'+str(directory/'ctx-startup.exe')],check=True)
     for name in ['ctx-importer.manifest','ctx-assembly.manifest']:shutil.copyfile(SOURCE/name,directory/name)
     (directory/'ctx-startup-inputs.json').write_text(json.dumps(identities(directory),indent=2)+'\n')
+    verify(directory)
     print('Built owned native-only activation/DLL observer; no host activation execution or compatibility claim')
 
 def native(directory):
@@ -120,6 +143,7 @@ def native(directory):
     if result.returncode or result.stderr:raise ValueError('native activation startup failed; no compatible loader/context result claimed')
     report['records']=decode(result.stdout,{1:str((assembly/'ctx-provider.dll').resolve()),2:str((run/'ctx-importer.dll').resolve()),3:str((run/'ctx-startup.exe').resolve())})
     path.write_text(json.dumps(report,indent=2)+'\n')
+    compare(report['records'])
     print('Captured native DLL attach/detach, default/explicit/restored contexts and complete redirection payloads')
 
 if __name__=='__main__':

@@ -4,29 +4,56 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
-## Native experiment for DAO's actual DLL activation blocker
+## Measured Windows DLL activation scopes for DAO's actual blocker
 
 DAO still stops in its original CRT's FindActCtxSectionStringW call; game entry
-has **not run**. The next owned observer now mirrors the relevant loader pattern:
+has **not run**. An owned native observer now mirrors the relevant loader pattern:
 an empty-default EXE imports a resource-2 DLL, which statically imports a provider
-without an embedded manifest. The provider exists only in a versioned private
-assembly folder, so a flat-directory fallback cannot masquerade as binding.
-All code/manifests are original MIT fixtures, not extracted game/runtime data.
+without an embedded manifest. The provider exists only in a private assembly
+folder whose manifest declares an exact version, so a flat-directory fallback
+cannot masquerade as binding. All code/manifests are original MIT fixtures, not
+extracted game/runtime data. macOS builds the unchanged i386 PEs with open
+Clang/LLD; **this observer has executed on native Windows only**.
 
-macOS builds these unchanged i386 PEs with open Clang/LLD. **This is a native-only
-observer, not host activation execution or new game compatibility.** Windows will
-record both DLL initializers, EXE default/explicit/restored contexts and reverse
-teardown. It retains opaque-handle identity relationships, complete module paths,
-all keyed-data scalar fields, exact redirection bytes and their containing section.
-Payload bounds, source paths, guards, complete lifecycle and explicit activation
-must validate; an error, missing event or exhausted budget cannot pass.
+At `de02c26`, the actual [Windows startup job](https://github.com/daeken/Alkyhol/actions/runs/42476456674)
+passed all prior frozen comparisons and this new experiment. The provider and
+importer both see the same non-NULL activation context during PROCESS_ATTACH
+and reverse PROCESS_DETACH. Both FindActCtxSectionStringW flag forms find the
+provider key in those scopes. EXE entry sees a NULL current context and real
+missing-key results (14007), with every keyed-output byte untouched. Explicitly
+creating/activating the importer's resource-2 manifest exposes the key under a
+second distinct context; deactivation restores the NULL/default miss. This is
+finite evidence for these owned PEs, not a measurement of DAO on Windows or a
+license to union every DLL manifest globally.
 
-The existing SDK layout check independently covers the 32/64-byte structures used
-by the observer. Three synthetic transport tests check truncation, pointer-ID
-normalization, wrong sources, damaged guards and inconsistent section/data bytes;
-they are not native observations. The owned fixture builds locally; its first
-Windows execution is pending. Original DLL bindings and the current fail-closed
-runtime have not been changed to assume a global union of manifests.
+For successful queries, Windows returns format version 1, a 20-byte redirection
+record, a 124-byte containing section and roster index 2. The record's five
+DWORDs are `[20, 2, 0, 0, 0]`. Flag 0 returns a NULL context handle; flag 1 returns
+an owned reference to the actual current context. Both preserve last error.
+The ulFlags field and bytes 40–63 retain their sentinel rather than being filled
+with invented values. The complete section bytes and all scalar observations,
+including guards and opaque-handle identity relationships, are retained. Each
+complete module path is independently checked against the actual loaded source,
+including the provider's assembly subfolder.
+
+The raw CRLF native report is frozen at
+`pe/reference/pe32-activation-startup-windows-v1.json`, SHA-256
+`1c781050c8866bf4e7900086a4cd49814b418fc0c4ed8e6d0bf7f6fe6fa0f88e`.
+Builds and native reruns require all original source/PE/manifest identities and
+compare every decoded observation after path validation and handle-ID
+normalization; there is no initial-capture bypass. Four synthetic transport and
+comparison tests reject truncation, lost events, wrong sources, damaged guards,
+inconsistent section/data and changed scopes/payloads. They are not additional
+native observations. All 342 Python tests passed before freezing; the additional
+comparison test and exact fixture rebuild pass locally afterward.
+
+The Alkyhol runtime has not gained assembly activation from this experiment.
+Its original-graph failure remains explicit. The next implementation needs real
+per-DLL dependency scopes and actual assembly/publisher-policy binding from the
+local original metadata, including supported payload ownership, rather than a
+fabricated successful lookup. Windows observations here establish scope and
+redirection bytes for a private, unsigned owned assembly; original signed CRT
+assembly and publisher-policy semantics remain separate work.
 
 ## DAO reaches its original dependent-assembly lookup
 
@@ -78,7 +105,7 @@ The next work is actual original assembly binding, using the locally extracted
 original assembly/publisher-policy metadata and native observations of activation
 during DLL startup. The current empty-default context profile remains insufficient
 for that graph; directory configuration alone does not make it empty or resolved.
-The next targeted native experiment should mirror a CRT without an embedded
+The owned native experiment above now mirrors a CRT without an embedded
 manifest imported by a resource-2 DLL, recording active contexts during both DLL
 initializers, EXE entry and teardown, plus the actual DLL-redirection payload.
 Do not infer the active context by unioning all manifests. Microsoft's
