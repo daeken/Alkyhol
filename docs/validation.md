@@ -4,6 +4,37 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## The unchanged DAO EXE enters its original startup code
+
+On the physical M4, Bink's original `GetWindowsDirectoryA` and subsequent
+`GetSystemDirectoryA` now query explicitly configured backed directories.
+Bink and Umbra initialization return, and the unchanged **original game EXE
+entry is invoked**. Its startup executes original CRT/TLS/heap code and stops
+at the next unimplemented import, **KERNEL32.dll!SetUnhandledExceptionFilter**.
+This is entry/startup execution, not a main menu, render loop or game compatibility.
+The original EXE's hash remains unchanged; local module/RVA/argument captures
+and the launch profile stay ignored. The previously documented locally unpacked
+dependency caveat remains; no unchanged-all-DLL claim is made.
+
+`ProcessOptions32::windows_directory` is a separately verified per-user role,
+selected with `--windows-directory`; it is never inferred from the shared Windows
+root or System32. This preserves the API's
+[distinction under Terminal Services](https://learn.microsoft.com/en-us/windows/win32/api/sysinfoapi/nf-sysinfoapi-getwindowsdirectorya)
+without claiming Terminal Services emulation. The two reached ANSI functions
+support complete ASCII-backed output only, preserving error state and the buffer
+tail. Missing roles, non-ASCII paths, insufficient buffers and invalid output
+storage stop explicitly. Existing Unicode directory behavior is unchanged.
+
+The owned identical-PE witnesses pass on the physical M4 for both APIs, checking
+actual paths against their independently configured roles, lengths/termination,
+untouched tail/guards, stdcall stack and error state. Distinct user, shared and
+system roots ensure a mistaken role alias cannot pass. Eight restriction cases
+stop for their actual reason. Native Windows comparisons are wired into the
+existing workflow; they are pending. Two transport tests verify all fields,
+source path identity, termination and byte extent. Local checks pass: 193 PE
+Rust tests/checks including doctests on the Rosetta x86_64 target, 381 Python tests,
+Clippy with project warnings denied and formatting.
+
 ## Native onexit/startup comparison catches and corrects ANSI last error
 
 The [native startup job at `035552d`](https://github.com/daeken/Alkyhol/actions/runs/42500607924)

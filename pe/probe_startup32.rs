@@ -70,11 +70,20 @@ fn main() {
                             .into(),
                     );
                 }
+                "--windows-directory" => {
+                    profile.windows_directory = Some(
+                        options
+                            .next()
+                            .ok_or("--windows-directory requires a host directory")?
+                            .into(),
+                    );
+                }
                 _ => return Err("unknown startup diagnostic option".into()),
             }
         }
         if (profile.system_directory.is_some()
             || profile.system_windows_directory.is_some()
+            || profile.windows_directory.is_some()
             || profile.time_zone.is_some()
             || profile.activation_assemblies.is_some())
             && !file_origins

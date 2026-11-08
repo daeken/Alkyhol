@@ -22,6 +22,7 @@ struct AssemblyInputs<'a> {
 struct GuestProfile32 {
     system: Option<Vec<u16>>,
     windows: Option<Vec<u16>>,
+    user_windows: Option<Vec<u16>>,
     utc: bool,
 }
 fn executable_name(name: &str) -> Result<String> {
@@ -242,6 +243,9 @@ pub struct ProcessOptions32 {
     /// A separate verified shared Windows-directory role. It is never inferred
     /// from System32, DLL origins or the host's own operating-system directories.
     pub system_windows_directory: Option<std::path::PathBuf>,
+    /// Independently configured Windows-directory role for this guest user.
+    /// No Terminal Services redirection or alias to the shared root is inferred.
+    pub windows_directory: Option<std::path::PathBuf>,
     /// Explicit guest timezone. Default is unknown/unsupported for local-time
     /// APIs; host-local DST behavior is never guessed.
     pub time_zone: Option<TimeZone32>,
@@ -396,6 +400,11 @@ impl<'a> ProcessImage32<'a> {
             .as_deref()
             .map(|path| super::module_path32::directory_role(path, "system Windows directory"))
             .transpose()?;
+        let user_windows = options
+            .windows_directory
+            .as_deref()
+            .map(|path| super::module_path32::directory_role(path, "user Windows directory"))
+            .transpose()?;
         if options.activation_assemblies.is_none() && !options.activation_policies.is_empty() {
             return Err("publisher policy requires an explicit assembly profile".into());
         }
@@ -434,6 +443,7 @@ impl<'a> ProcessImage32<'a> {
                 GuestProfile32 {
                     system: system_directory,
                     windows,
+                    user_windows,
                     utc: matches!(options.time_zone, Some(TimeZone32::Utc)),
                 },
                 options
@@ -458,6 +468,7 @@ impl<'a> ProcessImage32<'a> {
         let mut cpu = Cpu32::new()?;
         cpu.system_directory = directories.system;
         cpu.system_windows_directory = directories.windows;
+        cpu.windows_directory = directories.user_windows;
         cpu.utc_timezone = directories.utc;
         // Keep unknown manifest/binding state deferred until an activation query.
         // Existing paths do not gain a fabricated empty/default context.

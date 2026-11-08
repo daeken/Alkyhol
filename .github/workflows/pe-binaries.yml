@@ -77,6 +77,10 @@ jobs:
         run: |
           python tools/observe_pe32_cursor.py
           python tools/observe_pe32_cursor.py --host
+      - name: Execute separate backed ANSI directory roles reached by original Bink startup
+        run: |
+          python tools/observe_pe32_ansi_directories.py
+          python tools/observe_pe32_ansi_directories.py --host
       - uses: actions/upload-artifact@v4
         with:
           name: pe32-startup-microtests
@@ -128,6 +132,8 @@ jobs:
             local/pe/startup-microtests/heap-realloc-host.json
             local/pe/startup-microtests/cursor-inputs.json
             local/pe/startup-microtests/cursor-host.json
+            local/pe/startup-microtests/ansi-directories-inputs.json
+            local/pe/startup-microtests/ansi-directories-host.json
             local/pe/startup-microtests/ctx-layout-empty-importer.dll
             local/pe/startup-microtests/ctx-layout-*.manifest
   native-pe32-startup:
@@ -195,6 +201,8 @@ jobs:
         run: cl /nologo /c /W4 /WX /std:c++17 pe/fixtures/pe32-startup/cursor-layout.cpp /Folocal/pe/startup-microtests/cursor-layout.obj
       - name: Observe cursor ABI while retaining actual per-host coordinates separately
         run: python tools/observe_pe32_cursor.py --native
+      - name: Observe complete ANSI Windows and system directory contracts on native Windows
+        run: python tools/observe_pe32_ansi_directories.py --native
       - uses: actions/upload-artifact@v4
         if: always()
         with:

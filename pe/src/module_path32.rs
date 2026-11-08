@@ -82,6 +82,54 @@ pub(super) fn system_windows_directory(image: &LoadedImage32<'_>, args: &[u32; 8
         "system Windows directory",
     )
 }
+pub(super) fn windows_directory_ansi(image: &LoadedImage32<'_>, args: &[u32; 8]) -> u32 {
+    copy_directory_ansi(
+        image,
+        args,
+        image.cpu.windows_directory.as_deref(),
+        "user Windows directory",
+    )
+}
+pub(super) fn system_directory_ansi(image: &LoadedImage32<'_>, args: &[u32; 8]) -> u32 {
+    copy_directory_ansi(
+        image,
+        args,
+        image.cpu.system_directory.as_deref(),
+        "system directory",
+    )
+}
+fn copy_directory_ansi(
+    image: &LoadedImage32<'_>,
+    args: &[u32; 8],
+    directory: Option<&[u16]>,
+    role: &str,
+) -> u32 {
+    let name = directory.unwrap_or_else(|| {
+        unsupported(&format!(
+            "{role} requires an explicitly configured backed guest directory"
+        ))
+    });
+    if name.iter().any(|&u| u > 127) {
+        unsupported(&format!("ANSI {role} requires an ASCII-backed origin"));
+    }
+    let [output, capacity, ..] = *args;
+    if capacity as usize <= name.len() || capacity > 1024 * 1024 {
+        unsupported(&format!(
+            "ANSI {role} sizing/truncation profile is unsupported"
+        ));
+    }
+    if !image.permits(output as usize, capacity as usize, true) {
+        unsupported(&format!(
+            "ANSI {role} output outside writable guest storage"
+        ));
+    }
+    let bytes: Vec<u8> = name.iter().map(|&u| u as u8).collect();
+    unsafe {
+        ptr::copy_nonoverlapping(bytes.as_ptr(), output as *mut u8, bytes.len());
+        (output as *mut u8).add(bytes.len()).write(0);
+    }
+    bytes.len() as u32
+}
 fn copy_directory(
     image: &LoadedImage32<'_>,
     args: &[u32; 8],
