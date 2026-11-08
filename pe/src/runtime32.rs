@@ -808,6 +808,9 @@ impl<'a> LoadedLibrary32<'a> {
         Ok(library)
     }
     fn import_address(&self, symbol: &ImportSymbol) -> Result<u32> {
+        if matches!(symbol, ImportSymbol::Ordinal(0)) {
+            return Err("zero PE32 dependency import ordinals are unsupported".into());
+        }
         let export = self
             .mapping
             .exports
@@ -1323,6 +1326,9 @@ mod tests {
         ] {
             assert!(lib.import_address(&symbol).is_err());
         }
+        lib.mapping.exports.as_mut().unwrap().entries[0].ordinal = 0;
+        assert!(lib.import_address(&ImportSymbol::Ordinal(0)).is_err());
+        lib.mapping.exports.as_mut().unwrap().entries[0].ordinal = 17;
         lib.mapping.exports.as_mut().unwrap().entries[0].target =
             ExportTarget::Forwarder("other.F".into());
         assert!(lib.import_address(&ImportSymbol::Ordinal(17)).is_err());

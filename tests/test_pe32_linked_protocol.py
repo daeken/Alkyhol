@@ -28,7 +28,7 @@ def pair():
 class LinkedProtocol(unittest.TestCase):
     def test_complete_native_and_host_records_and_original_dependency_identity(self):
         w,h=pair();self.assertEqual(compare(w,h,copy.deepcopy(w)),81)
-        self.assertEqual(compare(w,h,None),81) # Explicit first-capture mode only.
+        with self.assertRaises(ValueError):compare(w,h,None)
 
     def test_missing_failure_truncation_decoding_or_cleanup_does_not_pass(self):
         w,h=pair()

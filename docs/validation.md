@@ -4,7 +4,17 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
-## PE32 linked DLLs: physical M4 development; independent native comparison pending
+## PE32 linked DLLs: native Windows, hosted Mac and physical M4
+
+At clean revision `cf234fc`, actual native Windows and downloaded hosted Mac
+reports and fresh physical M4 execution agree on every one of the 81 raw DWORDs,
+with the same exact DLL/driver/source identities, including the frozen original
+dependency. Both strict comparisons pass for normal/forced-rebase execution.
+The complete actual native report is frozen unchanged at
+`pe/reference/pe32-linked-windows-v1.json` and required by default; the initial
+capture bypass is removed. See the [PE run](https://github.com/daeken/Alkyhol/actions/runs/42445695193)
+and [conformance run](https://github.com/daeken/Alkyhol/actions/runs/42445695166)
+for that revision's CI. Full conclusions are recorded only after completion.
 
 `LoadedLibrary32::load_linked` now binds named/ordinal code and writable data from
 explicitly borrowed initialized dependencies. Related mappings share one guarded
@@ -25,8 +35,10 @@ check remains true when called through its consumer, exposing separate-TEB mista
 Consumer detach calls the still-live dependency before the latter's detach.
 Host-only preflight negatives emit no extra initializer records. A compiler check
 rejects dropping the dependency while its consumer remains live. This is current
-physical development evidence; the newly transferred native Windows dependency
-comparison has not yet run. No game instruction has executed.
+finite execution evidence, now independently compared to Windows at the clean
+revision above. No game instruction has executed. Zero import ordinals remain
+unsupported even if metadata contains a zero-based export, preserving the
+existing runtime policy without guessing native semantics for that case.
 All 119 PE host tests, 14 compiler checks, 306 Python tests and Clippy pass locally.
 The existing frozen PE32 integer/stdcall, static TLS data and isolated DLL
 observers retain their behavior on the physical M4 after sharing the CPU state.

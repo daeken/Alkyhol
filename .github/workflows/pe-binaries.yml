@@ -1115,4 +1115,4 @@ jobs:
         with:
           name: pe32-linked-windows
           path: local/pe/observations
-      - run: python tools/compare_pe32_linked.py local/pe/observations/pe32-linked-windows.json local/pe/observations/pe32-linked-alkyhol.json --initial-capture
+      - run: python tools/compare_pe32_linked.py local/pe/observations/pe32-linked-windows.json local/pe/observations/pe32-linked-alkyhol.json
