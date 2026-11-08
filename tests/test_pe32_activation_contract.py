@@ -6,6 +6,7 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]/'tools'))
 from check_pe32_activation import compare_records, decode_native, expected_resources, frozen, resource_record
+from check_pe32_activation_miss import frozen as frozen_miss
 
 
 class ActivationContractTests(unittest.TestCase):
@@ -58,6 +59,13 @@ class ActivationContractTests(unittest.TestCase):
         changed = [row[:] for row in capture['records']]
         changed[5][7] = 2
         with self.assertRaises(ValueError): compare_records(changed)
+
+    def test_bounded_bridge_contract_is_backed_by_a_separate_native_capture(self):
+        capture = frozen_miss()
+        words = struct.unpack('<33I', bytes.fromhex(capture['stdout_hex']))
+        self.assertEqual(words[0], 0x414d3332)
+        self.assertEqual([(words[i], words[i+1]) for i in [1, 9, 17, 25]], [(40, 0), (64, 0), (40, 1), (64, 1)])
+        self.assertEqual(capture['inputs']['files']['activation-miss0.exe'], 'd67f11dcb64c5c5ada0bfd81983e33e23d8191fcb7f0bb58f7fcb21acaf3bda1')
 
 
 if __name__ == '__main__':

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Exercise the actual activation lookup bridge and fail-closed context states."""
 import argparse
+import hashlib
 import json
 from pathlib import Path
 import shutil
@@ -22,6 +23,18 @@ def expected():
                          for flags in [0, 1] for size in [40, 64])
 
 
+def frozen():
+    raw = (ROOT/'pe/reference/pe32-activation-miss-windows-v1.json').read_bytes()
+    if hashlib.sha256(raw).hexdigest() != '39123e61b237bb99d74dfaf1f7a894b4ad3eedf631f72d4a3bb4ca0df04f8e9e':
+        raise ValueError('changed frozen native activation bridge report')
+    value = json.loads(raw)
+    if value['backend'] != 'native Windows PE32 activation bridge microtest' or value['status'] or value['stderr_hex']:
+        raise ValueError('invalid frozen activation bridge evidence')
+    if bytes.fromhex(value['stdout_hex']) != expected():
+        raise ValueError('activation bridge contract differs from actual native capture')
+    return value
+
+
 def identities(directory):
     return {'sources': {(SOURCE/n).relative_to(ROOT).as_posix(): digest(SOURCE/n) for n in SOURCES},
             'files': {n: digest(directory/n) for n in FILES}}
@@ -31,6 +44,8 @@ def verify(directory):
     value = json.loads((directory/'activation-miss-inputs.json').read_text())
     if value != identities(directory):
         raise ValueError('changed activation bridge source/PE/DLL inputs')
+    if value != frozen()['inputs']:
+        raise ValueError('changed frozen native activation bridge source/PE/DLL identities')
     return value
 
 
@@ -81,8 +96,13 @@ def host(directory):
         result = subprocess.run([str(probe), str(directory/f'activation-miss{mode}.exe'), *dlls], capture_output=True, timeout=15)
         if result.returncode != (78 if mode else 0) or result.stdout != (BOOT if mode else expected()):
             raise ValueError(f'activation bridge case {mode} failed: {result.returncode}, {result.stdout.hex()}, {result.stderr!r}')
-        if mode and b'unsupported' not in result.stderr:
-            raise ValueError('unsupported activation context/input did not fail explicitly')
+        reasons = {1: b'activation manifest assembly binding/redirection is unsupported',
+                   2: b'activation keyed-data size/output is unsupported',
+                   3: b'activation query flags/GUID/section are unsupported',
+                   4: b'activation of DLL manifests/dependent assemblies is unsupported',
+                   5: b'activation requires one explicit embedded default manifest'}
+        if mode and (reasons[mode] not in result.stderr or b'diagnostic call: FindActCtxSectionStringW' not in result.stderr):
+            raise ValueError('activation restriction stopped for the wrong reason')
         records.append({'case': mode, 'status': result.returncode, 'stdout_hex': result.stdout.hex(), 'stderr_hex': result.stderr.hex()})
     (directory/'activation-miss-host.json').write_text(json.dumps({'backend': 'Rosetta PE32 activation bridge',
         'inputs': verify(directory), 'observations': records}, indent=2)+'\n')

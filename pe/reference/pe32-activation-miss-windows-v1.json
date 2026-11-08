@@ -1,0 +1,25 @@
+{
+  "backend": "native Windows PE32 activation bridge microtest",
+  "inputs": {
+    "sources": {
+      "pe/fixtures/pe32-startup/activation-miss.c": "ae7e2c87d3481fc0ff2a6a211efd3d46dbda48be5e4bba203cf564e3be387a06",
+      "pe/fixtures/pe32-startup/activation-miss.def": "aa9cd61c41d277bc74a843cca77a0b866cf636f63da90c12fc7b4f5619979504",
+      "pe/fixtures/pe32-startup/activation-dependency.c": "bf6447c641123782bc95fc4a30950aff1ab3f5c848dba454b990203f8e29e75a",
+      "pe/fixtures/pe32-startup/activation-dependency.def": "dc0862733a05d76875b423b6205d13c89fcec80b97a53f4ec079d668d13738a7",
+      "pe/fixtures/pe32-startup/activation-empty.manifest": "67164635c0b63776954fc8c672603c99be7e2fa3a7cc197ee2eca46a6ccf7976",
+      "pe/fixtures/pe32-startup/activation-file.manifest": "abe82dc5998692f910d2b71678ca8dec36123db255cdab6150c93646138d95fb"
+    },
+    "files": {
+      "activation-miss0.exe": "d67f11dcb64c5c5ada0bfd81983e33e23d8191fcb7f0bb58f7fcb21acaf3bda1",
+      "activation-miss1.exe": "cbf071384e39d32d847b6aca368d54cd5433d871c27b9321a853afe014f78cef",
+      "activation-miss2.exe": "e1387c2141db594232943e90fa5bb5d985dfd132f9a751591cdff4d555f8affc",
+      "activation-miss3.exe": "db3fc7929180b99a84a3b1a0f4fff84d1834e8aa9cf8b867dde008fcab88a13b",
+      "activation-miss4.exe": "8c418cb3151958459046b4a6c3f2b268b1086b84d08b81ed27a3c72907a84ec6",
+      "activation-miss5.exe": "5f865c4881c0212967de6b0786803518f1b77232cfb6d0020772a488991a80a9",
+      "owned-context.dll": "62d62704e7aacaf22e69da54eede46dd348fef9d8774e4b569fcac17697da884"
+    }
+  },
+  "status": 0,
+  "stdout_hex": "32334d41280000000000000000000000b7360000010000000100000004000000117a5e71400000000000000000000000b7360000010000000100000004000000117a5e71280000000100000000000000b7360000010000000100000004000000117a5e71400000000100000000000000b7360000010000000100000004000000117a5e71",
+  "stderr_hex": ""
+}

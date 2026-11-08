@@ -6,7 +6,7 @@ See the latest direct-Metal record for current implementation evidence.
 
 ## DAO bounded activation lookup and next original CRT call
 
-On the physical M4, the original CRT now resolves FindActCtxSectionStringW to
+On the physical M4 at clean `7b39f23`, the original CRT now resolves FindActCtxSectionStringW to
 a real checked gateway, continues through its original module-handle queries,
 and reaches **GetModuleFileNameW**. That is the next measured unsupported import.
 The activation query itself and the game EXE entry have **not executed**.
@@ -33,17 +33,35 @@ empty-context calls (both sizes and flags), producing 33 exact DWORDs on M4.
 Five host-only restrictions stop after a boot marker: nonempty EXE/DLL contexts,
 absent embedded default, read-only output and unsupported flags. They are not
 executed natively or counted as Windows failure semantics. The new positive PE
-is queued for native comparison; prior frozen native observations already cover
-the flags-0 missing-key/output-preservation behavior, not this new complete record.
+passed native comparison at `7b39f23`: all 33 words and every source/PE/DLL identity
+agree with M4. The unchanged raw CRLF native record is frozen at
+`pe/reference/pe32-activation-miss-windows-v1.json`, SHA-256
+`39123e61b237bb99d74dfaf1f7a894b4ad3eedf631f72d4a3bb4ca0df04f8e9e`.
+The positive PE SHA-256 is
+`d67f11dcb64c5c5ada0bfd81983e33e23d8191fcb7f0bb58f7fcb21acaf3bda1`.
+The report, exact input identities and measured output are required without an
+initial-capture bypass.
 
 Local validation passes 151 PE host tests and 16 compile/documentation checks,
-331 Python tests, Clippy, all 25 prior startup cases and six new activation cases.
+332 Python tests, Clippy, all 25 prior startup cases and six new activation cases.
 The unmodified third-party parser emits compiler deprecation/lifetime warnings
 on the newer Rust toolchain; Alkyhol's own Clippy checks pass with warnings denied.
 All five [PE jobs](https://github.com/daeken/Alkyhol/actions/runs/42468373009)
 passed on predecessor `4cecfeb`, including the strict frozen activation comparator
 and the previously download-blocked historical comparisons. That is separate
-from the new gateway's pending native result.
+from the new gateway's result.
+
+At `7b39f23`, both dedicated [startup jobs](https://github.com/daeken/Alkyhol/actions/runs/42469244460)
+passed, including the original frozen activation observer and the new 33-word
+comparison. The historical PE job separately hit HTTP 504 downloading unchanged
+i386 peports, so its dependent historical Windows/comparison jobs were skipped.
+No fixture, checksum or historical acceptance condition was changed.
+
+The next blocker needs genuine loaded-module path metadata: the current process
+API receives module basenames and bytes, not retained source-file origins.
+GetModuleFileNameW must not invent a DLL directory or relabel the CRT directory
+as the Windows system directory to bypass the later activation check. Subsequent
+path and activation calls in the inspected original caller remain unexecuted.
 
 ## DAO activation-context resource groundwork
 
