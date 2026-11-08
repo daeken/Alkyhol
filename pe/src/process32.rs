@@ -26,6 +26,7 @@ struct GuestProfile32 {
     utc: bool,
     host_machine_info: bool,
     registry: Option<super::registry32::State>,
+    mutexes: Option<super::mutex32::State>,
 }
 fn executable_name(name: &str) -> Result<String> {
     if name.len() > 255
@@ -254,6 +255,10 @@ pub struct ProcessOptions32 {
     /// Explicit read-only 32-bit registry catalog. Only declared scopes have
     /// authoritative existence state; outside scopes remain unknown/unsupported.
     pub registry_catalog: Option<std::path::PathBuf>,
+    /// Explicit shared guest-session object directory. All participating guest
+    /// processes must select the same owned directory. Named, initially unowned
+    /// mutex references only; ownership/waits/ACLs remain unsupported.
+    pub object_directory: Option<std::path::PathBuf>,
     /// Explicit guest timezone. Default is unknown/unsupported for local-time
     /// APIs; host-local DST behavior is never guessed.
     pub time_zone: Option<TimeZone32>,
@@ -418,6 +423,11 @@ impl<'a> ProcessImage32<'a> {
             .as_deref()
             .map(super::registry32::State::read)
             .transpose()?;
+        let mutexes = options
+            .object_directory
+            .as_deref()
+            .map(super::mutex32::State::open)
+            .transpose()?;
         if options.activation_assemblies.is_none() && !options.activation_policies.is_empty() {
             return Err("publisher policy requires an explicit assembly profile".into());
         }
@@ -460,6 +470,7 @@ impl<'a> ProcessImage32<'a> {
                     utc: matches!(options.time_zone, Some(TimeZone32::Utc)),
                     host_machine_info: options.host_machine_info,
                     registry,
+                    mutexes,
                 },
                 options
                     .activation_assemblies
@@ -493,6 +504,7 @@ impl<'a> ProcessImage32<'a> {
         cpu.windows_directory = directories.user_windows;
         cpu.utc_timezone = directories.utc;
         cpu.registry = directories.registry.map(std::cell::RefCell::new);
+        cpu.mutexes = directories.mutexes.map(std::cell::RefCell::new);
         // Keep unknown manifest/binding state deferred until an activation query.
         // Existing paths do not gain a fabricated empty/default context.
         *cpu.activation.borrow_mut() = crate::activation_manifest::empty_default(

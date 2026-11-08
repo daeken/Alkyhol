@@ -416,6 +416,14 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
             base
         }
         9 => {
+            if image
+                .cpu
+                .mutexes
+                .as_ref()
+                .is_some_and(|m| m.borrow_mut().close(args[0]))
+            {
+                return 1;
+            }
             let call: unsafe extern "win64" fn(usize) -> i32 =
                 unsafe { std::mem::transmute(function("CloseHandle")) };
             let h = handle(image, args[0]);

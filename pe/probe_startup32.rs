@@ -29,6 +29,14 @@ fn main() {
                 "--strict" => strict = true,
                 "--file-origins" => file_origins = true,
                 "--host-machine-info" => profile.host_machine_info = true,
+                "--object-directory" => {
+                    profile.object_directory = Some(
+                        options
+                            .next()
+                            .ok_or("--object-directory requires a shared guest session directory")?
+                            .into(),
+                    );
+                }
                 "--registry-catalog" => {
                     profile.registry_catalog = Some(
                         options
@@ -95,6 +103,7 @@ fn main() {
             || profile.windows_directory.is_some()
             || profile.host_machine_info
             || profile.registry_catalog.is_some()
+            || profile.object_directory.is_some()
             || profile.time_zone.is_some()
             || profile.activation_assemblies.is_some())
             && !file_origins

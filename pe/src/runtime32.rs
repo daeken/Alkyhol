@@ -38,6 +38,8 @@ mod machine32;
 mod math32;
 #[path = "module_path32.rs"]
 mod module_path32;
+#[path = "mutex32.rs"]
+mod mutex32;
 #[path = "nls32.rs"]
 mod nls32;
 #[path = "process32.rs"]
@@ -74,7 +76,7 @@ unsafe extern "C" {
 }
 const PAGE: usize = 4096;
 const STACK: usize = 1024 * 1024;
-const APIS: [(&str, u16); 109] = [
+const APIS: [(&str, u16); 110] = [
     ("GetLastError", 0),
     ("SetLastError", 4),
     ("GetStdHandle", 4),
@@ -184,6 +186,7 @@ const APIS: [(&str, u16); 109] = [
     ("GetSystemInfo", 4),
     ("RegOpenKeyExW", 20),
     ("RegCloseKey", 4),
+    ("CreateMutexW", 12),
 ];
 const EXIT_API: u32 = 14;
 // Win32 promises a reversible process-specific representation, not a published
@@ -469,6 +472,7 @@ struct Cpu32 {
     unhandled_filter: Cell<u32>,
     machine: Option<machine32::Machine>,
     registry: Option<RefCell<registry32::State>>,
+    mutexes: Option<RefCell<mutex32::State>>,
     utc_timezone: bool,
 }
 impl Cpu32 {
@@ -482,6 +486,9 @@ impl Cpu32 {
     }
     fn close_files(&self) {
         let error = alkyhol::ffi::GetLastError();
+        if let Some(mutexes) = &self.mutexes {
+            mutexes.borrow_mut().clear();
+        }
         self.searches.borrow_mut().clear();
         for handle in std::mem::take(&mut *self.files.borrow_mut()) {
             alkyhol::ffi::CloseHandle(handle);
@@ -550,6 +557,7 @@ impl Cpu32 {
             unhandled_filter: Cell::new(0),
             machine,
             registry: None,
+            mutexes: None,
             utc_timezone: false,
         })
     }
@@ -1753,6 +1761,7 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
                 .unwrap_or_else(|e| unsupported(&e)),
             106 => machine32::information(image, args[0]),
             107 | 108 => registry32::dispatch(image, id, &args),
+            109 => mutex32::create(image, &args),
             _ => unreachable!(),
         }
     })
@@ -1869,6 +1878,7 @@ mod tests {
                 unhandled_filter: Cell::new(0),
                 machine: None,
                 registry: None,
+                mutexes: None,
                 utc_timezone: false,
             }),
             tls: None,

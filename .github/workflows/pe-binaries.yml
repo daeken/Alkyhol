@@ -97,8 +97,10 @@ jobs:
         run: |
           python tools/observe_pe32_registry_open.py
           python tools/observe_pe32_registry_open.py --host
-      - name: Build native named-mutex lifetime observations for the next original call
-        run: python tools/observe_pe32_mutex_create.py
+      - name: Execute named-mutex reference lifetimes reached by original DAO startup
+        run: |
+          python tools/observe_pe32_mutex_create.py
+          python tools/observe_pe32_mutex_create.py --host
       - uses: actions/upload-artifact@v4
         with:
           name: pe32-startup-microtests
@@ -161,6 +163,8 @@ jobs:
             local/pe/startup-microtests/registry-open-inputs.json
             local/pe/startup-microtests/registry-open-host.json
             local/pe/startup-microtests/mutex-create-inputs.json
+            local/pe/startup-microtests/mutex-create-host.json
+            local/pe/startup-microtests/mutex-holder-inputs.json
             local/pe/startup-microtests/ctx-layout-empty-importer.dll
             local/pe/startup-microtests/ctx-layout-*.manifest
   native-pe32-startup:

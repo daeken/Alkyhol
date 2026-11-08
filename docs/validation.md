@@ -6,6 +6,43 @@ See the latest direct-Metal record for current implementation evidence.
 
 ## Next reached mutex call has an independent native lifetime observer
 
+The [native startup job at `09124b9`](https://github.com/daeken/Alkyhol/actions/runs/42510592173)
+now passes all three actual named-mutex observations, including an independent
+64-bit parent keeping the PE32 child's object alive. The unchanged report is
+`pe/reference/pe32-mutex-create-windows-v1.json`, SHA-256
+`ac8dd7be930dadb38097535fcdbcd3303a42219a1fcdbe2a87734cf0872a1eee`.
+Literal source-pinned lifecycle/single-create PEs are retained too; no prior
+frozen evidence or producer was changed to make the backend agree.
+
+The Rust PE32 provider now admits named, initially unowned `CreateMutexW` with
+NULL security attributes in a caller-selected `--object-directory` /
+`ProcessOptions32::object_directory`. This directory defines an explicit shared
+guest session, not the macOS/Windows global namespace. All participating guest
+processes must select the same exclusively managed directory. OS shared file
+locks represent live references: each real opaque handle owns its own open file;
+creation is serialized by an exclusive namespace gate, and the last close or
+process death releases the object's existence. Persistent lease files alone do
+not count as live objects. Directory-relative opens pin the namespace even across
+directory renames, reject symlinks/hardlinks, and retain close-on-exec descriptors.
+Full UTF-16 identity records detect hash collisions instead of aliasing names.
+Bare/`Local` names share this session and comparisons remain case sensitive.
+`CloseHandle` releases the actual reference while preserving caller error state.
+
+On the physical M4, all 32 native DWORDs agree on the identical PEs: creation,
+existing-object error 183, multiple references, last-close destruction, stack
+balance and preserved close error state. A separate original PE32 holder proves
+cross-process lifetime through real guest calls, including destruction after
+abrupt host process death. Three Rust units cover local references, name bounds,
+case/alias routing and corrupt/symlinked identity rejection. Initial ownership
+and missing namespace configuration explicitly stop in two guest exclusions.
+Acquisition/waits, release, abandonment, unnamed/Global/private objects,
+security/ACLs and inheritance remain unsupported; this is a finite reference
+lifetime implementation, not complete mutex synchronization. It has not yet
+been exercised by the original EXE at this revision.
+Local checks pass: 202 PE Rust checks including doctests on the Rosetta target,
+398 Python tests, Clippy with project warnings denied, formatting, and the real
+guest cross-process lifetime/exclusion observations above.
+
 The owned named-mutex observer builds for the actual `CreateMutexW` frontier.
 It checks new versus already-existing objects, multiple references, actual
 last-close destruction, caller stack/error state, and a separate live parent
@@ -16,9 +53,9 @@ before creating its object: Python's Windows `ctypes.set_last_error` takes a
 signed C int and rejected the unsigned high-bit sentinel. The caller now
 converts that sentinel to signed 32-bit form, preserving its bits. The raw
 partial report is retained locally; cross-process evidence remains pending.
-Compilation
-and two transport tests pass; the backend remains explicitly unsupported until
-its object identity/lifetime semantics are implemented. No game-specific object
+At that preparatory revision, compilation and two transport tests passed while
+the backend remained explicitly unsupported pending object identity/lifetime
+implementation. No game-specific object
 names or inventories are included in the public probe.
 
 ## Original DAO startup passes a scoped registry query and reaches mutex creation

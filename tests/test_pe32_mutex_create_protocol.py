@@ -19,4 +19,9 @@ class MutexProtocol(unittest.TestCase):
         mutex.decode(live,'other-process-live');mutex.decode(closed,'after-other-process-close')
         with self.assertRaises(ValueError):mutex.decode(live,'after-other-process-close')
         with self.assertRaises(ValueError):mutex.decode(closed,'other-process-live')
+        with self.assertRaises(ValueError):mutex.decode(closed,'unknown-case')
+    def test_frozen_native_record_covers_all_three_cases(self):
+        report=mutex.frozen()
+        self.assertEqual(len(report['reports']),3)
+        self.assertEqual([len(row['words']) for row in report['reports']],[16,8,8])
 if __name__=='__main__':unittest.main()
