@@ -76,6 +76,12 @@ removes that file from lookup. This is native context-lifecycle/ABI evidence for
 our owned manifests, not proof of original CRT assembly binding or host activation
 support. No original game input was sent to Windows.
 
+The same run's historical PE job separately failed on HTTP 504 while downloading
+the unchanged i386 peports release, so its historical native/comparison jobs were
+skipped. Its existing fixture/checksum was not changed. The new frozen comparator
+has passed locally against the downloaded raw native capture; its next CI result
+remains separate from the completed native observation above.
+
 References: [PE resource tables](https://learn.microsoft.com/en-us/windows/win32/debug/pe-format#the-rsrc-section),
 [FindActCtxSectionStringW](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-findactctxsectionstringw),
 [ACTCTXW](https://learn.microsoft.com/en-us/windows/win32/api/winbase/ns-winbase-actctxw)
