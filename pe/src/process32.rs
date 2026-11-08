@@ -558,6 +558,7 @@ impl<'a> ProcessImage32<'a> {
                 base: mappings[index].image.base as u32,
                 size: mappings[index].image.len,
                 exports: mappings[index].exports.clone(),
+                thread_notifications: true,
             })
             .collect();
         let mut result = Self {
@@ -754,6 +755,7 @@ mod tests {
                 size: 0x10000,
                 exports: None,
                 origin: None,
+                thread_notifications: true,
             },
             Module32 {
                 name: "leaf.dll".into(),
@@ -761,6 +763,7 @@ mod tests {
                 size: 0x10000,
                 exports: Some(table.clone()),
                 origin: None,
+                thread_notifications: true,
             },
         ];
         for phase in [Phase32::Preparing, Phase32::Running, Phase32::Detaching] {
@@ -771,6 +774,14 @@ mod tests {
             assert_eq!(image.export_address(0x200000, 18).unwrap(), None);
             assert_eq!(image.export_address(0x400000, 17).unwrap(), None);
             assert!(image.export_address(0xdead0000, 17).is_err());
+        }
+        assert!(image.cpu.modules.borrow()[1].thread_notifications);
+        image.disable_thread_notifications(0x200000).unwrap();
+        assert!(!image.cpu.modules.borrow()[1].thread_notifications);
+        image.disable_thread_notifications(0x200000).unwrap();
+        assert!(image.cpu.modules.borrow()[0].thread_notifications);
+        for handle in [0, 0x400000, 0x200001, 0xdead0000] {
+            assert!(image.disable_thread_notifications(handle).is_err());
         }
         assert_eq!(
             target(Some(&table), &ImportSymbol::Name("Data".into())).unwrap(),

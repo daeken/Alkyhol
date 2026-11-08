@@ -93,9 +93,11 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
         }
         let value = unsafe { (a as *const [u32; 2]).read() };
         let ticks = u64::from(value[0]) | (u64::from(value[1]) << 32);
-        let output = calendar(ticks).unwrap_or_else(|| {
-            unsupported("out-of-range PE32 calendar conversion awaits native error observations")
-        });
+        let Some(output) = calendar(ticks) else {
+            // Frozen native observations: fail without touching SYSTEMTIME.
+            alkyhol::ffi::SetLastError(87);
+            return 0;
+        };
         unsafe {
             (b as *mut [u16; 8]).write(output);
         }

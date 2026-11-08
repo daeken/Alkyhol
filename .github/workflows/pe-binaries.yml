@@ -45,8 +45,10 @@ jobs:
         run: python tools/observe_pe32_local_filetime.py --frozen-fixture
       - name: Execute identical UTC FILETIME inputs and checked timezone restrictions through Rust
         run: python tools/observe_pe32_local_filetime.py --host
-      - name: Build the actual CRT calendar-call observer
-        run: python tools/observe_pe32_calendar_filetime.py
+      - name: Select the literal owned calendar PE observed on native Windows
+        run: python tools/observe_pe32_calendar_filetime.py --frozen-fixture
+      - name: Compare identical calendar fields and invalid-range failures against native Windows
+        run: python tools/observe_pe32_calendar_filetime.py --host
       - name: Build and assert actual FMOD startup clocks and compare-exchange semantics on the host
         run: |
           python tools/observe_pe32_startup_clock.py
@@ -87,6 +89,7 @@ jobs:
             local/pe/startup-microtests/local-filetime-inputs.json
             local/pe/startup-microtests/local-filetime-host.json
             local/pe/startup-microtests/calendar-filetime-inputs.json
+            local/pe/startup-microtests/calendar-filetime-host.json
             local/pe/startup-microtests/startup-clock-inputs.json
             local/pe/startup-microtests/startup-clock-host.json
             local/pe/startup-microtests/ctx-layout-empty-importer.dll

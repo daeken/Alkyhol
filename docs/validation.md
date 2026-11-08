@@ -4,7 +4,48 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
-## Original CRT completes; dependency startup reaches FMOD
+## Dependency startup reaches original D3DX9 initialization
+
+On the physical M4, DLL initialization now advances beyond FMOD and enters the
+original D3DX9 helper. The reached DisableThreadLibraryCalls calls update real
+per-module notification policy. Its handle checks, repeat behavior and module
+isolation are unit-tested. Process initialization/teardown remain enabled; guest
+thread creation and native delivery/suppression comparison remain unsupported.
+Process DLL static TLS is rejected before entry, so the gateway cannot claim
+success for an active-static-TLS module. The next measured unsupported operation
+is **msvcrt.dll!malloc** during D3DX9 initialization. **Game EXE entry has not run**;
+the existing unpacked local dependency caveat still applies. No game files or
+derived inventories are committed.
+
+The [native startup job at `9ef66ab`](https://github.com/daeken/Alkyhol/actions/runs/42486833009)
+completed the calendar observer and independent SDK layout check. The raw report
+is frozen at `pe/reference/pe32-calendar-filetime-windows-v1.json`, SHA-256
+`472812221c1704d1bdb0727fb5becc562ffba9235dc7c6ba5c8240d8c1237fa5`.
+The identical owned, non-game PE is `pe/reference/pe32-calendar-filetime-v1.exe`,
+SHA-256 `e1383422f2651afcbd699732bb9dea658e22d370315938127b6055b0204d890e`.
+All **444 bytes** agree on the physical M4 at normal and forced placement:
+epochs, Gregorian centuries/leap day, submillisecond behavior, maximum positive
+signed FILETIME, and both invalid high-bit patterns. Native invalid patterns
+return zero/error 87 and leave all 16 SYSTEMTIME bytes untouched; the Rust gateway
+now does the same. Inputs and surrounding guards are preserved.
+
+That native job subsequently **failed** the startup clock/atomic PE with status
+0xC000001D and no output. This is not successful native clock evidence. The failed
+raw report and original inputs remain local. A too-short two-million-iteration
+tick polling budget is a hypothesis, not an isolated fault observation. The
+owned probe now retains a finite 100-million-iteration ceiling and the same
+20-second parent deadline, and emits its accumulated words plus a failure-stage
+tag before either explicit diagnostic trap. All PID, rate, boot-time, error,
+guard and atomic acceptance checks are unchanged. The revised PE passes on the
+physical M4; its native execution remains pending. No frozen baseline is altered
+to accept the failed run.
+
+This milestone passes 186 PE Rust tests/checks including doctests on the physical
+M4's x86_64 Rosetta target, 361 Python tests, project Clippy with warnings denied,
+formatting, the exact native calendar PE at normal/forced placement and the revised
+live clock/atomic PE. The actual DAO profile repeats the D3DX9 malloc stop.
+
+## Original CRT completes; dependency startup reaches FMOD (earlier milestone)
 
 On the physical M4, original `msvcr80.dll` initialization now returns successfully.
 It reads actual assembly-manifest metadata, executes local/calendar FILETIME

@@ -62,7 +62,7 @@ unsafe extern "C" {
 }
 const PAGE: usize = 4096;
 const STACK: usize = 1024 * 1024;
-const APIS: [(&str, u16); 77] = [
+const APIS: [(&str, u16); 78] = [
     ("GetLastError", 0),
     ("SetLastError", 4),
     ("GetStdHandle", 4),
@@ -140,6 +140,7 @@ const APIS: [(&str, u16); 77] = [
     ("QueryPerformanceFrequency", 4),
     ("InterlockedCompareExchange", 12),
     ("InterlockedExchange", 8),
+    ("DisableThreadLibraryCalls", 4),
 ];
 const EXIT_API: u32 = 14;
 // Win32 promises a reversible process-specific representation, not a published
@@ -358,6 +359,9 @@ struct Module32 {
     size: usize,
     exports: Option<ExportTable>,
     origin: Option<module_path32::Origin>,
+    // Process images reject DLL static TLS before mapping. Future guest thread
+    // dispatch must consult this per-module policy; process notifications remain.
+    thread_notifications: bool,
 }
 struct Cpu32 {
     stack: LowMapping,
@@ -911,6 +915,21 @@ impl<'a> LoadedImage32<'a> {
             }
             Ok(unsafe { (at as usize as *const u8).read() })
         })
+    }
+    fn disable_thread_notifications(&self, module: u32) -> Result<()> {
+        if module == 0 || module == self.cpu.executable.get() {
+            return Err("DisableThreadLibraryCalls requires an owned DLL module handle".into());
+        }
+        let mut modules = self.cpu.modules.borrow_mut();
+        let target = modules
+            .iter_mut()
+            .find(|m| m.base == module)
+            .ok_or("DisableThreadLibraryCalls target is not a registered process DLL")?;
+        // Every process DLL's static-TLS directory is rejected before entry.
+        // This changes the owned loader policy, including repeated calls, while
+        // retaining PROCESS_ATTACH/DETACH. Guest thread creation remains rejected.
+        target.thread_notifications = false;
+        Ok(())
     }
     fn module_handle(&self, address: u32, wide: bool) -> Result<Option<u32>> {
         if self.cpu.modules.borrow().is_empty() {
@@ -1512,6 +1531,12 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
                 1
             }
             75 | 76 => sync32::dispatch(image, id, &args),
+            77 => {
+                image
+                    .disable_thread_notifications(args[0])
+                    .unwrap_or_else(|e| unsupported(&e));
+                1
+            }
             _ => unreachable!(),
         }
     })

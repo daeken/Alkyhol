@@ -9,6 +9,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
 import observe_pe32_local_filetime as utc
 import observe_pe32_startup_clock as clock
+import observe_pe32_calendar_filetime as calendar
 
 
 class LocalFiletimeProtocol(unittest.TestCase):
@@ -44,6 +45,37 @@ class LocalFiletimeProtocol(unittest.TestCase):
                 value['records'][row][field] ^= 1
                 with self.subTest(row=row, field=field), self.assertRaises(ValueError):
                     utc.compare(value)
+
+
+class CalendarProtocol(unittest.TestCase):
+    def test_frozen_literal_and_native_positive_and_invalid_boundaries(self):
+        report = calendar.frozen()
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)
+            calendar.fixture(path)
+            self.assertEqual(calendar.verify(path), report['inputs'])
+        calendar.compare(report['records'])
+        self.assertEqual(report['records'][6]['fields'], [30828, 9, 4, 14, 2, 48, 5, 477])
+        for record in report['records'][7:]:
+            self.assertEqual(record['words'][3:5], [0, 87])
+            self.assertEqual(record['fields'], [0xa5a5] * 8)
+
+    def test_truncation_guard_damage_and_changed_fields_cannot_pass(self):
+        report = calendar.frozen()
+        raw = bytes.fromhex(report['stdout_hex'])
+        for data in [b'', raw[:-1], raw + b'\0']:
+            with self.assertRaises(ValueError):
+                calendar.decode(data)
+        data = bytearray(raw)
+        data[12 + 5 * 4] ^= 1
+        with self.assertRaises(ValueError):
+            calendar.decode(data)
+        for index in range(9):
+            for key, field in [('words', 3), ('words', 4), ('words', 7), ('fields', 0), ('fields', 7)]:
+                records = copy.deepcopy(report['records'])
+                records[index][key][field] ^= 1
+                with self.subTest(index=index, key=key, field=field), self.assertRaises(ValueError):
+                    calendar.compare(records)
 
 
 class StartupClockProtocol(unittest.TestCase):
