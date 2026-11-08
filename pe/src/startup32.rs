@@ -660,6 +660,39 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
             }
             1
         }
+        50 => {
+            if args[0] != 0 || ![0x100, 0x200].contains(&args[1]) {
+                unsupported("PE32 LCMapStringW locale/flags outside measured case-mapping profile");
+            }
+            let capacity = args[5] as i32;
+            if capacity < 0 || (capacity > 0 && (args[4] == 0 || !args[4].is_multiple_of(2))) {
+                return fail(87);
+            }
+            if capacity as usize > LIMIT / 2 {
+                return fail(50);
+            }
+            let count = if (args[3] as i32) < 0 {
+                -1
+            } else {
+                args[3] as i32
+            };
+            let Some(units) = read_units::<u16>(image, args[2], count) else {
+                return 0;
+            };
+            let result = super::nls32::case_map(&units, args[1] == 0x200)
+                .unwrap_or_else(|e| unsupported(&e));
+            if capacity == 0 {
+                return result.len() as u32;
+            }
+            checked(image, args[4], capacity as usize * 2, true);
+            if (capacity as usize) < result.len() {
+                return fail(122);
+            }
+            unsafe {
+                ptr::copy_nonoverlapping(result.as_ptr(), args[4] as *mut u16, result.len());
+            }
+            result.len() as u32
+        }
         _ => unreachable!(),
     }
 }

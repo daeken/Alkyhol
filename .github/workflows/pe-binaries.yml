@@ -34,7 +34,7 @@ jobs:
         with:
           name: pe32-startup-microtests
           path: local/pe/startup-microtests
-      - name: Check identical DAO startup microtests and capture the next NLS blocker natively
+      - name: Check identical DAO startup microtests against frozen native captures
         run: python tools/check_pe32_startup.py --native
       - uses: actions/upload-artifact@v4
         if: always()

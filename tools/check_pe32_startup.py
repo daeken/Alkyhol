@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Small host microtests for guarded function/data imports and low PE32 memory."""
+"""Targeted PE32 microtests for APIs reached by actual DAO CRT startup."""
 import argparse
 import json
 import hashlib
@@ -30,7 +30,13 @@ def check(output,native=False):
         obj=output/f'nls{mode}.obj'
         subprocess.run([clang,'--target=i686-pc-windows-msvc','-O1','-ffreestanding','-fno-builtin','-fno-stack-protector','-fno-unwind-tables','-fno-asynchronous-unwind-tables','-Wall','-Wextra','-Werror',f'-DMODE={mode}','-c',str(source/'nls.c'),'-o',str(obj)],check=True)
         subprocess.run([lld,'-flavor','link','/nodefaultlib','/subsystem:console','/machine:x86','/dynamicbase','/fixed:no','/timestamp:0','/safeseh:no','/entry:entry',str(obj),str(nls),*[f'/alternatename:__imp__{name}@{size}=__imp__{name}' for name,size in [('GetStdHandle',4),('WriteFile',20),('GetLastError',0),('SetLastError',4),('GetStringTypeW',16),('MultiByteToWideChar',24),('LCMapStringW',24)]],'/out:'+str(output/f'nls{mode}.exe')],check=True)
-    inputs={'files':{name:hashlib.sha256((output/name).read_bytes()).hexdigest() for name in input_files()},'sources':{str(p.relative_to(ROOT)):hashlib.sha256(p.read_bytes()).hexdigest() for p in [source/n for n in ['guard.c','kernel32.def','service.def','nls.c','nls.def']]}}
+    lib=output/'lcmap.lib'
+    subprocess.run([lld,'-flavor','link','/lib','/machine:x86','/def:'+str(source/'lcmap.def'),'/out:'+str(lib)],check=True)
+    for mode in range(5):
+        obj=output/f'map{mode}.obj'
+        subprocess.run([clang,'--target=i686-pc-windows-msvc','-O1','-ffreestanding','-fno-builtin','-fno-stack-protector','-fno-unwind-tables','-fno-asynchronous-unwind-tables','-Wall','-Wextra','-Werror',f'-DMODE={mode}','-c',str(source/'lcmap.c'),'-o',str(obj)],check=True)
+        subprocess.run([lld,'-flavor','link','/nodefaultlib','/subsystem:console','/machine:x86','/dynamicbase','/fixed:no','/timestamp:0','/safeseh:no','/entry:entry',str(obj),str(lib),*[f'/alternatename:__imp__{name}@{size}=__imp__{name}' for name,size in [('GetStdHandle',4),('WriteFile',20),('GetLastError',0),('LCMapStringW',24),('InterlockedDecrement',4),('IsProcessorFeaturePresent',4)]],'/out:'+str(output/f'map{mode}.exe')],check=True)
+    inputs={'files':{name:hashlib.sha256((output/name).read_bytes()).hexdigest() for name in input_files()},'sources':{str(p.relative_to(ROOT)):hashlib.sha256(p.read_bytes()).hexdigest() for p in [source/n for n in ['guard.c','kernel32.def','service.def','nls.c','nls.def','lcmap.c','lcmap.def']]}}
     (output/'microtest-inputs.json').write_text(json.dumps(inputs,indent=2)+'\n')
     cargo=shutil.which('cargo') or str(Path.home()/'.cargo/bin/cargo');rustc=shutil.which('rustc') or str(Path.home()/'.cargo/bin/rustc');target='x86_64-apple-darwin'
     subprocess.run([cargo,'build','--manifest-path',str(ROOT/'pe/Cargo.toml'),'--target',target,'--locked','--offline'],check=True)
@@ -55,11 +61,17 @@ def check(output,native=False):
         if r.returncode!=(0 if mode==0 else 78) or r.stdout!=expected:raise ValueError(f'NLS host microtest {mode}: {r.returncode}, {r.stdout.hex()}, {r.stderr!r}')
         if mode and b'unsupported' not in r.stderr and b'outside measured repertoire' not in r.stderr:raise ValueError('missing explicit NLS restriction')
         observations.append({'case':f'nls{mode}','status':r.returncode,'stdout_hex':r.stdout.hex(),'stderr_hex':r.stderr.hex()})
+    for name,expected in [('nls3.exe',lcmap_expected())]+[(f'map{mode}.exe',map_expected() if mode==0 else struct.pack('<I',0x53543332)) for mode in range(5)]:
+        r=subprocess.run([str(probe),str(output/name)],input=b'',capture_output=True,timeout=15)
+        status=78 if name.startswith('map') and name!='map0.exe' else 0
+        if r.returncode!=status or r.stdout!=expected:raise ValueError(f'LCMap host microtest {name}: {r.returncode}, {r.stdout.hex()}, {r.stderr!r}')
+        if status and b'unsupported' not in r.stderr and b'outside measured repertoire' not in r.stderr:raise ValueError('missing explicit mapping/feature restriction')
+        observations.append({'case':name,'status':r.returncode,'stdout_hex':r.stdout.hex(),'stderr_hex':r.stderr.hex()})
     (output/'microtest-results.json').write_text(json.dumps({'backend':'Alkyhol PE32 host instrumentation microtests','inputs':verify(output),'observations':observations},indent=2)+'\n')
-    print('Passed 16 host startup microtests, including frozen native CTYPE1; built LCMap observer only')
+    print('Passed 22 host startup cases, including frozen native classification and complete case-mapping captures')
 
 def input_files():
-    return {f'case{m}.exe' for m in [0,1,3,4,5,6,7,8,9,10,11,12,13]}|{f'nls{m}.exe' for m in range(4)}
+    return {f'case{m}.exe' for m in [0,1,3,4,5,6,7,8,9,10,11,12,13]}|{f'nls{m}.exe' for m in range(4)}|{f'map{m}.exe' for m in range(5)}
 
 def frozen():
     raw=(ROOT/'pe/reference/pe32-startup-windows-v1.json').read_bytes()
@@ -68,15 +80,26 @@ def frozen():
     if value['backend']!='native Windows PE32 targeted startup microtests':raise ValueError('wrong frozen native backend')
     return value
 
+def frozen_lcmap():
+    raw=(ROOT/'pe/reference/pe32-lcmap-windows-v1.json').read_bytes()
+    if hashlib.sha256(raw).hexdigest()!='e22977b5e30c49163aeeb8577f88d7ebc4bb6cc0919809c729c5f025b959635a':raise ValueError('changed frozen native LCMap report')
+    return json.loads(raw)
+
+def lcmap_expected():
+    return bytes.fromhex(frozen_lcmap()['observations'][0]['stdout_hex'])
+
+def map_expected():
+    return struct.pack('<24I',0x4c434d33,4,4,0x49,0xdf,0x191,0,0xbeef,0,122,3,0x61,0x62,0,1,1,1,4,1,1,1,1,1,1)
+
 def nls_expected():
     return struct.pack('<12I',0x4e4c5332,1,0x382,0x381,0x220,0x268,0x382,0xbeef,1,0x381,0x220,0xbeef)
 
 def verify(directory):
     inputs=json.loads((directory/'microtest-inputs.json').read_text(encoding='utf-8'))
-    if set(inputs['files'])!=input_files() or set(inputs['sources'])!={'pe/fixtures/pe32-startup/'+n for n in ['guard.c','kernel32.def','service.def','nls.c','nls.def']}:raise ValueError('changed microtest input roster')
-    previous=frozen()
-    for kind in ['files','sources']:
-        if any(inputs[kind].get(name)!=digest for name,digest in previous['inputs'][kind].items()):raise ValueError('changed frozen native startup inputs')
+    if set(inputs['files'])!=input_files() or set(inputs['sources'])!={'pe/fixtures/pe32-startup/'+n for n in ['guard.c','kernel32.def','service.def','nls.c','nls.def','lcmap.c','lcmap.def']}:raise ValueError('changed microtest input roster')
+    for previous in [frozen(),frozen_lcmap()]:
+        for kind in ['files','sources']:
+            if any(inputs[kind].get(name)!=digest for name,digest in previous['inputs'][kind].items()):raise ValueError('changed frozen native startup inputs')
     for name,digest in inputs['files'].items():
         if hashlib.sha256((directory/name).read_bytes()).hexdigest()!=digest:raise ValueError('changed microtest executable')
     for name,digest in inputs['sources'].items():
@@ -101,22 +124,6 @@ def check_native(directory):
     observations=[]
     environment=dict(os.environ,ALKYHOL_STARTUP_MICRO="active",ALKYHOL_STARTUP_UNICODE="λ🌸",ALKYHOL_STARTUP_EMPTY="");environment.pop("ALKYHOL_STARTUP_MICRO_ABSENT",None)
     verify(directory)
-    # Native-only capture for LCMapStringW, the next actual original CRT blocker.
-    r=subprocess.run([str((directory/'nls3.exe').resolve())],capture_output=True,timeout=15)
-    if r.returncode!=0 or len(r.stdout)<20 or r.stderr:raise ValueError('native LCMap observation failed')
-    magic,lo,up,le,ue=struct.unpack('<5I',r.stdout[:20])
-    if magic!=0x4c434d31 or max(lo,up)>512:raise ValueError('invalid native LCMap batch capture')
-    at=20+2*(lo+up)
-    if r.stdout[at:at+8]!=struct.pack('<2I',0x4c434d32,256):raise ValueError('missing native LCMap per-unit capture')
-    at+=8
-    for _ in range(256):
-        if at+20>len(r.stdout):raise ValueError('truncated LCMap row')
-        unit,lo,up,le,ue=struct.unpack('<5I',r.stdout[at:at+20]);at+=20
-        if unit>65535 or max(lo,up)>8:raise ValueError('invalid LCMap row widths')
-        at+=2*(lo+up)
-    if at!=len(r.stdout):raise ValueError('truncated or extra LCMap observations')
-    native_only=[{'case':'nls3','status':r.returncode,'stdout_hex':r.stdout.hex(),'stderr_hex':r.stderr.hex()}]
-    (directory/'native-lcmap-observation.json').write_text(json.dumps({'backend':'native Windows LCMapStringW observation only','inputs':verify(directory),'observations':native_only},indent=2)+'\n')
     for mode in [3,4,5,6,9,10,11,12,13]:
         r=subprocess.run([str((directory/f'case{mode}.exe').resolve())],env=environment,input=b'',capture_output=True,timeout=15)
         if r.returncode!=0 or r.stdout!=expected_positive(mode) or r.stderr:raise ValueError(f'native startup microtest {mode}: {r.returncode}, {r.stdout.hex()}, {r.stderr!r}')
@@ -124,8 +131,12 @@ def check_native(directory):
     r=subprocess.run([str((directory/'nls0.exe').resolve())],capture_output=True,timeout=15)
     if r.returncode!=0 or r.stdout!=nls_expected() or r.stderr:raise ValueError(f'native NLS order/termination microtest failed: {r.returncode}, {r.stdout.hex()}, {r.stderr!r}')
     observations.append({'case':'nls0','status':r.returncode,'stdout_hex':r.stdout.hex(),'stderr_hex':r.stderr.hex()})
-    (directory/'native-microtest-results.json').write_text(json.dumps({'backend':'native Windows PE32 targeted startup microtests','inputs':verify(directory),'observations':observations,'native_only_observations':native_only},indent=2)+'\n')
-    print('Passed 10 identical-PE native startup cases; captured separate native LCMap observation')
+    for name,expected in [('nls3.exe',lcmap_expected()),('map0.exe',map_expected())]:
+        r=subprocess.run([str((directory/name).resolve())],capture_output=True,timeout=15)
+        if r.returncode!=0 or r.stdout!=expected or r.stderr:raise ValueError(f'native LCMap case {name}: {r.returncode}, {r.stdout.hex()}, {r.stderr!r}')
+        observations.append({'case':name,'status':r.returncode,'stdout_hex':r.stdout.hex(),'stderr_hex':r.stderr.hex()})
+    (directory/'native-microtest-results.json').write_text(json.dumps({'backend':'native Windows PE32 targeted startup microtests','inputs':verify(directory),'observations':observations,'native_only_observations':[]},indent=2)+'\n')
+    print('Passed 12 identical-PE native startup cases, preserving both frozen native captures')
 
 if __name__=='__main__':
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('--output',type=Path,default=ROOT/'local/pe/startup-microtests');p.add_argument('--native',action='store_true');a=p.parse_args();check(a.output,a.native)

@@ -54,7 +54,7 @@ unsafe extern "C" {
 }
 const PAGE: usize = 4096;
 const STACK: usize = 1024 * 1024;
-const APIS: [(&str, u16); 50] = [
+const APIS: [(&str, u16); 53] = [
     ("GetLastError", 0),
     ("SetLastError", 4),
     ("GetStdHandle", 4),
@@ -105,6 +105,9 @@ const APIS: [(&str, u16); 50] = [
     ("IsValidCodePage", 4),
     ("GetCPInfo", 8),
     ("GetStringTypeW", 16),
+    ("LCMapStringW", 24),
+    ("InterlockedDecrement", 4),
+    ("IsProcessorFeaturePresent", 4),
 ];
 const EXIT_API: u32 = 14;
 // Win32 promises a reversible process-specific representation, not a published
@@ -1401,6 +1404,22 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
             47 => u32::from(matches!(args[0], ansi32::ACP | 65001)),
             48 => startup32::dispatch(image, id, &args),
             49 => startup32::dispatch(image, id, &args),
+            50 => startup32::dispatch(image, id, &args),
+            51 => sync32::dispatch(image, id, &args),
+            52 => {
+                let sse2 = std::arch::x86_64::__cpuid(1).edx & (1 << 26) != 0;
+                match args[0] {
+                    // The affected original Pentium cannot provide the admitted
+                    // x86-64/SSE2 domain. This is an excluded hardware erratum,
+                    // not an assertion that arbitrary floating-point code agrees.
+                    0 if sse2 => 0,
+                    10 => u32::from(sse2),
+                    _ => unsupported(&format!(
+                        "PE32 processor feature {} is unsupported",
+                        args[0]
+                    )),
+                }
+            }
             _ => unreachable!(),
         }
     })

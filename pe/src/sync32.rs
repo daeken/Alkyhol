@@ -49,14 +49,20 @@ impl Section {
 }
 pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u32 {
     let address = args[0];
-    if id == 38 {
+    if id == 38 || id == 51 {
         if !address.is_multiple_of(4) || !image.permits(address as usize, 4, true) {
             unsupported("PE32 interlocked target outside writable aligned guest storage");
         }
         let atomic = unsafe { std::sync::atomic::AtomicU32::from_ptr(address as *mut u32) };
-        return atomic
-            .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
-            .wrapping_add(1);
+        return if id == 38 {
+            atomic
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+                .wrapping_add(1)
+        } else {
+            atomic
+                .fetch_sub(1, std::sync::atomic::Ordering::SeqCst)
+                .wrapping_sub(1)
+        };
     }
     if !address.is_multiple_of(4) || !image.permits(address as usize, 24, true) {
         unsupported("PE32 critical section outside writable aligned guest storage");

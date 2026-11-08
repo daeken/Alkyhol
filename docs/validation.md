@@ -4,6 +4,43 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## DAO neutral-locale case mapping and later CRT initialization
+
+Original bundled CRT execution on the physical M4 now passes its lowercase and
+uppercase table setup, refcount decrements and processor-feature query. The next
+actual blocker is GetSystemTimeAsFileTime during later CRT initialization. The game
+EXE entry has **not run**. Original identities, raw trace/RVA details and extracted
+dependencies remain local; this is diagnostic startup, not game compatibility.
+
+At `9a51997`, all five [PE jobs](https://github.com/daeken/Alkyhol/actions/runs/42462059740)
+and all 24 [conformance jobs](https://github.com/daeken/Alkyhol/actions/runs/42462059732)
+passed. Ten positive identical-PE startup cases passed native Windows, including
+CTYPE1 order/termination edges. Its separate native-only LCMapStringW observation
+captured both complete 256-unit batch results and 256 individual lower/upper pairs
+for locale 0 and flags 0x100/0x200. Every call succeeded, every single-unit mapping
+has length one, and concatenation agrees with each independent complete batch.
+The full unmodified report is frozen at pe/reference/pe32-lcmap-windows-v1.json;
+all prior PE/source identities and both raw native reports are required unchanged.
+
+The same original observer now executes on M4 and agrees byte-for-byte with the
+entire native capture, including source units, result lengths, data and last-error
+records. The runtime applies the measured mappings to supported sequences without
+host-locale substitutions; other locales/flags/units stop explicitly. New owned PE
+edges exercise sizing, insufficient buffers, negative source lengths, in-place
+mapping, output guards and decrement wraparound. New CPU checks compare actual
+translated CPUID SSE2 availability, execute SSE2, exclude the original Pentium-only
+FDIV erratum and run the classic x87 division witness. These new edges await their
+native result; the CPU witness is not general floating-point parity evidence.
+
+Local validation passes 141 PE host tests plus 16 compile/documentation checks,
+322 Python tests, Clippy and all 22 targeted host startup cases. The existing
+independent startup/Windows jobs run these unchanged candidate PEs separately
+from historical regressions. Native full-game startup/rendering remains unmeasured.
+
+References: [LCMapStringW contract](https://learn.microsoft.com/en-us/windows/win32/api/winnls/nf-winnls-lcmapstringw),
+[processor-feature definitions](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-isprocessorfeaturepresent)
+and [measured mapping provenance](../pe/data/ctype1/README.md).
+
 ## DAO CTYPE1 classification from measured native data
 
 The physical M4 now executes the original CRT's GetStringTypeW probe and its actual

@@ -1,0 +1,8 @@
+LIBRARY KERNEL32.dll
+EXPORTS
+  GetStdHandle
+  WriteFile
+  GetLastError
+  LCMapStringW
+  InterlockedDecrement
+  IsProcessorFeaturePresent
