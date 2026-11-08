@@ -4,6 +4,22 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## Native startup checks pass at the allocator milestone; next API evidence prepared
+
+[PE execution CI at `2bab359`](https://github.com/daeken/Alkyhol/actions/runs/42503166104)
+passed all five jobs, including native Windows. The 28 heap-lock words and ten
+immediate impossible-resize-failure words now agree on hosted Rosetta execution
+and native Windows. The immediate sample confirms error 8 right after that failed
+call. The existing 64-word frozen resize record and all prior native startup
+comparisons also pass at this revision. Physical M4 evidence is recorded separately
+below; this is not game rendering or game equivalence.
+
+For the actual `GetSystemInfo` frontier, an owned observer now builds ordinary and
+large-address-aware PE32 files from the same source. It records all 36 raw structure
+bytes and actual CPUID leaves; an independent Windows SDK layout check is wired
+into CI. These native observations are pending. No GetSystemInfo backend success
+is claimed merely because the observers compile.
+
 ## Original EXE allocator startup advances to GetSystemInfo
 
 The physical M4 executes the unchanged original EXE past `HeapLock`, into its

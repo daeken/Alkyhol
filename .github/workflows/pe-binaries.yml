@@ -89,6 +89,8 @@ jobs:
         run: |
           python tools/observe_pe32_heap_lock.py
           python tools/observe_pe32_heap_lock.py --host
+      - name: Build native-only system-information evidence for the next actual DAO blocker
+        run: python tools/observe_pe32_system_info.py
       - uses: actions/upload-artifact@v4
         with:
           name: pe32-startup-microtests
@@ -146,6 +148,7 @@ jobs:
             local/pe/startup-microtests/exception-filter-host.json
             local/pe/startup-microtests/heap-lock-inputs.json
             local/pe/startup-microtests/heap-lock-host.json
+            local/pe/startup-microtests/system-info-inputs.json
             local/pe/startup-microtests/ctx-layout-empty-importer.dll
             local/pe/startup-microtests/ctx-layout-*.manifest
   native-pe32-startup:
@@ -227,6 +230,12 @@ jobs:
       - name: Observe serialized heap recursion and allocation while owned on native Windows
         if: ${{ success() || failure() }}
         run: python tools/observe_pe32_heap_lock.py --native
+      - name: Check SYSTEM_INFO layout independently against the x86 Windows SDK
+        if: ${{ success() || failure() }}
+        run: cl /nologo /c /W4 /WX /std:c++17 pe/fixtures/pe32-startup/system-info-layout.cpp /Folocal/pe/startup-microtests/system-info-layout.obj
+      - name: Observe actual ordinary and large-address-aware system information and CPUID
+        if: ${{ success() || failure() }}
+        run: python tools/observe_pe32_system_info.py --native
       - uses: actions/upload-artifact@v4
         if: always()
         with:
