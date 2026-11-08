@@ -4,6 +4,30 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## Original DAO passes directory setup and explicit mutex attributes; next is acquisition
+
+At clean runtime revision `08b94a6`, the physical M4 unchanged original EXE
+selects its real working directory, creates the next real named object using
+explicit default/non-inheritable attributes, and advances to
+**KERNEL32.dll!WaitForSingleObjectEx** with zero timeout and alertable FALSE.
+That call remains unsupported. A real ownership transition and subsequent
+release/recursive/abandonment behavior must be implemented; successful reference
+creation is not a successful wait. No menu or rendering is observed. Original
+EXE/probe hashes, private arguments and the exact launch/captures remain local;
+the fresh profile and unpacked-dependency caveats remain unchanged.
+
+The [native startup job at `08b94a6`](https://github.com/daeken/Alkyhol/actions/runs/42513321943)
+passes default-attribute identity/lifecycle comparison, the directory observer
+and all preceding native startup checks. The complete attribute record is
+`pe/reference/pe32-mutex-default-attributes-windows-v1.json`, SHA-256
+`148d0d2a8f49bce0c7b3140eaa25bceaaaf7abb209f96af28258030926ec6a4c`.
+All four literal owned PEs are selected to avoid compiler-output differences;
+the physical M4 rerun agrees with all 16 native lifecycle words on identical
+PE/source hashes. Three host exclusions retain explicit failures for inheritance,
+custom descriptors and other structure sizes. Prior frozen records are unchanged.
+All five jobs at `14c1028` pass in
+[42512731501](https://github.com/daeken/Alkyhol/actions/runs/42512731501).
+
 ## Directory comparison passes; the next measured mutex uses explicit defaults
 
 The [native startup job at `14c1028`](https://github.com/daeken/Alkyhol/actions/runs/42512731501)

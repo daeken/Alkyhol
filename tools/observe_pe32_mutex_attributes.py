@@ -12,7 +12,16 @@ def inputs(d):return {'sources':{(SOURCE/n).relative_to(ROOT).as_posix():digest(
 def verify(d):
     v=json.loads((d/'mutex-default-attributes-inputs.json').read_text())
     if v!=inputs(d):raise ValueError('mutex-attributes source/PE identity changed')
+    if v!=frozen()['inputs']:raise ValueError('mutex-attributes source/PE differs from pinned native evidence')
     return v
+def frozen():
+    path=ROOT/'pe/reference/pe32-mutex-default-attributes-windows-v1.json'
+    if digest(path)!='148d0d2a8f49bce0c7b3140eaa25bceaaaf7abb209f96af28258030926ec6a4c':raise ValueError('changed native default-attributes record')
+    r=json.loads(path.read_bytes())
+    if r['backend']!='native Windows default mutex attributes' or len(r['reports'])!=1:raise ValueError('incomplete native attributes observation')
+    row=r['reports'][0]
+    if row['case']!=0 or row['status'] or row['stderr_hex'] or decode(bytes.fromhex(row['stdout_hex']),'lifecycle')!=row['words']:raise ValueError('failed or invalid native default-attributes observation')
+    return r
 def build(d):
     d.mkdir(parents=True,exist_ok=True);clang=shutil.which('clang');lld=rust_tool('rust-lld');lib=d/'mutex-attributes.lib'
     if not clang:raise RuntimeError('open Clang is required')
@@ -20,6 +29,9 @@ def build(d):
     for mode,name in enumerate(FILES):
         obj=d/(name+'.obj');subprocess.run([clang,'--target=i686-pc-windows-msvc','-O1','-ffreestanding','-fno-builtin','-fno-stack-protector','-fno-unwind-tables','-fno-asynchronous-unwind-tables','-Wall','-Wextra','-Werror',f'-DCASE={mode}','-c',str(SOURCE/'mutex-default-attributes.c'),'-o',str(obj)],check=True)
         subprocess.run([lld,'-flavor','link','/nodefaultlib','/subsystem:console','/machine:x86','/dynamicbase','/fixed:no','/timestamp:0','/safeseh:no','/manifest:no','/entry:entry',str(obj),str(lib),*[f'/alternatename:__imp__{n}@{s}=__imp__{n}' for n,s in [('GetStdHandle',4),('WriteFile',20),('GetLastError',0),('SetLastError',4),('CreateMutexW',12),('CloseHandle',4)]],'/out:'+str(d/name)],check=True)
+        literal=ROOT/f'pe/reference/pe32-mutex-default-attributes-{mode}-v1.exe'
+        if digest(literal)!=frozen()['inputs']['files'][name]:raise ValueError('changed literal default-attributes PE')
+        shutil.copyfile(literal,d/name)
     (d/'mutex-default-attributes-inputs.json').write_text(json.dumps(inputs(d),indent=2)+'\n');verify(d)
 def execute(d,native=False):
     identity=verify(d);probe=None if native else runner(d);reports=[];path=d/('native-mutex-default-attributes.json' if native else 'mutex-default-attributes-host.json')

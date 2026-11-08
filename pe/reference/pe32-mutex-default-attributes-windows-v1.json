@@ -1,0 +1,42 @@
+{
+  "backend": "native Windows default mutex attributes",
+  "inputs": {
+    "sources": {
+      "pe/fixtures/pe32-startup/mutex-default-attributes.c": "5af36a13911c17e67fc1fea551384e1f4e4e2e3a9508fc71b435512fe44d1db2",
+      "pe/fixtures/pe32-startup/mutex-create.c": "30f8b9f3ce7a19a46762562cc70e99e20f2db3935e291534ec54469c8e5aa9f5",
+      "pe/fixtures/pe32-startup/mutex-create.def": "49fed8849bbdc5fbe3837cfbc59ce590b1a810d035c7afeed7289436b13803ea"
+    },
+    "files": {
+      "mutex-default-attributes-0.exe": "d3b710bd09ab3280b01a542c850e4496b09c67c0b163d118f80406977d90ffb0",
+      "mutex-default-attributes-1.exe": "e9659f2c92a93f98dd476d3bd42ad9a9556669bc9aa20dedd8acf50f8e4fad36",
+      "mutex-default-attributes-2.exe": "9d5411dd885efe1108f0c614f1739a0dccc721f5120c8daf93d177bf9964b2fe",
+      "mutex-default-attributes-3.exe": "dfdf7be2312f979f69a0ae0d4420069aa2f4792a534471807910597f80e9b8ae"
+    }
+  },
+  "reports": [
+    {
+      "case": 0,
+      "status": 0,
+      "stdout_hex": "3233584d04000000010000000000000001000000b7000000010000003412cefa010000003412cefa0100000000000000010000003412cefa0100000010000000",
+      "stderr_hex": "",
+      "words": [
+        1297625906,
+        4,
+        1,
+        0,
+        1,
+        183,
+        1,
+        4207809076,
+        1,
+        4207809076,
+        1,
+        0,
+        1,
+        4207809076,
+        1,
+        16
+      ]
+    }
+  ]
+}

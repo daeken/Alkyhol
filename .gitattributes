@@ -99,6 +99,11 @@ pe/reference/pe32-current-directory-windows-v1.json -text whitespace=cr-at-eol
 pe/reference/pe32-current-directory-0-v1.exe -text
 pe/reference/pe32-current-directory-1-v1.exe -text
 pe/reference/pe32-current-directory-2-v1.exe -text
+pe/reference/pe32-mutex-default-attributes-windows-v1.json -text whitespace=cr-at-eol
+pe/reference/pe32-mutex-default-attributes-0-v1.exe -text
+pe/reference/pe32-mutex-default-attributes-1-v1.exe -text
+pe/reference/pe32-mutex-default-attributes-2-v1.exe -text
+pe/reference/pe32-mutex-default-attributes-3-v1.exe -text
 pe/reference/pe32-ci-sqrt-windows-v1.json -text whitespace=cr-at-eol
 pe/reference/pe32-ci-sqrt-v1.exe -text
 pe/reference/pe32-ci-atan-windows-v1.json -text whitespace=cr-at-eol
