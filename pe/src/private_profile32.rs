@@ -12,9 +12,9 @@ fn default_value(mut units: Vec<u16>) -> Result<Vec<u16>> {
     }
     Ok(units)
 }
-fn missing(path: &str) -> Result<()> {
+fn missing(path: &str) -> Result<u32> {
     match files32::existing(path)? {
-        Err(2 | 3) => Ok(()),
+        Err(error @ (2 | 3)) => Ok(error),
         Err(error) => Err(format!(
             "private-profile I/O error {error} is outside the absent-file profile"
         )),
@@ -61,14 +61,14 @@ pub(super) fn get(image: &LoadedImage32<'_>, args: &[u32; 8]) -> u32 {
     let path = String::from_utf16(&path)
         .unwrap_or_else(|_| unsupported("private-profile filename is invalid UTF-16"));
     let path = directory32::private_profile_path(image, &path).unwrap_or_else(|e| unsupported(&e));
-    missing(&path).unwrap_or_else(|e| unsupported(&e));
+    let error = missing(&path).unwrap_or_else(|e| unsupported(&e));
     let fallback = default_value(fallback).unwrap_or_else(|e| unsupported(&e));
     let count = fallback.len().min(args[4] as usize - 1);
     unsafe {
         std::ptr::copy_nonoverlapping(fallback.as_ptr(), args[3] as *mut u16, count);
         (args[3] as *mut u16).add(count).write(0);
     }
-    alkyhol::ffi::SetLastError(2);
+    alkyhol::ffi::SetLastError(error);
     count as u32
 }
 #[cfg(test)]
@@ -93,8 +93,11 @@ mod tests {
                 .unwrap()
                 .replace('/', "\\")
         );
-        assert!(missing(&format!("{guest}\\absent.ini")).is_ok());
-        assert!(missing(&format!("{guest}\\absent\\settings.ini")).is_ok());
+        assert_eq!(missing(&format!("{guest}\\absent.ini")).unwrap(), 2);
+        assert_eq!(
+            missing(&format!("{guest}\\absent\\settings.ini")).unwrap(),
+            3
+        );
         std::fs::write(root.join("existing.ini"), b"[section]\nkey=value\n").unwrap();
         assert!(
             missing(&format!("{guest}\\existing.ini"))

@@ -156,3 +156,12 @@ pe/reference/pe32-documents-folder-4-v1.exe -text
 pe/reference/pe32-documents-folder-5-v1.exe -text
 pe/fixtures/pe32-startup/private-profile-missing.c text eol=lf
 pe/fixtures/pe32-startup/private-profile-missing.def text eol=lf
+pe/reference/pe32-private-profile-missing-windows-v1.json -text whitespace=cr-at-eol
+pe/reference/pe32-private-profile-missing-0-v1.exe -text
+pe/reference/pe32-private-profile-missing-1-v1.exe -text
+pe/reference/pe32-private-profile-missing-2-v1.exe -text
+pe/reference/pe32-private-profile-missing-3-v1.exe -text
+pe/reference/pe32-private-profile-missing-4-v1.exe -text
+pe/reference/pe32-private-profile-missing-5-v1.exe -text
+pe/reference/pe32-private-profile-missing-6-v1.exe -text
+pe/reference/pe32-private-profile-missing-7-v1.exe -text

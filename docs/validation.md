@@ -4,34 +4,55 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
-## Bounded absent-file INI reads for the reached DAO configuration call
+## Original DAO passes 49 INI queries and reaches directory creation
 
-The development diagnostic now captures all six `GetPrivateProfileStringW`
-arguments and checked input strings. The reached call uses a nonempty scalar
-section/key, an empty default, a 512-WCHAR buffer and a dot-relative leaf. That
-leaf is actually absent in the current backed directory. Private names, paths,
-original identities and this explicitly dirty discovery capture stay local.
+At clean revision `411ad55`, physical M4 executes 49 actual
+`GetPrivateProfileStringW` calls in the unchanged original EXE. All six checked
+arguments identify scalar queries, an empty default, a 512-WCHAR output and a
+dot-relative leaf. The real backed file is absent in the process-owned current
+directory, so the caller's own empty defaults are returned. Original startup
+continues to **KERNEL32.dll!CreateDirectoryW**, which remains unsupported. No
+window/menu/rendering or successful gameplay is observed. Original identities,
+private strings/locations and full captures stay local, with prior fresh-profile
+and locally unpacked dependency caveats unchanged.
+
+The owned PE executes successfully on native Windows in
+[42522573824](https://github.com/daeken/Alkyhol/actions/runs/42522573824).
+The first native comparator fails because missing-parent LastError is **3**,
+while the initial implementation/expectation used 2 for every absence. The
+untouched successful PE capture is preserved as
+`pe/reference/pe32-private-profile-missing-windows-v1.json`, SHA-256
+`b5cf4426db5fdaca66b129614614cb3f7a21b3d9002274f63ca4e4f7de0e48e8`.
+The runtime now propagates checked file absence (2) versus path absence (3).
+This parent-path correction does not affect the 49 actual dot-relative leaf
+queries above. The native workflow rerun remains pending.
+
+Physical M4 selects that run's eight literal owned PEs, with identical complete
+producer/PE hashes. **All 936 positive-observer bytes (234 DWORDs)** now agree
+with the raw native capture. Ten queries cover NULL/empty defaults, Unicode,
+leading/trailing spaces, truncation, capacity one, exact fit and missing parent;
+return counts, LastError, NUL, complete staged buffers, guards and stdcall stack
+agree. A separate native API control reads an existing owned INI value through
+its dot-relative path, independently establishing current-directory resolution;
+that control is not an implementation claim for existing-file parsing.
 
 `--private-profile-files` explicitly declares file-only guest INI state without
-registry IniFileMapping redirection. This bounded gateway verifies real absence
-before returning the caller's default. Existing contents never turn into a
-fallback: parsing remains unsupported. Absolute Z: paths and explicit dot-relative
-leaves are resolved using the real process-owned current directory. Bare-name
-Windows-directory searching, enumeration, zero-size buffers, unknown aliases,
-existing files and unmeasured trailing control whitespace stop explicitly.
+registry IniFileMapping redirection. The bounded gateway verifies real absence
+before returning a default. Existing contents never become a fallback: parsing
+remains unsupported. Absolute Z: paths and explicit dot-relative leaves use the
+real process-owned directory. Eight host-only exclusions stop explicitly:
+section/key enumeration, zero-size output, invalid storage, bare-name searching,
+existing contents, trailing control whitespace and absent profile selection.
 This implements the absent-file scalar branch of the
-[Win32 contract](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-getprivateprofilestringw),
-not a general INI parser or recovered Windows registry/profile.
+[Win32 API](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-getprivateprofilestringw),
+not a general INI parser or recovered Windows profile/registry.
 
-Physical M4 executes ten owned PE queries covering NULL/empty defaults, Unicode,
-leading/trailing spaces, truncation, capacity one, exact fit and missing parent.
-It checks return count, error 2, output bounds, NUL, guards and stdcall stack;
-eight host-only exclusions stop explicitly. Native Windows will execute the
-identical PE and independently verify dot-relative lookup using a controlled
-existing INI through its native API. Native results and the next clean original
-DAO run are pending. Local checks pass: 215 Rust PE checks including doctests,
-403 Python tests and project Clippy/formatting. All five preceding PE CI jobs
-pass on `a32dfa5` ([42522013961](https://github.com/daeken/Alkyhol/actions/runs/42522013961)).
+Local checks pass: 215 Rust PE checks including doctests before the native error
+correction, its two targeted Rust units afterward, 404 Python tests,
+project Clippy/formatting and actual identical-PE execution. Hosted startup
+passed at `411ad55`; the native comparator failure above remains visible rather
+than being described as green CI. All five preceding PE CI jobs pass on
+`a32dfa5` ([42522013961](https://github.com/daeken/Alkyhol/actions/runs/42522013961)).
 
 ## Original DAO passes its Documents query and reaches INI configuration
 

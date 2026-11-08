@@ -9,8 +9,15 @@ class MissingProfileProtocol(unittest.TestCase):
         for i,(text,size) in enumerate(zip(profile.DEFAULTS,profile.SIZES)):
             units=list(struct.unpack('<'+'H'*(len(text.encode('utf-16-le'))//2),text.encode('utf-16-le')))
             n=len(units);units+=[0]+[0x7171]*(31-n)
-            data+=struct.pack('<6I32HI',i,size,n,2,1,0x715e7a11,*units,0x715e7a11)
+            data+=struct.pack('<6I32HI',i,size,n,profile.ERRORS[i],1,0x715e7a11,*units,0x715e7a11)
         return data
+    def test_raw_native_execution_and_all_literal_pe_inputs_are_intact(self):
+        record=profile.frozen()
+        self.assertEqual(record['reports'][0]['status'],0)
+        for mode,name in enumerate(profile.FILES):
+            self.assertEqual(profile.digest(profile.ROOT/f'pe/reference/pe32-private-profile-missing-{mode}-v1.exe'),record['inputs']['files'][name])
+        for name,expected in record['inputs']['sources'].items():
+            self.assertEqual(profile.digest(profile.ROOT/name),expected)
     def test_defaults_include_unicode_null_and_truncation_boundaries(self):
         rows=profile.decode(self.report())
         self.assertEqual([r['text'] for r in rows],profile.DEFAULTS)
