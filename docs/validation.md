@@ -4,17 +4,45 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
-## PE32 executable self exports: native observation pending
+## PE32 executable self exports: native Windows and physical M4 development
 
-A new original MIT no-CRT PE32 observer queries the current executable through
-GetModuleHandleA/W(NULL) and GetProcAddress, then calls stdcall exports by resolved
-name/ordinal pointers. Its 26 raw DWORDs include module/pointer identity, named
-aliases, initialized/BSS export reads and a real BSS write, ordinal-only lookup,
-case-sensitive/missing-name and out-of-range ordinal results, plus last-error
-observations. Sources and exact executable bytes travel to native Windows; no
-game code/data is involved. Initial native execution is pending. This capture
-commit does not change Alkyhol startup gates or add host export APIs. Separate
-collector tests reject byte-length/status/stderr errors and snapshot/source drift.
+Native Windows at `272fb60` executes the original owned PE32 self-export observer
+and returns all 26 raw DWORDs. All three
+[PE jobs](https://github.com/daeken/Alkyhol/actions/runs/42434858915) and all 24
+[conformance jobs](https://github.com/daeken/Alkyhol/actions/runs/42434858901) pass
+on that capture revision, before the new Alkyhol self-export API comparison.
+The complete downloaded native report is frozen unchanged at
+`pe/reference/pe32-exports-windows-v1.json`. Exact C/.def source and executed binary
+hashes are required by default. The existing PE32 and other frozen corpora stay
+unchanged; no game source/data is included.
+
+Actual GetModuleHandleA/W(NULL) calls return the current executable image base
+without changing the probe's previous last error. GetProcAddress returns matching
+named/ordinal/alias pointers; returned stdcall function pointers execute the
+expected arithmetic, and returned initialized/BSS pointers permit real reads and
+a BSS write. An ordinal-only function is not visible by its private name. Missing/
+case-mismatched names yield NULL/error 127, while the tested below/above-range
+ordinals yield NULL/error 182. Successful queried lookups preserve last error.
+These are observed finite native results, not an exhaustive Win32 API claim.
+
+Alkyhol now supplies those three additional PE32 import gates for current-executable
+lookup and validated direct self exports. Bound ASCII names are read only through
+checked readable guest storage. Metadata must be initialized readonly non-executable
+section data without loader writes; sparse/forwarded tables and every other
+unsupported startup feature remain rejected. Named module lookup, non-self module
+handles and export queries on absent tables fail honestly. AMD64 EXE startup gates
+and the original owned PE32 bytes remain unchanged.
+
+Physical M4 development execution agrees on all 26 output words in normal and
+forced-rebase runs. Strict same-clean-revision CI/physical comparison is pending.
+The comparator requires the frozen native profile, exact inputs/sources/revision,
+raw bytes and decoded words, actual relocation and separate diagnostic contracts;
+crashes, changed results, missing references and joint input drift cannot pass.
+All 102 PE host tests/12 compiler checks, 35 portable tests, 274 Python tests and
+Clippy pass locally. Host/portable assertions additionally enforce stable metadata,
+loader-write overlap, range/string bounds, ordinal bias and remaining startup gates.
+The unchanged local game clears its export preflight and reaches a later unsupported
+startup feature before entry; no game code executed. See [PE32](pe32.md).
 
 ## PE32 certificate metadata loading: native Windows and physical M4
 

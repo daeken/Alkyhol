@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "backend": "native Windows PE32 self exports",
+  "pe_sha256": "6a9c890859d5b8eacd8a766a53aba507ec68db974706ae92f75c8f41e8d37a68",
+  "executed_pe_sha256": "6a9c890859d5b8eacd8a766a53aba507ec68db974706ae92f75c8f41e8d37a68",
+  "sources": {
+    "pe/fixtures/pe32-exports/contract.c": "a4f995ab9de4c075c8a7308b4d34bf1d9efe1a7ab4fcb8122b7d98738796423d",
+    "pe/fixtures/pe32-exports/exports.def": "4fd07ada4f30b7c2d75ca024abac94aec014b80ca06ff0f8c6b4260195a30737",
+    "pe/fixtures/pe32-exports/kernel32.def": "dc71a229b407a5b7f9e89fe8380954b0f6e4eff99d8ab9b825e7e349f80f635e"
+  },
+  "normal": {
+    "status": 0,
+    "stdout_hex": "493332450400000001000000cdab3412010000001828182701000000443322110100000001000000ca59413181563412010000002659413100000000d4c3b2a1010000007f000000010000007f00000001000000b600000001000000b6000000010000007f000000",
+    "words": [
+      1160917833,
+      4,
+      1,
+      305441741,
+      1,
+      655894552,
+      1,
+      287454020,
+      1,
+      1,
+      826366410,
+      305419905,
+      1,
+      826366246,
+      0,
+      2712847316,
+      1,
+      127,
+      1,
+      127,
+      1,
+      182,
+      1,
+      182,
+      1,
+      127
+    ],
+    "stderr_hex": ""
+  },
+  "rebased": null,
+  "revision": "272fb60b41afc394d2787a803600f7b4e8b95672",
+  "tracked_tree_clean": true
+}

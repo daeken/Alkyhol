@@ -251,3 +251,77 @@ fn certificate_pairs_are_untrusted_nonmapped_metadata_and_integrity_requests_sti
     p32(&mut bytes, section + 16, 0x800);
     assert!(Image::parse_i386(&bytes).is_err());
 }
+
+fn self_exports() -> Vec<u8> {
+    let mut b = fixture();
+    p32(&mut b, OPT + 224 + 40 + 36, 0x40000040);
+    directory(&mut b, 0, 0x2300, 0x100);
+    for (at, value) in [
+        (0x90c, 0x2370),
+        (0x910, 17),
+        (0x914, 2),
+        (0x918, 2),
+        (0x91c, 0x2340),
+        (0x920, 0x2350),
+        (0x924, 0x2360),
+        (0x940, 0x1000),
+        (0x944, 0x2100),
+        (0x950, 0x2380),
+        (0x954, 0x2390),
+    ] {
+        p32(&mut b, at, value);
+    }
+    p16(&mut b, 0x960, 1);
+    p16(&mut b, 0x962, 0);
+    b[0x970..0x97a].copy_from_slice(b"owned.exe\0");
+    b[0x980..0x985].copy_from_slice(b"Data\0");
+    b[0x990..0x99a].copy_from_slice(b"Transform\0");
+    b
+}
+
+#[test]
+fn self_exports_allow_immutable_metadata_code_and_data_without_weakening_startup_gates() {
+    let b = self_exports();
+    let image = Image::parse_i386(&b).unwrap();
+    image.check_startup().unwrap();
+    let exports = image.exports().unwrap().unwrap();
+    assert_eq!(exports.ordinal_base, 17);
+    assert_eq!(exports.entries[0].names, ["Transform"]);
+    assert_eq!(exports.entries[1].names, ["Data"]);
+    assert_eq!(
+        exports.entries[1].target,
+        alkyhol_pe::ExportTarget::Address { rva: 0x2100 }
+    );
+    let mut bad = b.clone();
+    p32(&mut bad, OPT + 224 + 40 + 36, 0xc0000040);
+    assert!(Image::parse_i386(&bad).unwrap().exports().is_ok());
+    assert!(Image::parse_i386(&bad).unwrap().check_startup().is_err());
+    for (at, value) in [
+        (0x610, 0x2340),
+        (0x914, 3),
+        (0x950, 0x1010),
+        (0x920, 0x21ff),
+    ] {
+        let mut bad = b.clone();
+        p32(&mut bad, at, value);
+        bad[0x410..0x415].copy_from_slice(b"Data\0");
+        assert!(
+            Image::parse_i386(&bad).unwrap().check_startup().is_err(),
+            "{at:x}"
+        );
+    }
+    let mut bad = b.clone();
+    p32(&mut bad, 0x800, 0x2000);
+    p16(&mut bad, 0x808, 0x3340);
+    assert!(Image::parse_i386(&bad).unwrap().check_startup().is_err());
+    let mut bad = b.clone();
+    p32(&mut bad, 0x940, 0x23b0);
+    bad[0x9b0..0x9bc].copy_from_slice(b"kernel32.X\0\0");
+    assert!(Image::parse_i386(&bad).unwrap().exports().is_ok());
+    assert!(Image::parse_i386(&bad).unwrap().check_startup().is_err());
+    for index in [3, 7, 8, 9, 10, 11, 13, 14, 15] {
+        let mut bad = b.clone();
+        directory(&mut bad, index, 0x2100, 4);
+        assert!(Image::parse_i386(&bad).unwrap().check_startup().is_err());
+    }
+}

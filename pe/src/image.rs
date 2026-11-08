@@ -485,6 +485,9 @@ impl<'a> Image<'a> {
     /// unsorted/duplicate names, named holes and more than 65536 slots/names fail.
     /// A forwarder's entire ASCII string must lie inside the export directory.
     pub fn exports(&self) -> Result<Option<ExportTable>> {
+        self.export_table(false)
+    }
+    fn export_table(&self, stable_i386: bool) -> Result<Option<ExportTable>> {
         let (rva, length) = self.directories[0];
         if length == 0 {
             return Ok(None);
@@ -492,7 +495,52 @@ impl<'a> Image<'a> {
         if length < 40 {
             return Err("truncated export directory".into());
         }
-        let directory = self.file_range(rva, 40)?;
+        let mut writes = if stable_i386 {
+            self.relocations()?
+                .into_iter()
+                .chain(self.imports()?.into_iter().map(|i| i.iat))
+                .collect::<Vec<_>>()
+        } else {
+            Vec::new()
+        };
+        writes.sort_unstable();
+        let read = |address: usize, len: usize| -> Result<&'a [u8]> {
+            let bytes = self.file_range(address, len)?;
+            if stable_i386 {
+                let end = address.checked_add(len).ok_or("export metadata overflow")?;
+                let first = writes.partition_point(|&w| w + 4 <= address);
+                if !self.sections.iter().any(|s| {
+                    address >= s.rva
+                        && end <= s.rva + s.raw_size
+                        && s.rights & 0xe0000000 == 0x40000000
+                }) || writes.get(first).is_some_and(|&w| w < end)
+                {
+                    return Err(
+                        "PE32 self-export metadata must be readonly and free of loader writes"
+                            .into(),
+                    );
+                }
+            }
+            Ok(bytes)
+        };
+        let string = |address: usize| -> Result<String> {
+            let mut text = Vec::new();
+            for i in 0..4096 {
+                let byte = read(address.checked_add(i).ok_or("export name overflow")?, 1)?[0];
+                if byte == 0 {
+                    if text.is_empty() {
+                        return Err("empty export name".into());
+                    }
+                    return String::from_utf8(text).map_err(|_| "non-UTF8 export name".into());
+                }
+                if !byte.is_ascii() {
+                    return Err("non-ASCII export name".into());
+                }
+                text.push(byte);
+            }
+            Err("unterminated export name".into())
+        };
+        let directory = read(rva, 40)?;
         if u32_at(directory, 0)? != 0 {
             return Err("nonzero reserved export flags".into());
         }
@@ -500,7 +548,7 @@ impl<'a> Image<'a> {
         if name_rva == 0 {
             return Err("missing DLL export name".into());
         }
-        let dll_name = self.string(name_rva)?;
+        let dll_name = string(name_rva)?;
         let ordinal_base = u32_at(directory, 16)?;
         let count = u32_at(directory, 20)? as usize;
         let names_count = u32_at(directory, 24)? as usize;
@@ -517,7 +565,7 @@ impl<'a> Image<'a> {
             if address == 0 {
                 return Err("missing export address table".into());
             }
-            self.file_range(address, count * 4)?
+            read(address, count * 4)?
         };
         let mut names: Vec<Vec<String>> = vec![Vec::new(); count];
         if names_count != 0 {
@@ -526,11 +574,11 @@ impl<'a> Image<'a> {
             if names_rva == 0 || ordinals_rva == 0 {
                 return Err("missing export name/ordinal table".into());
             }
-            let pointers = self.file_range(names_rva, names_count * 4)?;
-            let ordinals = self.file_range(ordinals_rva, names_count * 2)?;
+            let pointers = read(names_rva, names_count * 4)?;
+            let ordinals = read(ordinals_rva, names_count * 2)?;
             let mut previous: Option<String> = None;
             for i in 0..names_count {
-                let name = self.string(u32_at(pointers, i * 4)? as usize)?;
+                let name = string(u32_at(pointers, i * 4)? as usize)?;
                 if previous.as_ref().is_some_and(|p| p >= &name) {
                     return Err("export names must be unique and lexically sorted".into());
                 }
@@ -553,7 +601,7 @@ impl<'a> Image<'a> {
                 let mut text = Vec::new();
                 let mut terminated = false;
                 for offset in 0..max {
-                    let byte = self.file_range(address + offset, 1)?[0];
+                    let byte = read(address + offset, 1)?[0];
                     if byte == 0 {
                         terminated = true;
                         break;
@@ -583,6 +631,14 @@ impl<'a> Image<'a> {
                 names,
                 target,
             });
+        }
+        if stable_i386
+            && (entries.len() != count
+                || entries
+                    .iter()
+                    .any(|e| matches!(e.target, ExportTarget::Forwarder(_))))
+        {
+            return Err("PE32 sparse/forwarded self exports are unsupported".into());
         }
         Ok(Some(ExportTable {
             dll_name,
@@ -699,7 +755,10 @@ impl<'a> Image<'a> {
             return Err("DLL image requires the explicit isolated library API".into());
         }
         if self.directories[0].1 != 0 {
-            return Err("unsupported startup feature: exports".into());
+            if !self.i386 {
+                return Err("unsupported startup feature: exports".into());
+            }
+            self.export_table(true)?;
         }
         self.check_auxiliary_startup()
     }

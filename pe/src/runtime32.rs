@@ -1,6 +1,6 @@
 //! Experimental PE32 integer/stdcall path in a 64-bit Rosetta host.
 //! No Windows FS/TEB, CRT, DLL loading, callbacks, SEH or graphics ABI yet.
-use crate::{Image, ImportSymbol, ProcessContext, Result};
+use crate::{ExportTable, ExportTarget, Image, ImportSymbol, ProcessContext, Result};
 use std::{cell::Cell, ffi::c_void, marker::PhantomData, ptr, sync::OnceLock};
 std::arch::global_asm!(include_str!("transition32.S"), options(att_syntax));
 unsafe extern "C" {
@@ -24,11 +24,14 @@ unsafe extern "C" {
 }
 const PAGE: usize = 4096;
 const STACK: usize = 1024 * 1024;
-const APIS: [(&str, u16); 4] = [
+const APIS: [(&str, u16); 7] = [
     ("GetLastError", 0),
     ("SetLastError", 4),
     ("GetStdHandle", 4),
     ("WriteFile", 20),
+    ("GetModuleHandleA", 4),
+    ("GetModuleHandleW", 4),
+    ("GetProcAddress", 8),
 ];
 static SELECTORS: OnceLock<Result<(u16, u16)>> = OnceLock::new();
 fn selectors() -> Result<(u16, u16)> {
@@ -135,7 +138,8 @@ fn unsupported(reason: &str) -> ! {
 /// # Ok(()) }
 /// ```
 pub struct LoadedImage32<'a> {
-    _image: LowMapping,
+    image: LowMapping,
+    exports: Option<ExportTable>,
     gates: LowMapping,
     stack: LowMapping,
     entry: u32,
@@ -295,7 +299,8 @@ impl<'a> LoadedImage32<'a> {
         };
         let entry = image.base as u32 + parsed.entry as u32;
         Ok(Self {
-            _image: image,
+            image,
+            exports: parsed.exports()?,
             gates,
             stack,
             entry,
@@ -323,6 +328,43 @@ impl<'a> LoadedImage32<'a> {
         self.regions
             .iter()
             .any(|&(first, last, rights)| rights & mask != 0 && address >= first && end <= last)
+    }
+    fn export_name(&self, address: u32) -> Result<String> {
+        query_name(address, |at| {
+            if !self.permits(at as usize, 1, false) {
+                return Err("export query name outside readable guest storage".into());
+            }
+            Ok(unsafe { (at as usize as *const u8).read() })
+        })
+    }
+    fn export_address(&self, module: u32, symbol: u32) -> Result<Option<u32>> {
+        if module != self.image.base as u32 {
+            return Err("GetProcAddress requires the current PE32 executable module".into());
+        }
+        if self.exports.is_none() {
+            return Err("GetProcAddress without a PE32 export table is unsupported".into());
+        }
+        let name = if symbol > u16::MAX as u32 {
+            Some(self.export_name(symbol)?)
+        } else {
+            None
+        };
+        let entry = self.exports.as_ref().and_then(|table| {
+            table.entries.iter().find(|e| match &name {
+                Some(n) => e.names.contains(n),
+                None => e.ordinal == symbol,
+            })
+        });
+        match entry.map(|e| &e.target) {
+            None => Ok(None),
+            Some(ExportTarget::Address { rva }) => (self.image.base as u32)
+                .checked_add(*rva as u32)
+                .map(Some)
+                .ok_or_else(|| "export address overflow".into()),
+            Some(ExportTarget::Forwarder(_)) => {
+                Err("PE32 export forwarders are unsupported".into())
+            }
+        }
     }
     /// Execute trusted i386 code and return its DWORD result to the host.
     ///
@@ -353,6 +395,26 @@ impl<'a> LoadedImage32<'a> {
 // Keep the process borrow live through field destruction, including implicit drop.
 impl Drop for LoadedImage32<'_> {
     fn drop(&mut self) {}
+}
+fn query_name(address: u32, mut read: impl FnMut(u32) -> Result<u8>) -> Result<String> {
+    let mut text = Vec::new();
+    for offset in 0..4096u32 {
+        let at = address
+            .checked_add(offset)
+            .ok_or("export query pointer overflow")?;
+        let byte = read(at)?;
+        if byte == 0 {
+            if text.is_empty() {
+                return Err("empty export query name is unsupported".into());
+            }
+            return String::from_utf8(text).map_err(|_| "invalid export query name".into());
+        }
+        if !byte.is_ascii() {
+            return Err("non-ASCII export query is unsupported".into());
+        }
+        text.push(byte);
+    }
+    Err("export query exceeds 4096-byte bound".into())
 }
 extern "C" fn dispatch(id: u32, arguments: *const u32) -> u32 {
     ACTIVE.with(|slot| {
@@ -429,6 +491,22 @@ extern "C" fn dispatch(id: u32, arguments: *const u32) -> u32 {
                     ) as u32
                 }
             }
+            4 | 5 => {
+                if args[0] != 0 {
+                    unsupported("named PE32 module lookup is unsupported");
+                }
+                image.image.base as u32
+            }
+            6 => match image.export_address(args[0], args[1]) {
+                Ok(Some(address)) => address,
+                Ok(None) => {
+                    // Native PE32 distinguishes absent names from out-of-range
+                    // ordinals (ERROR_PROC_NOT_FOUND / ERROR_INVALID_ORDINAL).
+                    alkyhol::ffi::SetLastError(if args[1] <= u16::MAX as u32 { 182 } else { 127 });
+                    0
+                }
+                Err(error) => unsupported(&error),
+            },
             _ => unreachable!(),
         }
     })
@@ -437,15 +515,15 @@ extern "C" fn dispatch(id: u32, arguments: *const u32) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[test]
-    fn buffer_validation_obeys_actual_section_permissions_stack_bounds_and_overflow() {
-        // No mapping is dereferenced or dropped: this is a pure address-range
-        // contract assertion, separate from actual Rosetta execution tests.
-        let image = std::mem::ManuallyDrop::new(LoadedImage32 {
-            _image: LowMapping {
+    // No mapping is dereferenced or dropped: pure address/metadata assertions,
+    // separate from the actual unchanged-PE execution probe.
+    fn layout() -> std::mem::ManuallyDrop<LoadedImage32<'static>> {
+        std::mem::ManuallyDrop::new(LoadedImage32 {
+            image: LowMapping {
                 base: ptr::null_mut(),
                 len: 0,
             },
+            exports: None,
             gates: LowMapping {
                 base: ptr::null_mut(),
                 len: 0,
@@ -464,7 +542,11 @@ mod tests {
                 (0x200000, 0x201000, 0xc0000000),
             ],
             _process: PhantomData,
-        });
+        })
+    }
+    #[test]
+    fn buffer_validation_obeys_actual_section_permissions_stack_bounds_and_overflow() {
+        let image = layout();
         assert!(image.permits(0x100000, 4096, false));
         assert!(!image.permits(0x100000, 1, true));
         assert!(image.permits(0x200000, 4096, true));
@@ -475,5 +557,78 @@ mod tests {
         assert!(image.permits(0x401000, STACK, true));
         assert!(!image.permits(0x401000, STACK + 1, true));
         assert!(!image.permits(usize::MAX - 1, 4, false));
+    }
+    #[test]
+    fn export_query_names_are_owned_bounded_ascii_and_never_read_after_failure() {
+        assert_eq!(
+            query_name(100, |a| Ok(b"Data\0"[(a - 100) as usize])).unwrap(),
+            "Data"
+        );
+        for data in [&b"\0"[..], &b"\xff\0"[..]] {
+            assert!(query_name(0, |a| Ok(data[a as usize])).is_err());
+        }
+        let mut calls = 0;
+        assert!(
+            query_name(0, |_| {
+                calls += 1;
+                Ok(b'X')
+            })
+            .is_err()
+        );
+        assert_eq!(calls, 4096);
+        calls = 0;
+        assert!(
+            query_name(u32::MAX, |_| {
+                calls += 1;
+                Ok(b'X')
+            })
+            .is_err()
+        );
+        assert_eq!(calls, 1);
+        calls = 0;
+        assert!(
+            query_name(100, |_| {
+                calls += 1;
+                Err("unreadable".into())
+            })
+            .is_err()
+        );
+        assert_eq!(calls, 1);
+        assert!(layout().export_name(0).is_err());
+    }
+    #[test]
+    fn self_export_addresses_require_own_module_and_preserve_biased_ordinals() {
+        let mut image = layout();
+        image.image.base = 0x100000usize as *mut u8;
+        assert!(image.export_address(0x100000, 17).is_err());
+        image.exports = Some(ExportTable {
+            dll_name: "owned.exe".into(),
+            ordinal_base: 17,
+            entries: vec![
+                crate::Export {
+                    ordinal: 17,
+                    names: vec!["Direct".into(), "Alias".into()],
+                    target: ExportTarget::Address { rva: 0x1000 },
+                },
+                crate::Export {
+                    ordinal: 18,
+                    names: vec![],
+                    target: ExportTarget::Address { rva: 0x2000 },
+                },
+            ],
+        });
+        assert_eq!(image.export_address(0x100000, 17).unwrap(), Some(0x101000));
+        assert_eq!(image.export_address(0x100000, 18).unwrap(), Some(0x102000));
+        for ordinal in [0, 16, 19, 65535] {
+            assert_eq!(image.export_address(0x100000, ordinal).unwrap(), None);
+        }
+        assert!(image.export_address(0, 17).is_err());
+        assert!(image.export_address(0x100000, 0xdead0000).is_err());
+        image.exports.as_mut().unwrap().entries[0].target =
+            ExportTarget::Forwarder("kernel32.Sleep".into());
+        assert!(image.export_address(0x100000, 17).is_err());
+        image.exports.as_mut().unwrap().entries[0].target =
+            ExportTarget::Address { rva: 0xffff0000 };
+        assert!(image.export_address(0x100000, 17).is_err());
     }
 }

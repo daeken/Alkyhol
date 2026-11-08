@@ -178,6 +178,12 @@ jobs:
           path: local/pe/pe32-alkyhol.json
       - name: Build owned executable-export observer for independent native API observation
         run: python tools/build_pe32_exports.py
+      - name: Execute original PE32 self-module export calls normally and rebased
+        run: python tools/run_pe32_exports.py --fixture local/pe/pe32-exports/alkyhol_pe32_exports.exe --output local/pe/pe32-exports-alkyhol.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe32-exports-alkyhol
+          path: local/pe/pe32-exports-alkyhol.json
       - uses: actions/upload-artifact@v4
         with:
           name: pe32-exports-fixture
@@ -881,3 +887,12 @@ jobs:
           name: pe32-certificates-windows
           path: local/pe/observations
       - run: python tools/compare_pe32_certificates.py local/pe/observations/certificates-windows.json local/pe/observations/certificates-alkyhol.json
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe32-exports-alkyhol
+          path: local/pe/observations
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe32-exports-windows
+          path: local/pe/observations
+      - run: python tools/compare_pe32_exports.py local/pe/observations/pe32-exports-windows.json local/pe/observations/pe32-exports-alkyhol.json
