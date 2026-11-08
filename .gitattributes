@@ -147,3 +147,10 @@ pe/data/windows-1252/LICENSE.txt -text
 
 pe/fixtures/pe32-startup/documents-folder*.c text eol=lf
 pe/fixtures/pe32-startup/documents-folder*.def text eol=lf
+pe/reference/pe32-documents-folder-windows-v1.json -text whitespace=cr-at-eol
+pe/reference/pe32-documents-folder-0-v1.exe -text
+pe/reference/pe32-documents-folder-1-v1.exe -text
+pe/reference/pe32-documents-folder-2-v1.exe -text
+pe/reference/pe32-documents-folder-3-v1.exe -text
+pe/reference/pe32-documents-folder-4-v1.exe -text
+pe/reference/pe32-documents-folder-5-v1.exe -text

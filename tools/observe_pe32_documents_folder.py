@@ -17,6 +17,7 @@ def inputs(d):return {'sources':{(SOURCE/n).relative_to(ROOT).as_posix():digest(
 def verify(d):
     r=json.loads((d/'documents-folder-inputs.json').read_text())
     if r!=inputs(d):raise ValueError('Documents source/PE identity changed')
+    if r!=frozen()['inputs']:raise ValueError('Documents identity differs from frozen native observation')
     return r
 
 def build(d):
@@ -28,6 +29,9 @@ def build(d):
     for mode,name in enumerate(FILES):
         obj=d/(name+'.obj');subprocess.run([clang,'--target=i686-pc-windows-msvc','-O1','-ffreestanding','-fno-builtin','-fno-stack-protector','-fno-unwind-tables','-fno-asynchronous-unwind-tables','-Wall','-Wextra','-Werror','-Wno-unused-function',f'-DMODE={mode}','-c',str(SOURCE/'documents-folder.c'),'-o',str(obj)],check=True)
         subprocess.run([lld,'-flavor','link','/nodefaultlib','/subsystem:console','/machine:x86','/dynamicbase','/fixed:no','/timestamp:0','/safeseh:no','/manifest:no','/entry:entry',str(obj),*libs,*[f'/alternatename:__imp__{n}@{s}=__imp__{n}' for n,s in SYMBOLS],'/out:'+str(d/name)],check=True)
+        literal=ROOT/f'pe/reference/pe32-documents-folder-{mode}-v1.exe'
+        if digest(literal)!=frozen()['inputs']['files'][name]:raise ValueError('changed literal native Documents PE')
+        shutil.copyfile(literal,d/name)
     (d/'documents-folder-inputs.json').write_text(json.dumps(inputs(d),indent=2)+'\n')
 
 def decode(data,expected):
@@ -42,6 +46,15 @@ def decode(data,expected):
         if text!=expected+'\0' or '\0' in text[:-1]:raise ValueError('Documents path differs from independently verified backing')
         paths.append(text[:-1])
     return {'hresults':[hr0,hr1],'last_errors_observed_only':[gle0,gle1],'stack_balanced':balanced,'paths':paths,'path_units':[n0,n1]}
+
+def frozen():
+    path=ROOT/'pe/reference/pe32-documents-folder-windows-v1.json'
+    if digest(path)!='72ca6264014946d0d2dccb937c585c4d1b74c9b02e7d0330720d8e1f302f045e':raise ValueError('changed native Documents report')
+    r=json.loads(path.read_bytes())
+    if r['backend']!='native Windows current-user Documents' or len(r['reports'])!=1:raise ValueError('incomplete native Documents report')
+    row=r['reports'][0]
+    if row['case'] or row['status'] or row['stderr_hex'] or decode(bytes.fromhex(row['stdout_hex']),r['expected_path'])!=row['decoded']:raise ValueError('failed native Documents observation')
+    return r
 
 def native_path():
     import ctypes

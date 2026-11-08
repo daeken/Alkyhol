@@ -19,6 +19,14 @@ class DocumentsProtocol(unittest.TestCase):
             self.assertEqual(row['paths'],[text,text])
             self.assertEqual(row['last_errors_observed_only'],[123,456])
             with self.assertRaises(ValueError):folder.decode(self.report(text),text+'other')
+    def test_frozen_native_record_and_all_literal_pe_identities_are_intact(self):
+        record=folder.frozen()
+        self.assertEqual(record['reports'][0]['decoded']['hresults'],[0,0])
+        for mode,name in enumerate(folder.FILES):
+            literal=folder.ROOT/f'pe/reference/pe32-documents-folder-{mode}-v1.exe'
+            self.assertEqual(folder.digest(literal),record['inputs']['files'][name])
+        for name,expected in record['inputs']['sources'].items():
+            self.assertEqual(folder.digest(folder.ROOT/name),expected)
     def test_hresult_stack_guards_lengths_termination_and_transport_are_required(self):
         text='Z:\\Documents';data=self.report(text)
         for at in [0,4,8,12,24,28,32,36,560,564,1088,1092,40,568,40+len(text)*2,568+len(text)*2]:

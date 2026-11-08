@@ -4,30 +4,46 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
-## Backed current-user Documents gateway, awaiting the next original run
+## Original DAO passes its Documents query and reaches INI configuration
 
-The bounded `SHGetFolderPathW` gateway now implements an explicitly configured,
-existing current-user Documents directory (`--documents-directory`). Only NULL
-owner/token, `CSIDL_PERSONAL` and current-path flags are admitted; other roles,
-creation flags, default-user profiles and unknown backing stop explicitly.
-The directory is held open and its identity rechecked before returning its real
-Z: path. Writable MAX_PATH storage, UTF-16 termination and HRESULT success follow
-the [documented contract](https://learn.microsoft.com/en-us/windows/win32/api/shlobj_core/nf-shlobj_core-shgetfolderpathw).
-This is declared fresh guest state, not a recovered original Windows profile.
+At clean revision `97d77d7`, physical M4 executes the unchanged original EXE's
+`SHGetFolderPathW` call. All five checked stack words confirm NULL owner/token,
+`CSIDL_PERSONAL`, current-path flags and an actual writable output buffer.
+The returned Z: path identifies an explicitly selected, existing fresh guest
+Documents directory. Original startup continues to
+**KERNEL32.dll!GetPrivateProfileStringW**, which remains unsupported. No window,
+menu, rendering or successful gameplay is observed. Original hashes, private
+arguments/locations and raw captures stay local; the fresh registry/session and
+locally unpacked dependency caveats remain unchanged.
 
-Physical M4 executes the owned PE's direct import and dynamically resolved call
-with intact guards and a balanced stack. Six host exclusions stop explicitly.
-The same PE is scheduled for native Windows, whose real Documents directory is
-established independently. Per-host paths differ intentionally; LastError is
-retained as raw observation rather than an undocumented HRESULT-API guarantee.
-Native results and the original EXE's remaining two arguments are not yet measured.
-Local checks pass: 212 Rust PE checks including doctests, 400 Python tests,
-project Clippy/formatting and unchanged literal event/semaphore execution.
+The [native startup job at `97d77d7`](https://github.com/daeken/Alkyhol/actions/runs/42521614542)
+passes the actual Documents observer and preceding native startup comparisons.
+Physical M4 then selects that run's six literal PE artifacts and executes the
+positive observer and host restrictions with identical complete producer/PE hashes. The raw native report is
+`pe/reference/pe32-documents-folder-windows-v1.json`, SHA-256
+`72ca6264014946d0d2dccb937c585c4d1b74c9b02e7d0330720d8e1f302f045e`.
+Both direct import and dynamic resolution return HRESULT S_OK, the independent
+per-host backed path, intact guards, NUL termination and a balanced stdcall
+stack. Paths intentionally differ by host. Native LastError observations are
+0 and 1008, while the host preserves the supplied sentinel; these raw differences
+are retained, not normalized or represented as LastError parity. The
+[documented API](https://learn.microsoft.com/en-us/windows/win32/api/shlobj_core/nf-shlobj_core-shgetfolderpathw)
+uses HRESULT as its result channel.
+
+The bounded gateway admits only NULL owner/token, `CSIDL_PERSONAL`, current-path
+flags and writable MAX_PATH storage. Directory identity is checked against its
+held-open backing before each result. Six host-only exclusions stop explicitly:
+other folder, default-user token, default-path flags, invalid buffer, non-NULL
+owner and absent backing. This declares fresh guest state, not a recovered
+original user profile. Creation/redirection and other folder roles remain unsupported.
 
 The second API bank starts after both existing x87 bodies. All original 120 API
 slots, math bodies and rejection gates retain their offsets; overflow is checked.
-Prior native evidence stays unchanged. All CI jobs passed on preceding `d88d468`
-([42520781540](https://github.com/daeken/Alkyhol/actions/runs/42520781540)).
+Local checks pass: 212 Rust PE checks including doctests, 401 Python tests,
+project Clippy/formatting, unchanged literal event/semaphore execution and both
+bounded x87 suites. The hosted startup and native startup jobs pass; broader
+CI jobs at this revision are still finishing. All CI jobs passed on preceding
+`d88d468` ([42520781540](https://github.com/daeken/Alkyhol/actions/runs/42520781540)).
 
 ## Original DAO passes both synchronization constructors and reaches a user folder
 
