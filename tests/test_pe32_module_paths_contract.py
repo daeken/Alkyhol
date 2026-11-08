@@ -29,7 +29,7 @@ class ModulePathContractTests(unittest.TestCase):
 
     def test_guards_errors_and_utf16_unit_counts_cannot_be_relaxed(self):
         data=self.fixture()
-        words=expected_words();words[4]=0
+        words=expected_words();words[4]^=1
         with self.assertRaises(ValueError):decode(struct.pack('<105I',*words)+self.tail,self.paths)
         # Python's code-point length is shorter than this real UTF-16 length.
         changed=self.header+struct.pack('<I',len(self.paths[0]))+self.tail[4:]

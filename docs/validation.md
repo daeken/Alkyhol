@@ -37,6 +37,14 @@ machine-specific and are not compared for cross-machine byte equality. Four
 host-only restrictions stop for their specific expected reason, including a
 bytes-only DLL stopping before EXE entry. Native Windows comparison is pending.
 
+The first native observation at `dc2e1dc` returned status 0 and complete paths,
+but its comparison failed: successful GetModuleFileNameW calls cleared last error
+to 0 instead of preserving the seeded value. All other normalized fields agreed.
+The runtime and explicit expected record now follow those measured native zeros;
+the C/DLL sources and executed PE inputs remain unchanged. The corrected complete
+comparison still awaits its next native run. GetLongPathNameW's seeded last error
+was preserved in that same independent observation.
+
 Local checks pass 154 PE host tests plus 17 compile/documentation checks,
 335 Python tests, Clippy, all 25 prior startup cases and six new path executions.
 The existing frozen activation/source/PE identities remain unchanged. At

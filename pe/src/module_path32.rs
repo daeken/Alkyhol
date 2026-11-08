@@ -98,9 +98,9 @@ pub(super) fn filename(image: &LoadedImage32<'_>, args: &[u32; 8]) -> u32 {
             (output as usize as *mut u16).add(count).write(0);
         }
     }
-    if truncated {
-        alkyhol::ffi::SetLastError(122);
-    }
+    // The native Win32 observer clears last error on complete filename output;
+    // truncation (including zero capacity) sets ERROR_INSUFFICIENT_BUFFER.
+    alkyhol::ffi::SetLastError(if truncated { 122 } else { 0 });
     result
 }
 

@@ -18,7 +18,7 @@ BOOT = struct.pack('<I', 0x4d503332)
 
 def expected_words():
     seed = 0xface1234
-    row = [1,seed,1,1,1, 1,seed,1, 1,122,1,1, 5,122,1,1, 1,122,1, 0,122,1]
+    row = [1,0,1,1,1, 1,0,1, 1,122,1,1, 5,122,1,1, 1,122,1, 0,122,1]
     row += [1,seed,1]*4
     words = [0x4d503332,4,1]+row*3
     assert len(words) == 105
