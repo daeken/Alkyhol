@@ -4,6 +4,31 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## Original DAO executes its multimedia clock and reaches working-directory setup
+
+At clean runtime revision `fce4123`, the physical M4 executes the unchanged EXE
+past its actual Winmm clock calls and genuine `GetModuleFileNameW` lookup. The
+next reached unsupported import is **KERNEL32.dll!SetCurrentDirectoryW**. Private
+module/RVA/argument evidence and original-file/probe hashes remain local; the
+capture confirms no runtime edits before building. No menu or rendering has
+been observed, and the earlier fresh-profile/unpacked-dependency caveats remain.
+
+The [native startup job at `fce4123`](https://github.com/daeken/Alkyhol/actions/runs/42511459044)
+passes the identical Winmm clock PE and requires the peer host observation.
+All 47 raw DWORDs are validated on each host against its own independent boot
+clock bracket, parent interval and performance-counter scale, plus existing
+error/guard/atomic contracts. Native measured 33 ms / 0.0319158 counter seconds;
+physical M4 measured 32 ms / 0.031752834 counter seconds. Actual timestamps,
+PIDs and rates remain per-host observations, not claimed byte equality.
+The complete native record is pinned as
+`pe/reference/pe32-multimedia-clock-windows-v1.json`, SHA-256
+`5b2fea4322e53c7147e8f7c0ebdbc16c668236e4b92e2a33a9e355328114d0bd`.
+The selected identical literal PE has SHA-256
+`7dd6ddc967324854e0fb71410440430df9c744122ef7bb74e41b3abc973be7df`.
+These are finite clock observations; multimedia timer resolution/scheduling is
+not established. All five jobs at the prior mutex milestone `2db79bf` pass in
+[42511091789](https://github.com/daeken/Alkyhol/actions/runs/42511091789).
+
 ## Original DAO startup creates its named mutex and reaches the multimedia clock
 
 At clean runtime revision `2db79bf`, the physical M4 executes the original EXE's
