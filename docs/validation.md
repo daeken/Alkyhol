@@ -4,7 +4,18 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
-## PE32 FS/TEB: native Windows and physical M4 development
+## PE32 FS/TEB: native Windows and physical M4
+
+All 27 CI jobs pass at strict-reference revision `2ad7650`: three
+[PE jobs](https://github.com/daeken/Alkyhol/actions/runs/42436726834) and all 24
+[conformance jobs](https://github.com/daeken/Alkyhol/actions/runs/42436726819).
+Downloaded clean native Windows/hosted Mac reports and fresh clean physical M4
+execution at that same revision agree on all 16 raw DWORDs and exact frozen
+source/executed PE identities. Both strict paired comparisons pass, including
+actual forced relocation, host-only same-image repeat and selector/descriptor
+cleanup. Existing frozen PE32/PE64, released application, DLL/source/SDK/COM, shader
+and Metal comparisons remain green. Static TLS/callbacks and game entry remain
+unsupported; this is the measured FS/TEB foundation.
 
 Native Windows at `d25c411` returns all 16 raw DWORDs from the original owned
 FS/TEB observer. All three
@@ -22,7 +33,8 @@ Physical M4 development normal/forced-rebase execution agrees on all 16 words.
 The host-only repeated-entry diagnostic emits two complete identical blocks on
 one loaded image, with two actual selector-restoration/descriptor-cleanup checks.
 This repeats an owned callable body; it does not measure native process restart.
-Strict same-clean-revision paired CI/physical comparison remains pending.
+Strict same-clean-revision paired CI/physical comparison passes at `2ad7650`
+as recorded above.
 
 Each PE32 image now owns a minimal low one-page TEB with self/stack/last-error
 fields. Original assembly saves/restores host FS, restores it before Rust import
