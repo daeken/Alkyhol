@@ -6,6 +6,12 @@ See the latest direct-Metal record for current implementation evidence.
 
 ## Original D3DX9 constructor passes the first x87 intrinsic
 
+For the next reached `_CIatan` call, an operator-specific native observer reuses
+the unchanged owned numeric/state transport through explicit C/assembly wrappers.
+LLVM import inspection confirms the PE calls `_CIatan`, not `_CIsqrt`. The pinned
+sqrt producer is unchanged. Its build is successful; actual native arctangent
+results and a backend implementation remain separate pending work.
+
 On the physical M4, the original constructor now executes past `_CIsqrt` using
 a dedicated guest-i386 x87 gate. The next actual unsupported import is
 **_CIatan**. The DLL constructor table has not completed and **game EXE entry

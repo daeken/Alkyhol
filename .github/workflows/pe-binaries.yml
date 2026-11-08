@@ -61,6 +61,8 @@ jobs:
         run: |
           python tools/observe_pe32_ci_sqrt.py
           python tools/observe_pe32_ci_sqrt.py --host
+      - name: Build the directly reached x87 arctangent observer without changing frozen sqrt inputs
+        run: python tools/observe_pe32_ci_atan.py
       - uses: actions/upload-artifact@v4
         with:
           name: pe32-startup-microtests
@@ -104,6 +106,7 @@ jobs:
             local/pe/startup-microtests/crt-state-host.json
             local/pe/startup-microtests/ci-sqrt-inputs.json
             local/pe/startup-microtests/ci-sqrt-host.json
+            local/pe/startup-microtests/ci-atan-inputs.json
             local/pe/startup-microtests/ctx-layout-empty-importer.dll
             local/pe/startup-microtests/ctx-layout-*.manifest
   native-pe32-startup:
@@ -159,6 +162,8 @@ jobs:
         run: python tools/observe_pe32_crt_state.py --native
       - name: Observe actual x87 sqrt ABI, rounding, stack and error state without game files
         run: python tools/observe_pe32_ci_sqrt.py --native
+      - name: Measure the next actually reached intrinsic on native Windows
+        run: python tools/observe_pe32_ci_atan.py --native
       - uses: actions/upload-artifact@v4
         if: always()
         with:
