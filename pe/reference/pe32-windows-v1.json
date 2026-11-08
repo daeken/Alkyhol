@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "backend": "native Windows PE32 i386",
+  "pe_sha256": "da101b3b451c8d511dd02e6316dc3101ef5c1b13cd56add33c029f9a476b191c",
+  "executed_pe_sha256": "da101b3b451c8d511dd02e6316dc3101ef5c1b13cd56add33c029f9a476b191c",
+  "sources": {
+    "pe/fixtures/pe32/contract.c": "828d53442ef67bac1adb884024de19284e118aa7538a6f42620cce9788bc1c74",
+    "pe/fixtures/pe32/kernel32.def": "387a43121afd31dc1e37548f6125c97e359290f7e6ddb82beec909c417479dfb",
+    "pe/fixtures/pe32/canary.S": "8d0ca079d5928696bee45bdff738fa7b4b10cf1276e8ad3c6be516d6f2a5de00"
+  },
+  "normal": {
+    "status": 0,
+    "words": [
+      1228093494,
+      4,
+      10000,
+      305426807,
+      1,
+      1,
+      2712847316,
+      2289526357
+    ],
+    "stdout_hex": "363833490400000010270000777134120100000001000000d4c3b2a155667788"
+  },
+  "rebased": null,
+  "revision": "63b6f5348d2c7424b99043598fd2b7775db95723",
+  "tracked_tree_clean": true
+}

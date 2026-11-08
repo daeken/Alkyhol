@@ -4,7 +4,7 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
-## First unchanged PE32/i386 execution: physical M4 development
+## First unchanged PE32/i386 execution: native Windows and physical M4
 
 The new original MIT no-CRT i386 PE executes unchanged in a 64-bit Rosetta host
 on physical M4. Normal and forced-rebase development runs agree on all eight raw
@@ -12,9 +12,14 @@ DWORDs: pointer width, 10,000 last-error round trips, preserved Win32 nonvolatil
 registers/ESP, distinct 32-bit INC behavior, relocated pointer identity and exact
 WriteFile data. Four real stdcall import gates transition to Rust on the saved
 host stack; five-argument WriteFile uses explicit 32-bit standard-handle proxies.
-The identical PE/native Windows comparison is pending its first CI run. These
-are integer/API/loader observations, not CRT, FS/TEB, game startup or graphics.
-All 96 PE host tests/12 compiler checks, 31 portable tests, 251 Python tests
+Downloaded clean native Windows/hosted Mac records and clean physical M4
+execution at `63b6f53` agree on all eight raw words and exact executed PE/source
+identities. The owned PE SHA-256 is
+`da101b3b451c8d511dd02e6316dc3101ef5c1b13cd56add33c029f9a476b191c`.
+The actual native record is frozen at `pe/reference/pe32-windows-v1.json` and
+required by default. These are integer/API/loader observations, not CRT, FS/TEB,
+game startup or graphics.
+All 96 PE host tests/12 compiler checks, 31 portable tests, 252 Python tests
 and Clippy pass.
 See [PE32](pe32.md) for address-space, metadata, API and trust restrictions.
 

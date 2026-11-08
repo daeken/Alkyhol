@@ -52,10 +52,9 @@ def main():
     for name, digest in manifest['sources'].items():
         if hashlib.sha256((ROOT/name).read_bytes()).hexdigest() != digest:
             raise ValueError('pe32 source identity changed')
-    if REFERENCE.exists():
-        reference = json.loads(REFERENCE.read_text(encoding='utf-8'))
-        for field in ['pe_sha256', 'sources']:
-            if manifest[field] != reference[field]: raise ValueError('changed frozen pe32 fixture')
+    reference = json.loads(REFERENCE.read_text(encoding='utf-8'))
+    for field in ['pe_sha256', 'sources']:
+        if manifest[field] != reference[field]: raise ValueError('changed frozen pe32 fixture')
     windows = platform.system() == 'Windows'
     if windows:
         executable, executed, backend = pe, hashlib.sha256(pe.read_bytes()).hexdigest(), NATIVE

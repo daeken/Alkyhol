@@ -30,7 +30,7 @@ class Pe32ProtocolTests(unittest.TestCase):
         host.update(backend=HOST, rebased=copy.deepcopy(host['normal']))
         return [native, host]
 
-    def test_exact_real_frame_context_register_return_and_preservation_results_match(self):
+    def test_exact_i386_execution_pointer_width_api_and_canary_results_match(self):
         reports = self.reports()
         self.assertEqual(decode(self.execution(),rebase=True),reports[1]['normal'])
         self.assertEqual(compare(reports, reference=reports[0]), 8)
@@ -66,7 +66,7 @@ class Pe32ProtocolTests(unittest.TestCase):
             for field, value in [('status', False), ('stdout_hex', '00')]:
                 reports = self.reports(); reports[1][key][field] = value
                 with self.assertRaises(ValueError): compare(reports, reference=self.reports()[0])
-            reports = self.reports(); reports[1][key]['words'][1] = True
+            reports = self.reports(); reports[1][key]['words'][4] = True
             with self.assertRaises(ValueError): compare(reports, reference=self.reports()[0])
 
     def test_joint_input_drift_cannot_replace_frozen_native_evidence(self):
@@ -74,6 +74,17 @@ class Pe32ProtocolTests(unittest.TestCase):
         for r in reports: r.update(pe_sha256='e'*64, executed_pe_sha256='e'*64)
         with self.assertRaises(ValueError): compare(reports, reference=self.reports()[0])
 
+
+
+    def test_default_frozen_native_record_and_exact_inputs_are_required(self):
+        native=json.loads(REFERENCE.read_text(encoding='utf-8'))
+        host=copy.deepcopy(native);host.update(backend=HOST,rebased=copy.deepcopy(native['normal']))
+        self.assertEqual(compare([native,host]),8)
+        with tempfile.TemporaryDirectory() as temp:
+            with mock.patch('compare_pe32_probe.REFERENCE',Path(temp)/'missing.json'):
+                with self.assertRaises(FileNotFoundError):compare([native,host])
+        for record in [native,host]:record.update(pe_sha256='e'*64,executed_pe_sha256='e'*64)
+        with self.assertRaises(ValueError):compare([native,host])
 
 
 if __name__ == '__main__': unittest.main()
