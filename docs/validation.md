@@ -4,6 +4,19 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## Exact-file observer correction (no successful file-search evidence yet)
+
+The first owned file-search observer at `a3443c6` exited on native Windows with
+`0xc0000005` and no emitted record. Its raw failed report and exact input identities
+are retained locally; no successful API or game result is claimed. That observer
+combined valid lifecycle operations with use of an already closed search handle.
+The fault location was not measured, so a stale-handle cause remains a hypothesis.
+The corrected, still-unfrozen observer records bounded progress markers and covers
+only a valid exact-file search, exhaustion, one close and genuine missing file/
+parent queries. Closed-handle native behavior is not an acceptance assumption.
+The Windows SDK's independent 592-byte structure/offset check passed. All prior
+frozen comparisons remain unchanged; the new native execution is pending.
+
 ## DAO executes the shared Windows-directory query
 
 The original CRT now executes GetSystemWindowsDirectoryW on the physical M4 and

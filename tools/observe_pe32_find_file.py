@@ -23,6 +23,9 @@ def metadata(path):
     st=path.stat()
     return {'size':st.st_size,'birth_ns':st.st_birthtime_ns,'access_ns':st.st_atime_ns,'write_ns':st.st_mtime_ns}
 def decode(data,before,after):
+    prefix=struct.pack('<7I',0x46465354,0x10,0x20,0x30,0x40,0x50,0x60)
+    if not data.startswith(prefix):raise ValueError('find-file lifecycle stopped before all actual API stages')
+    data=data[len(prefix):]
     if len(data)<596 or (len(data)-592)%4:raise ValueError('incomplete find-file transport')
     n=(len(data)-592)//4;words=list(struct.unpack('<'+'I'*n,data[:n*4]));record=data[n*4:]
     if words[:4]!=[0x464e3332,4,592,1] or words[-1]!=n:raise ValueError('find-file layout/complete-lifecycle contract differs')
