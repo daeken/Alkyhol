@@ -1150,4 +1150,4 @@ jobs:
         with:
           name: pe32-seh-windows
           path: local/pe/observations
-      - run: python tools/compare_pe32_seh.py local/pe/observations/pe32-seh-windows.json local/pe/observations/pe32-seh-alkyhol.json --initial-capture
+      - run: python tools/compare_pe32_seh.py local/pe/observations/pe32-seh-windows.json local/pe/observations/pe32-seh-alkyhol.json

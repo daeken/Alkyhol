@@ -1,0 +1,85 @@
+{
+  "schema_version": 1,
+  "backend": "native Windows PE32 hardware SEH",
+  "sources": {
+    "pe/fixtures/pe32-seh/contract.c": "f84c7fc9782f2b37c1587f586c63e4c22c5f578d74c3020deaa8eb0ea3209bc2",
+    "pe/fixtures/pe32-seh/frames.S": "2390d689d865caeeb694f4ca5936f78cdfc408ebfbf6fb51f59970e39e7b1c2d",
+    "pe/fixtures/pe32-seh/types.h": "a2c815306ed5047cc14bf1d3b85bf596db452c715bd35a9451b518a616589a1e",
+    "pe/fixtures/pe32-seh/kernel32.def": "ae882b2b54b8e32a245a7aeced1f91648b3ffb270c097d9e1ea59ccf69e0d24e",
+    "pe/fixtures/pe32-seh/sdk-layout.cpp": "09aa983855ab541d7b39645a9a730bde81bc96f7a07125cf1deaaaa053d49091",
+    "pe/fixtures/pe32-seh/darwin-layout.c": "228fc020bd41058ead8197880a0d4819a48a1a0761ebbb458de801d3040a0cea"
+  },
+  "cases": [
+    {
+      "case": "pe32-seh",
+      "mode": 0,
+      "pe_sha256": "b74d60185a39cf6e27486d8f120db2a5cbded5104654fe028bd263bb87d54af4"
+    },
+    {
+      "case": "imports",
+      "mode": 1,
+      "pe_sha256": "158ad17add256311d833e02d508030aa26cf023a9cea87cd4aeede40b1429c17"
+    },
+    {
+      "case": "context",
+      "mode": 2,
+      "pe_sha256": "5ff76f12d420bdb35d9a8b46ba2dee365c5981d411807d77990af81e96b56ac0"
+    },
+    {
+      "case": "nested",
+      "mode": 3,
+      "pe_sha256": "728c648de32280d3b704c5a5e66e275ffc6b8aef0c5fd33aefe6ac14debe555b"
+    },
+    {
+      "case": "unregistered",
+      "mode": 4,
+      "pe_sha256": "f446ad1bb17ecd7242f29ab5a7bf79d2ae0ae4c374dea36ca4bec2fba3517e27"
+    }
+  ],
+  "executed_cases": [
+    "pe32-seh"
+  ],
+  "normal": {
+    "status": 0,
+    "stdout_hex": "49333245040000000200000002010000000000001d0000c000000000000000000100000001000000010000000100000078563412896745239a785634ab896745bc9a7856cdab8967debc9a780100000001000000ddccbbaa3c2d1e0f010000000100000001000000efbeedfe4800000002000000cc0200005000000044332211",
+    "words": [
+      1160917833,
+      4,
+      2,
+      258,
+      0,
+      3221225501,
+      0,
+      0,
+      1,
+      1,
+      1,
+      1,
+      305419896,
+      591751049,
+      878082202,
+      1164413355,
+      1450744508,
+      1737075661,
+      2023406814,
+      1,
+      1,
+      2864434397,
+      253635900,
+      1,
+      1,
+      1,
+      4276993775,
+      72,
+      2,
+      716,
+      80,
+      287454020
+    ],
+    "stderr_hex": ""
+  },
+  "rebased": null,
+  "rejected": null,
+  "revision": "aacce9bdbafacba5537b7b186125ceb890a58543",
+  "tracked_tree_clean": true
+}

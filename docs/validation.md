@@ -4,7 +4,19 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
-## Bounded PE32 hardware SEH: physical M4; independent Windows capture pending
+## Bounded PE32 hardware SEH: native Windows, hosted Mac and physical M4
+
+At clean revision `aacce9b`, native Windows, downloaded hosted Mac reports and fresh
+physical M4 execution agree on all **32 raw DWORDs** from the identical positive
+SafeSEH executable, with exact source/PE identities and actual forced relocation.
+Both strict paired comparisons pass. All three
+[PE jobs](https://github.com/daeken/Alkyhol/actions/runs/42448838248) and all 24
+[conformance jobs](https://github.com/daeken/Alkyhol/actions/runs/42448838253) pass,
+including the actual Win32 SDK/MSVC layout/disposition assertions. The complete
+unchanged native report is frozen at `pe/reference/pe32-seh-windows-v1.json` and
+required by default. The initial-capture bypass is removed. These finite
+observations compare selected integer/PC/flags/FS behavior, not every context byte
+or general Windows exception compatibility.
 
 The new opt-in `ExceptionImage32`/`--seh` profile handles a real UD2 through two
 FS-linked cdecl handlers, enforces the owned SafeSEH table and resumes changed
@@ -22,20 +34,26 @@ unsupported context writes, a real nested UD2 and code outside the SafeSEH table
 Each returns explicit diagnostic/status 78 with no fabricated successful body.
 They are profile-restriction tests, not Windows exception outcome comparisons.
 The positive unchanged PE and independent Win32 SDK/MSVC layout/disposition
-assertions are now included in the existing native workflow; its actual Windows
-SEH observations are pending. No native SEH parity is claimed yet.
+assertions run in the existing native workflow. Their completed native comparison
+is recorded above; the four host-only restrictions remain a separate category.
 
 All 124 PE host tests, 15 compiler checks, 310 Python tests and Clippy pass locally.
 Portable metadata checks pass. Installed Darwin SDK C assertions check the signal
 ABI. Frozen default-load/compiler-GS observations, including the deliberate raw
 SIGILL trap, and linked-DLL observations retain their physical M4 behavior.
 Default execution is preserved; this experimental profile must be selected.
+Follow-up hardening rejects a blocked host SIGILL mask and handler changes to the
+TEB chain head, and documents exclusive host signal configuration during entry.
+Focused units/protocol checks, Clippy and all five physical M4 cases pass after
+that hardening. It adds no new native exception-semantic claim.
 
 The local game's explicit bounded exception **inspection** now stops at unsupported
 imports before mapping/entry; no game instruction executes. This does not validate
 its handlers. Access violations, software RaiseException, FP/debug state, imported
 handler APIs, nesting, unwind, system/DLL handlers and CRT/C++ exceptions remain
 unsupported. See [PE32](pe32.md) for the full contract and primary interface sources.
+The next work targets original program startup/imports and its DLL lifecycle;
+full checks remain batched at meaningful milestones.
 
 ## PE32 linked DLLs: native Windows, hosted Mac and physical M4
 

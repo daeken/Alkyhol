@@ -61,6 +61,7 @@ struct Context32 {
 unsafe extern "C" {
     fn sigaction(signal: i32, action: *const Action, old: *mut Action) -> i32;
     fn sigaltstack(stack: *const AltStack, old: *mut AltStack) -> i32;
+    fn pthread_sigmask(how: i32, set: *const u32, old: *mut u32) -> i32;
     fn raise(signal: i32) -> i32;
     fn write(fd: i32, buffer: *const c_void, len: usize) -> isize;
     fn _exit(status: i32) -> !;
@@ -110,6 +111,8 @@ impl<'a> ExceptionImage32<'a> {
     /// # Safety
     /// The trusted EXE/handlers must obey this profile's stated restrictions,
     /// the ordinary native-code contract and retain no escaping guest pointers.
+    /// Callers must serialize changes to the process's signal configuration
+    /// throughout entry. A blocked/default-incompatible SIGILL state is rejected.
     pub unsafe fn enter(&self) -> Result<u32> {
         let _signals = SignalGuard::install(&self.image)?;
         unsafe { self.image.enter() }
@@ -127,6 +130,12 @@ struct SignalGuard<'a> {
 }
 impl<'a> SignalGuard<'a> {
     fn install(image: &'a LoadedImage32<'_>) -> Result<Self> {
+        let mut mask = 0u32;
+        if unsafe { pthread_sigmask(3, ptr::null(), &mut mask) } != 0
+            || mask & (1 << (SIGILL - 1)) != 0
+        {
+            return Err("PE32 exception profile requires unblocked host SIGILL".into());
+        }
         let mut old_action = Action::default();
         let mut old_stack = AltStack {
             address: ptr::null_mut(),
@@ -409,7 +418,8 @@ unsafe fn dispatch_exception(
         context.write(original);
         ptr::copy_nonoverlapping(record.as_ptr(), record_at as usize as *mut u32, 20);
     }
-    let mut registration = unsafe { image.cpu.teb.base.cast::<u32>().read_unaligned() };
+    let original_head = unsafe { image.cpu.teb.base.cast::<u32>().read_unaligned() };
+    let mut registration = original_head;
     for _ in 0..128 {
         if registration == u32::MAX {
             return Err(b"Alkyhol PE32 unsupported: unhandled UD2 structured exception\n");
@@ -456,6 +466,7 @@ unsafe fn dispatch_exception(
             || unsafe { std::slice::from_raw_parts(record_at as usize as *const u32, 20) } != record
             || unsafe { p.read_unaligned() } != next
             || unsafe { p.add(1).read_unaligned() } != handler
+            || unsafe { image.cpu.teb.base.cast::<u32>().read_unaligned() } != original_head
         {
             return Err(b"Alkyhol PE32 unsupported: exception handler changed unsupported context or registration state\n");
         }
@@ -595,6 +606,12 @@ mod tests {
     fn signal_guard_exclusively_owns_a_high_guarded_stack_and_restores_actual_host_state() {
         let _serial = super::super::FS_SLOT.lock().unwrap();
         let image = super::super::tests::layout();
+        let blocked = 1u32 << (SIGILL - 1);
+        let mut old_mask = 0u32;
+        assert_eq!(unsafe { pthread_sigmask(1, &blocked, &mut old_mask) }, 0);
+        let refused = SignalGuard::install(&image).is_err();
+        assert_eq!(unsafe { pthread_sigmask(3, &old_mask, ptr::null_mut()) }, 0);
+        assert!(refused);
         let mut before = Action::default();
         let mut stack_before = AltStack {
             address: ptr::null_mut(),

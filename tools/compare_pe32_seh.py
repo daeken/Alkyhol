@@ -19,7 +19,7 @@ def compare(windows,host,reference):
         if value['sources']!=windows['sources'] or value['cases']!=windows['cases']:raise ValueError('SEH inputs differ')
     if windows['revision']!=host['revision'] or windows.get('rebased') is not None or windows.get('rejected') is not None:raise ValueError('different revision or fabricated native negative results')
     native=record(windows.get('normal'),32,0,b'')
-    if reference is not None and (reference.get('backend')!=NATIVE or reference.get('tracked_tree_clean') is not True or any(reference.get(k)!=windows[k] for k in ['sources','cases','normal','executed_cases'])):raise ValueError('frozen native SEH evidence changed')
+    if type(reference) is not dict or reference.get('backend')!=NATIVE or reference.get('tracked_tree_clean') is not True or any(reference.get(k)!=windows[k] for k in ['sources','cases','normal','executed_cases']):raise ValueError('missing or changed frozen native SEH evidence')
     for key,forced in [('normal',False),('rebased',True)]:
         if record(host.get(key),32,0,RESTORED+str(forced).lower().encode()+b'\n')!=native:raise ValueError('actual native/Alkyhol SEH differs')
     rejected=host.get('rejected')
@@ -31,7 +31,6 @@ def compare(windows,host,reference):
 
 
 if __name__=='__main__':
-    p=argparse.ArgumentParser(description=__doc__);p.add_argument('windows',type=Path);p.add_argument('host',type=Path);p.add_argument('--initial-capture',action='store_true');a=p.parse_args()
-    if a.initial_capture and REFERENCE.exists():raise ValueError('cannot bypass frozen SEH reference')
-    frozen=None if a.initial_capture else json.loads(REFERENCE.read_text(encoding='utf-8'))
+    p=argparse.ArgumentParser(description=__doc__);p.add_argument('windows',type=Path);p.add_argument('host',type=Path);a=p.parse_args()
+    frozen=json.loads(REFERENCE.read_text(encoding='utf-8'))
     print('Identical PE32 SafeSEH inputs agree on',compare(json.loads(a.windows.read_text(encoding='utf-8')),json.loads(a.host.read_text(encoding='utf-8')),frozen),'DWORDs of real search, integer/PC/flags continuation and FS state; four host-only restrictions reject explicitly')

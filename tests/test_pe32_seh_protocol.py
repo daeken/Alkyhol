@@ -29,7 +29,7 @@ def pair():
 class SehProtocol(unittest.TestCase):
     def test_actual_records_and_initial_frozen_comparison(self):
         w,h=pair();self.assertEqual(compare(w,h,copy.deepcopy(w)),32)
-        self.assertEqual(compare(w,h,None),32)
+        with self.assertRaises(ValueError):compare(w,h,None)
 
     def test_crashes_dropped_rejections_and_missing_cleanup_never_count_as_recovery(self):
         w,h=pair()
