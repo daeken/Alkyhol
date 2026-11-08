@@ -5,6 +5,8 @@ __declspec(dllimport) H __stdcall GetStdHandle(U);
 __declspec(dllimport) int __stdcall WriteFile(H,const void *,U,U *,H);
 __declspec(dllimport) void __stdcall SetLastError(U);
 __declspec(dllimport) U __stdcall GetLastError(void);
+__declspec(dllimport) H __stdcall GetModuleHandleA(const char *);
+__declspec(dllimport) H __stdcall GetProcAddress(H,const char *);
 __declspec(dllimport) H __cdecl malloc(U);
 __declspec(dllimport) int __cdecl _set_error_mode(int);
 __declspec(dllimport) Handler __cdecl set_term(Handler) __asm("?set_terminate@@YAP6AXXZP6AXXZ@Z");
@@ -12,13 +14,19 @@ __declspec(dllimport) Handler __cdecl _get_terminate(void);
 __declspec(dllimport) Handler __cdecl set_unexpected(Handler) __asm("?set_unexpected@@YAP6AXXZP6AXXZ@Z");
 __declspec(dllimport) Handler __cdecl _get_unexpected(void);
 __declspec(dllimport) void __cdecl __set_app_type(U);
-__declspec(dllimport) U __cdecl __get_app_type(void);
+__declspec(dllimport) void __cdecl _initterm(Handler *,Handler *);
 static U words[128],used;
 static void put(U n){if(used>=128)__builtin_trap();words[used++]=n;}
 static U stack(void){U n;__asm__ volatile("movl %%esp,%0":"=r"(n));return n;}
 static volatile U fired;
 static void one(void){fired=1;__builtin_trap();}
 static void two(void){fired=2;__builtin_trap();}
+static void init_first(void);static void init_second(void);static void init_third(void);
+static Handler constructors[]={init_first,0,init_second};
+static U order;
+static void init_first(void){order=order*10+1;constructors[2]=init_third;_set_error_mode(1);}
+static void init_second(void){order=order*10+2;}
+static void init_third(void){if(_set_error_mode(3)!=1)__builtin_trap();order=order*10+3;}
 U entry(void){
     put(0x43523332);put(sizeof(H));
     static const U modes[]={3,1,3,2,3,0,3};
@@ -35,8 +43,11 @@ U entry(void){
         if(!blocks[i])__builtin_trap();for(U j=0;j<sizes[i];j++)blocks[i][j]=(unsigned char)(j*17+i);
     }
     for(U i=0;i<5;i++){U sum=0;for(U j=0;j<sizes[i];j++){if(blocks[i][j]!=(unsigned char)(j*17+i))__builtin_trap();sum+=blocks[i][j];}put(sum);}
-    SetLastError(0xface1234);U initial_type=__get_app_type();put(initial_type);
-    before=stack();__set_app_type(1);after=stack();put(before==after);put(__get_app_type());
-    __set_app_type(2);put(__get_app_type());__set_app_type(initial_type);put(__get_app_type()==initial_type);put(GetLastError());
+    SetLastError(0xface1234);before=stack();__set_app_type(1);after=stack();put(before==after);
+    before=stack();__set_app_type(2);after=stack();put(before==after);before=stack();__set_app_type(0);after=stack();put(before==after);put(GetLastError());
+    H module=GetModuleHandleA("msvcrt.dll");put(module!=0);SetLastError(0xface1234);
+    before=stack();H missing=GetProcAddress(module,"__get_app_type");after=stack();put(missing==0);put(before==after);put(GetLastError());
+    SetLastError(0xface1234);before=stack();_initterm(constructors,constructors+3);after=stack();put(order);put(before==after);put((U)_set_error_mode(0));put(GetLastError());
+    _initterm(constructors+1,constructors+1);put(order==13);
     put(used+1);U done=0;if(!WriteFile(GetStdHandle((U)-11),words,used*4,&done,0)||done!=used*4)__builtin_trap();return 0;
 }

@@ -7,6 +7,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
 import observe_pe32_crt_state as crt
 
 class CrtStateProtocol(unittest.TestCase):
+    def test_frozen_export_evidence_retains_absence_and_subsequent_failed_probe(self):
+        report = crt.frozen_exports()
+        words = report['reports'][0]['words']
+        self.assertEqual(words[31:33], [0, 127])
+        self.assertEqual(words[33], 0x23f00206)
+        self.assertEqual(report['reports'][1]['status'], 0xc0000139)
+        self.assertEqual(report['reports'][1]['stdout_hex'], '')
+        self.assertEqual(crt.digest(crt.ROOT/'pe/reference/pe32-crt-exports-v1.exe'),
+                         report['inputs']['files']['crt-exports.exe'])
+
     def test_export_collector_preserves_actual_absence_and_uninterpreted_errors(self):
         words = [0x58433332, 4, 10]
         for i in range(10):
@@ -32,26 +42,26 @@ class CrtStateProtocol(unittest.TestCase):
         words += [1, 0, 1, error] * 5
         words += [sum((j * 17 + i) & 255 for j in range(n))
                   for i, n in enumerate([0, 1, 17, 4099, 65539])]
-        return words + [0, 1, 1, 2, 1, error, 73]
+        return words + [1, 1, 1, error, 1, 1, 1, 127, 13, 1, 1, error, 1, 80]
 
     def test_real_storage_checksums_state_stack_flags_and_complete_transport(self):
         words = self.words()
-        self.assertEqual(crt.decode(struct.pack('<73I', *words)), words)
+        self.assertEqual(crt.decode(struct.pack('<80I', *words)), words)
         crt.assertions(words)
 
     def test_truncated_or_wrong_width_transport_cannot_pass(self):
-        raw = struct.pack('<73I', *self.words())
+        raw = struct.pack('<80I', *self.words())
         for data in [b'', raw[:-1], raw + b'\0']:
             with self.assertRaises(ValueError):
                 crt.decode(data)
-        for index in [0, 1, 72]:
+        for index in [0, 1, 79]:
             words = self.words()
             words[index] ^= 1
             with self.assertRaises(ValueError):
-                crt.decode(struct.pack('<73I', *words))
+                crt.decode(struct.pack('<80I', *words))
 
     def test_bad_stack_cleanup_policy_alignment_nulls_or_storage_cannot_pass(self):
-        for index in [*range(2, 23), *range(24, 32), *range(33, 66), *range(67, 72)]:
+        for index in [*range(2, 23), *range(24, 32), *range(33, 79)]:
             words = self.words()
             words[index] ^= 1
             with self.subTest(index=index), self.assertRaises(ValueError):

@@ -9,4 +9,4 @@ _get_unexpected
 "?terminate@@YAXXZ"
 "?unexpected@@YAXXZ"
 __set_app_type
-__get_app_type
+_initterm

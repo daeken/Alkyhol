@@ -152,8 +152,8 @@ const APIS: [(&str, u16); 89] = [
     ("?terminate@@YAXXZ", 0),
     ("?unexpected@@YAXXZ", 0),
     ("__set_app_type", 4),
-    ("__get_app_type", 0),
     ("GetVersion", 0),
+    ("_initterm", 8),
 ];
 const EXIT_API: u32 = 14;
 // Win32 promises a reversible process-specific representation, not a published
@@ -184,7 +184,7 @@ fn api_id(module: &str, symbol: &ImportSymbol) -> Option<usize> {
         .map(|(id, _)| id)
 }
 fn cdecl_api(id: usize) -> bool {
-    matches!(id, 78..=87)
+    matches!(id, 78..=86 | 88)
 }
 fn cleanup_bytes(id: usize, arguments: u16) -> u16 {
     if cdecl_api(id) { 0 } else { arguments }
@@ -539,7 +539,7 @@ fn cookie_entropy() -> Result<u32> {
     }
     Ok(u32::from_ne_bytes(bytes))
 }
-/// Trusted i386 EXE mapping with separate low stack and stdcall API gates.
+/// Trusted i386 EXE mapping with separate low stack and checked API gates.
 /// The process guard and all mappings remain alive until drop. Minimal FS/TEB
 /// self/stack/last-error fields and single-thread static TLS data are supplied.
 /// No guest threads, PEB, callbacks,
@@ -575,7 +575,7 @@ pub struct LoadedImage32<'a> {
 }
 impl<'a> LoadedImage32<'a> {
     /// Preflight all features/imports, map checked sections and HIGHLOW fixups,
-    /// build low stdcall gates and a guarded stack. No guest code runs here.
+    /// build low gates with explicit call conventions and a guarded stack. No guest code runs here.
     pub fn load(bytes: &[u8], rebase: bool, _process: &'a ProcessContext) -> Result<Self> {
         Self::load_kind(bytes, rebase, _process, false, &[], false)
     }
@@ -1012,6 +1012,12 @@ impl<'a> LoadedImage32<'a> {
                 return Err("PE32 host-service ordinal lookup is unsupported".into());
             }
             let symbol = self.export_name(symbol)?;
+            // Frozen actual 32-bit system msvcrt export observations: this
+            // optional getter is absent, while __set_app_type exists. Do not
+            // invent a callable getter because the bundled CRT probes its name.
+            if name.eq_ignore_ascii_case("msvcrt.dll") && symbol == "__get_app_type" {
+                return Ok(None);
+            }
             let id = api_id(name, &ImportSymbol::Name(symbol.clone())).ok_or_else(|| {
                 format!("PE32 dynamic host-service export is unsupported: {name}!{symbol}")
             })?;
@@ -1429,12 +1435,22 @@ fn query_name(address: u32, mut read: impl FnMut(u32) -> Result<u8>) -> Result<S
     Err("export query exceeds 4096-byte bound".into())
 }
 extern "C" fn dispatch(id: u32, arguments: *const u32) -> u64 {
+    if seh32::in_handler() {
+        seh32::async_fail(b"Alkyhol PE32 unsupported: imports from an exception handler\n");
+    }
+    let exit_state = || {
+        ACTIVE.with(|slot| {
+            unsafe { slot.get().cast::<LoadedImage32<'_>>().as_ref() }
+                .and_then(|image| image.cpu.exit.get())
+        })
+    };
+    let before = exit_state();
     let result = dispatch_inner(id, arguments);
     // ExitProcess and CRT termination escapes are non-returning guest operations.
     // The assembly gate uses
     // a separate control bit, never a forged stdcall return-stack observation.
     u64::from(result)
-        | if id == EXIT_API || matches!(id, 84 | 85) {
+        | if id == EXIT_API || (before.is_none() && exit_state().is_some()) {
             1u64 << 32
         } else {
             0
@@ -1603,8 +1619,9 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
                     .unwrap_or_else(|e| unsupported(&e));
                 1
             }
-            78..=87 => crt32::dispatch(image, id, &args),
-            88 => startup32::packed_version(),
+            78..=86 => crt32::dispatch(image, id, &args),
+            87 => startup32::packed_version(),
+            88 => crt32::initializers(image, args[0], args[1]),
             _ => unreachable!(),
         }
     })
@@ -1632,6 +1649,12 @@ mod tests {
         let id = api_id("kernel32.dll", &ImportSymbol::Name("WriteFile".into())).unwrap();
         assert_eq!(cleanup_bytes(id, APIS[id].1), 20);
         assert!(!cdecl_api(APIS.len()));
+        let symbol = ImportSymbol::Name("__get_app_type".into());
+        assert!(api_id("msvcrt.dll", &symbol).is_none());
+        let id = api_id("msvcrt.dll", &ImportSymbol::Name("_initterm".into())).unwrap();
+        assert_eq!(APIS[id].1, 8);
+        assert_eq!(cleanup_bytes(id, 8), 0);
+        assert!(api_id("kernel32.dll", &ImportSymbol::Name("GetVersion".into())).is_some());
     }
     #[test]
     fn pointer_encoding_roundtrips_the_entire_dword_without_dereferencing() {

@@ -20,6 +20,44 @@ impl State {
         Ok(old)
     }
 }
+fn abort_unsupported(image: &LoadedImage32<'_>, branch: &str) -> ! {
+    let state = image.cpu.crt.borrow();
+    unsupported(&format!(
+        "{branch} requires unsupported abort/reporting behavior (error_mode={}, app_type={})",
+        state.error_mode, state.app_type
+    ));
+}
+pub(super) fn initializers(image: &LoadedImage32<'_>, begin: u32, end: u32) -> u32 {
+    let size = end
+        .checked_sub(begin)
+        .filter(|&n| n <= 4096 * 4)
+        .unwrap_or_else(|| unsupported("CRT initializer table range or budget is unsupported"));
+    if !begin.is_multiple_of(4) || !end.is_multiple_of(4) {
+        unsupported("CRT initializer table is not DWORD aligned");
+    }
+    if size == 0 {
+        return 0;
+    }
+    if !image.permits(begin as usize, size as usize, false) {
+        unsupported("CRT initializer table outside readable guest storage");
+    }
+    for entry in (begin..end).step_by(4) {
+        // Read in execution order: an initializer can modify a later entry.
+        let callback = unsafe { (entry as *const u32).read() };
+        if callback == 0 {
+            continue;
+        }
+        let result =
+            unsafe { image.callback_frame(callback, &[], super::CallingConvention32::Cdecl) }
+                .unwrap_or_else(|e| unsupported(&e));
+        if result.is_none() {
+            return image.cpu.exit.get().unwrap_or_else(|| {
+                unsupported("initializer exited without an actual guest exit status")
+            });
+        }
+    }
+    0 // void return; actual callbacks and their side effects are the operation.
+}
 pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u32 {
     if id == 85 {
         let handler = image.cpu.crt.borrow().unexpected;
@@ -38,15 +76,13 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
     if id == 84 {
         let handler = image.cpu.crt.borrow().terminate;
         if handler == 0 {
-            unsupported("CRT default terminate requires unsupported abort/reporting behavior");
+            abort_unsupported(image, "CRT default terminate");
         }
         let result =
             unsafe { image.callback_frame(handler, &[], super::CallingConvention32::Cdecl) }
                 .unwrap_or_else(|e| unsupported(&e));
         if result.is_some() {
-            unsupported(
-                "returning CRT terminate handler requires unsupported abort/reporting behavior",
-            );
+            abort_unsupported(image, "returning CRT terminate handler");
         }
         return image
             .cpu
@@ -55,9 +91,6 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
             .unwrap_or_else(|| unsupported("terminate handler did not exit the guest process"));
     }
     let mut state = image.cpu.crt.borrow_mut();
-    if id == 87 {
-        return state.app_type;
-    }
     if id == 86 {
         if args[0] > 2 {
             unsupported("unsupported CRT application type");

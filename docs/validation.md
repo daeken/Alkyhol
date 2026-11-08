@@ -4,14 +4,17 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
-## Original D3DX9 startup obtains real CRT allocation
+## Original D3DX9 constructors execute through the CRT gateway
 
 On the physical M4, the original D3DX9 helper now calls `msvcrt.dll!malloc` and
 receives actual owned low-address storage. The game EXE remains unchanged and
 its entry has **not run**. Its reached GetVersion call now uses the existing
-legacy NT 6.2/build 9200 persona, sharing fields with GetVersionExA. The next
-measured unsupported call is **_initterm** during that DLL's initialization.
-Constructor-table callbacks have not run yet. The local unpacked dependency caveat remains;
+legacy NT 6.2/build 9200 persona, sharing fields with GetVersionExA and agreeing
+with the frozen native packed value. `_initterm` now enters that DLL's original
+constructor callbacks. The next measured unsupported call is **_CIsqrt** inside
+one of those callbacks. The table has not completed. This math intrinsic needs
+its x87 operand/result convention, not an integer cdecl stand-in.
+The local unpacked dependency caveat remains;
 this is not game compatibility or unchanged-all-DLL execution.
 
 The CRT call required real cdecl gateways with caller stack cleanup. It also
@@ -28,36 +31,53 @@ contracts. No third-party implementation code was copied.
 
 An owned PE exercises 0/1/17/4099/65539-byte allocations, 8-byte alignment,
 nonoverlapping data retention/checksums, actual cdecl stack restoration, policy
-mutation/getters, previous-handler identities and last-error preservation. Three
+mutation/getters, previous-handler identities and last-error preservation. Four
 separate owned PEs execute real cdecl callbacks and propagate actual ExitProcess
-statuses 37/38/37, including an unexpected handler returning into terminate.
-Six additional host-only paths stop for their measured reasons: default abort,
+statuses 37/38/37/37, including an unexpected handler returning into terminate and
+an initializer escaping through ExitProcess. Constructor tests also check order,
+NULL skipping, empty ranges, reentrant CRT calls and live mutation of a later
+entry by an earlier constructor. The table is not prematurely snapshotted.
+Eight additional host-only paths stop for their measured reasons: default abort,
 returning terminate callback, invalid callback target, oversized allocation,
-invalid error-mode value and invalid application type. They are not run against
+invalid error-mode value, invalid application type, inverted constructor range and
+invalid constructor target. They are not run against
 native Windows and are not claimed as native error semantics. Existing stdcall
 FLS callback behavior is separately regression-checked.
 
 Default abort/reporting, errno/new-handler allocation failure, free/realloc,
 arbitrary guest threads and C++ exception unwinding remain unsupported. The new
 CRT PE/state and callback-exit observations have been added to the existing
-Windows comparison workflow; native execution and full 73-word comparison are
+Windows comparison workflow; native execution and full 80-word comparison are
 pending. The first native attempt at `0f49bf7` failed before output with
-0xC0000139 (entry point not found). At least one requested native import is
-unavailable; its identity is not yet isolated. This is **not** native CRT parity.
-A separate kernel-only native observer now records actual availability and error
-codes for these exact ten names before any optional CRT import, and records
-GetVersion. It keeps absence distinct from unsupported implementation rather than
-guessing which export failed. Host assertions are not a native original-game observation. Original
+0xC0000139 (entry point not found). A separate kernel-only observer completed in
+the [native startup job at `a9be6e7`](https://github.com/daeken/Alkyhol/actions/runs/42489647337)
+and isolated the unavailable import: **__get_app_type is absent**, returning
+NULL/error 127 from GetProcAddress. The other nine names, including
+__set_app_type, are present; successful lookups preserve last error. The getter
+was removed from the compatibility exports, and this exact optional lookup now
+returns the measured missing-export result. Other unknown exports still stop.
+This is a measured distinction between an absent export and an unimplemented API.
+
+The literal owned kernel-only PE is frozen at `pe/reference/pe32-crt-exports-v1.exe`,
+SHA-256 `7e4579a9123da58054bb49b371f9975da7ffc07b7e5f8f50f019db981eba871e`.
+Its raw report is `pe/reference/pe32-crt-exports-windows-v1.json`, SHA-256
+`596b2963e9a5cc85c03b4b82c7212d5e2bb6f017bd048ef5fdf2d1a022c473f9`.
+Only the completed 36-word export/packed-version collector is frozen evidence;
+that raw report deliberately also retains the subsequent failed CRT-state PE.
+It is **not** a successful whole-job or whole-CRT observation. The collector's
+exact sources and literal PE stay pinned while the separate state/constructor PE
+is corrected to avoid the nonexistent static import. GetVersion is 0x23F00206,
+last error is preserved, and the observer releases its acquired DLL reference.
+Host assertions are not a native original-game observation. Original
 files, traces, identities and launch inputs remain ignored/local.
 
 Local checks pass: 188 PE Rust tests/checks including doctests on the x86_64
-Rosetta target, 364 Python tests, project Clippy with warnings denied, formatting,
-all ten new CRT PEs and the existing 25 startup cases (including real stdcall FLS
-callbacks). The actual DAO graph again passes the CRT configuration work and
-D3DX9 malloc call. The subsequent packed-version change advances that same
-profile to _initterm. The export-discovery addition passes the focused Rust
-library and four protocol tests; its kernel-only PE imports were independently
-inspected with LLVM before native dispatch.
+Rosetta target, 366 Python tests, project Clippy with warnings denied, formatting,
+all thirteen host CRT PEs and the existing 25 startup cases (including real
+stdcall FLS callbacks). The frozen export collector is native-only. The actual
+DAO graph passes corrected optional-export handling, CRT configuration, D3DX9
+malloc, GetVersion and the original constructor dispatch before stopping at
+_CIsqrt. No constructor is skipped and no math result is fabricated.
 
 ## Dependency startup reaches original D3DX9 initialization (earlier milestone)
 

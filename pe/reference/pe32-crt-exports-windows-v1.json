@@ -1,0 +1,77 @@
+{
+  "backend": "native Windows CRT observer",
+  "inputs": {
+    "sources": {
+      "pe/fixtures/pe32-startup/crt-state.c": "f5ffa04cbebe56d9671a2282ae4e6f0c4e44faf78b4d7198751cd36e36ff24ee",
+      "pe/fixtures/pe32-startup/crt-exit.c": "5c13d227803904b4916e0a8a87673d343d58a2706a192b19c82682be0f26262c",
+      "pe/fixtures/pe32-startup/crt-exports.c": "9bec3ee57a0158f59a812aa865d51fab1c62926c6f72d71289a257f5788d44c1",
+      "pe/fixtures/pe32-startup/crt-state.def": "a864f3c466d0a48a120aa9906abe8ec2ebb6dba2933d2e2c8b6d6151bc372cd8",
+      "pe/fixtures/pe32-startup/crt-kernel32.def": "dcdf02fddba042f68e6151a2032079470632089369ce149c0de55219d7389254"
+    },
+    "files": {
+      "crt-exports.exe": "7e4579a9123da58054bb49b371f9975da7ffc07b7e5f8f50f019db981eba871e",
+      "crt-state.exe": "1e9aae26dd91d1212c1fda66c1d1afe52f15199b6ad0b2615cb87ffe0798f337",
+      "crt-exit-1.exe": "b095a2fb9a5e129fd24292106e9778ec0e70c5b7b4b26a70c1f96497cd46ed48",
+      "crt-exit-2.exe": "e28152648bd17947af8221922f78a385ad2b78e626658162ef58b10faf76f244",
+      "crt-exit-3.exe": "ecb67752217822d23400abfcd3b7a37dbc702b1d3a4191fdaa45c8744c37fb27",
+      "crt-exit-4.exe": "6cd19277e4a531464358dc01687c31732eeaa4e49fbf75a91b9672f92bb3222f",
+      "crt-exit-5.exe": "b00a32f09490dde13b0c34892b765fa5422e4a1252d3db13b9464483403990e5",
+      "crt-exit-6.exe": "fc9a7bb6ba20befd07a7b82a15e16864e7a559168802f98b93ed0c5c6a9c3a41",
+      "crt-exit-7.exe": "5f33094c939f45a37761e23d74ee3170933318d65a19d1cf925c8ac233a49d94",
+      "crt-exit-8.exe": "3da7b6eaad4819503e3910ac74866ad4d2909c08965aab392af110b48d1080bb",
+      "crt-exit-9.exe": "50564d26bb4e926801f63cdcc8d6acee5ea7ee94e553ce7741f748f795ed9932"
+    }
+  },
+  "reports": [
+    {
+      "file": "crt-exports.exe",
+      "status": 0,
+      "stdout_hex": "32334358040000000a00000000000000010000003412cefa01000000010000003412cefa02000000010000003412cefa03000000010000003412cefa04000000010000003412cefa05000000010000003412cefa06000000010000003412cefa07000000010000003412cefa08000000010000003412cefa09000000000000007f0000000602f0233412cefa01000000",
+      "stderr_hex": "",
+      "words": [
+        1480799026,
+        4,
+        10,
+        0,
+        1,
+        4207809076,
+        1,
+        1,
+        4207809076,
+        2,
+        1,
+        4207809076,
+        3,
+        1,
+        4207809076,
+        4,
+        1,
+        4207809076,
+        5,
+        1,
+        4207809076,
+        6,
+        1,
+        4207809076,
+        7,
+        1,
+        4207809076,
+        8,
+        1,
+        4207809076,
+        9,
+        0,
+        127,
+        602931718,
+        4207809076,
+        1
+      ]
+    },
+    {
+      "file": "crt-state.exe",
+      "status": 3221225785,
+      "stdout_hex": "",
+      "stderr_hex": ""
+    }
+  ]
+}
