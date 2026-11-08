@@ -1,0 +1,13 @@
+LIBRARY KERNEL32.dll
+EXPORTS
+ GetStdHandle
+ WriteFile
+ GetLastError
+ SetLastError
+ GetCurrentProcessId
+ GetCurrentThreadId
+ GetTickCount
+ QueryPerformanceCounter
+ QueryPerformanceFrequency
+ InterlockedCompareExchange
+ InterlockedExchange

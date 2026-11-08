@@ -4,7 +4,60 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
-## Original CRT obtains real assembly-manifest file metadata
+## Original CRT completes; dependency startup reaches FMOD
+
+On the physical M4, original `msvcr80.dll` initialization now returns successfully.
+It reads actual assembly-manifest metadata, executes local/calendar FILETIME
+conversions under an explicit guest UTC profile, and closes its real search
+handle. Dependency traversal then enters FMOD initialization. Its cookie/lock
+setup executes real host process ID, boot ticks, performance counter,
+InterlockedCompareExchange and InterlockedExchange calls. The next measured
+unsupported operation is **DisableThreadLibraryCalls** in FMOD. That initializer
+has not completed; **the game EXE entry has not run**. The EXE and original CRT
+remain unchanged. The already documented local unpacked diagnostic dependency is
+still in use, so this is not unchanged-all-DLL execution or game compatibility.
+Original files and module/RVA/argument captures remain ignored/local.
+
+The [native startup job at `60d977e`](https://github.com/daeken/Alkyhol/actions/runs/42483854331)
+completed the owned UTC FILETIME observer. Its literal PE is frozen at
+`pe/reference/pe32-local-filetime-v1.exe`, SHA-256
+`89d7153190d43e0840708c6d671b32c3cd97cb534ebed38b6b23e57db601be58`.
+The raw native report is `pe/reference/pe32-local-filetime-windows-v1.json`,
+SHA-256 `11c4b77655abc70fd00549ef44af733176c53602c9f0ebe7a18fe166f4096f2f`.
+All 106 DWORDs agree on the physical M4: native UTC qualification, results,
+unchanged last error, guards, source preservation and both exact-alias cases.
+High-bit FILETIMEs are valid for this measured UTC local conversion. Unknown and
+unsupported guest timezones stop before producing results. Guest UTC is explicit;
+the host timezone is unchanged and localized timezone names are not compared.
+
+Valid FILETIME-to-SYSTEMTIME conversion uses bounded Gregorian integer arithmetic.
+Host units check the 1601/1970 epochs, submillisecond truncation, 1900/2000/2024
+leap boundaries and maximum positive signed FILETIME. Native calendar-field and
+invalid-range observations have been added to the existing Windows workflow but
+have not yet run. High-bit calendar inputs currently stop explicitly instead of
+inventing a native error code.
+
+The new owned startup clock/atomic PE executes on the physical M4 and checks the
+actual child PID, live boot ticks, counter frequency/rate, old/new atomic bits,
+guards and unchanged last error. Counter storage accepts genuine DWORD alignment,
+including the original dependency's observed buffer. Counter/tick epochs and PIDs
+are checked per host, not compared as cross-machine constants. Native execution
+of this new PE is pending. The tick comparator originally used CLOCK_MONOTONIC
+and correctly failed an approximately 5.6-second absolute offset; its failed raw
+report is retained locally. Apple's [Libc clock implementation](https://github.com/apple-oss-distributions/Libc/blob/main/gen/clock_gettime.c)
+identifies CLOCK_MONOTONIC_RAW as the continuous Mach timebase. The SDK-typed
+reader now selects that API, and the unchanged tight boot-time bracket passes.
+This checks gateway/scaling agreement through another host API, not independence
+from the operating system's underlying clock or a measured cause for that offset.
+
+Local milestone checks passed: 186 PE Rust tests/checks including doctests on
+the x86_64 Rosetta target, 359 Python tests, Clippy with warnings denied for the
+project, formatting, the exact frozen UTC PE and the live startup clock/atomic PE.
+The vendored XML parser retains its existing dependency warnings. These checks
+do not substitute for pending native calendar/clock execution or original-game
+runtime observations.
+
+## Original CRT obtains real assembly-manifest file metadata (earlier milestone)
 
 On the physical M4, the original CRT now executes FindFirstFileW successfully
 against its genuine backed assembly-manifest file. It receives a real owned

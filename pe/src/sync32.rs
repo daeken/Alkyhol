@@ -49,11 +49,17 @@ impl Section {
 }
 pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u32 {
     let address = args[0];
-    if id == 38 || id == 51 {
+    if matches!(id, 38 | 51 | 75 | 76) {
         if !address.is_multiple_of(4) || !image.permits(address as usize, 4, true) {
             unsupported("PE32 interlocked target outside writable aligned guest storage");
         }
         let atomic = unsafe { std::sync::atomic::AtomicU32::from_ptr(address as *mut u32) };
+        if id == 75 {
+            return compare_exchange(atomic, args[1], args[2]);
+        }
+        if id == 76 {
+            return atomic.swap(args[1], std::sync::atomic::Ordering::SeqCst);
+        }
         return if id == 38 {
             atomic
                 .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
@@ -100,9 +106,33 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
     section.write(address);
     1
 }
+fn compare_exchange(value: &std::sync::atomic::AtomicU32, exchange: u32, comparand: u32) -> u32 {
+    match value.compare_exchange(
+        comparand,
+        exchange,
+        std::sync::atomic::Ordering::SeqCst,
+        std::sync::atomic::Ordering::SeqCst,
+    ) {
+        Ok(old) | Err(old) => old,
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn compare_exchange_returns_old_bits_on_success_and_failure() {
+        let value = std::sync::atomic::AtomicU32::new(0);
+        assert_eq!(compare_exchange(&value, u32::MAX, 0), 0);
+        assert_eq!(compare_exchange(&value, 7, 0), u32::MAX);
+        assert_eq!(value.load(std::sync::atomic::Ordering::SeqCst), u32::MAX);
+        assert_eq!(compare_exchange(&value, 0x80000000, u32::MAX), u32::MAX);
+        assert_eq!(value.load(std::sync::atomic::Ordering::SeqCst), 0x80000000);
+        assert_eq!(
+            value.swap(0, std::sync::atomic::Ordering::SeqCst),
+            0x80000000
+        );
+        assert_eq!(value.load(std::sync::atomic::Ordering::SeqCst), 0);
+    }
     #[test]
     fn ownership_recursion_and_unbalanced_operations_are_checked() {
         let mut s = Section {

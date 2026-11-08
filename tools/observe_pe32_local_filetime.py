@@ -1,15 +1,30 @@
 #!/usr/bin/env python3
-"""Native-only UTC-qualified FileTimeToLocalFileTime evidence for DAO startup."""
+"""Identical-PE UTC-qualified FileTimeToLocalFileTime evidence for DAO startup."""
 import argparse,json,shutil,struct,subprocess
 from pathlib import Path
 from build_pe_fixture import ROOT,rust_tool
 from check_pe32_activation import SOURCE,digest
+from observe_pe32_activation_startup import runner
 SYMBOLS=[('GetStdHandle',4),('WriteFile',20),('GetLastError',0),('SetLastError',4),('GetTimeZoneInformation',4),('FileTimeToLocalFileTime',8)]
 def inputs(d):return {'sources':{(SOURCE/n).relative_to(ROOT).as_posix():digest(SOURCE/n) for n in ['local-filetime.c','local-filetime.def','time-layout.cpp']},'files':{'local-filetime.exe':digest(d/'local-filetime.exe')}}
 def verify(d):
     v=json.loads((d/'local-filetime-inputs.json').read_text())
     if v!=inputs(d):raise ValueError('local FILETIME source/PE identities changed')
+    if v!=frozen()['inputs']:raise ValueError('changed frozen local FILETIME inputs')
     return v
+def frozen():
+    p=ROOT/'pe/reference/pe32-local-filetime-windows-v1.json'
+    if digest(p)!='11c4b77655abc70fd00549ef44af733176c53602c9f0ebe7a18fe166f4096f2f':raise ValueError('changed frozen UTC local FILETIME report')
+    r=json.loads(p.read_bytes())
+    if r['status'] or r['stderr_hex'] or r['backend']!='native Windows PE32 UTC-qualified local FILETIME observer':raise ValueError('invalid native local FILETIME evidence')
+    if decode(bytes.fromhex(r['stdout_hex']))!=r['decoded']:raise ValueError('local FILETIME raw/decoded observations differ')
+    return r
+def compare(value):
+    if value!=frozen()['decoded']:raise ValueError('UTC local FILETIME results/errors/boundaries/aliases differ from native Windows')
+def fixture(d):
+    d.mkdir(parents=True,exist_ok=True);source=ROOT/'pe/reference/pe32-local-filetime-v1.exe'
+    if digest(source)!=frozen()['inputs']['files']['local-filetime.exe']:raise ValueError('changed owned literal local FILETIME PE')
+    shutil.copyfile(source,d/'local-filetime.exe');(d/'local-filetime-inputs.json').write_text(json.dumps(frozen()['inputs'],indent=2)+'\n');verify(d)
 def build(d):
     d.mkdir(parents=True,exist_ok=True);clang=shutil.which('clang');lld=rust_tool('rust-lld');obj=d/'local-filetime.obj';lib=d/'local-filetime.lib'
     if not clang:raise RuntimeError('open Clang is required')
@@ -28,6 +43,20 @@ def native(d):
     identity=verify(d);r=subprocess.run([str((d/'local-filetime.exe').resolve())],capture_output=True,timeout=20)
     report={'backend':'native Windows PE32 UTC-qualified local FILETIME observer','inputs':identity,'status':r.returncode,'stdout_hex':r.stdout.hex(),'stderr_hex':r.stderr.hex()};path=d/'native-local-filetime.json';path.write_text(json.dumps(report,indent=2)+'\n')
     if r.returncode or r.stderr:raise ValueError('native local-FILETIME observer failed; no conversion support claimed')
-    report['decoded']=decode(r.stdout);path.write_text(json.dumps(report,indent=2)+'\n');print('Captured actual UTC timezone and FILETIME result/error/alias/boundary observations; host implementation separate')
+    report['decoded']=decode(r.stdout);path.write_text(json.dumps(report,indent=2)+'\n');compare(report['decoded']);print('Actual UTC timezone and all local FILETIME observations agree with the frozen native record')
+def host(d):
+    identity=verify(d);probe=runner(d);reports=[]
+    for label,extra in [('UTC',['--timezone','UTC']),('unconfigured',[]),('unsupported-zone',['--timezone','America/Chicago'])]:
+        r=subprocess.run([str(probe),str(d/'local-filetime.exe'),'--strict','--file-origins',*extra],capture_output=True,timeout=20)
+        row={'case':label,'backend':'Rosetta PE32 explicit UTC guest profile','inputs':identity,'status':r.returncode,'stdout_hex':r.stdout.hex(),'stderr_hex':r.stderr.hex()};reports.append(row)
+        path=d/'local-filetime-host.json';path.write_text(json.dumps(reports,indent=2)+'\n')
+        if label=='UTC':
+            if r.returncode:raise ValueError('explicit UTC observer failed')
+            row['decoded']=decode(r.stdout);compare(row['decoded'])
+        else:
+            reason=b'explicitly configured supported guest timezone' if label=='unconfigured' else b'only the explicitly selected UTC'
+            if r.returncode!=78 or r.stdout or reason not in r.stderr:raise ValueError('timezone restriction did not stop for its actual reason')
+        path.write_text(json.dumps(reports,indent=2)+'\n')
+    print('All 106 UTC ABI/result/error/guard words agree; unconfigured and unsupported zones stop explicitly')
 if __name__=='__main__':
-    p=argparse.ArgumentParser(description=__doc__);p.add_argument('--output',type=Path,default=ROOT/'local/pe/startup-microtests');p.add_argument('--native',action='store_true');a=p.parse_args();(native if a.native else build)(a.output.resolve())
+    p=argparse.ArgumentParser(description=__doc__);p.add_argument('--output',type=Path,default=ROOT/'local/pe/startup-microtests');m=p.add_mutually_exclusive_group();m.add_argument('--native',action='store_true');m.add_argument('--host',action='store_true');m.add_argument('--frozen-fixture',action='store_true');a=p.parse_args();(native if a.native else lambda d:host(d) if a.host else fixture(d) if a.frozen_fixture else build(d))(a.output.resolve())

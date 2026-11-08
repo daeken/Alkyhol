@@ -36,7 +36,9 @@ mod process32;
 mod startup32;
 #[path = "sync32.rs"]
 mod sync32;
-pub use process32::{ProcessImage32, ProcessOptions32};
+#[path = "time32.rs"]
+mod time32;
+pub use process32::{ProcessImage32, ProcessOptions32, TimeZone32};
 std::arch::global_asm!(include_str!("transition32.S"), options(att_syntax));
 unsafe extern "C" {
     fn mmap(
@@ -60,7 +62,7 @@ unsafe extern "C" {
 }
 const PAGE: usize = 4096;
 const STACK: usize = 1024 * 1024;
-const APIS: [(&str, u16); 68] = [
+const APIS: [(&str, u16); 77] = [
     ("GetLastError", 0),
     ("SetLastError", 4),
     ("GetStdHandle", 4),
@@ -129,6 +131,15 @@ const APIS: [(&str, u16); 68] = [
     ("FindFirstFileW", 8),
     ("FindNextFileW", 8),
     ("FindClose", 4),
+    ("FileTimeToLocalFileTime", 8),
+    ("GetTimeZoneInformation", 4),
+    ("FileTimeToSystemTime", 8),
+    ("GetCurrentProcessId", 0),
+    ("GetTickCount", 0),
+    ("QueryPerformanceCounter", 4),
+    ("QueryPerformanceFrequency", 4),
+    ("InterlockedCompareExchange", 12),
+    ("InterlockedExchange", 8),
 ];
 const EXIT_API: u32 = 14;
 // Win32 promises a reversible process-specific representation, not a published
@@ -376,6 +387,7 @@ struct Cpu32 {
     bound_activation: RefCell<Option<activation32::State>>,
     system_directory: Option<Vec<u16>>,
     system_windows_directory: Option<Vec<u16>>,
+    utc_timezone: bool,
 }
 impl Cpu32 {
     fn clear_heap(&self) {
@@ -438,6 +450,7 @@ impl Cpu32 {
             bound_activation: RefCell::new(None),
             system_directory: None,
             system_windows_directory: None,
+            utc_timezone: false,
         })
     }
 }
@@ -1480,6 +1493,25 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
             65 => files32::first(image, &args),
             66 => files32::next(image, &args),
             67 => files32::close(image, args[0]),
+            68..=70 => time32::dispatch(image, id, &args),
+            71 => std::process::id(),
+            72 => time32::tick_count(),
+            73 | 74 => {
+                if !args[0].is_multiple_of(4) || !image.permits(args[0] as usize, 8, true) {
+                    unsupported("PE32 performance-counter output outside checked guest storage");
+                }
+                let value = if id == 73 {
+                    alkyhol::kernel::performance_counter()
+                } else {
+                    alkyhol::kernel::PERFORMANCE_FREQUENCY
+                };
+                let bytes = value.to_le_bytes();
+                unsafe {
+                    ptr::copy_nonoverlapping(bytes.as_ptr(), args[0] as usize as *mut u8, 8);
+                }
+                1
+            }
+            75 | 76 => sync32::dispatch(image, id, &args),
             _ => unreachable!(),
         }
     })
@@ -1544,6 +1576,7 @@ mod tests {
                 bound_activation: RefCell::new(None),
                 system_directory: None,
                 system_windows_directory: None,
+                utc_timezone: false,
             }),
             tls: None,
             tls_entered: Cell::new(false),

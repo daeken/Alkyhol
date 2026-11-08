@@ -19,9 +19,10 @@ struct AssemblyInputs<'a> {
     policies: &'a [std::path::PathBuf],
 }
 #[derive(Default)]
-struct DirectoryRoles {
+struct GuestProfile32 {
     system: Option<Vec<u16>>,
     windows: Option<Vec<u16>>,
+    utc: bool,
 }
 fn executable_name(name: &str) -> Result<String> {
     if name.len() > 255
@@ -241,6 +242,9 @@ pub struct ProcessOptions32 {
     /// A separate verified shared Windows-directory role. It is never inferred
     /// from System32, DLL origins or the host's own operating-system directories.
     pub system_windows_directory: Option<std::path::PathBuf>,
+    /// Explicit guest timezone. Default is unknown/unsupported for local-time
+    /// APIs; host-local DST behavior is never guessed.
+    pub time_zone: Option<TimeZone32>,
     /// Opt in to scoped exact x86 assembly binding from explicit private
     /// manifests, genuine file origins and optional caller-trusted policies.
     /// One/three-file layouts and token/hash metadata are bounded native-tested
@@ -249,6 +253,10 @@ pub struct ProcessOptions32 {
     /// Caller-trusted installed publisher policy metadata. No automatic policy
     /// search, catalog/signature verification or Windows installation is claimed.
     pub activation_policies: Vec<std::path::PathBuf>,
+}
+#[derive(Clone, Copy)]
+pub enum TimeZone32 {
+    Utc,
 }
 impl<'a> ProcessImage32<'a> {
     /// Check the complete closed graph without mapping or executing any module.
@@ -282,7 +290,7 @@ impl<'a> ProcessImage32<'a> {
                 process,
                 false,
                 &BTreeMap::new(),
-                DirectoryRoles::default(),
+                GuestProfile32::default(),
                 None,
             )
         }
@@ -311,7 +319,7 @@ impl<'a> ProcessImage32<'a> {
                 process,
                 true,
                 &BTreeMap::new(),
-                DirectoryRoles::default(),
+                GuestProfile32::default(),
                 None,
             )
         }
@@ -423,9 +431,10 @@ impl<'a> ProcessImage32<'a> {
                 process,
                 external.is_some(),
                 &paths,
-                DirectoryRoles {
+                GuestProfile32 {
                     system: system_directory,
                     windows,
+                    utc: matches!(options.time_zone, Some(TimeZone32::Utc)),
                 },
                 options
                     .activation_assemblies
@@ -443,12 +452,13 @@ impl<'a> ProcessImage32<'a> {
         process: &'a ProcessContext,
         diagnostic: bool,
         origins: &BTreeMap<String, super::module_path32::Origin>,
-        directories: DirectoryRoles,
+        directories: GuestProfile32,
         assembly_profile: Option<AssemblyInputs<'_>>,
     ) -> Result<Self> {
         let mut cpu = Cpu32::new()?;
         cpu.system_directory = directories.system;
         cpu.system_windows_directory = directories.windows;
+        cpu.utc_timezone = directories.utc;
         // Keep unknown manifest/binding state deferred until an activation query.
         // Existing paths do not gain a fabricated empty/default context.
         *cpu.activation.borrow_mut() = crate::activation_manifest::empty_default(

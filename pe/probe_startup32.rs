@@ -1,6 +1,6 @@
 //! Explicit diagnostic execution of a caller-supplied original PE32/DLL graph.
 //! External-service imports are inaccessible guards, never successful stubs.
-use alkyhol_pe::{ProcessContext, ProcessImage32, ProcessOptions32};
+use alkyhol_pe::{ProcessContext, ProcessImage32, ProcessOptions32, TimeZone32};
 fn main() {
     let args: Vec<_> = std::env::args().skip(1).collect();
     let result = (|| -> alkyhol_pe::Result<u32> {
@@ -28,6 +28,14 @@ fn main() {
                 "--rebase" => forced = true,
                 "--strict" => strict = true,
                 "--file-origins" => file_origins = true,
+                "--timezone" => {
+                    if options.next().map(String::as_str) != Some("UTC") {
+                        return Err(
+                            "only the explicitly selected UTC guest timezone is supported".into(),
+                        );
+                    }
+                    profile.time_zone = Some(TimeZone32::Utc);
+                }
                 "--activation" => {
                     profile.activation_assemblies.get_or_insert_with(Vec::new);
                 }
@@ -67,6 +75,7 @@ fn main() {
         }
         if (profile.system_directory.is_some()
             || profile.system_windows_directory.is_some()
+            || profile.time_zone.is_some()
             || profile.activation_assemblies.is_some())
             && !file_origins
         {
