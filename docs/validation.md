@@ -4,6 +4,24 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## Independent native startup observations retain upstream failures
+
+The [native startup job at `646a0e9`](https://github.com/daeken/Alkyhol/actions/runs/42501028073)
+returned a successful raw 204-row atan observation, but its strict frozen-baseline
+comparison failed: two status-word C1 bits differ under **0x027F**, a profile the
+backend already explicitly rejects. Other raw bytes in that observation agree.
+The cause is not isolated; neither CPU/CRT equivalence nor a host regression is
+inferred from this observation. The original report, PE and acceptance fields
+remain unchanged, and the run remains failed. The raw differing native report
+is retained locally.
+
+Later independent native onexit/heap/cursor/directory observations now execute
+even after an earlier comparison fails, preserving their own raw output and strict
+checks. This does not suppress failed steps or change the job result. It prevents
+an unsupported-profile reference discrepancy from dropping evidence for APIs
+actually reached by DAO. The established 16-row 0x037F native/M4 comparison remains
+the finite admitted-profile evidence; no new general atan parity is claimed.
+
 ## The unchanged DAO EXE enters its original startup code
 
 On the physical M4, Bink's original `GetWindowsDirectoryA` and subsequent
