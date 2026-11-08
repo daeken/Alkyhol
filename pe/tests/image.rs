@@ -72,6 +72,8 @@ fn reloc_fixture() -> Vec<u8> {
 fn conventional_layout_and_zero_fill_are_preserved() {
     let b = fixture();
     let p = Image::parse(&b).unwrap();
+    assert_eq!(p.bitness(), 64);
+    assert_eq!(p.declared_size(), p.size);
     assert_eq!(
         (p.base, p.entry, p.size, p.headers),
         (0x140000000, 0x1000, 0x3000, 0x200)
@@ -97,6 +99,7 @@ fn invalid_layouts_and_unsafe_page_geometry_are_rejected() {
         (OPT + 32, 0x200, 4),
         (OPT + 36, 3, 4),
         (OPT + 56, 0xfffff000, 4),
+        (OPT + 56, 0x2fff, 4),
         (OPT + 60, 0x180, 4),
         (OPT + 68, 1, 2),
         (OPT + 70, 0x4000, 2),

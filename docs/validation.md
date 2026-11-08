@@ -4,17 +4,34 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
-## PE32 SizeOfImage geometry: native observation pending
+## PE32 SizeOfImage geometry: native Windows and physical M4 development
 
-An independent collector now derives eight owned PE32 header variants from the
-unchanged frozen test. Only four SizeOfImage bytes differ; input/source hashes
-and complete payload identity are checked before execution. The Windows stage
-will retain raw launch failures or process status/stdout/stderr, with a required
-successful unchanged baseline. Initial native results are pending. This capture
-adds no Alkyhol compatibility or game execution claim and changes no loader gate.
-Synthetic generator/collector tests separately check field-only mutations,
-malformed geometry, raw crash/error preservation and timeout failure. All game
-binaries/derived metadata remain local. See [PE32](pe32.md) for the finite scope.
+Native Windows's actual collector at `7c8fd27` executes five adequate owned PE32
+variants, including four unaligned image-size fields, with the original eight raw
+output words. Three insufficient extents fail CreateProcess with winerror 193 /
+errno 8 before a child runs. Only four SizeOfImage bytes differ from the unchanged
+frozen owned PE32 fixture. The full actual native report is frozen at
+`pe/reference/pe32-geometry-windows-v1.json`, including exact case/source hashes and
+all native process/error observations. All three
+[PE jobs](https://github.com/daeken/Alkyhol/actions/runs/42431518982) and all 24
+[conformance jobs](https://github.com/daeken/Alkyhol/actions/runs/42431518949) pass
+on that observation revision; those jobs predate the Alkyhol geometry comparison.
+
+The candidate now rounds the allocation extent for partial PE32 image pages with
+4-KiB section alignment and retains the raw header value through declared_size().
+Section/32-bit address/one-GiB/W^X bounds remain. Physical M4 development runs
+reproduce five executions and three preflight rejections in normal/forced-rebase
+runs. Native/raw OS errors are retained separately from host status 78; crashes,
+unknown OS failures and failed observer code cannot become compatible rejections.
+Strict same-revision paired CI comparison is pending the candidate run. This
+measures finite loader acceptance and the existing integer/stdcall observer, not
+native allocation/query layout or game execution. The unchanged local game now
+passes the old image-size gate and stops at file-range validation, before entry;
+its files and all derived inventories remain local. See [PE32](pe32.md).
+All 97 PE host tests/12 compiler checks, 32 portable tests, 261 Python tests and
+Clippy pass locally. New host assertions retain declared header bytes, enforce
+rounded extent/address bounds, keep other alignment/AMD64 gates, and reject
+crashes, changed payload bytes, dropped cases, bad rebase evidence and joint drift.
 
 ## First unchanged PE32/i386 execution: native Windows and physical M4
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Record native Windows loader responses to owned SizeOfImage variants.
+"""Record native Windows/Alkyhol outcomes for identical owned SizeOfImage variants.
 
-Initial evidence capture only: this does not compare or approve Alkyhol behavior.
+Evidence capture only: comparison is separate; crashes never imply successful execution.
 """
 import argparse
 import ctypes
@@ -17,6 +17,8 @@ from run_pe32_probe import EXPECTED_WORDS
 import struct
 
 NATIVE='native Windows PE32 image geometry'
+HOST='Alkyhol PE32 image geometry / x86-64 Mach-O'
+REFERENCE=ROOT/'pe/reference/pe32-geometry-windows-v1.json'
 
 
 def verify(directory):
@@ -49,26 +51,44 @@ def capture(command,cwd):
 def main():
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('--directory',type=Path,required=True);p.add_argument('--output',type=Path,required=True)
     args=p.parse_args()
-    if platform.system()!='Windows':raise RuntimeError('initial geometry collector requires native Windows')
+    system=platform.system()
+    if system not in ['Windows','Darwin']:raise RuntimeError('requires Windows or macOS')
     manifest,items=verify(args.directory.resolve())
-    kernel=ctypes.WinDLL('kernel32',use_last_error=True)
-    kernel.SetErrorMode.argtypes,kernel.SetErrorMode.restype=[ctypes.c_uint32],ctypes.c_uint32
-    old=kernel.SetErrorMode(0x8003) # suppress OS dialogs for rejected owned images
-    observations=[]
-    try:
+    reference=json.loads(REFERENCE.read_text(encoding='utf-8'))
+    for field in ['base_pe_sha256','sources','cases']:
+        if manifest[field]!=reference[field]:raise ValueError('changed frozen geometry inputs')
+    if system=='Windows':
+        backend=NATIVE
+        kernel=ctypes.WinDLL('kernel32',use_last_error=True)
+        kernel.SetErrorMode.argtypes,kernel.SetErrorMode.restype=[ctypes.c_uint32],ctypes.c_uint32
+        old=kernel.SetErrorMode(0x8003)
+        observations=[]
+        try:
+            with tempfile.TemporaryDirectory(prefix='alkyhol-pe32-geometry-') as temp:
+                for row,data in items:
+                    path=Path(temp)/(row['case']+'.exe');path.write_bytes(data)
+                    observations.append({'case':row['case'],**capture([str(path)],temp)})
+        finally:kernel.SetErrorMode(old)
+        baseline={'case':'aligned','kind':'process','status':0,'stdout_hex':struct.pack('<8I',*EXPECTED_WORDS).hex(),'stderr_hex':''}
+        if observations[0]!=baseline:raise ValueError('unchanged native baseline failed')
+        rebased=None
+    else:
+        from translate_pe32 import translate,embedded_payload
+        backend=HOST;observations=[];rebased=[]
         with tempfile.TemporaryDirectory(prefix='alkyhol-pe32-geometry-') as temp:
             for row,data in items:
-                path=Path(temp)/(row['case']+'.exe');path.write_bytes(data)
-                observations.append({'case':row['case'],**capture([str(path)],temp)})
-    finally:kernel.SetErrorMode(old)
-    baseline={'case':'aligned','kind':'process','status':0,'stdout_hex':struct.pack('<8I',*EXPECTED_WORDS).hex(),'stderr_hex':''}
-    if observations[0]!=baseline:raise ValueError('unchanged native baseline failed')
-    report={'schema_version':1,'backend':NATIVE,'base_pe_sha256':manifest['base_pe_sha256'],
-            'sources':manifest['sources'],'cases':manifest['cases'],'normal':observations,
+                source=Path(temp)/(row['case']+'.exe');source.write_bytes(data)
+                executable=translate(source,Path(temp)/(row['case']+'-macos'))
+                if hashlib.sha256(embedded_payload(executable.read_bytes())).hexdigest()!=row['pe_sha256']:
+                    raise ValueError('executed geometry PE payload differs')
+                for target,flags in [(observations,[]),(rebased,['--rebase'])]:
+                    target.append({'case':row['case'],**capture([str(executable),'--loader-info',*flags],temp)})
+    report={'schema_version':1,'backend':backend,'base_pe_sha256':manifest['base_pe_sha256'],
+            'sources':manifest['sources'],'cases':manifest['cases'],'normal':observations,'rebased':rebased,
             'revision':subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),
             'tracked_tree_clean':not subprocess.check_output(['git','status','--porcelain','--untracked-files=no'],cwd=ROOT,text=True).strip()}
     args.output.parent.mkdir(parents=True,exist_ok=True);args.output.write_text(json.dumps(report,indent=2)+'\n',encoding='utf-8')
-    print('Recorded eight actual native loader outcomes; Alkyhol parity is not assessed by this capture')
+    print('Recorded eight actual loader outcomes; parity requires the separate comparator: '+backend)
 
 
 if __name__=='__main__':main()

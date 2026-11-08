@@ -1,0 +1,110 @@
+{
+  "schema_version": 1,
+  "backend": "native Windows PE32 image geometry",
+  "base_pe_sha256": "da101b3b451c8d511dd02e6316dc3101ef5c1b13cd56add33c029f9a476b191c",
+  "sources": {
+    "pe/fixtures/pe32/contract.c": "828d53442ef67bac1adb884024de19284e118aa7538a6f42620cce9788bc1c74",
+    "pe/fixtures/pe32/kernel32.def": "387a43121afd31dc1e37548f6125c97e359290f7e6ddb82beec909c417479dfb",
+    "pe/fixtures/pe32/canary.S": "8d0ca079d5928696bee45bdff738fa7b4b10cf1276e8ad3c6be516d6f2a5de00",
+    "tools/build_pe32_geometry.py": "096e404eb6002720a8ab05b82ab7c95757e84581056992b5d2bbf055d7f6857a"
+  },
+  "cases": [
+    {
+      "case": "aligned",
+      "declared_size": 20480,
+      "pe_sha256": "da101b3b451c8d511dd02e6316dc3101ef5c1b13cd56add33c029f9a476b191c"
+    },
+    {
+      "case": "last_byte",
+      "declared_size": 20479,
+      "pe_sha256": "7d4ae9b6eb556fb8363565ddab636b882cfe08804eac31a50fee0608865d3ec6"
+    },
+    {
+      "case": "virtual_end",
+      "declared_size": 16440,
+      "pe_sha256": "27adea0fd6e66585c3b4e70f83fec3433509fe157ede3318d5211c0c2ce5afe1"
+    },
+    {
+      "case": "initialized_end",
+      "declared_size": 16896,
+      "pe_sha256": "e6add30fea3cfc7ae11442b5965ec8fbc04b9a59912e9b62ef7bbcdc576d3dcd"
+    },
+    {
+      "case": "one_byte_final_page",
+      "declared_size": 16385,
+      "pe_sha256": "d59629f2f1fb00ed7f3317e1bd74f6a53cb3c6bb4ac29a3fbf25a911c3ebee89"
+    },
+    {
+      "case": "final_page_start",
+      "declared_size": 16384,
+      "pe_sha256": "3b6076515b8a92a52fca4084854ff2604100efb987b8e9523360ba46a91b1e28"
+    },
+    {
+      "case": "before_final_page",
+      "declared_size": 16383,
+      "pe_sha256": "4bfd2e9a3208a0b45c6cfc432755a13731ba2e7bd1bf54267d1e043580f600d2"
+    },
+    {
+      "case": "zero",
+      "declared_size": 0,
+      "pe_sha256": "17d0511aa7c13311aa8e340828d1e0f791a336aeeda33b0e2911672836d4e90f"
+    }
+  ],
+  "normal": [
+    {
+      "case": "aligned",
+      "kind": "process",
+      "status": 0,
+      "stdout_hex": "363833490400000010270000777134120100000001000000d4c3b2a155667788",
+      "stderr_hex": ""
+    },
+    {
+      "case": "last_byte",
+      "kind": "process",
+      "status": 0,
+      "stdout_hex": "363833490400000010270000777134120100000001000000d4c3b2a155667788",
+      "stderr_hex": ""
+    },
+    {
+      "case": "virtual_end",
+      "kind": "process",
+      "status": 0,
+      "stdout_hex": "363833490400000010270000777134120100000001000000d4c3b2a155667788",
+      "stderr_hex": ""
+    },
+    {
+      "case": "initialized_end",
+      "kind": "process",
+      "status": 0,
+      "stdout_hex": "363833490400000010270000777134120100000001000000d4c3b2a155667788",
+      "stderr_hex": ""
+    },
+    {
+      "case": "one_byte_final_page",
+      "kind": "process",
+      "status": 0,
+      "stdout_hex": "363833490400000010270000777134120100000001000000d4c3b2a155667788",
+      "stderr_hex": ""
+    },
+    {
+      "case": "final_page_start",
+      "kind": "launch_error",
+      "winerror": 193,
+      "errno": 8
+    },
+    {
+      "case": "before_final_page",
+      "kind": "launch_error",
+      "winerror": 193,
+      "errno": 8
+    },
+    {
+      "case": "zero",
+      "kind": "launch_error",
+      "winerror": 193,
+      "errno": 8
+    }
+  ],
+  "revision": "7c8fd27a00f073588d1d75b2c4b14f3c3617f1ac",
+  "tracked_tree_clean": true
+}

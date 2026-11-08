@@ -178,6 +178,12 @@ jobs:
           path: local/pe/pe32-alkyhol.json
       - name: Build owned SizeOfImage variants for independent native loader observation
         run: python tools/build_pe32_geometry.py
+      - name: Execute owned PE32 geometry cases normally and with forced relocation
+        run: python tools/run_pe32_geometry.py --directory local/pe/pe32-geometry --output local/pe/geometry-alkyhol.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe32-geometry-alkyhol
+          path: local/pe/geometry-alkyhol.json
       - uses: actions/upload-artifact@v4
         with:
           name: pe32-geometry-fixture
@@ -815,3 +821,12 @@ jobs:
           name: pe-pe32-windows
           path: local/pe/observations
       - run: python tools/compare_pe32_probe.py local/pe/observations/pe32-windows.json local/pe/observations/pe32-alkyhol.json
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe32-geometry-alkyhol
+          path: local/pe/observations
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe32-geometry-windows
+          path: local/pe/observations
+      - run: python tools/compare_pe32_geometry.py local/pe/observations/geometry-windows.json local/pe/observations/geometry-alkyhol.json

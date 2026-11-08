@@ -66,6 +66,7 @@ pub struct Image<'a> {
     pub bytes: &'a [u8],
     pub base: u64,
     pub size: usize,
+    declared_size: usize,
     pub headers: usize,
     pub entry: usize,
     pub sections: Vec<Section>,
@@ -119,6 +120,11 @@ impl<'a> Image<'a> {
     pub fn bitness(&self) -> u8 {
         if self.i386 { 32 } else { 64 }
     }
+    /// Original SizeOfImage header field, retained without modifying PE bytes.
+    /// The allocation extent (`size`) rounds supported PE32 4-KiB layouts up.
+    pub fn declared_size(&self) -> usize {
+        self.declared_size
+    }
     fn parse_kind(bytes: &'a [u8], is_dll: bool) -> Result<Self> {
         Self::parse_format(bytes, is_dll, false)
     }
@@ -162,7 +168,20 @@ impl<'a> Image<'a> {
         if ![2, 3].contains(&subsystem) {
             return Err("only Windows GUI/console subsystems are accepted".into());
         }
-        let size = u32_at(bytes, opt + 56)? as usize;
+        let declared_size = u32_at(bytes, opt + 56)? as usize;
+        let size = if i386 && align == PAGE {
+            // Native geometry observations accept a partial final image page.
+            // Keep the header bytes intact; only the checked mapping span rounds.
+            declared_size
+                .checked_add(PAGE - 1)
+                .ok_or("PE32 image extent overflow")?
+                & !(PAGE - 1)
+        } else {
+            if i386 && !declared_size.is_multiple_of(align) {
+                return Err("unaligned PE32 SizeOfImage requires 4-KiB section alignment".into());
+            }
+            declared_size
+        };
         let headers = u32_at(bytes, opt + 60)? as usize;
         let base = if i386 {
             u64::from(u32_at(bytes, opt + 28)?)
@@ -171,9 +190,6 @@ impl<'a> Image<'a> {
         };
         let entry = u32_at(bytes, opt + 16)? as usize;
         let table_end = opt + opt_size + count * 40;
-        if i386 && !size.is_multiple_of(align) {
-            return Err("PE32 unaligned SizeOfImage is not yet supported".into());
-        }
         if size == 0
             || size > MAX_IMAGE
             || !size.is_multiple_of(align)
@@ -251,6 +267,7 @@ impl<'a> Image<'a> {
             bytes,
             base,
             size,
+            declared_size,
             headers,
             entry,
             sections,

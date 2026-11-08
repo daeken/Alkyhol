@@ -69,7 +69,7 @@ fn i386_header_width_extents_and_all_truncated_prefixes_are_checked() {
     for end in 0..b.len() {
         assert!(Image::parse_i386(&b[..end]).is_err(), "prefix {end}");
     }
-    for (at, value) in [(OPT + 56, 0x3001), (OPT + 28, 0xffff0000), (OPT + 92, 17)] {
+    for (at, value) in [(OPT + 56, 0x2000), (OPT + 28, 0xffff0000), (OPT + 92, 17)] {
         let mut bad = b.clone();
         p32(&mut bad, at, value);
         if at == OPT + 28 {
@@ -166,4 +166,35 @@ fn highlow_fixups_allow_initialized_instruction_operands_but_no_header_bss_or_ov
         Image::parse_i386(&adjacent).unwrap().relocations().unwrap(),
         vec![0x1001, 0x1005]
     );
+}
+#[test]
+fn partial_final_i386_page_retains_header_size_and_bounds_the_rounded_mapping() {
+    let original = fixture();
+    for declared in [0x3000, 0x2fff, 0x2400, 0x2001] {
+        let mut bytes = original.clone();
+        p32(&mut bytes, OPT + 56, declared);
+        let before = bytes.clone();
+        let image = Image::parse_i386(&bytes).unwrap();
+        assert_eq!(image.declared_size(), declared as usize);
+        assert_eq!(image.size, 0x3000);
+        assert_eq!(image.sections[1].rva + image.sections[1].size, 0x2400);
+        image.check_startup().unwrap();
+        assert_eq!(bytes, before); // Inspection never rewrites the header.
+    }
+    for declared in [0, 1, 0x1fff, 0x2000, 0x40000001, u32::MAX] {
+        let mut bytes = original.clone();
+        p32(&mut bytes, OPT + 56, declared);
+        assert!(Image::parse_i386(&bytes).is_err(), "declared {declared:x}");
+    }
+    // Rounding must not hide a preferred-base overflow beyond 32-bit addresses.
+    let mut bytes = original.clone();
+    p32(&mut bytes, OPT + 28, 0xffff0000);
+    p32(&mut bytes, OPT + 56, 0x10001);
+    assert!(Image::parse_i386(&bytes).is_err());
+    // Other section alignments retain their previous gate, rather than infer
+    // semantics from the finite native 4-KiB geometry observations.
+    let mut bytes = original;
+    p32(&mut bytes, OPT + 32, 8192);
+    p32(&mut bytes, OPT + 56, 0x4001);
+    assert!(Image::parse_i386(&bytes).is_err());
 }
