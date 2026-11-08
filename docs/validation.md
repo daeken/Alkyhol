@@ -18,8 +18,8 @@ The new unchanged owned PE checks the 8-byte FILETIME write and guard, process a
 private heap requested sizes, HEAP_NO_SERIALIZE on the private heap, last-error
 preservation and real frees. Its actual timestamp is bracketed against parent UTC
 on each machine with 100 ms allowance for the non-precise Windows clock; raw
-clock values are deliberately not required to agree between machines. Native
-clock/heap results are pending. Separate wrong-heap and read-only-output programs
+clock values are deliberately not required to agree between machines. The identical PE also passed native Windows at `b22a43b`, including the clock
+bracket and requested-size/error/guard fields. Separate wrong-heap and read-only-output programs
 stop with status 78 after a boot marker; these are host restrictions, not native
 observations of undefined Windows inputs. Synthetic record-validation negatives
 reject wrong epoch/time bounds, width, guards, padding-sized heap results and
@@ -36,6 +36,20 @@ passed. Twelve identical-PE exact-output startup cases passed native Windows,
 including mapping edges, atomic wraparound, translated-domain SSE2/CPUID checks
 and the finite x87 division witness. This closes their prior pending native result;
 it establishes neither general floating-point parity nor game compatibility.
+
+At `b22a43b`, both dedicated startup jobs passed: all 25 host cases and 13 native
+positive cases (12 exact-output cases plus the separately bracketed clock/heap
+case). All 24 [conformance jobs](https://github.com/daeken/Alkyhol/actions/runs/42464946185)
+passed. The broader [PE workflow](https://github.com/daeken/Alkyhol/actions/runs/42464946179)
+failed twice while fetching the unchanged historical u-config fixture: the upstream
+server returned HTTP 504. Its dependent historical Windows/comparison jobs were
+therefore skipped; no success is claimed for those jobs at this revision. The
+fixture, its required checksum and acceptance criteria were not changed.
+
+Read-only inspection also found the original EXE's embedded manifest. Original
+manifest bytes and parsed assembly identities are retained only in ignored local
+storage for the next activation-context milestone; no game-derived manifest or
+inventory is committed.
 
 References: [GetSystemTimeAsFileTime](https://learn.microsoft.com/en-us/windows/win32/api/sysinfoapi/nf-sysinfoapi-getsystemtimeasfiletime)
 and [HeapSize](https://learn.microsoft.com/en-us/windows/win32/api/heapapi/nf-heapapi-heapsize).
