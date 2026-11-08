@@ -6,7 +6,7 @@ See the latest direct-Metal record for current implementation evidence.
 
 ## DAO real module origins and path queries
 
-On the physical M4, the original CRT now executes GetModuleFileNameW and
+On the physical M4 at clean `14cd103`, the original CRT now executes GetModuleFileNameW and
 GetLongPathNameW and reaches **GetSystemDirectoryW**, the next measured unsupported
 import. The activation query itself and the game EXE entry have **not executed**.
 Original identities, source paths, module/RVA/argument captures and extracted DLLs
@@ -35,27 +35,45 @@ normalized DWORDs. Each complete returned path is separately checked against its
 independently known actual source; full absolute paths and their lengths are
 machine-specific and are not compared for cross-machine byte equality. Four
 host-only restrictions stop for their specific expected reason, including a
-bytes-only DLL stopping before EXE entry. Native Windows comparison is pending.
+bytes-only DLL stopping before EXE entry. The complete native Windows comparison
+passed at `14cd103`: all 105 normalized words agree, and all three full paths
+independently identify their real source on each host. The actual directory/drive
+strings remain intentionally host-specific.
 
 The first native observation at `dc2e1dc` returned status 0 and complete paths,
 but its comparison failed: successful GetModuleFileNameW calls cleared last error
 to 0 instead of preserving the seeded value. All other normalized fields agreed.
 The runtime and explicit expected record now follow those measured native zeros;
-the C/DLL sources and executed PE inputs remain unchanged. The corrected complete
-comparison still awaits its next native run. GetLongPathNameW's seeded last error
+the C/DLL sources and executed PE inputs remained unchanged. The corrected complete
+comparison passed in the next native run. GetLongPathNameW's seeded last error
 was preserved in that same independent observation.
 
 Local checks pass 154 PE host tests plus 17 compile/documentation checks,
-335 Python tests, Clippy, all 25 prior startup cases and six new path executions.
+336 Python tests, Clippy, all 25 prior startup cases and six new path executions.
 The existing frozen activation/source/PE identities remain unchanged. At
 predecessor `d1c31f9`, both dedicated startup jobs passed the strict frozen
 activation comparator; the historical PE job separately hit an upstream u-config
 HTTP 504 and skipped its dependent historical comparisons.
 
+At `14cd103`, both dedicated [startup jobs](https://github.com/daeken/Alkyhol/actions/runs/42471707745)
+passed, including all original frozen startup/activation observations and the
+new path comparison. Its unchanged raw CRLF native report is frozen at
+`pe/reference/pe32-module-path-windows-v1.json`, SHA-256
+`9a4ac6ec8aa07c071e3b43739cc9faab01a2eb246081463b132c24f61395d26e`.
+Exact source/EXE/DLL identities and the observed contract are now required; there
+is no initial-capture bypass. The historical PE job again failed on the unchanged
+upstream u-config HTTP 504 download; its dependent native/comparison jobs did not run.
+All 24 conformance jobs separately passed at `dc2e1dc`.
+
 The next system-directory API needs an explicit, backed guest-system directory
 configuration. It must not relabel the CRT source directory as the system directory
 to bypass the subsequent original activation check. Side-by-side binding remains
 unknown/unimplemented for the original DLL graph.
+
+Read-only inspection of the bundled redistributable also located its original
+CRT publisher-policy manifest and catalogs. Extracted policy bytes, parsed ranges
+and exact installer provenance stay ignored/local. This is package metadata,
+not native publisher-policy application or evidence of correct original binding.
 
 References: [GetModuleFileNameW](https://learn.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-getmodulefilenamew),
 [GetLongPathNameW](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getlongpathnamew)

@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'tools'))
-from check_pe32_module_paths import decode, expected_words
+from check_pe32_module_paths import decode, expected_words, frozen
 
 
 class ModulePathContractTests(unittest.TestCase):
@@ -35,6 +35,12 @@ class ModulePathContractTests(unittest.TestCase):
         changed=self.header+struct.pack('<I',len(self.paths[0]))+self.tail[4:]
         with self.assertRaises(ValueError):decode(changed,self.paths)
         with self.assertRaises(ValueError):decode(data[:420]+struct.pack('<I',2048)+data[424:],self.paths)
+
+    def test_native_reference_requires_real_complete_paths_and_executed_binary_identity(self):
+        capture=frozen()
+        self.assertEqual(decode(bytes.fromhex(capture['stdout_hex']),capture['paths']),capture['paths'])
+        self.assertEqual(capture['inputs']['files']['module-path0.exe'],'59d3e172e0bd4f57b03aeda13080aa9971a4770efcee2c042bab0b5c419cc24c')
+        self.assertEqual(capture['inputs']['files']['module-path.dll'],'d8be5fd0d06c9801b8460286742920062b43256097bc296bca3b48eb16caee6e')
 
 
 if __name__=='__main__':unittest.main()

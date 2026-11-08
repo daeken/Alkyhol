@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Test the module-origin/path blocker actually reached by DAO's original CRT."""
 import argparse
+import hashlib
 import json
 from pathlib import Path
 import shutil
@@ -51,9 +52,21 @@ def identities(directory):
             'files': {n: digest(directory/n) for n in FILES}}
 
 
+def frozen():
+    raw = (ROOT/'pe/reference/pe32-module-path-windows-v1.json').read_bytes()
+    if hashlib.sha256(raw).hexdigest() != '9a4ac6ec8aa07c071e3b43739cc9faab01a2eb246081463b132c24f61395d26e':
+        raise ValueError('changed frozen native module/path report')
+    value = json.loads(raw)
+    if value['backend'] != 'native Windows PE32 module/path microtest' or value['status'] or value['stderr_hex']:
+        raise ValueError('invalid frozen native module/path evidence')
+    decode(bytes.fromhex(value['stdout_hex']),value['paths'])
+    return value
+
+
 def verify(directory):
     value = json.loads((directory/'module-path-inputs.json').read_text())
     if value != identities(directory): raise ValueError('module path source/PE/DLL identities changed')
+    if value != frozen()['inputs']: raise ValueError('changed frozen native module/path source/PE/DLL identities')
     return value
 
 
