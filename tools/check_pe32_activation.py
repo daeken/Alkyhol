@@ -48,6 +48,21 @@ def expected_resources():
     return b''.join(struct.pack('<I', len(data))+data for _, _, _, data in resources())
 
 
+def frozen():
+    raw = (ROOT/'pe/reference/pe32-activation-windows-v1.json').read_bytes()
+    if hashlib.sha256(raw).hexdigest() != '8f965ed831084348e098cbbe73613c456c197249b4de9ee7746f8ed813e65bb1':
+        raise ValueError('changed frozen native activation report')
+    value = json.loads(raw)
+    if value['backend'] != 'native Windows i386 activation-context observer' or value['status'] or value['stderr_hex']:
+        raise ValueError('invalid frozen native activation evidence')
+    return value
+
+
+def compare_records(records):
+    if records != frozen()['records']:
+        raise ValueError('native activation observations differ from the frozen identical-PE capture')
+
+
 def verify(directory):
     value = json.loads((directory/'activation-inputs.json').read_text())
     expected = {(SOURCE/n).relative_to(ROOT).as_posix(): digest(SOURCE/n) for n in SOURCES}
@@ -55,6 +70,8 @@ def verify(directory):
         raise ValueError('activation source/identical-PE identity changed')
     if value['resource_prefix_sha256'] != hashlib.sha256(expected_resources()).hexdigest():
         raise ValueError('activation resource contract changed')
+    if value != frozen()['inputs']:
+        raise ValueError('changed frozen native activation source/PE inputs')
     return value
 
 
@@ -142,6 +159,7 @@ def native(directory):
         raise ValueError('native activation observer failed: '+repr(report))
     report['records'] = decode_native(result.stdout)
     report_path.write_text(json.dumps(report, indent=2)+'\n')
+    compare_records(report['records'])
     print('Native resource bytes agree; captured empty/active/deactivated contexts and 40/64-byte query layouts')
 
 

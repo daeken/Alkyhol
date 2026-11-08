@@ -5,7 +5,7 @@ from pathlib import Path
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]/'tools'))
-from check_pe32_activation import decode_native, expected_resources, resource_record
+from check_pe32_activation import compare_records, decode_native, expected_resources, frozen, resource_record
 
 
 class ActivationContractTests(unittest.TestCase):
@@ -50,6 +50,14 @@ class ActivationContractTests(unittest.TestCase):
             self.synthetic_report()
             self.records[row][field] = 0
             with self.assertRaises(ValueError): decode_native(self.encode())
+
+    def test_native_comparison_requires_the_unchanged_real_capture(self):
+        capture = frozen()
+        compare_records(decode_native(bytes.fromhex(capture['stdout_hex'])))
+        with self.assertRaises(ValueError): compare_records(decode_native(self.synthetic_report()))
+        changed = [row[:] for row in capture['records']]
+        changed[5][7] = 2
+        with self.assertRaises(ValueError): compare_records(changed)
 
 
 if __name__ == '__main__':

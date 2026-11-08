@@ -29,14 +29,15 @@ process as an empty activation context would be unjustified.
 An owned i386 PE with an empty default manifest, a separate file-redirection
 manifest and a Unicode-named binary resource now builds with open Clang/LLD.
 Host inspection agrees exactly with the linked payloads. The dedicated native
-startup job will extract the same resources with Windows APIs and observe actual
+startup job extracts the same resources with Windows APIs and observes actual
 Create/Activate/GetCurrent/Find/Deactivate/ReleaseActCtx behavior, including both
 40-byte legacy and 64-byte current keyed-data callers. Independent Windows SDK
-layout assertions are included. **Native results are pending**; no activation API
-implementation or original-game progress beyond the existing stop is claimed.
+layout assertions are included. These observations have now passed on native
+Windows at `1a7fe5f`; no activation API implementation or original-game progress
+beyond the existing stop is claimed.
 
 Local checks pass 148 PE host tests plus 16 compile/documentation checks,
-329 Python tests, all 25 existing startup microtests and Clippy. The five new
+330 Python tests, all 25 existing startup microtests and Clippy. The five new
 resource units cover exact RVA/payload separation, counted UTF-16 names,
 truncation, malformed trees and duplicate/count errors. Collector tests are
 synthetic format checks and do not establish activation semantics.
@@ -54,7 +55,26 @@ retrieved both manifest payloads, then the observer trapped while accessing its
 additional Unicode-named test resource. That run is **failed evidence**, not a
 successful activation observation. The owned resource name is now stored in
 uppercase form and failure records include the native resource error. Activation
-queries remain unobserved until the entire fixture reaches them successfully.
+queries were unobserved in those failed attempts.
+
+At `1a7fe5f`, both dedicated [startup jobs](https://github.com/daeken/Alkyhol/actions/runs/42468131948)
+passed, including SDK layout checks, exact native/host resource bytes and the
+complete activation observer. The unchanged raw CRLF Windows report is frozen at
+`pe/reference/pe32-activation-windows-v1.json`, SHA-256
+`8f965ed831084348e098cbbe73613c456c197249b4de9ee7746f8ed813e65bb1`.
+The identical executed PE SHA-256 is
+`98d5bbcc1da381b7d196f014ed17063bfc5eedccf620f1abe6bdcc99a922d526`;
+all source/PE identities and exact observed scalar records are now required.
+
+In this finite native observer, missing keys return FALSE/error 14007 and leave
+the output untouched. Both 40-byte and 64-byte callers find the owned file while
+its real context is active: format 1, 20-byte data, 140-byte section and roster 1.
+Successful lookups preserve the seeded last error, clear hActCtx without the
+return-handle flag, and return the actual context with that flag. The bytes from
+offset 40 through 63 remain untouched even for the 64-byte caller. Deactivation
+removes that file from lookup. This is native context-lifecycle/ABI evidence for
+our owned manifests, not proof of original CRT assembly binding or host activation
+support. No original game input was sent to Windows.
 
 References: [PE resource tables](https://learn.microsoft.com/en-us/windows/win32/debug/pe-format#the-rsrc-section),
 [FindActCtxSectionStringW](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-findactctxsectionstringw),
