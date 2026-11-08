@@ -55,6 +55,65 @@ fn fixture() -> Vec<u8> {
     b
 }
 #[test]
+fn diagnostic_delay_metadata_retains_original_relocated_thunks_and_bounds_all_tables() {
+    let mut b = fixture();
+    directory(&mut b, 13, 0x2240, 64);
+    for (i, value) in [1u32, 0x2060, 0x22e0, 0x22c0, 0x22a0, 0x2300, 0, 0]
+        .into_iter()
+        .enumerate()
+    {
+        p32(&mut b, 0x840 + i * 4, value);
+    }
+    p32(&mut b, 0x8a0, 0x20c0);
+    p32(&mut b, 0x8c0, 0x401000);
+    directory(&mut b, 5, 0x2200, 24);
+    p32(&mut b, 0x80c, 0x2000);
+    p32(&mut b, 0x810, 12);
+    p16(&mut b, 0x814, 0x32c0);
+    assert!(Image::parse_i386(&b).unwrap().check_startup().is_err());
+    Image::parse_i386_diagnostic(&b, false)
+        .unwrap()
+        .check_diagnostic_startup32()
+        .unwrap();
+    for (offset, value) in [
+        (0x840, 0),
+        (0x840, 2),
+        (0x848, 0x1000),
+        (0x84c, 0x2ffc),
+        (0x850, 0x2ffc),
+        (0x854, 0x2ffc),
+        (0x8a0, 0x80010001),
+        (0x8c0, 0x402000),
+        (0x8c4, 1),
+    ] {
+        let mut bad = b.clone();
+        p32(&mut bad, offset, value);
+        assert!(
+            Image::parse_i386_diagnostic(&bad, false)
+                .unwrap()
+                .check_diagnostic_startup32()
+                .is_err(),
+            "offset {offset:x}"
+        );
+    }
+    let mut bad = b.clone();
+    p16(&mut bad, 0x814, 0);
+    assert!(
+        Image::parse_i386_diagnostic(&bad, false)
+            .unwrap()
+            .check_diagnostic_startup32()
+            .is_err()
+    );
+    let mut bad = b;
+    directory(&mut bad, 13, 0x2240, 32);
+    assert!(
+        Image::parse_i386_diagnostic(&bad, false)
+            .unwrap()
+            .check_diagnostic_startup32()
+            .is_err()
+    );
+}
+#[test]
 fn i386_header_width_extents_and_all_truncated_prefixes_are_checked() {
     let b = fixture();
     let image = Image::parse_i386(&b).unwrap();

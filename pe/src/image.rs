@@ -100,6 +100,7 @@ pub struct Image<'a> {
     is_dll: bool,
     i386: bool,
     dll_characteristics: u16,
+    diagnostic: bool,
 }
 
 fn range(bytes: &[u8], start: usize, len: usize) -> Result<&[u8]> {
@@ -127,6 +128,15 @@ fn round_page(n: usize) -> usize {
 }
 
 impl<'a> Image<'a> {
+    /// Parse an explicit diagnostic PE32 view. Immutable executable metadata and
+    /// initialized executable IAT storage are admitted; normal constructors keep
+    /// their stricter contract. This constructor executes no code.
+    pub fn parse_i386_diagnostic(bytes: &'a [u8], dll: bool) -> Result<Self> {
+        let mut image = Self::parse_format(bytes, dll, true)?;
+        image.diagnostic = true;
+        Ok(image)
+    }
+
     /// Validate executable headers, disjoint sections and an initialized code entry.
     /// Supports conventional page-aligned AMD64 PE32+ EXEs, not DLLs/drivers.
     pub fn parse(bytes: &'a [u8]) -> Result<Self> {
@@ -316,6 +326,7 @@ impl<'a> Image<'a> {
             is_dll,
             i386,
             dll_characteristics: u16_at(bytes, opt + 70)?,
+            diagnostic: false,
         };
         if !(is_dll && entry == 0)
             && !image
@@ -426,7 +437,23 @@ impl<'a> Image<'a> {
                 } else {
                     u64_at(item, 0)?
                 };
-                self.data_target(iat + i * width, width)?;
+                if self.i386 && self.diagnostic {
+                    let at = iat + i * width;
+                    if !self.sections.iter().any(|s| {
+                        at >= s.rva
+                            && at
+                                .checked_add(width)
+                                .is_some_and(|end| end <= s.rva + s.raw_size)
+                            && s.rights & 0x40000000 != 0
+                    }) {
+                        return Err(
+                            "PE32 diagnostic IAT must target initialized readable section bytes"
+                                .into(),
+                        );
+                    }
+                } else {
+                    self.data_target(iat + i * width, width)?;
+                }
                 if value == 0 {
                     terminated = true;
                     break;
@@ -545,7 +572,13 @@ impl<'a> Image<'a> {
                 if !self.sections.iter().any(|s| {
                     address >= s.rva
                         && end <= s.rva + s.raw_size
-                        && s.rights & 0xe0000000 == 0x40000000
+                        && s.rights
+                            & (if self.diagnostic {
+                                0xc0000000
+                            } else {
+                                0xe0000000
+                            })
+                            == 0x40000000
                 }) || writes.get(first).is_some_and(|&w| w < end)
                 {
                     return Err(
@@ -704,7 +737,15 @@ impl<'a> Image<'a> {
         let metadata = |at: usize, len: usize, expected: &[usize]| -> Result<&'a [u8]> {
             let bytes = self.file_range(at, len)?;
             if !self.sections.iter().any(|s| {
-                at >= s.rva && at + len <= s.rva + s.raw_size && s.rights & 0xe0000000 == 0x40000000
+                at >= s.rva
+                    && at + len <= s.rva + s.raw_size
+                    && s.rights
+                        & (if self.diagnostic {
+                            0xc0000000
+                        } else {
+                            0xe0000000
+                        })
+                        == 0x40000000
             }) || expected.iter().any(|w| fixups.binary_search(w).is_err())
                 || fixups
                     .iter()
@@ -856,7 +897,15 @@ impl<'a> Image<'a> {
         let readonly = |at: usize, len: usize, expected: &[usize]| -> Result<&'a [u8]> {
             let bytes = self.file_range(at, len)?;
             if !self.sections.iter().any(|s| {
-                at >= s.rva && at + len <= s.rva + s.raw_size && s.rights & 0xe0000000 == 0x40000000
+                at >= s.rva
+                    && at + len <= s.rva + s.raw_size
+                    && s.rights
+                        & (if self.diagnostic {
+                            0xc0000000
+                        } else {
+                            0xe0000000
+                        })
+                        == 0x40000000
             }) || expected.iter().any(|w| fixups.binary_search(w).is_err())
                 || fixups
                     .iter()
@@ -996,7 +1045,15 @@ impl<'a> Image<'a> {
                 return Err("loader fixup overlaps static function metadata".into());
             }
             if !self.sections.iter().any(|s| {
-                address >= s.rva && end <= s.rva + s.raw_size && s.rights & 0xe0000000 == 0x40000000
+                address >= s.rva
+                    && end <= s.rva + s.raw_size
+                    && s.rights
+                        & (if self.diagnostic {
+                            0xc0000000
+                        } else {
+                            0xe0000000
+                        })
+                        == 0x40000000
             }) {
                 return Err(
                     "static metadata must be initialized readonly non-executable data".into(),
@@ -1094,6 +1151,102 @@ impl<'a> Image<'a> {
         }
         self.check_auxiliary_startup_mode(true)
     }
+    // Handler-registration metadata is retained here without claiming recovery:
+    // the diagnostic profile stops on every fault instead of ignoring it.
+    pub fn check_diagnostic_startup32(&self) -> Result<()> {
+        if !self.i386 {
+            return Err("diagnostic startup requires PE32".into());
+        }
+        self.export_table(true)?;
+        if self.is_dll && self.directories[9].1 != 0 {
+            return Err("PE32 DLL static TLS/callbacks are unsupported".into());
+        }
+        if self.directories[3].1 != 0 {
+            return Err("PE32 exception directory is unsupported".into());
+        }
+        self.check_auxiliary_startup_mode(true)
+    }
+    fn diagnostic_delay_imports32(&self) -> Result<()> {
+        let (rva, length) = self.directories[13];
+        let relocations = self.relocations()?;
+        if !length.is_multiple_of(32) {
+            return Err("invalid PE32 delay descriptor extent".into());
+        }
+        for offset in (0..length).step_by(32) {
+            let descriptor = self.file_range(rva + offset, 32)?;
+            let mut f = [0u32; 8];
+            for (i, v) in f.iter_mut().enumerate() {
+                *v = u32_at(descriptor, i * 4)?;
+            }
+            if f == [0; 8] {
+                return Ok(());
+            }
+            if f[0] != 1 {
+                return Err("unsupported PE32 delay descriptor attributes".into());
+            }
+            let pointer = |value: u32| -> Result<usize> {
+                if value == 0 {
+                    return Err("null PE32 delay metadata pointer".into());
+                }
+                Ok(value as usize)
+            };
+            self.string(pointer(f[1])?)?;
+            let handle = pointer(f[2])?;
+            self.data_target(handle, 4)?;
+            if !handle.is_multiple_of(4)
+                || !self.sections.iter().any(|s| {
+                    handle >= s.rva
+                        && handle + 4 <= s.rva + s.size
+                        && s.rights & 0xc0000000 == 0xc0000000
+                })
+            {
+                return Err("delay module handle storage must be writable".into());
+            }
+            let iat = pointer(f[3])?;
+            let names = pointer(f[4])?;
+            if !iat.is_multiple_of(4) || !names.is_multiple_of(4) {
+                return Err("unaligned PE32 delay thunk table".into());
+            }
+            let mut count = None;
+            for i in 0..65536 {
+                let name = u32_at(self.file_range(names + i * 4, 4)?, 0)?;
+                let thunk = u32_at(self.file_range(iat + i * 4, 4)?, 0)?;
+                if name == 0 {
+                    if thunk != 0 {
+                        return Err("nonzero delay IAT terminator".into());
+                    }
+                    count = Some(i + 1);
+                    break;
+                }
+                if name & 0x80000000 != 0 {
+                    if name & 0x7fff0000 != 0 {
+                        return Err("reserved PE32 delay ordinal bits".into());
+                    }
+                } else {
+                    self.file_range(name as usize, 2)?;
+                    self.string(name as usize + 2)?;
+                }
+                let entry = u64::from(thunk)
+                    .checked_sub(self.base)
+                    .ok_or("delay thunk precedes image")? as usize;
+                if !self.sections.iter().any(|s| {
+                    entry >= s.rva && entry < s.rva + s.raw_size && s.rights & 0x20000000 != 0
+                }) || relocations.binary_search(&(iat + i * 4)).is_err()
+                {
+                    return Err("delay IAT requires relocated original executable thunks".into());
+                }
+            }
+            let count = count.ok_or("unterminated PE32 delay thunk table")?;
+            // Bound/unload snapshots remain the original guest helper's data.
+            // No cache shortcut or host-side successful loader is invented.
+            for value in [f[5], f[6]] {
+                if value != 0 {
+                    self.file_range(pointer(value)?, count * 4)?;
+                }
+            }
+        }
+        Err("unterminated PE32 delay descriptors".into())
+    }
     #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
     pub(crate) fn check_library_startup(&self) -> Result<()> {
         if !self.is_dll {
@@ -1132,6 +1285,10 @@ impl<'a> Image<'a> {
             (15, "reserved directory"),
         ] {
             if self.directories[i].1 != 0 {
+                if i == 13 && self.i386 && self.diagnostic {
+                    self.diagnostic_delay_imports32()?;
+                    continue;
+                }
                 if i == 9 && self.i386 {
                     let tls = self.static_tls32()?.ok_or("missing PE32 TLS metadata")?;
                     if !tls.callbacks.is_empty() {

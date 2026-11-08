@@ -19,6 +19,15 @@ jobs:
       - run: cargo test --manifest-path pe/Cargo.toml --locked --offline
       - run: cargo test --manifest-path pe/Cargo.toml --target x86_64-apple-darwin --locked --offline
       - run: cargo clippy --manifest-path pe/Cargo.toml --target x86_64-apple-darwin --locked --offline --all-targets -- -D warnings
+      - name: Microtests for blockers reached during DAO startup; no game files
+        run: python tools/check_pe32_startup.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe32-startup-microtests
+          path: |
+            local/pe/startup-microtests/case*.exe
+            local/pe/startup-microtests/microtest-inputs.json
+            local/pe/startup-microtests/microtest-results.json
       - name: Build an actual Windows executable once with open LLVM
         run: python tools/build_pe_fixture.py
       - name: Execute unchanged PE machine code through Win64 bridges
@@ -872,6 +881,16 @@ jobs:
         with:
           name: pe-peports-windows
           path: local/pe/peports-windows.json
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe32-startup-microtests
+          path: local/pe/startup-microtests
+      - name: Check the identical heap, legacy version and environment microtest binaries natively
+        run: python tools/check_pe32_startup.py --native
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe32-startup-native-results
+          path: local/pe/startup-microtests/native-microtest-results.json
       - uses: actions/download-artifact@v4
         with:
           name: pe32-process-fixture

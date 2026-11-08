@@ -6,7 +6,7 @@ use std::{
     ffi::c_void,
     marker::PhantomData,
     ptr,
-    sync::atomic::{AtomicBool, AtomicPtr, AtomicUsize, Ordering},
+    sync::atomic::{AtomicBool, AtomicI32, AtomicPtr, AtomicU32, AtomicUsize, Ordering},
 };
 
 const SIGILL: i32 = 4;
@@ -14,7 +14,35 @@ const SIGNAL_STACK: usize = 131072;
 const SIGNAL_MAPPING: usize = SIGNAL_STACK + 2 * PAGE;
 const CONTEXT_FLAGS: u32 = 0x10007;
 static OWNER: AtomicPtr<c_void> = AtomicPtr::new(ptr::null_mut());
+static DIAGNOSTIC: AtomicBool = AtomicBool::new(false);
 static HANDLING: AtomicBool = AtomicBool::new(false);
+struct SavedAction {
+    handler: AtomicUsize,
+    mask: AtomicU32,
+    flags: AtomicI32,
+}
+impl SavedAction {
+    const fn new() -> Self {
+        Self {
+            handler: AtomicUsize::new(0),
+            mask: AtomicU32::new(0),
+            flags: AtomicI32::new(0),
+        }
+    }
+    fn store(&self, a: Action) {
+        self.handler.store(a.handler, Ordering::SeqCst);
+        self.mask.store(a.mask, Ordering::SeqCst);
+        self.flags.store(a.flags, Ordering::SeqCst);
+    }
+    fn load(&self) -> Action {
+        Action {
+            handler: self.handler.load(Ordering::SeqCst),
+            mask: self.mask.load(Ordering::SeqCst),
+            flags: self.flags.load(Ordering::SeqCst),
+        }
+    }
+}
+static PRIOR: [SavedAction; 2] = [SavedAction::new(), SavedAction::new()];
 static ALT_FIRST: AtomicUsize = AtomicUsize::new(0);
 static ALT_LAST: AtomicUsize = AtomicUsize::new(0);
 
@@ -119,9 +147,11 @@ impl<'a> ExceptionImage32<'a> {
     }
 }
 
-struct SignalGuard<'a> {
+pub(super) struct SignalGuard<'a> {
     memory: *mut c_void,
     old_action: Action,
+    extra_actions: [Action; 2],
+    extra_set: usize,
     old_stack: AltStack,
     claimed: bool,
     action_set: bool,
@@ -130,6 +160,12 @@ struct SignalGuard<'a> {
 }
 impl<'a> SignalGuard<'a> {
     fn install(image: &'a LoadedImage32<'_>) -> Result<Self> {
+        Self::install_mode(image, false)
+    }
+    pub(super) fn install_diagnostic(image: &'a LoadedImage32<'_>) -> Result<Self> {
+        Self::install_mode(image, true)
+    }
+    fn install_mode(image: &'a LoadedImage32<'_>, diagnostic: bool) -> Result<Self> {
         let mut mask = 0u32;
         if unsafe { pthread_sigmask(3, ptr::null(), &mut mask) } != 0
             || mask & (1 << (SIGILL - 1)) != 0
@@ -149,6 +185,20 @@ impl<'a> SignalGuard<'a> {
         }
         if unsafe { sigaltstack(ptr::null(), &mut old_stack) } != 0 || old_stack.flags & 1 != 0 {
             return Err("cannot inspect/change the host alternate stack".into());
+        }
+        let mut extra_actions = [Action::default(); 2];
+        if diagnostic {
+            for (index, number) in [10, 11].into_iter().enumerate() {
+                if mask & (1 << (number - 1)) != 0
+                    || unsafe { sigaction(number, ptr::null(), &mut extra_actions[index]) } != 0
+                    || extra_actions[index].handler == 1
+                    || extra_actions[index].flags & 4 != 0
+                {
+                    return Err(
+                        "diagnostic startup requires unblocked, non-ignored SIGBUS/SIGSEGV".into(),
+                    );
+                }
+            }
         }
         let memory = unsafe {
             mmap(
@@ -172,6 +222,8 @@ impl<'a> SignalGuard<'a> {
         let mut guard = Self {
             memory,
             old_action,
+            extra_actions,
+            extra_set: 0,
             old_stack,
             claimed: false,
             action_set: false,
@@ -192,6 +244,12 @@ impl<'a> SignalGuard<'a> {
             )
             .map_err(|_| "another PE32 exception entry is active")?;
         guard.claimed = true;
+        if diagnostic {
+            for (slot, action) in PRIOR.iter().zip(guard.extra_actions) {
+                slot.store(action);
+            }
+        }
+        DIAGNOSTIC.store(diagnostic, Ordering::SeqCst);
         ALT_FIRST.store(memory as usize + PAGE, Ordering::SeqCst);
         ALT_LAST.store(memory as usize + PAGE + SIGNAL_STACK, Ordering::SeqCst);
         let stack = AltStack {
@@ -212,11 +270,38 @@ impl<'a> SignalGuard<'a> {
             return Err("cannot install PE32 SIGILL bridge".into());
         }
         guard.action_set = true;
+        if diagnostic {
+            for (index, number) in [10, 11].into_iter().enumerate() {
+                let prior = guard.extra_actions[index];
+                let action = Action {
+                    handler: signal as *const () as usize,
+                    mask: prior.mask,
+                    flags: 0x41 | (prior.flags & 0x12),
+                };
+                if unsafe { sigaction(number, &action, ptr::null_mut()) } != 0 {
+                    return Err("cannot install diagnostic fault guard".into());
+                }
+                guard.extra_set += 1;
+            }
+        }
         Ok(guard)
     }
 }
 impl Drop for SignalGuard<'_> {
     fn drop(&mut self) {
+        for index in (0..self.extra_set).rev() {
+            let number = [10, 11][index];
+            let expected = &self.extra_actions[index];
+            let mut actual = Action::default();
+            if unsafe { sigaction(number, expected, ptr::null_mut()) } != 0
+                || unsafe { sigaction(number, ptr::null(), &mut actual) } != 0
+                || actual != *expected
+            {
+                async_fail(
+                    b"Alkyhol PE32 unsupported: cannot restore diagnostic host signal action\n",
+                );
+            }
+        }
         if self.action_set && unsafe { sigaction(SIGILL, &self.old_action, ptr::null_mut()) } != 0 {
             async_fail(b"Alkyhol PE32 unsupported: cannot restore host SIGILL action\n");
         }
@@ -243,6 +328,7 @@ impl Drop for SignalGuard<'_> {
         if self.claimed {
             ALT_FIRST.store(0, Ordering::SeqCst);
             ALT_LAST.store(0, Ordering::SeqCst);
+            DIAGNOSTIC.store(false, Ordering::SeqCst);
             OWNER.store(ptr::null_mut(), Ordering::SeqCst);
         }
     }
@@ -257,34 +343,40 @@ extern "C" fn signal(number: i32, info: *const SignalInfo, context: *mut UserCon
     }
     let owner = OWNER.load(Ordering::SeqCst);
     let Some(image) = (unsafe { owner.cast::<LoadedImage32<'_>>().as_ref() }) else {
-        forward_default(number);
+        forward_prior(number, info, context);
         return;
     };
     let Some(uc) = (unsafe { context.as_mut() }) else {
-        forward_default(number);
+        forward_prior(number, info, context);
         return;
     };
-    if number != SIGILL
+    let diagnostic = DIAGNOSTIC.load(Ordering::SeqCst);
+    if (!diagnostic && number != SIGILL)
+        || (diagnostic && ![4, 10, 11].contains(&number))
         || info.is_null()
-        || unsafe { (*info).code } != 1
+        || (!diagnostic && unsafe { (*info).code } != 1)
         || uc.machine_size < std::mem::size_of::<MachinePrefix>()
         || uc.machine.is_null()
     {
-        forward_default(number);
+        forward_prior(number, info, context);
         return;
     }
     let machine = unsafe { &mut *uc.machine };
     if machine.registers[18] != u64::from(image.code) {
-        forward_default(number);
+        forward_prior(number, info, context);
         return;
     }
     // The process action may briefly coexist with another thread's ordinary
     // entry before this profile acquires the exclusive FS lease. Never route
     // that thread's fault through this image's handler table or memory view.
     if super::ACTIVE.with(|slot| slot.get()) != owner.cast_const() {
-        forward_default(number);
+        forward_prior(number, info, context);
         return;
     }
+    if diagnostic {
+        super::diagnostic32::fault(image, &machine.exception, &machine.registers);
+    }
+
     if HANDLING.swap(true, Ordering::SeqCst) {
         async_fail(b"Alkyhol PE32 unsupported: nested hardware exception\n");
     }
@@ -300,6 +392,23 @@ extern "C" fn signal(number: i32, info: *const SignalInfo, context: *mut UserCon
         async_fail(message);
     }
     HANDLING.store(false, Ordering::SeqCst);
+}
+fn forward_prior(number: i32, info: *const SignalInfo, context: *mut UserContext) {
+    if DIAGNOSTIC.load(Ordering::SeqCst) && [10, 11].contains(&number) {
+        let action = PRIOR[if number == 10 { 0 } else { 1 }].load();
+        if action.handler > 1 {
+            if action.flags & 0x40 != 0 {
+                let call: extern "C" fn(i32, *const SignalInfo, *mut UserContext) =
+                    unsafe { std::mem::transmute(action.handler) };
+                call(number, info, context);
+            } else {
+                let call: extern "C" fn(i32) = unsafe { std::mem::transmute(action.handler) };
+                call(number);
+            }
+            return;
+        }
+    }
+    forward_default(number);
 }
 fn forward_default(number: i32) {
     if unsafe { sigaction(number, &Action::default(), ptr::null_mut()) } != 0

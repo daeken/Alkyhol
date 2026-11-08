@@ -1,0 +1,11 @@
+LIBRARY KERNEL32.dll
+EXPORTS
+  GetStdHandle
+  WriteFile
+  GetLastError
+  GetProcessHeap
+  HeapAlloc
+  HeapFree
+  GetVersionExA
+  HeapCreate
+  GetEnvironmentVariableA

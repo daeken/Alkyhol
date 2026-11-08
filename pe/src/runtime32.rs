@@ -13,6 +13,10 @@ use std::{
 #[path = "seh32.rs"]
 mod seh32;
 pub use seh32::ExceptionImage32;
+#[path = "diagnostic32.rs"]
+mod diagnostic32;
+#[path = "heap32.rs"]
+mod heap32;
 #[path = "process32.rs"]
 mod process32;
 #[path = "startup32.rs"]
@@ -41,7 +45,7 @@ unsafe extern "C" {
 }
 const PAGE: usize = 4096;
 const STACK: usize = 1024 * 1024;
-const APIS: [(&str, u16); 16] = [
+const APIS: [(&str, u16); 22] = [
     ("GetLastError", 0),
     ("SetLastError", 4),
     ("GetStdHandle", 4),
@@ -58,6 +62,12 @@ const APIS: [(&str, u16); 16] = [
     ("WideCharToMultiByte", 32),
     ("ExitProcess", 4),
     ("LocalFree", 4),
+    ("GetProcessHeap", 0),
+    ("HeapAlloc", 12),
+    ("HeapFree", 12),
+    ("GetVersionExA", 4),
+    ("HeapCreate", 12),
+    ("GetEnvironmentVariableA", 12),
 ];
 const EXIT_API: u32 = 14;
 fn api_id(module: &str, symbol: &ImportSymbol) -> Option<usize> {
@@ -264,6 +274,7 @@ enum Phase32 {
 struct Module32 {
     name: String,
     base: u32,
+    size: usize,
     exports: Option<ExportTable>,
 }
 struct Cpu32 {
@@ -276,8 +287,13 @@ struct Cpu32 {
     phase: Cell<Phase32>,
     modules: RefCell<Vec<Module32>>,
     executable: Cell<u32>,
+    diagnostic: Option<diagnostic32::Traps>,
+    heap: RefCell<heap32::Heap>,
 }
 impl Cpu32 {
+    fn clear_heap(&self) {
+        self.heap.borrow_mut().clear();
+    }
     fn close_files(&self) {
         let error = alkyhol::ffi::GetLastError();
         for handle in std::mem::take(&mut *self.files.borrow_mut()) {
@@ -308,12 +324,15 @@ impl Cpu32 {
             phase: Cell::new(Phase32::Isolated),
             modules: RefCell::new(Vec::new()),
             executable: Cell::new(0),
+            diagnostic: None,
+            heap: RefCell::new(Default::default()),
         })
     }
 }
 impl Drop for Cpu32 {
     fn drop(&mut self) {
         self.close_files();
+        self.clear_heap();
     }
 }
 struct MapContext32<'a> {
@@ -454,12 +473,16 @@ impl<'a> LoadedImage32<'a> {
         if unsafe { getpagesize() } != PAGE as i32 {
             return Err("PE32 requires 4-KiB host pages".into());
         }
-        let parsed = if dll {
+        let parsed = if context.cpu.as_ref().is_some_and(|c| c.diagnostic.is_some()) {
+            Image::parse_i386_diagnostic(bytes, dll)?
+        } else if dll {
             Image::parse_i386_dll(bytes)?
         } else {
             Image::parse_i386(bytes)?
         };
-        if exceptions {
+        if context.cpu.as_ref().is_some_and(|c| c.diagnostic.is_some()) {
+            parsed.check_diagnostic_startup32()?;
+        } else if exceptions {
             parsed.check_exception_startup32()?;
         } else if dll {
             parsed.check_library_startup()?;
@@ -711,6 +734,9 @@ impl<'a> LoadedImage32<'a> {
         if startup32::permits(&self.cpu, address, len, write) {
             return true;
         }
+        if self.cpu.heap.borrow().permits(address, len) {
+            return true;
+        }
         if let Some(block) = &self.tls {
             let first = block.mapping.base as usize;
             if address >= first && end <= first + block.size {
@@ -767,7 +793,9 @@ impl<'a> LoadedImage32<'a> {
             name.push_str(".dll");
         }
         if crate::abi::is_builtin(&name) {
-            return Err("PE32 builtin DLL module handles are unsupported".into());
+            return Err(format!(
+                "PE32 builtin DLL module handle is unsupported: {name}"
+            ));
         }
         Ok(self
             .cpu
@@ -853,6 +881,11 @@ impl<'a> LoadedImage32<'a> {
             if before[3] != 0 {
                 return Err("PE32 requires an unused host FS selector".into());
             }
+            let _diagnostic_signals = if self.cpu.diagnostic.is_some() {
+                Some(seh32::SignalGuard::install_diagnostic(self)?)
+            } else {
+                None
+            };
             let _teb_lease = TebLease::install(self.cpu.teb.base as u32)?;
             slot.set(ptr::from_ref(self).cast());
             let _guard = ActiveGuard;
@@ -864,6 +897,19 @@ impl<'a> LoadedImage32<'a> {
             }
             if self.tls.is_some() {
                 self.tls_entered.set(true);
+            }
+            if self.cpu.diagnostic.is_some() {
+                let modules = self.cpu.modules.borrow();
+                if let Some(module) = modules
+                    .iter()
+                    .find(|m| entry >= m.base && (entry as usize) < m.base as usize + m.size)
+                {
+                    eprintln!(
+                        "PE32 diagnostic entry: {}+0x{:x}",
+                        module.name,
+                        entry - module.base
+                    );
+                }
             }
             let result = unsafe {
                 alkyhol_enter_pe32(entry, sp, u32::from(self.code), u32::from(self.data))
@@ -1113,6 +1159,18 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
         for (index, value) in args.iter_mut().enumerate().take(bytes as usize / 4) {
             *value = unsafe { arguments.add(index).read_unaligned() };
         }
+        if image.cpu.diagnostic.is_some() {
+            let return_address = (arguments as usize)
+                .checked_sub(4)
+                .filter(|&p| image.permits(p, 4, false))
+                .unwrap_or_else(|| unsupported("diagnostic return address outside guest storage"));
+            let pc = unsafe { (return_address as *const u32).read_unaligned() };
+            eprintln!(
+                "PE32 diagnostic call: {}; return_pc=0x{pc:08x}; stack_words={:x?}",
+                APIS[id as usize].0,
+                &args[..bytes as usize / 4]
+            );
+        }
         match id {
             0 => alkyhol::ffi::GetLastError(),
             1 => {
@@ -1154,7 +1212,7 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
                 }
                 Err(error) => unsupported(&error),
             },
-            7..=15 => startup32::dispatch(image, id, &args),
+            7..=21 => startup32::dispatch(image, id, &args),
             _ => unreachable!(),
         }
     })
@@ -1192,6 +1250,8 @@ mod tests {
                 phase: Cell::new(Phase32::Isolated),
                 modules: RefCell::new(Vec::new()),
                 executable: Cell::new(0),
+                diagnostic: None,
+                heap: RefCell::new(Default::default()),
             }),
             tls: None,
             tls_entered: Cell::new(false),

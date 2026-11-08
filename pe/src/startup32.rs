@@ -359,7 +359,10 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
         12 | 13 => convert(image, args, id == 13),
         14 => {
             match image.cpu.phase.get() {
-                super::Phase32::Isolated if !image.dll => image.cpu.close_files(),
+                super::Phase32::Isolated if !image.dll => {
+                    image.cpu.close_files();
+                    image.cpu.clear_heap();
+                }
                 super::Phase32::Running => (),
                 _ => unsupported(
                     "ExitProcess during PE32 DLL initialization/teardown is unsupported",
@@ -384,10 +387,93 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
                 args[0]
             }
         }
+        16 => image
+            .cpu
+            .heap
+            .borrow_mut()
+            .handle()
+            .unwrap_or_else(|e| unsupported(&e)),
+        17 => image
+            .cpu
+            .heap
+            .borrow_mut()
+            .allocate(args[0], args[1], args[2])
+            .unwrap_or_else(|e| unsupported(&e)),
+        18 => image
+            .cpu
+            .heap
+            .borrow_mut()
+            .free(args[0], args[1], args[2])
+            .unwrap_or_else(|e| unsupported(&e)),
+        19 => {
+            // Legacy unmanifested Windows compatibility persona, not the Darwin
+            // kernel version and not a claim of modern Windows feature support.
+            if args[0] == 0 || !args[0].is_multiple_of(4) {
+                return fail(87);
+            }
+            checked(image, args[0], 4, false);
+            let size = unsafe { (args[0] as *const u32).read() };
+            if size == 156 {
+                unsupported("extended GetVersionExA record is unsupported");
+            }
+            if size != 148 {
+                return fail(87);
+            }
+            checked(image, args[0], 148, true);
+            let mut bytes = [0u8; 148];
+            for (i, value) in [148u32, 6, 2, 9200, 2].into_iter().enumerate() {
+                bytes[i * 4..i * 4 + 4].copy_from_slice(&value.to_le_bytes());
+            }
+            unsafe {
+                ptr::copy_nonoverlapping(bytes.as_ptr(), args[0] as *mut u8, bytes.len());
+            }
+            1
+        }
+        20 => image
+            .cpu
+            .heap
+            .borrow_mut()
+            .create(args[0], args[1], args[2])
+            .unwrap_or_else(|e| unsupported(&e)),
+        21 => {
+            let Some(name) = read_units::<u8>(image, args[0], -1) else {
+                return 0;
+            };
+            if !name.is_ascii() {
+                return fail(50);
+            }
+            let wide: Vec<u16> = name.iter().map(|&v| u16::from(v)).collect();
+            let call: unsafe extern "win64" fn(*const u16, *mut u16, u32) -> u32 =
+                unsafe { std::mem::transmute(function("GetEnvironmentVariableW")) };
+            let required = unsafe { call(wide.as_ptr(), ptr::null_mut(), 0) };
+            if required == 0 {
+                return 0;
+            }
+            if required as usize > LIMIT {
+                return fail(50);
+            }
+            let mut value = vec![0u16; required as usize];
+            let length = unsafe { call(wide.as_ptr(), value.as_mut_ptr(), required) };
+            if length >= required || value.iter().any(|&v| v > 127) {
+                return fail(50);
+            }
+            if args[2] <= length {
+                return required;
+            }
+            if args[1] == 0 {
+                return fail(87);
+            }
+            checked(image, args[1], length as usize + 1, true);
+            for (i, unit) in value.into_iter().take(length as usize + 1).enumerate() {
+                unsafe {
+                    (args[1] as *mut u8).add(i).write(unit as u8);
+                }
+            }
+            length
+        }
         _ => unreachable!(),
     }
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;

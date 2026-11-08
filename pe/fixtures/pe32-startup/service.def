@@ -1,0 +1,4 @@
+LIBRARY external-service.dll
+EXPORTS
+  DeferredFunction
+  DeferredData DATA

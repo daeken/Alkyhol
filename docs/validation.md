@@ -4,6 +4,38 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## DAO-driven diagnostic startup and first runtime blockers
+
+Latest priority is DAO alone, using tests needed for observed startup blockers.
+The local original EXE/dependency launch now executes original bundled CRT entry
+code on the physical M4. Guarded-import faults identify the actual original module
+and fault/return locations. Real process/private heap support, legacy version
+reporting and an environment query moved the observed stop to builtin module
+lookup during CRT initialization. The EXE's own entry has not run. Original file
+identities, detailed inventories/captures and extracted dependencies remain ignored
+and local. One packed DLL is unpacked only in a local diagnostic copy; the original
+is preserved. This is diagnostic execution, not original-game behavioral parity.
+
+Unknown external-service functions **and data** occupy inaccessible guard pages.
+Separate original owned PE32 microtests execute a real function-fetch fault and a
+real data-read fault, each after a boot marker; both stop explicitly with status 78
+and correct attribution. Their strict-loader counterparts reject before entry.
+Additional small tests execute heap calls with an IAT in RX storage, exercise
+zeroed allocation/reuse/free and compare legacy version/environment results with
+fixed expected records. Physical M4 checks pass. The identical positive PE files,
+source/file identity manifest and expected records now run in the native Windows
+workflow; their new native result is pending. At this milestone, all 134 PE host tests, 16 compiler checks, 322 Python tests,
+portable metadata tests and Clippy pass locally. The diagnostic guard restores and
+queries prior host fault actions/alternate-stack state on successful return; owned
+faults stop instead of claiming Windows exception recovery.
+
+Bounded delay-import validation preserves the original compiler thunks/helper
+rather than replacing delayed operations with success. Targeted metadata tests
+reject malformed descriptors, invalid handle/table storage, reserved ordinal bits,
+missing thunk relocations and missing terminators. Existing strict parsers keep
+their prior restrictions. Existing frozen PE64/PE32/native/source/Metal evidence
+remains a separate category. See docs/pe32.md for the explicit diagnostic contract.
+
 ## Closed PE32 process graph: physical M4 startup/calls/teardown evidence
 
 The original MIT process observer statically imports two unchanged frozen PE32

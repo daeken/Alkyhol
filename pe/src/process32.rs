@@ -11,6 +11,7 @@ struct Node<'a> {
 struct Plan<'a> {
     nodes: Vec<Node<'a>>,
     order: Vec<usize>,
+    deferred: Vec<(String, String, ImportSymbol)>,
 }
 fn executable_name(name: &str) -> Result<String> {
     if name.len() > 255
@@ -62,23 +63,71 @@ fn visit(
 }
 impl<'a> Plan<'a> {
     fn new(executable: (&str, &'a [u8]), dlls: &[(&str, &'a [u8])], rebase: bool) -> Result<Self> {
+        Self::with_external(executable, dlls, rebase, None)
+    }
+    fn with_external(
+        executable: (&str, &'a [u8]),
+        dlls: &[(&str, &'a [u8])],
+        rebase: bool,
+        external: Option<&[String]>,
+    ) -> Result<Self> {
+        let mut external_names = std::collections::BTreeSet::new();
+        for name in external.unwrap_or(&[]) {
+            let n = name.to_ascii_lowercase();
+            if n.len() > 255
+                || !n.ends_with(".dll")
+                || !n
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b))
+                || !external_names.insert(n)
+            {
+                return Err("invalid or duplicate diagnostic external module".into());
+            }
+        }
+        let mut deferred = Vec::new();
         if dlls.len() > 64 {
             return Err("PE32 process exceeds 64 explicit DLLs".into());
         }
         let mut nodes = vec![Node {
             name: executable_name(executable.0)?,
-            image: Image::parse_i386(executable.1)?,
+            image: if external.is_some() {
+                Image::parse_i386_diagnostic(executable.1, false)?
+            } else {
+                Image::parse_i386(executable.1)?
+            },
             bytes: executable.1,
         }];
-        nodes[0].image.check_startup()?;
+        if external.is_some() {
+            nodes[0]
+                .image
+                .check_diagnostic_startup32()
+                .map_err(|e| format!("{}: {e}", executable.0))?;
+        } else {
+            nodes[0].image.check_startup()?;
+        }
         let mut indices = BTreeMap::new();
         for &(name, bytes) in dlls {
             let name = crate::runtime::dll_basename(name)?;
+            if external_names.contains(&name) {
+                return Err(
+                    "provided DLL cannot be replaced by diagnostic external imports".into(),
+                );
+            }
             if indices.insert(name.clone(), nodes.len()).is_some() {
                 return Err("duplicate PE32 process DLL basename".into());
             }
-            let image = Image::parse_i386_dll(bytes)?;
-            image.check_library_startup()?;
+            let image = if external.is_some() {
+                Image::parse_i386_diagnostic(bytes, true)?
+            } else {
+                Image::parse_i386_dll(bytes)?
+            };
+            if external.is_some() {
+                image
+                    .check_diagnostic_startup32()
+                    .map_err(|e| format!("{name}: {e}"))?;
+            } else {
+                image.check_library_startup()?;
+            }
             nodes.push(Node { name, image, bytes });
         }
         let mut exports = Vec::new();
@@ -113,6 +162,14 @@ impl<'a> Plan<'a> {
                 if super::api_id(&import.module, &import.symbol).is_some() {
                     continue;
                 }
+                if external_names.contains(&import.module.to_ascii_lowercase()) {
+                    deferred.push((
+                        node.name.clone(),
+                        import.module.clone(),
+                        import.symbol.clone(),
+                    ));
+                    continue;
+                }
                 if crate::abi::is_builtin(&import.module) {
                     return Err(format!(
                         "unsupported Win32 process builtin {}!{:?}",
@@ -133,7 +190,11 @@ impl<'a> Plan<'a> {
         if order.len() != nodes.len() {
             return Err("unreferenced DLL in explicit PE32 process".into());
         }
-        Ok(Self { nodes, order })
+        Ok(Self {
+            nodes,
+            order,
+            deferred,
+        })
     }
 }
 
@@ -185,13 +246,51 @@ impl<'a> ProcessImage32<'a> {
         process: &'a ProcessContext,
     ) -> Result<Self> {
         let plan = Plan::new(executable, dlls, rebase)?;
-        let cpu = Rc::new(Cpu32::new()?);
+        unsafe { Self::load_plan(plan, rebase, process, false) }
+    }
+    /// Instrument a trusted startup path with guarded external-service imports.
+    /// This is diagnostic execution, NOT Windows compatibility: missing service
+    /// code/data and every fault stop explicitly; no exception recovery is claimed.
+    /// Supplied original DLLs still map, bind and initialize in dependency order.
+    ///
+    /// # Safety
+    /// Same native-code restrictions as load. External module names explicitly
+    /// describe host services outside the supplied binary graph, not DLLs whose
+    /// original initialization may be skipped. All observations stay diagnostic.
+    pub unsafe fn load_diagnostic(
+        executable: (&str, &[u8]),
+        dlls: &[(&str, &[u8])],
+        external: &[String],
+        rebase: bool,
+        process: &'a ProcessContext,
+    ) -> Result<Self> {
+        let plan = Plan::with_external(executable, dlls, rebase, Some(external))?;
+        unsafe { Self::load_plan(plan, rebase, process, true) }
+    }
+    unsafe fn load_plan(
+        plan: Plan<'_>,
+        rebase: bool,
+        process: &'a ProcessContext,
+        diagnostic: bool,
+    ) -> Result<Self> {
+        let mut cpu = Cpu32::new()?;
+        if diagnostic {
+            cpu.diagnostic = Some(super::diagnostic32::Traps::new(plan.deferred.clone())?);
+        }
+        let cpu = Rc::new(cpu);
         cpu.phase.set(Phase32::Preparing);
         let mut mappings: Vec<LoadedImage32<'a>> = Vec::new();
         let mut modules: Vec<(String, usize)> = Vec::new();
         for &index in &plan.order {
             let node = &plan.nodes[index];
             let resolve = |name: &str, symbol: &ImportSymbol| {
+                if let Some(address) = cpu
+                    .diagnostic
+                    .as_ref()
+                    .and_then(|t| t.address(&node.name, name, symbol))
+                {
+                    return Ok(Some(address));
+                }
                 let Some((_, i)) = modules.iter().find(|(n, _)| n.eq_ignore_ascii_case(name))
                 else {
                     return Ok(None);
@@ -232,6 +331,7 @@ impl<'a> ProcessImage32<'a> {
             .map(|(name, index)| Module32 {
                 name,
                 base: mappings[index].image.base as u32,
+                size: mappings[index].image.len,
                 exports: mappings[index].exports.clone(),
             })
             .collect();
@@ -283,6 +383,7 @@ impl<'a> ProcessImage32<'a> {
             unsafe { self.dll_entry(self.attached, 0, terminating) }?;
         }
         cpu.close_files();
+        cpu.clear_heap();
         cpu.phase.set(Phase32::Exited);
         self.finished = true;
         Ok(())
@@ -374,11 +475,13 @@ mod tests {
             Module32 {
                 name: "app.exe".into(),
                 base: 0x400000,
+                size: 0x10000,
                 exports: None,
             },
             Module32 {
                 name: "leaf.dll".into(),
                 base: 0x200000,
+                size: 0x10000,
                 exports: Some(table.clone()),
             },
         ];
