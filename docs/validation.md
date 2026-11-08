@@ -4,6 +4,18 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## PE32 SizeOfImage geometry: native observation pending
+
+An independent collector now derives eight owned PE32 header variants from the
+unchanged frozen test. Only four SizeOfImage bytes differ; input/source hashes
+and complete payload identity are checked before execution. The Windows stage
+will retain raw launch failures or process status/stdout/stderr, with a required
+successful unchanged baseline. Initial native results are pending. This capture
+adds no Alkyhol compatibility or game execution claim and changes no loader gate.
+Synthetic generator/collector tests separately check field-only mutations,
+malformed geometry, raw crash/error preservation and timeout failure. All game
+binaries/derived metadata remain local. See [PE32](pe32.md) for the finite scope.
+
 ## First unchanged PE32/i386 execution: native Windows and physical M4
 
 All 27 CI jobs pass at hardened strict-reference revision `796e395`: three

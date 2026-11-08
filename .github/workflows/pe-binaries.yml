@@ -176,6 +176,14 @@ jobs:
         with:
           name: pe-pe32-alkyhol
           path: local/pe/pe32-alkyhol.json
+      - name: Build owned SizeOfImage variants for independent native loader observation
+        run: python tools/build_pe32_geometry.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe32-geometry-fixture
+          path: |
+            local/pe/pe32-geometry/*.exe
+            local/pe/pe32-geometry/geometry-fixture.json
       - name: Observe curated partial-prologue contexts with assembler-generated metadata
         run: |
           python tools/build_pe_unwind_prologue.py
@@ -495,6 +503,16 @@ jobs:
         with:
           name: pe-pe32-windows
           path: local/pe/pe32-windows.json
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe32-geometry-fixture
+          path: local/pe/pe32-geometry
+      - name: Record actual Windows loader acceptance and raw failures for owned header variants
+        run: python tools/run_pe32_geometry.py --directory local/pe/pe32-geometry --output local/pe/geometry-windows.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe32-geometry-windows
+          path: local/pe/geometry-windows.json
       - uses: actions/download-artifact@v4
         with:
           name: pe-unwind-prologue-fixture
