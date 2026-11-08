@@ -74,6 +74,20 @@ pub(super) fn full(image: &LoadedImage32<'_>, args: &[u32; 8], ansi: bool) -> u3
     let units: Vec<u16> = path.encode_utf16().collect();
     let count = if ansi { path.len() } else { units.len() };
     if args[1] as usize <= count {
+        if args[1] > 0 {
+            if !(args[2] as usize).is_multiple_of(if ansi { 1 } else { 2 })
+                || !image.permits(args[2] as usize, if ansi { 1 } else { 2 }, true)
+            {
+                unsupported("full-path short buffer outside writable guest storage");
+            }
+            unsafe {
+                if ansi {
+                    (args[2] as *mut u8).write(0);
+                } else {
+                    (args[2] as *mut u16).write(0);
+                }
+            }
+        }
         return count as u32 + 1;
     }
     let width = if ansi { 1 } else { 2 };

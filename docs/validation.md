@@ -4,6 +4,33 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## Search family and physical native-window backend during the integrated push
+
+At clean `009e4a4`, original DAO proceeds through lexical path resolution to a
+wildcard module-directory search. Real A/W enumeration now snapshots actual
+entries, preserves file/directory metadata, handles all-files/extension masks,
+shares handles across A/W calls and distinguishes absent parent, absent match
+and end-of-enumeration. Exact-file frozen observations remain unchanged. An
+owned six-case PE and one filesystem unit pass; native wildcard comparison is
+pending. Sleep forwards bounded non-alertable waits to the real host scheduler.
+
+The native full-path probe at `009e4a4` reports two sizing-query discrepancies
+for normalized W paths and clearing of the first WCHAR on an insufficient
+nonzero buffer. The latter is corrected; the probe now captures actual required
+size deltas rather than losing them as booleans. Exact W sizing remains pending
+that native measurement. Original DAO's ordinary successful full-buffer queries
+have executed; no claim of complete full-path parity is made.
+
+The direct AppKit backend is independently exercised on the physical M4 under
+Rosetta by `pe/probe_window_host.rs`: an owned window is visible in actual
+WindowServer metadata, has requested 640x480 client bounds, moves/resizes,
+changes its title and hides. This is a backend probe, **not DAO window creation**.
+The guest Win32 class/window adapter is still being integrated. Gateway snapshots
+now accommodate sixteen DWORD arguments and synchronous callbacks up to sixteen
+DWORDs, with checked suspended-stack frames for future window procedures. Old
+integer/FLS paths and Clippy pass. The user's requested checkpoint remains a
+real original-game window and an honest D3D9 initialization stop.
+
 ## Integrated non-D3D9 startup work: persistent settings and core API families
 
 The user's current goal is one integrated non-D3D9 implementation through the

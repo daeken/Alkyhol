@@ -21,7 +21,7 @@ def decode(data):
  if words[:2]!=[0x50415432,4] or words[-2:]!=[1,61]:raise ValueError('full-path ABI/stack differs')
  for i in range(9):
   row=words[2+i*6:8+i*6]
-  if row[:3]!=[1,1,1] or row[4:]!=[1,1]:raise ValueError('full-path sizing/content/pointer/guards differ: '+str(row))
+  if not 1<=row[0]<=512 or row[1:3]!=[1,1] or row[4:]!=[1,1]:raise ValueError('full-path sizing/content/pointer/guards differ: '+str(row))
  if words[-5]!=1 or words[-3]!=1:raise ValueError('full-path insufficient-buffer bounds differ')
  return words
 def execute(d,native=False):

@@ -93,7 +93,7 @@ unsafe extern "C" {
 }
 const PAGE: usize = 4096;
 const STACK: usize = 1024 * 1024;
-const APIS: [(&str, u16); 140] = [
+const APIS: [(&str, u16); 143] = [
     ("GetLastError", 0),
     ("SetLastError", 4),
     ("GetStdHandle", 4),
@@ -234,6 +234,9 @@ const APIS: [(&str, u16); 140] = [
     ("CreateFileA", 28),
     ("GetFullPathNameW", 16),
     ("GetFullPathNameA", 16),
+    ("FindFirstFileA", 8),
+    ("FindNextFileA", 8),
+    ("Sleep", 4),
 ];
 // The first 120 API slots retain their original offsets. The second bank
 // begins after both x87 bodies, leaving their machine code and failure gates
@@ -1272,9 +1275,10 @@ impl<'a> LoadedImage32<'a> {
         args: &[u32],
         convention: CallingConvention32,
     ) -> Result<Option<u32>> {
-        if args.len() > 1 {
-            return Err("PE32 synchronous callbacks support at most one DWORD".into());
+        if args.len() > 16 {
+            return Err("PE32 synchronous callbacks support at most sixteen DWORDs".into());
         }
+        let frame_bytes = (args.len() + 1) * 4;
         if self.cpu.callback_depth.get() >= 16 {
             return Err("PE32 callback nesting limit".into());
         }
@@ -1286,15 +1290,15 @@ impl<'a> LoadedImage32<'a> {
         let top = self.cpu.callback_stack.get();
         let limit = self.cpu.stack.base as usize + PAGE + STACK;
         let frame = top
-            .checked_sub(32)
-            .map(|v| (v & !15) - 4)
+            .checked_sub(32 + frame_bytes as u32)
+            .and_then(|v| (v & !15).checked_sub(4))
             .filter(|&v| {
                 v >= self.cpu.stack.base as u32 + PAGE as u32 + 64
-                    && (v as usize) + 8 <= limit
+                    && (v as usize) + frame_bytes <= limit
                     && top as usize <= limit
             })
             .ok_or("PE32 callback stack exhausted or no suspended API call")?;
-        if !self.permits(frame as usize, 8, true) {
+        if !self.permits(frame as usize, frame_bytes, true) {
             return Err("PE32 callback frame outside guest stack".into());
         }
         let before = segment_state();
@@ -1675,10 +1679,14 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
         let _suspended = Suspended(&image.cpu.callback_stack, saved_stack);
         // Snapshot values rather than borrowing guest argument memory across a
         // host call: a valid output pointer may alias those stack words.
-        let mut args = [0u32; 8];
-        for (index, value) in args.iter_mut().enumerate().take(bytes as usize / 4) {
+        let mut words = [0u32; 16];
+        if bytes as usize > words.len() * 4 {
+            unsupported("gateway argument count exceeds checked snapshot");
+        }
+        for (index, value) in words.iter_mut().enumerate().take(bytes as usize / 4) {
             *value = unsafe { arguments.add(index).read_unaligned() };
         }
+        let args: &[u32; 8] = words[..8].try_into().expect("fixed gateway prefix");
         if image.cpu.diagnostic.is_some() {
             let return_address = (arguments as usize)
                 .checked_sub(4)
@@ -1688,7 +1696,7 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
             eprintln!(
                 "PE32 diagnostic call: {}; return_pc=0x{pc:08x}; stack_words={:x?}",
                 APIS[id as usize].0,
-                &args[..bytes as usize / 4]
+                &words[..bytes as usize / 4]
             );
         }
         match id {
@@ -1713,7 +1721,7 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
                     _ => 0x70000001 + index as u32,
                 }
             }
-            3 => startup32::io(image, &args, true),
+            3 => startup32::io(image, args, true),
             4 | 5 => match image.module_handle(args[0], id == 5) {
                 Ok(Some(base)) => base,
                 Ok(None) => {
@@ -1732,22 +1740,22 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
                 }
                 Err(error) => unsupported(&error),
             },
-            7..=21 => startup32::dispatch(image, id, &args),
-            22..=29 => fiber32::dispatch(image, id, &args),
+            7..=21 => startup32::dispatch(image, id, args),
+            22..=29 => fiber32::dispatch(image, id, args),
             30 | 31 => pointer_transform(args[0], image.cpu.pointer_cookie, id == 31),
-            32..=38 => sync32::dispatch(image, id, &args),
+            32..=38 => sync32::dispatch(image, id, args),
             39 => alkyhol::ffi::GetCurrentThreadId(),
-            40 | 41 => startup32::dispatch(image, id, &args),
+            40 | 41 => startup32::dispatch(image, id, args),
             // Documented obsolete DOS API: Win32 deliberately has no effect
             // and returns the exact requested count. This is its API contract.
             42 => args[0],
-            43..=45 => startup32::dispatch(image, id, &args),
+            43..=45 => startup32::dispatch(image, id, args),
             46 => ansi32::ACP,
             47 => u32::from(matches!(args[0], ansi32::ACP | 65001)),
-            48 => startup32::dispatch(image, id, &args),
-            49 => startup32::dispatch(image, id, &args),
-            50 => startup32::dispatch(image, id, &args),
-            51 => sync32::dispatch(image, id, &args),
+            48 => startup32::dispatch(image, id, args),
+            49 => startup32::dispatch(image, id, args),
+            50 => startup32::dispatch(image, id, args),
+            51 => sync32::dispatch(image, id, args),
             52 => {
                 let sse2 = std::arch::x86_64::__cpuid(1).edx & (1 << 26) != 0;
                 match args[0] {
@@ -1762,23 +1770,23 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
                     )),
                 }
             }
-            53 => startup32::dispatch(image, id, &args),
+            53 => startup32::dispatch(image, id, args),
             54 => image
                 .cpu
                 .heap
                 .borrow()
                 .size(args[0], args[1], args[2])
                 .unwrap_or_else(|e| unsupported(&e)),
-            55 => activation32::find(image, &args),
-            56 => module_path32::filename(image, &args),
-            57 => module_path32::long_name(image, &args),
-            58 => module_path32::system_directory(image, &args),
-            59..=63 => activation32::dispatch(image, id, &args),
-            64 => module_path32::system_windows_directory(image, &args),
-            65 => files32::first(image, &args),
-            66 => files32::next(image, &args),
+            55 => activation32::find(image, args),
+            56 => module_path32::filename(image, args),
+            57 => module_path32::long_name(image, args),
+            58 => module_path32::system_directory(image, args),
+            59..=63 => activation32::dispatch(image, id, args),
+            64 => module_path32::system_windows_directory(image, args),
+            65 => files32::first(image, args),
+            66 => files32::next(image, args),
             67 => files32::close(image, args[0]),
-            68..=70 => time32::dispatch(image, id, &args),
+            68..=70 => time32::dispatch(image, id, args),
             71 => std::process::id(),
             72 | 110 => time32::tick_count(),
             73 | 74 => {
@@ -1796,25 +1804,25 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
                 }
                 1
             }
-            75 | 76 => sync32::dispatch(image, id, &args),
+            75 | 76 => sync32::dispatch(image, id, args),
             77 => {
                 image
                     .disable_thread_notifications(args[0])
                     .unwrap_or_else(|e| unsupported(&e));
                 1
             }
-            78..=86 => crt32::dispatch(image, id, &args),
+            78..=86 => crt32::dispatch(image, id, args),
             87 => startup32::packed_version(),
             88 => crt32::initializers(image, args[0], args[1]),
             89 => unsupported("_CIsqrt requires its x87 gateway"),
             90 => math32::rejected(image, args[0], args[1]),
-            91 => crt32::dispatch(image, id, &args),
+            91 => crt32::dispatch(image, id, args),
             92 => unsupported("_CIatan requires its x87 gateway"),
             93 => math32::rejected_atan(image, args[0], args[1]),
-            94 | 95 => crt32::dispatch(image, id, &args),
-            96 => crt32::dll_onexit(image, &args),
-            97 => startup32::dispatch(image, 40, &args),
-            98 => module_path32::filename_ansi(image, &args),
+            94 | 95 => crt32::dispatch(image, id, args),
+            96 => crt32::dll_onexit(image, args),
+            97 => startup32::dispatch(image, 40, args),
+            98 => module_path32::filename_ansi(image, args),
             99 => image
                 .cpu
                 .heap
@@ -1822,8 +1830,8 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
                 .reallocate(args[0], args[1], args[2], args[3])
                 .unwrap_or_else(|e| unsupported(&e)),
             100 => cursor32::position(image, args[0]),
-            101 => module_path32::windows_directory_ansi(image, &args),
-            102 => module_path32::system_directory_ansi(image, &args),
+            101 => module_path32::windows_directory_ansi(image, args),
+            102 => module_path32::system_directory_ansi(image, args),
             103 => exception_filter32::replace(image, args[0]),
             104 | 105 => image
                 .cpu
@@ -1832,39 +1840,48 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
                 .lock(args[0], alkyhol::ffi::GetCurrentThreadId(), id == 104)
                 .unwrap_or_else(|e| unsupported(&e)),
             106 => machine32::information(image, args[0]),
-            107 | 108 => registry32::dispatch(image, id, &args),
-            109 => mutex32::create(image, &args),
+            107 | 108 => registry32::dispatch(image, id, args),
+            109 => mutex32::create(image, args),
             111 => directory32::set(image, args[0]),
-            112 => directory32::get(image, &args),
+            112 => directory32::get(image, args),
             113 if image.cpu.events.borrow().contains(args[0]) => {
-                event32::dispatch(image, id, &args)
+                event32::dispatch(image, id, args)
             }
-            113 | 114 => mutex32::ownership(image, &args, id == 113),
-            115 => icon32::load(image, &args),
-            116..=119 => event32::dispatch(image, id, &args),
-            120 => shell_folder32::get(image, &args),
-            121 => private_profile32::get(image, &args),
-            122 => shell_folder32::create(image, &args),
-            123 => private_profile32::write(image, &args),
-            124 => event32::release(image, &args),
-            125 => event32::dispatch(image, 116, &args),
-            126 => event32::dispatch(image, 119, &args),
-            127 => bulk32::exchange_add(image, &args),
-            128 | 129 => bulk32::file_size(image, &args, id == 129),
+            113 | 114 => mutex32::ownership(image, args, id == 113),
+            115 => icon32::load(image, args),
+            116..=119 => event32::dispatch(image, id, args),
+            120 => shell_folder32::get(image, args),
+            121 => private_profile32::get(image, args),
+            122 => shell_folder32::create(image, args),
+            123 => private_profile32::write(image, args),
+            124 => event32::release(image, args),
+            125 => event32::dispatch(image, 116, args),
+            126 => event32::dispatch(image, 119, args),
+            127 => bulk32::exchange_add(image, args),
+            128 | 129 => bulk32::file_size(image, args, id == 129),
             130 => 0xfffffffe,
-            131 => shell_folder32::create_ansi(image, &args),
+            131 => shell_folder32::create_ansi(image, args),
             132 => directory32::set_ansi(image, args[0]),
-            133 => directory32::get_ansi(image, &args),
+            133 => directory32::get_ansi(image, args),
             134 | 135 => bulk32::attributes(image, args[0], id == 135),
             136 => {
                 if image.cpu.events.borrow().contains(args[0]) {
-                    event32::dispatch(image, 113, &args)
+                    event32::dispatch(image, 113, args)
                 } else {
-                    mutex32::ownership(image, &args, true)
+                    mutex32::ownership(image, args, true)
                 }
             }
-            137 => startup32::create_file(image, &args, true),
-            138 | 139 => path32::full(image, &args, id == 139),
+            137 => startup32::create_file(image, args, true),
+            138 | 139 => path32::full(image, args, id == 139),
+            140 => files32::first_kind(image, args, true),
+            141 => files32::next_kind(image, args, true),
+            142 => {
+                if args[0] > 60000 {
+                    unsupported("Sleep exceeds the bounded non-alertable host wait profile");
+                }
+                alkyhol::ffi::Sleep(args[0]);
+                0
+            }
             _ => unreachable!(),
         }
     })
