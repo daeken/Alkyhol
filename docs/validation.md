@@ -4,6 +4,32 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## Checked unnamed event bridge prepared for the actual DAO constructor
+
+The PE32 gateway now admits `CreateEventW` with NULL security/name parameters
+and real manual/automatic initial state through the existing Rust kernel event
+implementation. It owns typed process-local handles, closes them during proper
+teardown and dispatches their `WaitForSingleObjectEx(...,0,FALSE)` independently
+from mutex ownership. `SetEvent` and `ResetEvent` change actual backing state;
+manual signals persist, automatic signals are consumed by one successful poll,
+and repeated sets do not accumulate semaphore-like permits. Guest names/security,
+blocking/APC waits and other handle kinds remain unsupported. The original
+constructor's fourth parameter will be recorded by the real 16-byte stdcall gate;
+the earlier three-word trap capture did not establish that parameter.
+
+An original owned PE observes 42 words covering both event kinds, initial states,
+timeouts/consumption, idempotent set/reset, closing, error state and caller stack.
+It and five unsupported call cases pass on physical M4. A Rust unit checks actual
+state transitions and stale/type ownership. The identical PE native Windows
+comparison is wired into existing CI and pending. This follows Microsoft's
+[CreateEventW](https://learn.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-createeventw),
+[SetEvent](https://learn.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-setevent)
+and [ResetEvent](https://learn.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-resetevent)
+contracts within this bounded process/thread profile; it is not complete Win32
+event namespace or guest-thread support, and no game rendering is claimed.
+Local checks pass: 210 PE Rust checks including doctests on the Rosetta target,
+398 Python tests, project Clippy, formatting and actual event PE execution.
+
 ## Native icon comparisons pass and original DAO reaches event creation
 
 At clean revision `eb4395e`, the physical M4 repeats original EXE startup through

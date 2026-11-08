@@ -26,6 +26,8 @@ mod cursor32;
 mod diagnostic32;
 #[path = "directory32.rs"]
 mod directory32;
+#[path = "event32.rs"]
+mod event32;
 #[path = "exception_filter32.rs"]
 mod exception_filter32;
 #[path = "fiber32.rs"]
@@ -81,7 +83,7 @@ unsafe extern "C" {
 }
 const PAGE: usize = 4096;
 const STACK: usize = 1024 * 1024;
-const APIS: [(&str, u16); 116] = [
+const APIS: [(&str, u16); 119] = [
     ("GetLastError", 0),
     ("SetLastError", 4),
     ("GetStdHandle", 4),
@@ -198,6 +200,9 @@ const APIS: [(&str, u16); 116] = [
     ("WaitForSingleObjectEx", 12),
     ("ReleaseMutex", 4),
     ("LoadIconW", 8),
+    ("CreateEventW", 16),
+    ("SetEvent", 4),
+    ("ResetEvent", 4),
 ];
 const EXIT_API: u32 = 14;
 // Win32 promises a reversible process-specific representation, not a published
@@ -488,6 +493,7 @@ struct Cpu32 {
     mutexes: Option<RefCell<mutex32::State>>,
     current_directory: RefCell<Option<directory32::Directory>>,
     icons: RefCell<icon32::State>,
+    events: RefCell<event32::State>,
     utc_timezone: bool,
 }
 impl Cpu32 {
@@ -501,6 +507,7 @@ impl Cpu32 {
     }
     fn close_files(&self) {
         let error = alkyhol::ffi::GetLastError();
+        self.events.borrow_mut().clear();
         self.current_directory.borrow_mut().take();
         if let Some(mutexes) = &self.mutexes {
             mutexes.borrow_mut().clear();
@@ -576,6 +583,7 @@ impl Cpu32 {
             mutexes: None,
             current_directory: RefCell::new(None),
             icons: RefCell::new(Default::default()),
+            events: RefCell::new(Default::default()),
             utc_timezone: false,
         })
     }
@@ -1782,8 +1790,12 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
             109 => mutex32::create(image, &args),
             111 => directory32::set(image, args[0]),
             112 => directory32::get(image, &args),
+            113 if image.cpu.events.borrow().contains(args[0]) => {
+                event32::dispatch(image, id, &args)
+            }
             113 | 114 => mutex32::ownership(image, &args, id == 113),
             115 => icon32::load(image, &args),
+            116..=118 => event32::dispatch(image, id, &args),
             _ => unreachable!(),
         }
     })
@@ -1907,6 +1919,7 @@ mod tests {
                 mutexes: None,
                 current_directory: RefCell::new(None),
                 icons: RefCell::new(Default::default()),
+                events: RefCell::new(Default::default()),
                 utc_timezone: false,
             }),
             tls: None,

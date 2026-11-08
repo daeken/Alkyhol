@@ -121,6 +121,10 @@ jobs:
         run: |
           python tools/observe_pe32_resource_icon.py
           python tools/observe_pe32_resource_icon.py --host
+      - name: Execute the reached unnamed-event constructor and real state transitions
+        run: |
+          python tools/observe_pe32_unnamed_event.py
+          python tools/observe_pe32_unnamed_event.py --host
       - uses: actions/upload-artifact@v4
         with:
           name: pe32-startup-microtests
@@ -196,6 +200,8 @@ jobs:
             local/pe/startup-microtests/resource-icon-inputs.json
             local/pe/startup-microtests/resource-icon-host.json
             local/pe/startup-microtests/resource-icon-host.bin
+            local/pe/startup-microtests/unnamed-event-inputs.json
+            local/pe/startup-microtests/unnamed-event-host.json
             local/pe/startup-microtests/ctx-layout-empty-importer.dll
             local/pe/startup-microtests/ctx-layout-*.manifest
   native-pe32-startup:
@@ -310,6 +316,9 @@ jobs:
       - name: Observe native LoadIcon cache/errors and actual GDI RGB/mask readback
         if: ${{ success() || failure() }}
         run: python tools/observe_pe32_resource_icon.py --native
+      - name: Compare identical event PEs against native manual/automatic state
+        if: ${{ success() || failure() }}
+        run: python tools/observe_pe32_unnamed_event.py --native
       - uses: actions/upload-artifact@v4
         if: always()
         with:
