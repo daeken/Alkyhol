@@ -6,6 +6,16 @@ See the latest direct-Metal record for current implementation evidence.
 
 ## Registered static DLL lifecycle: native Windows and physical M4
 
+All 27 CI jobs pass at strict-reference revision `3fb563a`: three
+[PE jobs](https://github.com/daeken/Alkyhol/actions/runs/42428220473) and all 24
+[conformance jobs](https://github.com/daeken/Alkyhol/actions/runs/42428220368).
+Downloaded clean Windows/hosted Mac reports and fresh clean physical M4 execution
+at that same revision agree on both DLL/source identities, all 40 raw trace words
+and actual exported result/alias and attach success/rejection. The 92 PE host
+tests/11 compiler checks, 28 portable tests, 246 Python tests and Clippy pass.
+Older frozen binary and graphics comparisons remain green. This is isolated DLL
+static-record lifecycle evidence, without a general guest loader or SEH dispatch.
+
 Two new owned unchanged DLLs expose original static function-table pointers during
 ATTACH/DETACH, reject guest deletion and retain lookup. Physical M4/Rosetta normal
 and forced-rebase development runs agree on all 40 raw DWORDs, actual exported
