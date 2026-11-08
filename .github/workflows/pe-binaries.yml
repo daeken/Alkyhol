@@ -15,6 +15,8 @@ jobs:
           python-version: '3.12'
       - name: Microtests for blockers reached during DAO startup; no game files
         run: python tools/check_pe32_startup.py
+      - name: Inspect owned PE resources for the DAO activation-context blocker
+        run: python tools/check_pe32_activation.py
       - uses: actions/upload-artifact@v4
         with:
           name: pe32-startup-microtests
@@ -22,6 +24,8 @@ jobs:
             local/pe/startup-microtests/*.exe
             local/pe/startup-microtests/microtest-inputs.json
             local/pe/startup-microtests/microtest-results.json
+            local/pe/startup-microtests/activation-inputs.json
+            local/pe/startup-microtests/activation-host.json
   native-pe32-startup:
     needs: pe32-startup
     runs-on: windows-latest
@@ -36,6 +40,13 @@ jobs:
           path: local/pe/startup-microtests
       - name: Check identical DAO startup microtests against frozen native captures
         run: python tools/check_pe32_startup.py --native
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x86
+      - name: Check activation layouts independently against the Windows SDK
+        run: cl /nologo /c /W4 /WX /std:c++17 pe/fixtures/pe32-startup/activation-layout.cpp /Folocal/pe/startup-microtests/activation-layout.obj
+      - name: Observe actual Win32 activation-context behavior using the identical owned PE
+        run: python tools/check_pe32_activation.py --native
       - uses: actions/upload-artifact@v4
         if: always()
         with:

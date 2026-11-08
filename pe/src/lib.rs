@@ -3,6 +3,8 @@
 mod command_line;
 pub use command_line::windows_command_line;
 mod image;
+mod resource;
+pub use resource::{Resource, ResourceName};
 mod unwind_info;
 pub use image::{
     Export, ExportTable, ExportTarget, Image, Import, ImportSymbol, LegacyLoadConfig32,

@@ -1,0 +1,17 @@
+LIBRARY KERNEL32.dll
+EXPORTS
+  GetStdHandle
+  WriteFile
+  GetLastError
+  SetLastError
+  GetModuleHandleW
+  FindResourceExW
+  LoadResource
+  LockResource
+  SizeofResource
+  CreateActCtxW
+  ActivateActCtx
+  DeactivateActCtx
+  ReleaseActCtx
+  GetCurrentActCtx
+  FindActCtxSectionStringW

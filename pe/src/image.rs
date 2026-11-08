@@ -357,6 +357,12 @@ impl<'a> Image<'a> {
         Ok(image)
     }
 
+    /// Inspect the bounded type/name/language resource tree and borrow its exact
+    /// file-backed payloads. No language fallback or manifest activation occurs.
+    pub fn resources(&self) -> Result<Vec<crate::Resource<'a>>> {
+        crate::resource::parse(self.directories[2], |rva, len| self.file_range(rva, len))
+    }
+
     fn file_range(&self, rva: usize, len: usize) -> Result<&'a [u8]> {
         let end = rva.checked_add(len).ok_or("RVA overflow")?;
         if rva < self.headers && end <= self.headers {

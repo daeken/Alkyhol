@@ -4,6 +4,48 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## DAO activation-context resource groundwork
+
+The next actual DAO blocker remains the dynamic lookup of
+FindActCtxSectionStringW in the original CRT. The EXE entry has **not run**.
+Read-only inspection of its original caller also identifies module/path queries
+before the activation query itself; those calls have not yet executed here.
+No absent-context result, successful assembly binding or missing-function result
+is fabricated to skip this check.
+
+`Image::resources()` now checks the PE type/name/language tree and returns exact
+file-backed borrowed payloads with their original IDs/UTF-16 names, language,
+code page and RVA. Directory-relative offsets and image-relative data RVAs remain
+separate. Truncation, duplicate keys, invalid levels, misalignment, out-of-bounds
+names/payloads, reserved data and traversal budgets fail explicitly. This is
+metadata inspection, not resource-language fallback or activation support.
+
+On the physical M4, all twelve supplied original images passed this inspection;
+all seven embedded manifest payloads agree byte-for-byte with the prior independent
+local extractor. Those originals and derived metadata remain ignored/local.
+Some original dependencies declare assembly dependencies, so treating the whole
+process as an empty activation context would be unjustified.
+
+An owned i386 PE with an empty default manifest, a separate file-redirection
+manifest and a Unicode-named binary resource now builds with open Clang/LLD.
+Host inspection agrees exactly with the linked payloads. The dedicated native
+startup job will extract the same resources with Windows APIs and observe actual
+Create/Activate/GetCurrent/Find/Deactivate/ReleaseActCtx behavior, including both
+40-byte legacy and 64-byte current keyed-data callers. Independent Windows SDK
+layout assertions are included. **Native results are pending**; no activation API
+implementation or original-game progress beyond the existing stop is claimed.
+
+Local checks pass 147 PE host tests plus 16 compile/documentation checks,
+329 Python tests, all 25 existing startup microtests and Clippy. The five new
+resource units cover exact RVA/payload separation, counted UTF-16 names,
+truncation, malformed trees and duplicate/count errors. Collector tests are
+synthetic format checks and do not establish activation semantics.
+
+References: [PE resource tables](https://learn.microsoft.com/en-us/windows/win32/debug/pe-format#the-rsrc-section),
+[FindActCtxSectionStringW](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-findactctxsectionstringw),
+[ACTCTXW](https://learn.microsoft.com/en-us/windows/win32/api/winbase/ns-winbase-actctxw)
+and [keyed-data layout](https://learn.microsoft.com/en-us/windows/win32/api/winbase/ns-winbase-actctx_section_keyed_data).
+
 ## DAO real wall clock and live heap-size queries
 
 The physical M4 now executes the original CRT's GetSystemTimeAsFileTime and HeapSize
