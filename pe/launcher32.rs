@@ -45,6 +45,24 @@ fn embedded_pe() -> &'static [u8] {
     }
     panic!("missing embedded PE payload")
 }
+enum Guest32<'a> {
+    Plain(alkyhol_pe::LoadedImage32<'a>),
+    Exceptions(alkyhol_pe::ExceptionImage32<'a>),
+}
+impl Guest32<'_> {
+    fn relocated(&self) -> bool {
+        match self {
+            Self::Plain(i) => i.relocated(),
+            Self::Exceptions(i) => i.relocated(),
+        }
+    }
+    unsafe fn enter(&self) -> alkyhol_pe::Result<u32> {
+        match self {
+            Self::Plain(i) => unsafe { i.enter() },
+            Self::Exceptions(i) => unsafe { i.enter() },
+        }
+    }
+}
 fn main() {
     let args: Vec<_> = std::env::args().skip(1).collect();
     if args.iter().any(|a| {
@@ -54,6 +72,7 @@ fn main() {
             "--loader-info",
             "--teb-info",
             "--repeat",
+            "--seh",
         ]
         .contains(&a.as_str())
     }) {
@@ -63,7 +82,11 @@ fn main() {
         let process = alkyhol_pe::ProcessContext::install(&["guest32.exe".into()], &[])?;
         let bytes = embedded_pe();
         let parsed = alkyhol_pe::Image::parse_i386(bytes)?;
-        parsed.check_startup()?;
+        if args.iter().any(|a| a == "--seh") {
+            parsed.check_exception_startup32()?;
+        } else {
+            parsed.check_startup()?;
+        }
         if args
             .iter()
             .any(|a| a == "--loader-info" || a == "--inspect")
@@ -75,8 +98,12 @@ fn main() {
                 parsed.relocations()?.len()
             );
         }
-        let image =
-            alkyhol_pe::LoadedImage32::load(bytes, args.iter().any(|a| a == "--rebase"), &process)?;
+        let rebase = args.iter().any(|a| a == "--rebase");
+        let image = if args.iter().any(|a| a == "--seh") {
+            Guest32::Exceptions(alkyhol_pe::ExceptionImage32::load(bytes, rebase, &process)?)
+        } else {
+            Guest32::Plain(alkyhol_pe::LoadedImage32::load(bytes, rebase, &process)?)
+        };
         if args
             .iter()
             .any(|a| a == "--loader-info" || a == "--inspect")

@@ -51,6 +51,7 @@ pe/fixtures/pe32-tls-data/* text eol=lf
 pe/fixtures/pe32-load-config/* text eol=lf
 pe/fixtures/pe32-library/* text eol=lf
 pe/fixtures/pe32-linked/* text eol=lf
+pe/fixtures/pe32-seh/* text eol=lf
 
 # Preserve the actual captured native Windows JSON bytes, including CRLF.
 pe/reference/pe32-library-windows-v1.json -text whitespace=cr-at-eol

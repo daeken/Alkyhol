@@ -236,6 +236,20 @@ jobs:
         run: |
           python tools/build_pe32_linked.py
           python tools/run_pe32_linked.py --directory local/pe/pe32-linked --output local/pe/pe32-linked-alkyhol.json
+      - name: Execute actual PE32 SafeSEH search and integer continuation under the bounded UD2 profile
+        run: |
+          python tools/build_pe32_seh.py
+          python tools/run_pe32_seh.py --directory local/pe/pe32-seh --output local/pe/pe32-seh-alkyhol.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe32-seh-fixture
+          path: |
+            local/pe/pe32-seh/*.exe
+            local/pe/pe32-seh/pe32-seh-fixture.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe32-seh-alkyhol
+          path: local/pe/pe32-seh-alkyhol.json
       - uses: actions/upload-artifact@v4
         with:
           name: pe32-linked-fixture
@@ -689,6 +703,18 @@ jobs:
           path: local/pe/pe32-linked
       - name: Execute unchanged PE32 consumer and dependency through the native Windows loader
         run: python tools/run_pe32_linked.py --directory local/pe/pe32-linked --output local/pe/pe32-linked-windows.json
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe32-seh-fixture
+          path: local/pe/pe32-seh
+      - name: Assert actual SDK Win32 exception and context layouts
+        run: cl /nologo /std:c++17 /W4 /WX /c pe/fixtures/pe32-seh/sdk-layout.cpp /Folocal/pe/pe32-seh/sdk-layout.obj
+      - name: Observe actual native Windows hardware SEH using the identical owned PE32
+        run: python tools/run_pe32_seh.py --directory local/pe/pe32-seh --output local/pe/pe32-seh-windows.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe32-seh-windows
+          path: local/pe/pe32-seh-windows.json
       - uses: actions/upload-artifact@v4
         with:
           name: pe32-linked-windows
@@ -1116,3 +1142,12 @@ jobs:
           name: pe32-linked-windows
           path: local/pe/observations
       - run: python tools/compare_pe32_linked.py local/pe/observations/pe32-linked-windows.json local/pe/observations/pe32-linked-alkyhol.json
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe32-seh-alkyhol
+          path: local/pe/observations
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe32-seh-windows
+          path: local/pe/observations
+      - run: python tools/compare_pe32_seh.py local/pe/observations/pe32-seh-windows.json local/pe/observations/pe32-seh-alkyhol.json --initial-capture

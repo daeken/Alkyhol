@@ -10,6 +10,9 @@ use std::{
     rc::Rc,
     sync::{Mutex, MutexGuard, OnceLock},
 };
+#[path = "seh32.rs"]
+mod seh32;
+pub use seh32::ExceptionImage32;
 std::arch::global_asm!(include_str!("transition32.S"), options(att_syntax));
 unsafe extern "C" {
     fn mmap(
@@ -315,6 +318,7 @@ pub struct LoadedImage32<'a> {
     dll: bool,
     regions: Vec<(usize, usize, u32)>,
     code_regions: Vec<(usize, usize)>,
+    seh_handlers: Vec<u32>,
     handles: [usize; 3],
     _process: PhantomData<&'a ProcessContext>,
 }
@@ -322,7 +326,7 @@ impl<'a> LoadedImage32<'a> {
     /// Preflight all features/imports, map checked sections and HIGHLOW fixups,
     /// build low stdcall gates and a guarded stack. No guest code runs here.
     pub fn load(bytes: &[u8], rebase: bool, _process: &'a ProcessContext) -> Result<Self> {
-        Self::load_kind(bytes, rebase, _process, false, &[])
+        Self::load_kind(bytes, rebase, _process, false, &[], false)
     }
     fn load_kind(
         bytes: &[u8],
@@ -330,6 +334,7 @@ impl<'a> LoadedImage32<'a> {
         _process: &'a ProcessContext,
         dll: bool,
         dependencies: &[(&str, &'a LoadedLibrary32<'a>)],
+        exceptions: bool,
     ) -> Result<Self> {
         if ACTIVE.with(|s| !s.get().is_null()) {
             return Err("PE32 loading during guest entry is unsupported".into());
@@ -343,7 +348,9 @@ impl<'a> LoadedImage32<'a> {
         } else {
             Image::parse_i386(bytes)?
         };
-        if dll {
+        if exceptions {
+            parsed.check_exception_startup32()?;
+        } else if dll {
             parsed.check_library_startup()?;
         } else {
             parsed.check_startup()?;
@@ -570,6 +577,15 @@ impl<'a> LoadedImage32<'a> {
         } else {
             image.base as u32 + parsed.entry as u32
         };
+        let seh_handlers = load_config
+            .as_ref()
+            .map(|c| {
+                c.seh_handlers
+                    .iter()
+                    .map(|&rva| image.base as u32 + rva as u32)
+                    .collect()
+            })
+            .unwrap_or_default();
         Ok(Self {
             image,
             exports: parsed.exports()?,
@@ -584,6 +600,7 @@ impl<'a> LoadedImage32<'a> {
             dll,
             regions,
             code_regions,
+            seh_handlers,
             handles,
             _process: PhantomData,
         })
@@ -793,7 +810,7 @@ impl<'a> LoadedLibrary32<'a> {
         dependencies: &[(&str, &'a LoadedLibrary32<'a>)],
     ) -> Result<Self> {
         let mut library = Self {
-            mapping: LoadedImage32::load_kind(bytes, rebase, process, true, dependencies)?,
+            mapping: LoadedImage32::load_kind(bytes, rebase, process, true, dependencies, false)?,
             attached: false,
         };
         if library.mapping.entry != 0 {
@@ -905,6 +922,9 @@ fn query_name(address: u32, mut read: impl FnMut(u32) -> Result<u8>) -> Result<S
     Err("export query exceeds 4096-byte bound".into())
 }
 extern "C" fn dispatch(id: u32, arguments: *const u32) -> u32 {
+    if seh32::in_handler() {
+        seh32::async_fail(b"Alkyhol PE32 unsupported: imports from an exception handler\n");
+    }
     ACTIVE.with(|slot| {
         let Some(image) = (unsafe { slot.get().cast::<LoadedImage32<'_>>().as_ref() }) else {
             unsupported("no active Win32 image");
@@ -1013,7 +1033,7 @@ mod tests {
     use super::*;
     // No mapping is dereferenced or dropped: pure address/metadata assertions,
     // separate from the actual unchanged-PE execution probe.
-    fn layout() -> std::mem::ManuallyDrop<LoadedImage32<'static>> {
+    pub(super) fn layout() -> std::mem::ManuallyDrop<LoadedImage32<'static>> {
         std::mem::ManuallyDrop::new(LoadedImage32 {
             image: LowMapping {
                 base: ptr::null_mut(),
@@ -1047,6 +1067,7 @@ mod tests {
                 (0x200000, 0x201000, 0xc0000000),
             ],
             code_regions: vec![(0x100000, 0x100200)],
+            seh_handlers: Vec::new(),
             _process: PhantomData,
         })
     }

@@ -4,7 +4,46 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## Bounded PE32 hardware SEH: physical M4; independent Windows capture pending
+
+The new opt-in `ExceptionImage32`/`--seh` profile handles a real UD2 through two
+FS-linked cdecl handlers, enforces the owned SafeSEH table and resumes changed
+integer/PC/carry state through Darwin's actual signal return. Physical M4 normal
+and forced rebase return the same 32 DWORDs: observed exception code, handler order,
+seven interrupted register canaries, original PC/SP properties, modified EAX/EBX,
+carry, preserved chain and direct FS last-error mutation. This is actual 32-bit
+fault → 64-bit Rust → 32-bit handlers → resumed 32-bit execution, not a synthetic
+context-only assertion. The native alternate stack resides above 4 GiB; its guard
+pages and actual signal-stack bounds are checked. Host signal/alternate-stack
+settings and segment state are restored and queried before successful return.
+
+Four owned host-only negative binaries exercise forbidden imported handler calls,
+unsupported context writes, a real nested UD2 and code outside the SafeSEH table.
+Each returns explicit diagnostic/status 78 with no fabricated successful body.
+They are profile-restriction tests, not Windows exception outcome comparisons.
+The positive unchanged PE and independent Win32 SDK/MSVC layout/disposition
+assertions are now included in the existing native workflow; its actual Windows
+SEH observations are pending. No native SEH parity is claimed yet.
+
+All 124 PE host tests, 15 compiler checks, 310 Python tests and Clippy pass locally.
+Portable metadata checks pass. Installed Darwin SDK C assertions check the signal
+ABI. Frozen default-load/compiler-GS observations, including the deliberate raw
+SIGILL trap, and linked-DLL observations retain their physical M4 behavior.
+Default execution is preserved; this experimental profile must be selected.
+
+The local game's explicit bounded exception **inspection** now stops at unsupported
+imports before mapping/entry; no game instruction executes. This does not validate
+its handlers. Access violations, software RaiseException, FP/debug state, imported
+handler APIs, nesting, unwind, system/DLL handlers and CRT/C++ exceptions remain
+unsupported. See [PE32](pe32.md) for the full contract and primary interface sources.
+
 ## PE32 linked DLLs: native Windows, hosted Mac and physical M4
+
+Strict-reference revision `8ddc477` passes all three
+[PE jobs](https://github.com/daeken/Alkyhol/actions/runs/42446160760) and all 24
+[conformance jobs](https://github.com/daeken/Alkyhol/actions/runs/42446161188).
+The initial capture revision `cf234fc` also passes all three PE and 24 conformance
+jobs linked below. These precede the hardware-exception profile above.
 
 At clean revision `cf234fc`, actual native Windows and downloaded hosted Mac
 reports and fresh physical M4 execution agree on every one of the 81 raw DWORDs,

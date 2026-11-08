@@ -99,6 +99,7 @@ pub struct Image<'a> {
     directories: [(usize, usize); 16],
     is_dll: bool,
     i386: bool,
+    dll_characteristics: u16,
 }
 
 fn range(bytes: &[u8], start: usize, len: usize) -> Result<&[u8]> {
@@ -314,6 +315,7 @@ impl<'a> Image<'a> {
             directories,
             is_dll,
             i386,
+            dll_characteristics: u16_at(bytes, opt + 70)?,
         };
         if !(is_dll && entry == 0)
             && !image
@@ -1079,6 +1081,19 @@ impl<'a> Image<'a> {
         }
         self.check_auxiliary_startup()
     }
+    /// Validate EXE metadata for the separate bounded PE32 exception profile.
+    /// Retains checked SafeSEH targets; this inspection does not install handlers
+    /// or establish support for other exception kinds, nesting or unwind.
+    pub fn check_exception_startup32(&self) -> Result<()> {
+        if !self.i386 || self.is_dll || self.dll_characteristics & 0x400 != 0 {
+            return Err("bounded PE32 exceptions require an i386 EXE without NO_SEH".into());
+        }
+        self.export_table(true)?;
+        if self.directories[3].1 != 0 {
+            return Err("PE32 exception directory is unsupported".into());
+        }
+        self.check_auxiliary_startup_mode(true)
+    }
     #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
     pub(crate) fn check_library_startup(&self) -> Result<()> {
         if !self.is_dll {
@@ -1103,6 +1118,9 @@ impl<'a> Image<'a> {
         self.check_auxiliary_startup_except_static()
     }
     fn check_auxiliary_startup_except_static(&self) -> Result<()> {
+        self.check_auxiliary_startup_mode(false)
+    }
+    fn check_auxiliary_startup_mode(&self, allow_seh32: bool) -> Result<()> {
         for (i, name) in [
             (7, "architecture"),
             (8, "global pointer"),
@@ -1128,7 +1146,7 @@ impl<'a> Image<'a> {
                     let config = self
                         .legacy_load_config32()?
                         .ok_or("missing legacy load configuration")?;
-                    if !config.seh_handlers.is_empty() {
+                    if !allow_seh32 && !config.seh_handlers.is_empty() {
                         return Err("PE32 SafeSEH exception dispatch is unsupported".into());
                     }
                     continue;

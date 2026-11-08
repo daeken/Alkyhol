@@ -696,6 +696,51 @@ fn safeseh_suffix_is_checked_beyond_a_short_directory_without_claiming_dispatch(
             .is_err()
     );
 }
+#[test]
+fn bounded_exception_preflight_only_enables_checked_i386_seh_without_weakening_other_gates() {
+    let mut b = load_config_image();
+    p32(&mut b, 0xa40, 0x403180);
+    p32(&mut b, 0xa44, 2);
+    p16(&mut b, 0x816, 0x3040);
+    p32(&mut b, 0xb80, 0x1000);
+    p32(&mut b, 0xb84, 0x1010);
+    let image = Image::parse_i386(&b).unwrap();
+    assert!(image.check_startup().is_err());
+    image.check_exception_startup32().unwrap();
+    let mut no_seh = b.clone();
+    p16(&mut no_seh, OPT + 70, 0x400);
+    assert!(
+        Image::parse_i386(&no_seh)
+            .unwrap()
+            .check_exception_startup32()
+            .is_err()
+    );
+    let mut dll = b.clone();
+    p16(&mut dll, 0x96, 0x2102);
+    assert!(
+        Image::parse_i386_dll(&dll)
+            .unwrap()
+            .check_exception_startup32()
+            .is_err()
+    );
+    for index in [3, 7, 8, 9, 11, 13, 14, 15] {
+        let mut bad = b.clone();
+        directory(&mut bad, index, 0x2100, 4);
+        assert!(
+            Image::parse_i386(&bad)
+                .unwrap()
+                .check_exception_startup32()
+                .is_err()
+        );
+    }
+    p32(&mut b, 0xb84, 0x1000);
+    assert!(
+        Image::parse_i386(&b)
+            .unwrap()
+            .check_exception_startup32()
+            .is_err()
+    );
+}
 
 #[test]
 fn cookie_cannot_alias_tls_template_or_index_loader_storage() {
