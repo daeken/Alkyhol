@@ -139,7 +139,13 @@ pub(super) fn create(image: &LoadedImage32<'_>, args: &[u32; 8]) -> u32 {
             );
         }
     }
-    if args[0] != 0 || args[1] != 0 {
+    // Measured Win32 form: 12 bytes, default descriptor, non-inheritable.
+    // This selects the same backed security/handle policy as NULL attributes.
+    let defaults = args[0] == 0
+        || (args[0].is_multiple_of(4)
+            && image.permits(args[0] as usize, 12, false)
+            && unsafe { (args[0] as *const [u32; 3]).read() } == [12, 0, 0]);
+    if !defaults || args[1] != 0 {
         unsupported("mutex security attributes or initial ownership are unsupported");
     }
     if args[2] == 0 {

@@ -13,6 +13,7 @@ def inputs(d):return {'sources':{(SOURCE/n).relative_to(ROOT).as_posix():digest(
 def verify(d):
     r=json.loads((d/'current-directory-inputs.json').read_text())
     if r!=inputs(d):raise ValueError('current-directory source/PE/fixture identity changed')
+    if r!=frozen()['inputs']:raise ValueError('current-directory source/PE differs from pinned native observation')
     return r
 def build(d):
     d.mkdir(parents=True,exist_ok=True);clang=shutil.which('clang');lld=rust_tool('rust-lld');lib=d/'current-directory.lib'
@@ -22,6 +23,9 @@ def build(d):
         obj=d/(name+'.obj')
         subprocess.run([clang,'--target=i686-pc-windows-msvc','-O1','-ffreestanding','-fno-builtin','-fno-stack-protector','-fno-unwind-tables','-fno-asynchronous-unwind-tables','-Wall','-Wextra','-Werror','-Wno-unused-function',f'-DMODE={mode}','-c',str(SOURCE/'current-directory.c'),'-o',str(obj)],check=True)
         subprocess.run([lld,'-flavor','link','/nodefaultlib','/subsystem:console','/machine:x86','/dynamicbase','/fixed:no','/timestamp:0','/safeseh:no','/manifest:no','/entry:entry',str(obj),str(lib),*[f'/alternatename:__imp__{n}@{s}=__imp__{n}' for n,s in SYMBOLS],'/out:'+str(d/name)],check=True)
+        literal=ROOT/f'pe/reference/pe32-current-directory-{mode}-v1.exe'
+        if digest(literal)!=frozen()['inputs']['files'][name]:raise ValueError('changed literal native directory PE')
+        shutil.copyfile(literal,d/name)
     (d/'current-directory-inputs.json').write_text(json.dumps(inputs(d),indent=2)+'\n');verify(d)
 def decode(data,a,b):
     if len(data)%4:raise ValueError('truncated current-directory transport')
@@ -32,6 +36,15 @@ def decode(data,a,b):
     if words!=expected:raise ValueError(f'current directory change/query/error/buffer/relative-file evidence differs: {words}')
     # Path lengths differ by host; all remaining observed words must agree.
     return {'words':words,'path_units':[a,b]}
+def frozen():
+    path=ROOT/'pe/reference/pe32-current-directory-windows-v1.json'
+    if digest(path)!='bb324725474f42f15ebf8eaf4a29567205950018e1f79b636d69cf981f98bda5':raise ValueError('changed frozen native directory record')
+    r=json.loads(path.read_bytes())
+    if r['backend']!='native Windows directory observer' or len(r['reports'])!=1:raise ValueError('incomplete native directory report')
+    row=r['reports'][0]
+    if row['case']!=0 or row['status'] or row['stderr_hex']:raise ValueError('failed native directory execution')
+    decode(bytes.fromhex(row['stdout_hex']),*r['path_units'])
+    return r
 def execute(d,native=False):
     identity=verify(d);root=d/NAME;(root/'inner').mkdir(parents=True,exist_ok=True)
     for path,value in [(root/'sentinel.bin',b'A'),(root/'inner/sentinel.bin',b'B')]:

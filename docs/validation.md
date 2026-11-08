@@ -4,6 +4,32 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## Directory comparison passes; the next measured mutex uses explicit defaults
+
+The [native startup job at `14c1028`](https://github.com/daeken/Alkyhol/actions/runs/42512731501)
+passes the corrected working-directory observation and peer comparison. All 67
+raw words validate against the real per-host UTF-16 lengths; non-path behavior
+agrees, including missing-leaf error 2 and successful existing-file error 0.
+The unchanged initial raw native capture is pinned as
+`pe/reference/pe32-current-directory-windows-v1.json`, SHA-256
+`bb324725474f42f15ebf8eaf4a29567205950018e1f79b636d69cf981f98bda5`.
+It preserves the first checker's failure state (no added decoded fields), while
+its successful complete PE execution is now independently validated. The old
+failed CI job remains failed. Local and hosted compilers produced different
+PE hashes despite identical C sources; all three literal CI-produced PEs are now
+selected explicitly. The physical M4 reran those exact native PE bytes and all
+67 words validate. Source, fixture and PE identities agree completely.
+
+The original EXE at clean revision `14c1028` again executes directory selection.
+Its next mutex call has a checked 12-byte `SECURITY_ATTRIBUTES` with a NULL
+descriptor and inheritance disabled. The provider now admits precisely that
+explicit default form through the existing backed object policy; custom
+descriptors, inheritance, other sizes and initial ownership still stop. A
+separate owned producer mixes explicit defaults and NULL attributes to test real
+shared identity, both closes and last-close destruction. Its 16-word lifecycle
+and three guest exclusions pass on the physical M4. Fresh native observation
+and the next original EXE run are pending; no game compatibility is claimed.
+
 ## Native directory observation corrects two previously unmeasured error details
 
 The first [native directory job at `c880378`](https://github.com/daeken/Alkyhol/actions/runs/42512402029)

@@ -109,6 +109,10 @@ jobs:
         run: |
           python tools/observe_pe32_current_directory.py
           python tools/observe_pe32_current_directory.py --host
+      - name: Execute the explicit default mutex attributes reached by original DAO startup
+        run: |
+          python tools/observe_pe32_mutex_attributes.py
+          python tools/observe_pe32_mutex_attributes.py --host
       - uses: actions/upload-artifact@v4
         with:
           name: pe32-startup-microtests
@@ -177,6 +181,8 @@ jobs:
             local/pe/startup-microtests/multimedia-clock-host.json
             local/pe/startup-microtests/current-directory-inputs.json
             local/pe/startup-microtests/current-directory-host.json
+            local/pe/startup-microtests/mutex-default-attributes-inputs.json
+            local/pe/startup-microtests/mutex-default-attributes-host.json
             local/pe/startup-microtests/ctx-layout-empty-importer.dll
             local/pe/startup-microtests/ctx-layout-*.manifest
   native-pe32-startup:
@@ -279,6 +285,9 @@ jobs:
       - name: Observe original directory-change and relative-read PEs on native Windows
         if: ${{ success() || failure() }}
         run: python tools/observe_pe32_current_directory.py --native
+      - name: Observe explicit default mutex attributes sharing an object with NULL attributes
+        if: ${{ success() || failure() }}
+        run: python tools/observe_pe32_mutex_attributes.py --native
       - uses: actions/upload-artifact@v4
         if: always()
         with:
