@@ -38,7 +38,7 @@ storage and stops unsupported profiles with 78.
 
 A separate 24-row identical-PE witness adds two inputs per control mode, including
 an 80-bit operand just above a binary64 square-root rounding threshold. These
-four new rows are host observations until their queued native comparison runs.
+four new rows subsequently pass the native comparison described below.
 Four host-only restrictions (other precision, negative, NaN, oversized magnitude)
 stop for the actual profile rejection reason; no NaN or errno success is fabricated.
 The `_errno` accessor supplies stable aligned zero-initialized guest storage;
@@ -51,8 +51,19 @@ Local milestone checks pass: 190 PE Rust tests/checks including doctests on the
 x86_64 Rosetta target, 370 Python tests, project Clippy with warnings denied,
 formatting, all five bounded sqrt/restriction PEs, the 13 existing CRT PEs and
 the 25 startup cases. The actual original graph repeats the `_CIatan` stop after
-passing the square-root call. The 24-row native comparison is pending; these
-checks do not establish full floating-point or original-game equivalence.
+passing the square-root call. These checks do not establish full floating-point
+or original-game equivalence.
+
+The [native startup job at `4281503`](https://github.com/daeken/Alkyhol/actions/runs/42494716584)
+passes the identical-PE bounded comparison: all **24 records** agree with the
+host, including the four new rounding-boundary/pi rows. The exact CI-produced
+domain PE also executes on the physical M4 and agrees on every recorded result,
+stack witness, control/status, MXCSR, errno and last-error field. Its SHA-256 is
+`3f7624c7488a0a1f95e5e91823f6603a1aae3b6d4e46fe05f0895e6737867037`.
+All four unsupported-profile cases still stop honestly, and native Windows
+reproduces all 204 frozen full-observer records without altering that baseline.
+The original constructor's square-root call now completes on the M4; the next
+_CIatan call remains unimplemented.
 
 ## Original D3DX9 constructors execute through the CRT gateway (earlier milestone)
 
