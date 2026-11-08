@@ -4,6 +4,47 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## DAO CRT module/TLS/locking and standard-I/O milestone
+
+DAO remains the sole application driver. The original bundled CRT now executes
+through module/dynamic-export lookup, real TLS/FLS setup, pointer encoding,
+recursive critical-section initialization/use, atomic increments and standard-I/O
+setup on the physical M4. The next observed original call is GetEnvironmentStringsW,
+which stops explicitly. The game EXE entry has **not run**. Exact game/dependency
+identities, original argument/RVA captures and the private launch remain local;
+there is no native Windows original-game startup/frame comparison.
+
+Targeted owned PE32 microtests execute direct FS reads of TLS and thread identity,
+dynamic module/function lookup, opaque pointer roundtrips, actual reentrant FLS
+cleanup through nested CPU transitions, recursive section operations, DWORD atomic
+wraparound, configured STARTUPINFOA streams and real pipe types. Unknown dynamic
+exports and builtin ordinals stop with status 78 before post-call output. The four
+negative cases are host instrumentation evidence only. Six positive PEs contain 64
+normalized output DWORDs and are supplied unchanged to the existing Windows CI job;
+new native results are pending. No original game bytes or derived inventories enter
+these tests. Thread/fiber switching, contended guest synchronization and automatic
+thread-exit FLS cleanup are not claimed. Pending FLS cleanup stops explicitly.
+
+Local validation passes 137 PE host tests plus 16 compile/documentation checks,
+322 Python tests, Clippy and all ten targeted startup cases. The existing frozen
+105-DWORD process fixture also retains its physical M4 normal/rebased startup,
+termination and five host rejection results. These checks preserve previous
+evidence; they do not turn this original-game diagnostic run into native parity.
+
+For the preceding `78468cf` milestone, all three targeted positive PE files (24
+DWORDs total) passed native Windows; all three [PE jobs](https://github.com/daeken/Alkyhol/actions/runs/42458454808)
+and all 24 [conformance jobs](https://github.com/daeken/Alkyhol/actions/runs/42458454911)
+passed. This closes the earlier pending native result, not the new TLS/locking
+milestone or game compatibility.
+
+API contract references used for the new bounded implementation:
+[FLS allocation](https://learn.microsoft.com/en-us/windows/win32/api/fibersapi/nf-fibersapi-flsalloc),
+[FLS free callbacks](https://learn.microsoft.com/en-us/windows/win32/api/fibersapi/nf-fibersapi-flsfree),
+[process pointer encoding](https://learn.microsoft.com/en-us/previous-versions/bb432254%28v%3Dvs.85%29),
+[recursive critical sections](https://learn.microsoft.com/en-us/windows/win32/sync/critical-section-objects),
+[STARTUPINFOA](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/ns-processthreadsapi-startupinfoa),
+and [obsolete SetHandleCount](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-sethandlecount).
+
 ## DAO-driven diagnostic startup and first runtime blockers
 
 Latest priority is DAO alone, using tests needed for observed startup blockers.
@@ -24,7 +65,7 @@ Additional small tests execute heap calls with an IAT in RX storage, exercise
 zeroed allocation/reuse/free and compare legacy version/environment results with
 fixed expected records. Physical M4 checks pass. The identical positive PE files,
 source/file identity manifest and expected records now run in the native Windows
-workflow; their new native result is pending. At this milestone, all 134 PE host tests, 16 compiler checks, 322 Python tests,
+workflow; their native result passed at `78468cf` as recorded above. At that milestone, all 134 PE host tests, 16 compiler checks, 322 Python tests,
 portable metadata tests and Clippy pass locally. The diagnostic guard restores and
 queries prior host fault actions/alternate-stack state on successful return; owned
 faults stop instead of claiming Windows exception recovery.

@@ -226,6 +226,35 @@ pub(crate) fn close_stream(handle: usize) -> Option<i32> {
         }
     })
 }
+// Describe the actual duplicated host stream, including redirected pipes and
+// character devices. This is used by the PE32 CRT's observed standard-I/O setup.
+pub(crate) fn stream_file_type(handle: usize) -> Option<std::result::Result<u32, u32>> {
+    use std::os::unix::fs::FileTypeExt;
+    PROCESS.with(|p| {
+        let state = p.borrow();
+        let Object::Stream(stream) = state.as_ref()?.objects.get(&handle)? else {
+            return None;
+        };
+        Some(
+            stream
+                .file
+                .metadata()
+                .map_err(|e| io_error(&e))
+                .and_then(|m| {
+                    let kind = m.file_type();
+                    if kind.is_file() || kind.is_dir() {
+                        Ok(1)
+                    } else if kind.is_char_device() {
+                        Ok(2)
+                    } else if kind.is_fifo() || kind.is_socket() {
+                        Ok(3)
+                    } else {
+                        Err(NOT_SUPPORTED)
+                    }
+                }),
+        )
+    })
+}
 unsafe extern "win64" fn GetStdHandle(kind: u32) -> usize {
     let index = match kind {
         0xfffffff6 => 0,
@@ -1479,6 +1508,7 @@ mod tests {
             );
         });
         let bytes = [0, 0xff, 42];
+        assert_eq!(stream_file_type(token), Some(Ok(1)));
         let mut n = 999;
         unsafe {
             assert_eq!(
@@ -1536,6 +1566,7 @@ mod tests {
             assert_eq!(ffi::GetLastError(), 6);
         }
         assert_eq!(close_stream(token), Some(1));
+        assert_eq!(stream_file_type(token), None);
         assert_eq!(close_stream(token), None);
         std::fs::remove_file(root).unwrap();
     }

@@ -9,3 +9,28 @@ EXPORTS
   GetVersionExA
   HeapCreate
   GetEnvironmentVariableA
+  SetLastError
+  GetModuleHandleA
+  GetModuleHandleW
+  GetProcAddress
+  FlsAlloc
+  FlsFree
+  FlsGetValue
+  FlsSetValue
+  TlsAlloc
+  TlsFree
+  TlsGetValue
+  TlsSetValue
+  EncodePointer
+  DecodePointer
+  InitializeCriticalSectionAndSpinCount
+  InitializeCriticalSection
+  EnterCriticalSection
+  LeaveCriticalSection
+  DeleteCriticalSection
+  TryEnterCriticalSection
+  InterlockedIncrement
+  GetCurrentThreadId
+  GetStartupInfoA
+  GetFileType
+  SetHandleCount

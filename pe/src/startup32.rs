@@ -4,6 +4,22 @@ use alkyhol::ffi;
 use std::{ffi::c_void, ptr};
 
 const LIMIT: usize = 1024 * 1024;
+fn startup_info(handles: [usize; 3]) -> [u8; 68] {
+    // This host profile explicitly inherits its three streams. It has no
+    // Windows desktop/title/position request or private CRT inheritance block.
+    let mut bytes = [0u8; 68];
+    bytes[..4].copy_from_slice(&68u32.to_le_bytes());
+    bytes[44..48].copy_from_slice(&0x100u32.to_le_bytes());
+    for (index, handle) in handles.into_iter().enumerate() {
+        let value = match handle {
+            0 => 0,
+            usize::MAX => u32::MAX,
+            _ => 0x70000001 + index as u32,
+        };
+        bytes[56 + index * 4..60 + index * 4].copy_from_slice(&value.to_le_bytes());
+    }
+    bytes
+}
 pub(super) struct Block {
     mapping: LowMapping,
     size: usize,
@@ -470,6 +486,28 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
                 }
             }
             length
+        }
+        40 => {
+            checked(image, args[0], 68, true);
+            let bytes = startup_info(image.handles);
+            unsafe {
+                ptr::copy_nonoverlapping(bytes.as_ptr(), args[0] as *mut u8, bytes.len());
+            }
+            0 // VOID return: the caller receives the configured record above.
+        }
+        41 => {
+            let native = handle(image, args[0]);
+            if let Some(result) = crate::process::stream_file_type(native) {
+                return match result {
+                    Ok(kind) => kind,
+                    Err(error) => fail(error),
+                };
+            }
+            if image.cpu.files.borrow().contains(&native) {
+                // The kernel's CreateFileW path admits regular files only.
+                return 1;
+            }
+            fail(6)
         }
         _ => unreachable!(),
     }
