@@ -6,6 +6,8 @@ pub use command_line::windows_command_line;
 mod activation_binding;
 #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
 mod activation_manifest;
+#[cfg(all(target_os = "macos", target_arch = "x86_64"))]
+mod activation_policy;
 mod image;
 mod resource;
 pub use resource::{Resource, ResourceName};

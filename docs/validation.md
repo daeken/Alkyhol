@@ -4,6 +4,63 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## DAO passes its original CRT assembly lookup
+
+The physical M4 now executes past the original CRT's FindActCtxSectionStringW
+call with real scoped binding data. The next measured unsupported operation is
+its dynamic lookup of **GetSystemWindowsDirectoryW**. The game EXE entry has
+**not run**. This is original CRT startup progress, not game compatibility or a
+native full-game comparison. The original EXE and runtime DLL bytes remain
+unchanged; all original identities, file provenance and captures stay local.
+
+The process profile explicitly registers the unmodified extracted CRT assembly
+manifest and publisher-policy manifest. Both policy ranges are parsed with exact
+inclusive version bounds, family/platform/token checks and a backed target
+assembly. Missing, out-of-range, wrong-token, duplicate or unknown policies fail
+before initialization. This is a caller-trusted installed-policy inventory,
+**not** Windows Installer, catalog/PKI validation, automatic WinSxS search or a
+native observation of publisher-policy installation. Native policy trust and a
+full original Windows graph comparison remain unmeasured. No unavailable trust
+API returns invented success. The provided modules retain their actual source
+paths and the separate system-directory role; no path substitution bypasses the
+original check. The third CRT member is backed by a byte-identical extracted file
+and is not imported, mapped or executed.
+
+Three additional owned native layouts passed at `4a6ef89` in the
+[Windows startup job](https://github.com/daeken/Alkyhol/actions/runs/42478710865).
+An empty resource-2 DLL has a real non-NULL active context during its own and its
+manifest-free provider's attach/detach, yet every DLL-key query misses. Its
+explicitly created/activated empty context has a second distinct handle; EXE
+default/restored scope remains NULL. Exact-version token-bearing private assembly
+metadata also binds without a fabricated certificate validation claim. Finally,
+a three-file assembly produces a 324-byte section with a real three-bucket hash
+dictionary; two files are deliberately unimported, so no execution of those files
+is claimed. The complete raw native report is frozen at
+`pe/reference/pe32-assembly-layout-windows-v1.json`, SHA-256
+`447013659b9d99cc5e25bcb62daf7328cf547333c904c04044aaae6416622b79`.
+
+All three identical-PE layouts now run on the physical M4 and match every frozen
+context relationship, scalar and section byte. Empty DLL contexts own real
+reference-counted handles without inventing DLL data. One- and three-file
+sections use owned low read-only buffers; other dictionary sizes remain
+unsupported. Token identities and the known SHA-1/Identity-transform metadata
+schema are parsed, following the separate native private-loader observation that
+those hash declarations were not enforced during this runtime binding. This does
+not establish signature validation or shared-assembly installation integrity.
+The default empty-only/diagnostic loader contract stays separate.
+
+An owned host-only policy model additionally runs the unchanged token-bearing PE
+chain against an actual newer registered manifest and an explicit matching policy.
+Its scoped lookups agree with the frozen exact-version native layout. Five
+negative policy profiles stop for their specific reason with no initializer
+output. **This is host model evidence, not identical native policy configuration.**
+Local checks pass 181 PE tests/checks, 349 Python tests, Clippy, the six old scoped
+activation cases, all three new layouts and six policy-model cases. Current-code
+CI remains separate/pending; the native captures above identify their own exact
+revisions. The next native-only owned observer builds the existing C directory
+sizing/guard probe with its API name selected as GetSystemWindowsDirectoryW.
+Its Windows result and host implementation are still pending.
+
 ## Rust PE32 activation scopes execute the frozen Windows observer
 
 The native metadata experiment at `3e755c7` completed in the

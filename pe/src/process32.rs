@@ -14,6 +14,10 @@ struct Plan<'a> {
     edges: Vec<Vec<usize>>,
     deferred: Vec<(String, String, ImportSymbol)>,
 }
+struct AssemblyInputs<'a> {
+    manifests: &'a [std::path::PathBuf],
+    policies: &'a [std::path::PathBuf],
+}
 fn executable_name(name: &str) -> Result<String> {
     if name.len() > 255
         || !name.to_ascii_lowercase().ends_with(".exe")
@@ -229,10 +233,14 @@ pub struct ProcessImage32<'a> {
 #[derive(Default)]
 pub struct ProcessOptions32 {
     pub system_directory: Option<std::path::PathBuf>,
-    /// Opt in to scoped, exact unsigned single-file assembly binding from
-    /// explicitly supplied manifests and genuine provided module origins.
-    /// No search, publisher policy, signed/hash metadata or implicit fallback.
+    /// Opt in to scoped exact x86 assembly binding from explicit private
+    /// manifests, genuine file origins and optional caller-trusted policies.
+    /// One/three-file layouts and token/hash metadata are bounded native-tested
+    /// profiles. This does not validate PKI/catalogs or search a Windows install.
     pub activation_assemblies: Option<Vec<std::path::PathBuf>>,
+    /// Caller-trusted installed publisher policy metadata. No automatic policy
+    /// search, catalog/signature verification or Windows installation is claimed.
+    pub activation_policies: Vec<std::path::PathBuf>,
 }
 impl<'a> ProcessImage32<'a> {
     /// Check the complete closed graph without mapping or executing any module.
@@ -347,6 +355,9 @@ impl<'a> ProcessImage32<'a> {
             .as_deref()
             .map(super::module_path32::directory)
             .transpose()?;
+        if options.activation_assemblies.is_none() && !options.activation_policies.is_empty() {
+            return Err("publisher policy requires an explicit assembly profile".into());
+        }
         if dlls.len() > 64 {
             return Err("PE32 process exceeds 64 explicit DLLs".into());
         }
@@ -380,7 +391,13 @@ impl<'a> ProcessImage32<'a> {
                 external.is_some(),
                 &paths,
                 system_directory,
-                options.activation_assemblies.as_deref(),
+                options
+                    .activation_assemblies
+                    .as_deref()
+                    .map(|manifests| AssemblyInputs {
+                        manifests,
+                        policies: &options.activation_policies,
+                    }),
             )
         }
     }
@@ -391,7 +408,7 @@ impl<'a> ProcessImage32<'a> {
         diagnostic: bool,
         origins: &BTreeMap<String, super::module_path32::Origin>,
         system_directory: Option<Vec<u16>>,
-        assembly_paths: Option<&[std::path::PathBuf]>,
+        assembly_profile: Option<AssemblyInputs<'_>>,
     ) -> Result<Self> {
         let mut cpu = Cpu32::new()?;
         cpu.system_directory = system_directory;
@@ -453,12 +470,16 @@ impl<'a> ProcessImage32<'a> {
         }
         cpu.executable
             .set(mappings.last().expect("root mapping").image.base as u32);
-        if let Some(paths) = assembly_paths {
+        if let Some(profile) = assembly_profile {
             let origins = origins
                 .iter()
                 .map(|(name, origin)| (name.clone(), origin.host.clone()))
                 .collect();
-            let inventory = crate::activation_binding::Inventory::new(paths, &origins)?;
+            let inventory = crate::activation_binding::Inventory::new(
+                profile.manifests,
+                profile.policies,
+                &origins,
+            )?;
             let templates: Vec<_> = plan
                 .nodes
                 .iter()

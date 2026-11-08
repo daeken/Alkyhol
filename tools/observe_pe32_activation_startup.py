@@ -138,8 +138,7 @@ def package(directory,name):
     if (run/'ctx-provider.dll').exists():raise ValueError('unisolated provider would invalidate the loader observation')
     return run,assembly
 
-def host(directory):
-    inputs=verify(directory);run,assembly=package(directory,'ctx-host-run')
+def runner(directory):
     cargo=shutil.which('cargo') or str(Path.home()/'.cargo/bin/cargo')
     rustc=shutil.which('rustc') or str(Path.home()/'.cargo/bin/rustc');target='x86_64-apple-darwin'
     subprocess.run([cargo,'build','--manifest-path',str(ROOT/'pe/Cargo.toml'),'--target',target,'--locked','--offline'],check=True)
@@ -147,6 +146,10 @@ def host(directory):
     subprocess.run([rustc,'--edition=2024','--target',target,str(ROOT/'pe/probe_startup32.rs'),'--extern',
                     'alkyhol_pe='+str(output/'libalkyhol_pe.rlib'),'-L','dependency='+str(output/'deps'),
                     '-C','link-arg=-Wl,-pagezero_size,0x1000','-o',str(probe)],check=True)
+    return probe
+
+def host(directory):
+    inputs=verify(directory);run,assembly=package(directory,'ctx-host-run');probe=runner(directory)
     args=[str(probe),str(run/'ctx-startup.exe'),'--strict','--file-origins','--assembly-manifest',str(assembly/'Alkyhol.OwnedCRT.manifest'),
           '--dll','ctx-importer.dll='+str(run/'ctx-importer.dll'),'--dll','ctx-provider.dll='+str(assembly/'ctx-provider.dll')]
     results=[]

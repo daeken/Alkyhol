@@ -42,6 +42,10 @@ fn main() {
                                 .into(),
                         );
                 }
+                "--assembly-policy" => {
+                    profile.activation_assemblies.get_or_insert_with(Vec::new);
+                    profile.activation_policies.push(options.next().ok_or("--assembly-policy requires an explicitly trusted installed policy manifest")?.into());
+                }
                 "--system-directory" => {
                     profile.system_directory = Some(
                         options

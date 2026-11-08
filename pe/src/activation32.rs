@@ -5,51 +5,93 @@ use super::{Cpu32, LoadedImage32, LowMapping, PAGE, startup32, unsupported};
 use crate::{Result, activation_binding::Template};
 use std::{collections::BTreeMap, ptr, rc::Rc};
 
-// A single-file DLL section. Offsets/header/hash are checked against the complete
-// native section, not just a successful Boolean result. Larger schemas stop.
-fn section(file: &str, roster: u32) -> (Vec<u8>, usize) {
-    let name: Vec<_> = file.encode_utf16().collect();
-    let offset = (68 + (name.len() + 1) * 2 + 3) & !3;
-    let mut bytes = vec![0; offset + 20];
-    let hash = file.bytes().fold(0u32, |h, c| {
-        h.wrapping_mul(65599)
-            .wrapping_add(u32::from(c.to_ascii_uppercase()))
-    });
-    let header = [
+// The observed one- and three-file section layouts. Larger/unmeasured
+// dictionaries stop in inventory validation rather than emit guessed layouts.
+fn section(files: &[String], roster: u32) -> (Vec<u8>, Vec<usize>) {
+    let count = files.len();
+    let mut bytes = vec![0; 44 + count * 24];
+    let mut offsets = Vec::new();
+    let mut buckets = [Vec::new(), Vec::new(), Vec::new()];
+    fn put(bytes: &mut [u8], at: usize, value: u32) {
+        bytes[at..at + 4].copy_from_slice(&value.to_le_bytes());
+    }
+    for (index, file) in files.iter().enumerate() {
+        let string_at = bytes.len();
+        let name: Vec<_> = file.encode_utf16().collect();
+        for unit in &name {
+            bytes.extend_from_slice(&unit.to_le_bytes());
+        }
+        bytes.extend_from_slice(&[0, 0]);
+        while !bytes.len().is_multiple_of(4) {
+            bytes.push(0);
+        }
+        let data_at = bytes.len();
+        for word in [20u32, 2, 0, 0, 0] {
+            bytes.extend_from_slice(&word.to_le_bytes());
+        }
+        let hash = file.bytes().fold(0u32, |h, c| {
+            h.wrapping_mul(65599)
+                .wrapping_add(u32::from(c.to_ascii_uppercase()))
+        });
+        let entry = 44 + index * 24;
+        for (i, value) in [
+            hash,
+            string_at as u32,
+            (name.len() * 2) as u32,
+            data_at as u32,
+            20,
+            roster,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            put(&mut bytes, entry + i * 4, value);
+        }
+        offsets.push(data_at);
+        buckets[(hash % 3) as usize].push(entry as u32);
+    }
+    let search = if count == 3 {
+        let at = bytes.len();
+        bytes.resize(at + 32, 0);
+        put(&mut bytes, at, 3);
+        put(&mut bytes, at + 4, (at + 8) as u32);
+        for (i, bucket) in buckets.into_iter().enumerate() {
+            let list = if bucket.is_empty() { 0 } else { bytes.len() };
+            put(&mut bytes, at + 8 + i * 8, bucket.len() as u32);
+            put(&mut bytes, at + 12 + i * 8, list as u32);
+            for entry in bucket {
+                bytes.extend_from_slice(&entry.to_le_bytes());
+            }
+        }
+        at as u32
+    } else {
+        0
+    };
+    for (i, value) in [
         0x64487353,
         44,
         1,
         1,
-        3,
-        1,
+        if count == 1 { 3 } else { 1 },
+        count as u32,
         44,
         1,
+        search,
         0,
         0,
-        0,
-        hash,
-        68,
-        (name.len() * 2) as u32,
-        offset as u32,
-        20,
-        roster,
-    ];
-    for (i, value) in header.into_iter().enumerate() {
-        bytes[i * 4..i * 4 + 4].copy_from_slice(&value.to_le_bytes());
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        put(&mut bytes, i * 4, value);
     }
-    for (i, value) in name.into_iter().enumerate() {
-        bytes[68 + i * 2..70 + i * 2].copy_from_slice(&value.to_le_bytes());
-    }
-    for (i, value) in [20u32, 2, 0, 0, 0].into_iter().enumerate() {
-        bytes[offset + i * 4..offset + i * 4 + 4].copy_from_slice(&value.to_le_bytes());
-    }
-    (bytes, offset)
+    (bytes, offsets)
 }
 struct Context {
     _token: LowMapping,
-    data: LowMapping,
+    data: Option<LowMapping>,
     length: usize,
-    offset: usize,
+    offsets: Vec<usize>,
     template: Template,
     references: u32,
 }
@@ -103,20 +145,28 @@ impl State {
         Ok(out)
     }
     fn create(&mut self, template: Template) -> Result<u32> {
-        let Some(file) = &template.file else {
+        if !template.active {
             return Ok(0);
-        };
+        }
+        if !template.files.is_empty() && ![1, 3].contains(&template.files.len()) {
+            return Err("unmeasured activation section file count".into());
+        }
         if self.contexts.len() >= 128 {
             return Err("activation context allocation budget exceeded".into());
         }
-        let (bytes, offset) = section(file, template.roster);
-        let length = bytes.len();
-        let rounded = (length + PAGE - 1) & !(PAGE - 1);
-        let data = LowMapping::new(rounded, PAGE, 0)?;
-        unsafe {
-            ptr::copy_nonoverlapping(bytes.as_ptr(), data.base, length);
-        }
-        data.protect(0, rounded, 1)?;
+        let (data, length, offsets) = if template.files.is_empty() {
+            (None, 0, Vec::new())
+        } else {
+            let (bytes, offsets) = section(&template.files, template.roster);
+            let length = bytes.len();
+            let rounded = (length + PAGE - 1) & !(PAGE - 1);
+            let data = LowMapping::new(rounded, PAGE, 0)?;
+            unsafe {
+                ptr::copy_nonoverlapping(bytes.as_ptr(), data.base, length);
+            }
+            data.protect(0, rounded, 1)?;
+            (Some(data), length, offsets)
+        };
         let token = LowMapping::new(PAGE, PAGE, 0)?;
         token.protect(0, PAGE, 0)?;
         let handle = token.base as u32;
@@ -126,7 +176,7 @@ impl State {
                 _token: token,
                 data,
                 length,
-                offset,
+                offsets,
                 template,
                 references: 1,
             },
@@ -168,7 +218,9 @@ impl State {
         !write
             && address.checked_add(len).is_some_and(|end| {
                 self.contexts.values().any(|c| {
-                    address >= c.data.base as usize && end <= c.data.base as usize + c.length
+                    c.data.as_ref().is_some_and(|data| {
+                        address >= data.base as usize && end <= data.base as usize + c.length
+                    })
                 })
             })
     }
@@ -251,9 +303,6 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
                     .ok_or("CreateActCtxW module is not registered")?
                     .clone()?
                     .ok_or("module has no embedded activation manifest")?;
-                if t.file.is_none() {
-                    return Err("explicit empty-context handles are unsupported".into());
-                }
                 state.create(t)
             }
             62 => {
@@ -334,18 +383,20 @@ pub(super) fn find(image: &LoadedImage32<'_>, args: &[u32; 8]) -> u32 {
                 .contexts
                 .get(&current)
                 .unwrap_or_else(|| unsupported("active context has no owned storage"));
-            if c.template
-                .file
-                .as_ref()
-                .is_some_and(|file| file.eq_ignore_ascii_case(&name))
+            if let Some(index) = c
+                .template
+                .files
+                .iter()
+                .position(|file| file.eq_ignore_ascii_case(&name))
             {
+                let data = c.data.as_ref().expect("bound DLL section");
                 let values = [
                     1,
-                    c.data.base as u32 + c.offset as u32,
+                    data.base as u32 + c.offsets[index] as u32,
                     20,
                     0,
                     0,
-                    c.data.base as u32,
+                    data.base as u32,
                     c.length as u32,
                     if flags == 1 { current } else { 0 },
                     c.template.roster,
@@ -382,12 +433,27 @@ mod tests {
     use super::*;
     #[test]
     fn single_dll_section_matches_the_full_native_bytes() {
-        let (bytes, offset) = section("ctx-provider.dll", 2);
+        let (bytes, offset) = section(&["ctx-provider.dll".into()], 2);
         let expected = "537348642c000000010000000100000003000000010000002c000000010000000000000000000000000000008df2a41a44000000200000006800000014000000020000006300740078002d00700072006f00760069006400650072002e0064006c006c00000000001400000002000000000000000000000000000000";
         assert_eq!(
             bytes.iter().map(|b| format!("{b:02x}")).collect::<String>(),
             expected
         );
-        assert_eq!((offset, bytes.len()), (104, 124));
+        assert_eq!((offset, bytes.len()), (vec![104], 124));
+    }
+    #[test]
+    fn three_file_section_matches_the_complete_native_hash_dictionary() {
+        let files = vec![
+            "ctx-provider.dll".into(),
+            "ctx-secondary.dll".into(),
+            "ctx-unused.dll".into(),
+        ];
+        let (bytes, offsets) = section(&files, 2);
+        let expected = "537348642c000000010000000100000001000000030000002c000000010000001801000000000000000000008df2a41a74000000200000009800000014000000020000004427d0bfac00000022000000d000000014000000020000007230bce9e40000001c0000000401000014000000020000006300740078002d00700072006f00760069006400650072002e0064006c006c000000000014000000020000000000000000000000000000006300740078002d007300650063006f006e0064006100720079002e0064006c006c00000014000000020000000000000000000000000000006300740078002d0075006e0075007300650064002e0064006c006c0000000000140000000200000000000000000000000000000003000000200100000100000038010000010000003c01000001000000400100002c0000005c00000044000000";
+        assert_eq!(
+            bytes.iter().map(|b| format!("{b:02x}")).collect::<String>(),
+            expected
+        );
+        assert_eq!(offsets, vec![152, 208, 260]);
     }
 }

@@ -66,4 +66,15 @@ class AssemblyMetadataInputsTests(unittest.TestCase):
         request=ET.fromstring(observer.manifests()['token-importer']).find('a:dependency/a:dependentAssembly/a:assemblyIdentity',ns)
         self.assertEqual(identity.attrib,request.attrib)
 
+    def test_frozen_empty_and_three_file_observations_cannot_be_replaced(self):
+        import copy
+        import observe_pe32_assembly_layout as layout
+        rows=layout.frozen_layout()
+        for row in rows:layout.compare(row)
+        self.assertEqual(rows[0]['records'][0]['current_context_id'],1)
+        self.assertEqual(rows[0]['records'][0]['queries'][0]['words'][1],0)
+        self.assertEqual(rows[1]['records'][0]['queries'][0]['words'][7],324)
+        changed=copy.deepcopy(rows[1]);changed['records'][0]['queries'][0]['section_hex']=changed['records'][0]['queries'][0]['section_hex'][:-8]
+        with self.assertRaises(ValueError):layout.compare(changed)
+
 if __name__=='__main__':unittest.main()
