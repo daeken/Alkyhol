@@ -28,7 +28,7 @@ def build(d):
         subprocess.run([lld,'-flavor','link','/nodefaultlib','/subsystem:console','/machine:x86','/dynamicbase','/fixed:no','/timestamp:0','/safeseh:no','/manifest:no','/entry:entry',str(obj),str(res),*libs,*[f'/alternatename:__imp__{n}@{s}=__imp__{n}' for n,s in SYMBOLS],'/out:'+str(d/name)],check=True)
     (d/'resource-icon-inputs.json').write_text(json.dumps(inputs(d),indent=2)+'\n');verify(d)
 def decode(data):
-    expected=[0x49434f32,4,1,0xface1234,1,0xface1234,1,1814,1,10]
+    expected=[0x49434f32,4,1,0,1,0,1,1813,1,10]
     if len(data)!=40 or list(struct.unpack('<10I',data))!=expected:raise ValueError('icon load/cache/missing/error/stack observations differ: '+data.hex())
     return expected
 def audit(data):

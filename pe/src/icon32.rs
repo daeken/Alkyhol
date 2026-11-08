@@ -195,9 +195,12 @@ pub(super) fn load(image: &LoadedImage32<'_>, args: &[u32; 8]) -> u32 {
         .load(args[0], args[1] as u16)
         .unwrap_or_else(|e| unsupported(&e))
     {
-        Some(handle) => handle,
+        Some(handle) => {
+            alkyhol::ffi::SetLastError(0);
+            handle
+        }
         None => {
-            alkyhol::ffi::SetLastError(1814);
+            alkyhol::ffi::SetLastError(1813);
             0
         }
     }

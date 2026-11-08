@@ -4,6 +4,32 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## Original DAO loads its icon and reaches event creation; native details measured
+
+At clean revision `59e560a`, the unchanged original EXE loads its own real icon
+resource into a decoded shared object on physical M4, then continues its
+critical-section work to **KERNEL32.dll!CreateEventW**. No window/menu/rendering
+is observed. Original file/probe identity, icon data and resource arguments
+remain local; existing fresh-profile/unpacked-dependency caveats remain.
+
+The [native icon observation at `3950b73`](https://github.com/daeken/Alkyhol/actions/runs/42517044098)
+executes the complete PE and SDK/GDI readback successfully after the LF producer
+fix. It measures error **0** on initial/cached loads and **1813** for this missing
+integer icon. The initial preserve-error/1814 hypotheses were wrong; the provider
+and new checker now match the actual raw ten-word observation. Defined native
+GDI RGB and mask bytes agree with the owned host snapshot. No alpha comparison
+criterion was changed. The first checker job remains failed pending a fresh run.
+
+That run also exposed a mutex lifetime test failure after all logical references
+closed. A new deterministic host-fd duplication test reproduces the stale lease
+before the fix. Parallel tests spawn host subprocesses; transient inherited fd
+copies can explain that observation even with close-on-exec set. Mutex lease,
+owner and namespace locks now explicitly unlock at logical owner destruction;
+`CloseHandle` propagates unlock errors. The duplicate-fd reproducer and all six
+mutex units pass, including abandonment while a copied owner descriptor remains
+open. The original strict fresh-object assertion remains unchanged. Earlier
+frozen producer bytes/comparators are unchanged.
+
 ## Resource-backed icons prepared for the actual DAO UI import
 
 The PE32 `LoadIconW` provider retains immutable icon resources from each checked

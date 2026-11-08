@@ -29,12 +29,32 @@ pub(super) struct State {
     owners: BTreeMap<String, Ownership>,
 }
 struct Handle {
-    _lease: File,
+    _lease: HostLock,
     name: String,
 }
 struct Ownership {
-    file: File,
+    file: HostLock,
     depth: u32,
+}
+// A host fork/dup may temporarily retain an open-file description despite
+// FD_CLOEXEC. Logical guest references are non-inheritable: explicitly release
+// locks when their real owner ends instead of waiting for every host fd copy.
+struct HostLock(File);
+impl std::ops::Deref for HostLock {
+    type Target = File;
+    fn deref(&self) -> &File {
+        &self.0
+    }
+}
+impl std::ops::DerefMut for HostLock {
+    fn deref_mut(&mut self) -> &mut File {
+        &mut self.0
+    }
+}
+impl Drop for HostLock {
+    fn drop(&mut self) {
+        let _ = self.0.unlock();
+    }
 }
 fn marker(file: &mut File) -> Result<u8> {
     if file.metadata().map_err(|e| e.to_string())?.len() != 1 {
@@ -87,7 +107,7 @@ impl State {
             owners: BTreeMap::new(),
         })
     }
-    fn file(&self, name: &str) -> Result<File> {
+    fn file(&self, name: &str) -> Result<HostLock> {
         let name = CString::new(name).map_err(|e| e.to_string())?;
         // Anchor all files to the opened directory, including across renames.
         let fd = unsafe {
@@ -106,7 +126,7 @@ impl State {
         if !metadata.is_file() || metadata.nlink() != 1 {
             return Err("mutex namespace requires regular non-aliased owned files".into());
         }
-        Ok(file)
+        Ok(HostLock(file))
     }
     pub(super) fn clear(&mut self) {
         // Ending this admitted guest thread abandons its ownership if another
@@ -126,6 +146,9 @@ impl State {
                 == 1
         {
             return Err("closing the last mutex handle while owned is unsupported".into());
+        }
+        if let Some(value) = self.handles.get(&handle) {
+            value._lease.unlock().map_err(|e| e.to_string())?;
         }
         Ok(self.handles.remove(&handle).is_some())
     }
@@ -406,6 +429,31 @@ mod tests {
         std::fs::write(path.join(format!("{filename}.owner")), [2]).unwrap();
         assert!(state.poll(handle).is_err());
         drop(state);
+        std::fs::remove_dir_all(path).unwrap();
+    }
+    #[test]
+    fn noninheritable_guest_references_do_not_survive_unrelated_host_fd_copies() {
+        let path =
+            std::env::temp_dir().join(format!("alkyhol-owner-host-copy-{}", std::process::id()));
+        std::fs::create_dir(&path).unwrap();
+        let mut a = State::open(&path).unwrap();
+        let mut b = State::open(&path).unwrap();
+        let (handle, _) = a.create(&wide("Owned")).unwrap();
+        let inherited_lease = a.handles[&handle]._lease.try_clone().unwrap();
+        assert!(a.close(handle).unwrap());
+        let (handle, exists) = a.create(&wide("Owned")).unwrap();
+        assert!(!exists);
+        let (other, _) = b.create(&wide("Owned")).unwrap();
+        assert_eq!(a.poll(handle).unwrap(), 0);
+        let (filename, _) = identity(&wide("Owned"));
+        let inherited_owner = a.owners[&filename].file.try_clone().unwrap();
+        a.clear();
+        assert_eq!(b.poll(other).unwrap(), 0x80);
+        assert!(b.release(other).unwrap());
+        drop(inherited_owner);
+        drop(inherited_lease);
+        drop(a);
+        drop(b);
         std::fs::remove_dir_all(path).unwrap();
     }
 }
