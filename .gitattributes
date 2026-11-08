@@ -88,6 +88,8 @@ pe/reference/pe32-heap-realloc-v1.exe -text
 pe/reference/pe32-system-info-windows-v1.json -text whitespace=cr-at-eol
 pe/reference/pe32-system-info-v1.exe -text
 pe/reference/pe32-system-info-large-v1.exe -text
+pe/reference/pe32-registry-open-windows-v1.json -text whitespace=cr-at-eol
+pe/reference/pe32-registry-open-v1.exe -text
 pe/reference/pe32-ci-sqrt-windows-v1.json -text whitespace=cr-at-eol
 pe/reference/pe32-ci-sqrt-v1.exe -text
 pe/reference/pe32-ci-atan-windows-v1.json -text whitespace=cr-at-eol

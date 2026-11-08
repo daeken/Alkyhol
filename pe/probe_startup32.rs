@@ -29,6 +29,14 @@ fn main() {
                 "--strict" => strict = true,
                 "--file-origins" => file_origins = true,
                 "--host-machine-info" => profile.host_machine_info = true,
+                "--registry-catalog" => {
+                    profile.registry_catalog = Some(
+                        options
+                            .next()
+                            .ok_or("--registry-catalog requires an XML backing catalog")?
+                            .into(),
+                    )
+                }
                 "--timezone" => {
                     if options.next().map(String::as_str) != Some("UTC") {
                         return Err(
@@ -86,6 +94,7 @@ fn main() {
             || profile.system_windows_directory.is_some()
             || profile.windows_directory.is_some()
             || profile.host_machine_info
+            || profile.registry_catalog.is_some()
             || profile.time_zone.is_some()
             || profile.activation_assemblies.is_some())
             && !file_origins

@@ -40,7 +40,7 @@ impl Machine {
             } else {
                 0
             };
-        if vendor[0] < 1 || !((intel && family == 6) || (amd && family == 25)) {
+        if vendor[0] < 1 || !((intel && family == 6) || (amd && [25, 26].contains(&family))) {
             return Err("host x86 processor family outside the admitted machine profile".into());
         }
         let model = ((signature >> 4) & 15)
@@ -126,6 +126,15 @@ mod tests {
         )
         .unwrap();
         assert_eq!(amd.words[8], 0x01010019);
+        let next = Machine::observed(
+            false,
+            4096,
+            4,
+            [13, 0x68747541, 0x444d4163, 0x69746e65],
+            0xb00f21,
+        )
+        .unwrap();
+        assert_eq!(next.words[8], 0x0201001a);
         assert!(m.bounds.contains(0x10000, 4096));
         assert!(m.bounds.contains(0xfffef000, 4096));
         for (p, n) in [(0, 1), (0xffff, 1), (0xffff0000, 1), (usize::MAX, 4096)] {

@@ -93,8 +93,10 @@ jobs:
         run: |
           python tools/observe_pe32_system_info.py
           python tools/observe_pe32_system_info.py --host
-      - name: Build owned registry observations for the next original DAO call
-        run: python tools/observe_pe32_registry_open.py
+      - name: Execute backed scoped registry behavior reached by original DAO startup
+        run: |
+          python tools/observe_pe32_registry_open.py
+          python tools/observe_pe32_registry_open.py --host
       - uses: actions/upload-artifact@v4
         with:
           name: pe32-startup-microtests
@@ -155,6 +157,7 @@ jobs:
             local/pe/startup-microtests/system-info-inputs.json
             local/pe/startup-microtests/system-info-host.json
             local/pe/startup-microtests/registry-open-inputs.json
+            local/pe/startup-microtests/registry-open-host.json
             local/pe/startup-microtests/ctx-layout-empty-importer.dll
             local/pe/startup-microtests/ctx-layout-*.manifest
   native-pe32-startup:

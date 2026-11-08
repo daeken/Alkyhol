@@ -25,6 +25,7 @@ struct GuestProfile32 {
     user_windows: Option<Vec<u16>>,
     utc: bool,
     host_machine_info: bool,
+    registry: Option<super::registry32::State>,
 }
 fn executable_name(name: &str) -> Result<String> {
     if name.len() > 255
@@ -250,6 +251,9 @@ pub struct ProcessOptions32 {
     /// Opt into host-backed x86 machine information and enforced ordinary/LAA
     /// address bands. Other CPU vendors, page sizes and >32 CPU groups stop.
     pub host_machine_info: bool,
+    /// Explicit read-only 32-bit registry catalog. Only declared scopes have
+    /// authoritative existence state; outside scopes remain unknown/unsupported.
+    pub registry_catalog: Option<std::path::PathBuf>,
     /// Explicit guest timezone. Default is unknown/unsupported for local-time
     /// APIs; host-local DST behavior is never guessed.
     pub time_zone: Option<TimeZone32>,
@@ -409,6 +413,11 @@ impl<'a> ProcessImage32<'a> {
             .as_deref()
             .map(|path| super::module_path32::directory_role(path, "user Windows directory"))
             .transpose()?;
+        let registry = options
+            .registry_catalog
+            .as_deref()
+            .map(super::registry32::State::read)
+            .transpose()?;
         if options.activation_assemblies.is_none() && !options.activation_policies.is_empty() {
             return Err("publisher policy requires an explicit assembly profile".into());
         }
@@ -450,6 +459,7 @@ impl<'a> ProcessImage32<'a> {
                     user_windows,
                     utc: matches!(options.time_zone, Some(TimeZone32::Utc)),
                     host_machine_info: options.host_machine_info,
+                    registry,
                 },
                 options
                     .activation_assemblies
@@ -482,6 +492,7 @@ impl<'a> ProcessImage32<'a> {
         cpu.system_windows_directory = directories.windows;
         cpu.windows_directory = directories.user_windows;
         cpu.utc_timezone = directories.utc;
+        cpu.registry = directories.registry.map(std::cell::RefCell::new);
         // Keep unknown manifest/binding state deferred until an activation query.
         // Existing paths do not gain a fabricated empty/default context.
         *cpu.activation.borrow_mut() = crate::activation_manifest::empty_default(

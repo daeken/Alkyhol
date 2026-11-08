@@ -47,7 +47,7 @@ def validate_machine(record,large,count):
     vendor=record['cpuid0'];signature=record['cpuid1'][0];base=(signature>>8)&15
     family=base+((signature>>20)&255 if base==15 else 0)
     intel=vendor[1:]==[0x756e6547,0x6c65746e,0x49656e69];amd=vendor[1:]==[0x68747541,0x444d4163,0x69746e65]
-    if not vendor[0] or not (intel and family==6 or amd and family==25):raise ValueError('CPU family/vendor outside the admitted observed profile')
+    if not vendor[0] or not (intel and family==6 or amd and family in [25,26]):raise ValueError('CPU family/vendor outside the admitted observed profile')
     model=((signature>>4)&15)|((signature>>12)&0xf0 if base in [6,15] else 0)
     revision=(model<<8)|(signature&15)
     expected=[0,4096,65536,0xfffeffff if large else 0x7ffeffff,(1<<count)-1,count,586,65536,(revision<<16)|family]

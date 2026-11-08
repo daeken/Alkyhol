@@ -4,6 +4,60 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## Original DAO startup passes a scoped registry query and reaches mutex creation
+
+On the physical M4, the unchanged original EXE now executes its reached
+`RegOpenKeyExW` call and continues its original branch to
+**KERNEL32.dll!CreateMutexW**. The caller uses a new, explicitly configured
+fresh-application registry scope. That subtree is declared absent in a local
+backing catalog, so the lookup returns a real scoped `ERROR_FILE_NOT_FOUND` with
+NULL output; the game handles that result itself. This is **not** a recovered
+Windows install hive or proof that the user's original Windows registry lacks
+the key. No key names/values or game-derived inventories are committed or sent
+to CI. Original files and the existing unpacked-dependency caveat are unchanged;
+no menu, rendering or game compatibility has been observed.
+
+The read-only 32-bit registry provider loads a bounded regular XML backing file
+through `ProcessOptions32::registry_catalog` / `--registry-catalog`. Each scope
+explicitly declares its own existence and children. Existing keys open into
+real owned opaque tokens, relative and ASCII case-insensitive lookups use that
+state, and close removes/unmaps the live token. Missing keys are reported only
+inside authoritative configured scopes. Unknown hives/handles/scopes, unsupported
+views/options/access, non-ASCII or empty key paths, writes/values/ACL semantics
+and malformed/ambiguous/oversized catalogs remain unsupported. There is no
+global "unimplemented means missing" fallback.
+
+The [native startup job at `9536749`](https://github.com/daeken/Alkyhol/actions/runs/42507259294)
+passed SDK widths and the owned native HKCU observer. Its unedited 26-word record
+is pinned as `pe/reference/pe32-registry-open-windows-v1.json`, SHA-256
+`980f920609e04f17c4d05d414083b7372e16dd7e42f053b9fbbd6bfd6efe42bc`.
+The literal owned PE, `pe/reference/pe32-registry-open-v1.exe`, has SHA-256
+`37bda422183b97312fe864dd2c8c8561ea6c5f9c0c21837403ea3cd0af14f7d8`.
+All producer/PE identities agree with the physical M4. Every output word agrees:
+open/relative/case/32-bit-view status, live handles, known missing-child NULL
+output, guards, closing, stdcall stack balance and preserved error state. Five
+exclusions stop for their actual wrong-view, bad-output, unknown-scope,
+stale-handle or unconfigured-profile reason. Native CI now requires the peer
+host observation, while retaining its temporary owned-key cleanup.
+
+Local checks pass: 199 PE Rust tests/checks including doctests on the Rosetta
+x86_64 target, 395 Python tests, Clippy with project warnings denied, formatting,
+and identical-PE registry execution. Catalog tests distinguish unknown state
+from scoped absence and reject case duplicates, overlaps, unsupported syntax
+and scope/key/depth/size budgets. This remains a finite read-only profile.
+
+## An additional native CPU observation extends the admitted machine profile
+
+The [native system-info observation at `6866375`](https://github.com/daeken/Alkyhol/actions/runs/42506664367)
+returned a successful ordinary PE result on an AMD **family-26** host. The prior
+profile rejected that previously unobserved family, so that job correctly failed.
+Its raw result remains local. The actual signature/model/stepping and all nine
+structure words agree with the existing derivation once that observed family is
+admitted. AMD families 25/26 are now supported alongside the existing Intel-6
+profile, with a targeted test for the newly observed descriptor. The frozen
+family-25 report, original PEs and field checks are unchanged; other unknown
+families still stop. This does not change the physical M4's Rosetta CPU profile.
+
 ## Native registry evidence prepared at the next original startup call
 
 For the reached `RegOpenKeyExW` frontier, the owned observer now builds against

@@ -42,6 +42,8 @@ mod module_path32;
 mod nls32;
 #[path = "process32.rs"]
 mod process32;
+#[path = "registry32.rs"]
+mod registry32;
 #[path = "startup32.rs"]
 mod startup32;
 #[path = "sync32.rs"]
@@ -72,7 +74,7 @@ unsafe extern "C" {
 }
 const PAGE: usize = 4096;
 const STACK: usize = 1024 * 1024;
-const APIS: [(&str, u16); 107] = [
+const APIS: [(&str, u16); 109] = [
     ("GetLastError", 0),
     ("SetLastError", 4),
     ("GetStdHandle", 4),
@@ -180,6 +182,8 @@ const APIS: [(&str, u16); 107] = [
     ("HeapLock", 4),
     ("HeapUnlock", 4),
     ("GetSystemInfo", 4),
+    ("RegOpenKeyExW", 20),
+    ("RegCloseKey", 4),
 ];
 const EXIT_API: u32 = 14;
 // Win32 promises a reversible process-specific representation, not a published
@@ -206,6 +210,8 @@ fn api_id(module: &str, symbol: &ImportSymbol) -> Option<usize> {
                     "shell32.dll"
                 } else if *id == 100 {
                     "user32.dll"
+                } else if matches!(*id, 107 | 108) {
+                    "advapi32.dll"
                 } else {
                     "kernel32.dll"
                 })
@@ -462,6 +468,7 @@ struct Cpu32 {
     windows_directory: Option<Vec<u16>>,
     unhandled_filter: Cell<u32>,
     machine: Option<machine32::Machine>,
+    registry: Option<RefCell<registry32::State>>,
     utc_timezone: bool,
 }
 impl Cpu32 {
@@ -542,6 +549,7 @@ impl Cpu32 {
             windows_directory: None,
             unhandled_filter: Cell::new(0),
             machine,
+            registry: None,
             utc_timezone: false,
         })
     }
@@ -1744,6 +1752,7 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
                 .lock(args[0], alkyhol::ffi::GetCurrentThreadId(), id == 104)
                 .unwrap_or_else(|e| unsupported(&e)),
             106 => machine32::information(image, args[0]),
+            107 | 108 => registry32::dispatch(image, id, &args),
             _ => unreachable!(),
         }
     })
@@ -1859,6 +1868,7 @@ mod tests {
                 windows_directory: None,
                 unhandled_filter: Cell::new(0),
                 machine: None,
+                registry: None,
                 utc_timezone: false,
             }),
             tls: None,

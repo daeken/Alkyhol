@@ -1,0 +1,50 @@
+{
+  "backend": "native Windows owned HKCU registry observer",
+  "inputs": {
+    "sources": {
+      "pe/fixtures/pe32-startup/registry-open.c": "baee00217f3baa20417d00883b30033a8cf1b9cfbd4a5e8bcda0b2d434a89d23",
+      "pe/fixtures/pe32-startup/registry-open.def": "51cfaee6a75fe2d12b7ff5bc42693de16d217658e51e28ad2105769a8db15493",
+      "pe/fixtures/pe32-startup/registry-open-kernel32.def": "4a018ba37f1be9bb99cf6aeebd197f7c23decb4e81dbb4c20b9cc95760e630de",
+      "pe/fixtures/pe32-startup/registry-open.xml": "f18c9ce045fc7a9ca635594ca9594c4d81894e1fa35dbe0e9faae9ba0b03d471",
+      "pe/fixtures/pe32-startup/registry-open-layout.cpp": "462a00b99ebb3cb598b13aedb5d99c9964d21156c1e007e71ea678dfafd20116"
+    },
+    "files": {
+      "registry-open-0.exe": "37bda422183b97312fe864dd2c8c8561ea6c5f9c0c21837403ea3cd0af14f7d8",
+      "registry-open-1.exe": "98032e46fabb9487a839ed4473aa80e08bcc4bb371ed84296876348733fd95f2",
+      "registry-open-2.exe": "1c3552326c53febb3fcacd8b16bbe451900988044e20dadbe83480d46c700949",
+      "registry-open-3.exe": "46af1d2d9a9a430589af050cfa7afe9e5124ed10ccbac55b44f7720330d432c7",
+      "registry-open-4.exe": "9e4e49f281179abc962c6a0eed6e667749ee8d070664a72796565b3e241b7139"
+    }
+  },
+  "status": 0,
+  "stdout_hex": "32334752040000000000000001000000010000003412cefa0000000001000000010000003412cefa0200000000000000010000003412cefa0000000001000000010000003412cefa000000003412cefa000000003412cefa000000003412cefa010000001a000000",
+  "stderr_hex": "",
+  "words": [
+    1380397874,
+    4,
+    0,
+    1,
+    1,
+    4207809076,
+    0,
+    1,
+    1,
+    4207809076,
+    2,
+    0,
+    1,
+    4207809076,
+    0,
+    1,
+    1,
+    4207809076,
+    0,
+    4207809076,
+    0,
+    4207809076,
+    0,
+    4207809076,
+    1,
+    26
+  ]
+}
