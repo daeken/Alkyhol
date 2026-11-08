@@ -4,6 +4,32 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## Native onexit/startup comparison catches and corrects ANSI last error
+
+The [native startup job at `035552d`](https://github.com/daeken/Alkyhol/actions/runs/42500607924)
+completed the revised owned 53-word exit-table/startup PE with exit status zero,
+empty stderr and successful Windows SDK layout checks. The strict comparator
+correctly rejected one difference: complete `GetModuleFileNameA` output clears
+last error to zero, as W already did. The backend now performs that native-observed
+update. The earlier assumption that A preserves last error was incorrect.
+
+The literal identical PE (SHA-256
+`c50a2d232a4cb00e0590def5be9fb1f1a867bb01330d98d54c0ad2b29ed1770b`)
+is now `pe/reference/pe32-crt-onexit-v1.exe`. Its unedited native raw report is
+`pe/reference/pe32-crt-onexit-windows-v1.json`, SHA-256
+`159566d99483db524c217eb47edfa744f303e3cf2bca60219ccd44de1dd9a0e2`.
+All producer source and PE identities are pinned. All 53 output words now agree
+on the physical M4, covering lock recursion, real preallocated empty/populated
+callback tables, invocation order/side effects, caller stacks, guards, inherited
+startup handles and A/W path/error relations. Five excluded profiles stop with 78.
+Three transport/frozen-evidence tests pass, and actual original startup still
+reaches the same `GetWindowsDirectoryA` blocker. No game entry/parity claim is made.
+
+That native job remains a failed job: the comparator caught the ANSI discrepancy,
+and later heap observations were consequently skipped. This record claims only
+the completed 53-word observation and independent SDK check. A fresh full pipeline
+with the corrected implementation remains separate.
+
 ## Original Bink startup reads the physical desktop cursor
 
 Bink's original `GetCursorPos` now performs a real read-only Quartz event query

@@ -12,6 +12,7 @@ def inputs(d):return {'sources':{(SOURCE/n).relative_to(ROOT).as_posix():digest(
 def verify(d):
     r=json.loads((d/'crt-onexit-inputs.json').read_text())
     if r!=inputs(d):raise ValueError('onexit source/PE identity changed')
+    if r!=frozen()['inputs']:raise ValueError('changed frozen onexit source/PE identities')
     return r
 
 def build(d):
@@ -21,6 +22,10 @@ def build(d):
         lib=d/(name+'.lib');subprocess.run([lld,'-flavor','link','/lib','/machine:x86','/def:'+str(SOURCE/(name+'.def')),'/out:'+str(lib)],check=True);libs.append(str(lib))
     aliases=[f'/alternatename:__imp__{n}@{s}=__imp__{n}' for n,s in [('GetStdHandle',4),('WriteFile',20),('GetLastError',0),('SetLastError',4),('GetStartupInfoA',4),('GetStartupInfoW',4),('GetModuleFileNameA',12),('GetModuleFileNameW',12)]]
     for mode,name in enumerate(FILES):
+        if mode==0:
+            literal=ROOT/'pe/reference/pe32-crt-onexit-v1.exe'
+            if digest(literal)!=frozen()['inputs']['files'][name]:raise ValueError('changed literal native onexit PE')
+            shutil.copyfile(literal,d/name);continue
         obj=d/(name+'.obj');subprocess.run([clang,'--target=i686-pc-windows-msvc','-O1','-ffreestanding','-fno-builtin','-fno-stack-protector','-fno-unwind-tables','-fno-asynchronous-unwind-tables','-Wall','-Wextra','-Werror',f'-DMODE={mode}','-c',str(SOURCE/'crt-onexit.c'),'-o',str(obj)],check=True)
         subprocess.run([lld,'-flavor','link','/nodefaultlib','/subsystem:console','/machine:x86','/dynamicbase','/fixed:no','/timestamp:0','/safeseh:no','/manifest:no','/entry:entry',str(obj),*libs,*aliases,'/out:'+str(d/name)],check=True)
     (d/'crt-onexit-inputs.json').write_text(json.dumps(inputs(d),indent=2)+'\n');verify(d);print('Built owned DLL exit registration and actual startup API witnesses')
@@ -28,9 +33,17 @@ def build(d):
 def decode(data):
     if len(data)!=53*4:raise ValueError('incomplete onexit/startup transport')
     words=list(struct.unpack('<53I',data));error=0xface1234
-    expected=[0x4f583332,4,1,error,1,1,0,1,1,error,1,2,1,1,1,1,error,1,3,1,1,1,1,1,10,20,10,121,1,1,2,1,1,1,1,21,error,1,68,68,1,1,1,1,1,1,error,error,1,1,1,0,53]
+    expected=[0x4f583332,4,1,error,1,1,0,1,1,error,1,2,1,1,1,1,error,1,3,1,1,1,1,1,10,20,10,121,1,1,2,1,1,1,1,21,error,1,68,68,1,1,1,1,1,1,error,0,1,1,1,0,53]
     if words!=expected:raise ValueError(f'onexit/startup state, callback order, caller stack or guards differ: {words}')
     return words
+
+def frozen():
+    path=ROOT/'pe/reference/pe32-crt-onexit-windows-v1.json'
+    if digest(path)!='159566d99483db524c217eb47edfa744f303e3cf2bca60219ccd44de1dd9a0e2':raise ValueError('changed frozen native onexit/startup evidence')
+    value=json.loads(path.read_bytes());row=value['reports'][0]
+    if value['backend']!='native Windows onexit/startup observer' or row['file']!=FILES[0] or row['status'] or row['stderr_hex']:raise ValueError('incomplete native onexit/startup evidence')
+    decode(bytes.fromhex(row['stdout_hex']))
+    return value
 
 def execute(d,native=False):
     identity=verify(d);probe=None if native else runner(d);reports=[];path=d/('native-crt-onexit.json' if native else 'crt-onexit-host.json')
@@ -44,6 +57,7 @@ def execute(d,native=False):
         if mode==0:
             if r.returncode or native and r.stderr:raise ValueError('onexit/startup witness failed; raw report retained')
             report['words']=decode(r.stdout)
+            if r.stdout.hex()!=frozen()['reports'][0]['stdout_hex']:raise ValueError('onexit/startup output differs from the frozen native PE observation')
         elif r.returncode!=78 or r.stdout or REASONS[mode] not in r.stderr:raise ValueError('onexit restriction did not stop for its actual reason')
         save()
     if native:

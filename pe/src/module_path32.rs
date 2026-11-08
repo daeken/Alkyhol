@@ -160,6 +160,8 @@ pub(super) fn filename_ansi(image: &LoadedImage32<'_>, args: &[u32; 8]) -> u32 {
         std::ptr::copy_nonoverlapping(bytes.as_ptr(), output as *mut u8, bytes.len());
         (output as *mut u8).add(bytes.len()).write(0);
     }
+    // The identical native A/W observer clears last error on complete output.
+    alkyhol::ffi::SetLastError(0);
     bytes.len() as u32
 }
 pub(super) fn filename(image: &LoadedImage32<'_>, args: &[u32; 8]) -> u32 {
