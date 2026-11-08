@@ -4,6 +4,29 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## Original DAO acquires its mutex and reaches UI icon resource loading
+
+At clean runtime revision `e7481d0`, the physical M4 unchanged original EXE
+executes its actual zero-timeout, non-alertable mutex wait and acquires real
+ownership. Its original critical-section calls then execute and startup reaches
+**USER32.dll!LoadIconW** for a resource in its own module. That call remains
+unsupported; no window, main menu or rendering has been observed. Original
+EXE/probe identity, private resource arguments and complete captures remain
+local. Fresh-profile and locally unpacked-dependency caveats remain unchanged.
+
+The [native startup job at `e7481d0`](https://github.com/daeken/Alkyhol/actions/runs/42514801946)
+passes recursive ownership, non-owner release failure, real interprocess
+contention/handoff and abandonment after forced owner-process termination.
+All **76 raw DWORD payloads** agree between native Windows and physical M4 after
+selecting the same five literal PE files and verifying complete producer/PE
+hashes. The two hosts' forced-termination exit statuses remain separate raw
+observations. The complete native record is pinned as
+`pe/reference/pe32-mutex-ownership-windows-v1.json`, SHA-256
+`0b141673543db2614757811bf53616ca3209468c9ca09d1596f07a3a5fc4dfc4`.
+Timed/APC wait exclusions remain host assertions, not native implementation
+claims. Earlier reference, directory, default-attribute and other frozen records
+are unchanged. Broader CI jobs at this revision are still finishing.
+
 ## Real zero-timeout mutex ownership prepared for the reached DAO call
 
 The PE32 provider now implements `WaitForSingleObjectEx(handle, 0, FALSE)` and

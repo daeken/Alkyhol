@@ -1,0 +1,100 @@
+{
+  "backend": "native Windows mutex ownership",
+  "inputs": {
+    "sources": {
+      "pe/fixtures/pe32-startup/mutex-ownership.c": "a33a2e3cc4fe6e5f3353a14974fcc889ab07ccb212995405049d2702b242bd1c",
+      "pe/fixtures/pe32-startup/mutex-ownership.def": "3aad7aac775ef59264a0df3497c11fa672085e3221358e98adb61aa6544d5ed1"
+    },
+    "files": {
+      "mutex-ownership-0.exe": "93fdb4b47908bef8346b52e9248d3f3ecddd1b12dd0e7f6759de012e5935f860",
+      "mutex-ownership-1.exe": "13137cd983b0d46bfb9d4a9a69cb7a9934c9de47aec7fa74131272cc9fb6b1d2",
+      "mutex-ownership-2.exe": "f1867adfa7a1b5f89a792ea87bed7f3bc41997d8700d35210ffbe7883a9f0175",
+      "mutex-ownership-3.exe": "c2949af364f8627e0224bbb28ffdfe141be5ce2948c9a903089927b6c375a1af",
+      "mutex-ownership-4.exe": "714f4ccf33281563b33a12caae0d061af4fb154b0c9fe8d2c8d668b62491299c"
+    }
+  },
+  "reports": [
+    {
+      "case": "recursive",
+      "status": 0,
+      "stdout_hex": "324d574f04000000010000000000000001000000b70000000000000020010000000000003412cefa000000003412cefa010000003412cefa010000003412cefa0000000020010000000000003412cefa010000003412cefa010000003412cefa010000003412cefa010000001c000000",
+      "stderr_hex": "",
+      "words": [
+        1331121458,
+        4,
+        1,
+        0,
+        1,
+        183,
+        0,
+        288,
+        0,
+        4207809076,
+        0,
+        4207809076,
+        1,
+        4207809076,
+        1,
+        4207809076,
+        0,
+        288,
+        0,
+        4207809076,
+        1,
+        4207809076,
+        1,
+        4207809076,
+        1,
+        4207809076,
+        1,
+        28
+      ]
+    },
+    {
+      "case": "handoff",
+      "holder_ready_hex": "324d574f040000000100000000000000000000003412cefa",
+      "client_ready_hex": "324d574f0400000001000000b7000000020100003412cefa",
+      "holder_status": 0,
+      "holder_tail_hex": "010000003412cefa010000003412cefa",
+      "holder_stderr_hex": "",
+      "client_status": 0,
+      "client_tail_hex": "000000003412cefa000000003412cefa010000003412cefa010000003412cefa010000003412cefa",
+      "client_stderr_hex": "",
+      "words": [
+        0,
+        4207809076,
+        0,
+        4207809076,
+        1,
+        4207809076,
+        1,
+        4207809076,
+        1,
+        4207809076
+      ]
+    },
+    {
+      "case": "abandoned",
+      "holder_ready_hex": "324d574f040000000100000000000000000000003412cefa",
+      "client_ready_hex": "324d574f0400000001000000b7000000020100003412cefa",
+      "holder_status": 1,
+      "holder_tail_hex": "",
+      "holder_stderr_hex": "",
+      "client_status": 0,
+      "client_tail_hex": "800000003412cefa000000003412cefa010000003412cefa010000003412cefa010000003412cefa",
+      "client_stderr_hex": "",
+      "words": [
+        128,
+        4207809076,
+        0,
+        4207809076,
+        1,
+        4207809076,
+        1,
+        4207809076,
+        1,
+        4207809076
+      ]
+    }
+  ]
+}

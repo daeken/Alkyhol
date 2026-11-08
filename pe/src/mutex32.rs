@@ -1,6 +1,6 @@
 //! Named, initially unowned mutex references in an explicit guest session.
-//! OS shared file locks represent live references across processes. This does
-//! supports non-alertable zero-timeout acquisition on the one admitted guest
+//! OS shared file locks represent live references across processes. Separate
+//! locks support non-alertable zero-timeout acquisition on the one admitted guest
 //! thread. Blocking waits, last-handle close while owned, inheritance and ACLs
 //! beyond the explicit default policy remain unsupported.
 use super::{LoadedImage32, startup32, unsupported};

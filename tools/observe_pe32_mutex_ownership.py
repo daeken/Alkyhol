@@ -14,6 +14,7 @@ def inputs(d):return {'sources':{(SOURCE/n).relative_to(ROOT).as_posix():digest(
 def verify(d):
     r=json.loads((d/'mutex-ownership-inputs.json').read_text())
     if r!=inputs(d):raise ValueError('mutex ownership source/PE identity changed')
+    if r!=frozen()['inputs']:raise ValueError('mutex ownership identity differs from frozen native evidence')
     return r
 def build(d):
     d.mkdir(parents=True,exist_ok=True);clang=shutil.which('clang');lld=rust_tool('rust-lld');lib=d/'mutex-ownership.lib'
@@ -22,6 +23,9 @@ def build(d):
     for mode,name in enumerate(FILES):
         obj=d/(name+'.obj');subprocess.run([clang,'--target=i686-pc-windows-msvc','-O1','-ffreestanding','-fno-builtin','-fno-stack-protector','-fno-unwind-tables','-fno-asynchronous-unwind-tables','-Wall','-Wextra','-Werror','-Wno-unused-function',f'-DMODE={mode}','-c',str(SOURCE/'mutex-ownership.c'),'-o',str(obj)],check=True)
         subprocess.run([lld,'-flavor','link','/nodefaultlib','/subsystem:console','/machine:x86','/dynamicbase','/fixed:no','/timestamp:0','/safeseh:no','/manifest:no','/entry:entry',str(obj),str(lib),*[f'/alternatename:__imp__{n}@{s}=__imp__{n}' for n,s in SYMBOLS],'/out:'+str(d/name)],check=True)
+        literal=ROOT/f'pe/reference/pe32-mutex-ownership-{mode}-v1.exe'
+        if digest(literal)!=frozen()['inputs']['files'][name]:raise ValueError('changed literal native ownership PE')
+        shutil.copyfile(literal,d/name)
     (d/'mutex-ownership-inputs.json').write_text(json.dumps(inputs(d),indent=2)+'\n');verify(d)
 def words(data,expected):
     if len(data)!=len(expected)*4:raise ValueError('incomplete ownership transport')
@@ -31,6 +35,22 @@ def words(data,expected):
 def lifecycle(data):
     expected=[MAGIC,4,1,0,1,183,0,288,0,E,0,E,1,E,1,E,0,288,0,E,1,E,1,E,1,E,1,28]
     return words(data,expected)
+def frozen():
+    path=ROOT/'pe/reference/pe32-mutex-ownership-windows-v1.json'
+    if digest(path)!='0b141673543db2614757811bf53616ca3209468c9ca09d1596f07a3a5fc4dfc4':raise ValueError('changed frozen native ownership report')
+    r=json.loads(path.read_bytes())
+    if r['backend']!='native Windows mutex ownership' or [x['case'] for x in r['reports']]!=['recursive','handoff','abandoned']:raise ValueError('incomplete native ownership cases')
+    for row in r['reports']:
+        if row['case']=='recursive':
+            if row['status'] or row['stderr_hex'] or lifecycle(bytes.fromhex(row['stdout_hex']))!=row['words']:raise ValueError('failed native recursive observer')
+        else:
+            abandoned=row['case']=='abandoned'
+            if row['client_status'] or row['client_stderr_hex'] or row['holder_stderr_hex'] or (row['holder_status']==0 if abandoned else row['holder_status']!=0):raise ValueError('failed native ownership process state')
+            words(bytes.fromhex(row['holder_ready_hex']),[MAGIC,4,1,0,0,E])
+            words(bytes.fromhex(row['client_ready_hex']),[MAGIC,4,1,183,258,E])
+            words(bytes.fromhex(row['holder_tail_hex']),[] if abandoned else [1,E,1,E])
+            if words(bytes.fromhex(row['client_tail_hex']),[0x80 if abandoned else 0,E,0,E,1,E,1,E,1,E])!=row['words']:raise ValueError('invalid native ownership tail')
+    return r
 def ready(process):
     result=queue.Queue()
     def read():
