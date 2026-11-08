@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "backend": "native Windows PE32 FS/TEB",
+  "pe_sha256": "b92605cbee249774f029cc0d53bc9add4932f8eba679f0cd2ab42032f885335f",
+  "executed_pe_sha256": "b92605cbee249774f029cc0d53bc9add4932f8eba679f0cd2ab42032f885335f",
+  "sources": {
+    "pe/fixtures/pe32-teb/contract.c": "5c65fe2e786ea127f685dc5545fb378187c03e4f67de4ee09fbdbbd38a3affca",
+    "pe/fixtures/pe32-teb/kernel32.def": "387a43121afd31dc1e37548f6125c97e359290f7e6ddb82beec909c417479dfb"
+  },
+  "normal": {
+    "status": 0,
+    "stdout_hex": "49333242040000000100000001000000010000000100000026594131d4c3b2a11027000077713412777134120100000001000000010000000100000055667788",
+    "words": [
+      1110586185,
+      4,
+      1,
+      1,
+      1,
+      1,
+      826366246,
+      2712847316,
+      10000,
+      305426807,
+      305426807,
+      1,
+      1,
+      1,
+      1,
+      2289526357
+    ],
+    "stderr_hex": ""
+  },
+  "rebased": null,
+  "revision": "d25c4117477607eed54366a432801f72343902aa",
+  "tracked_tree_clean": true
+}

@@ -4,16 +4,49 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
-## PE32 FS/TEB: native observation pending
+## PE32 FS/TEB: native Windows and physical M4 development
 
-A new original MIT no-CRT PE32 probe reads FS-relative self/stack fields and
-checks direct FS last-error reads/writes against real GetLastError/SetLastError
-calls, including 10,000 transitions. It emits 16 raw DWORDs; no game code/data is
-involved. Its initial native Windows execution is pending. This capture revision
-does not change Alkyhol's CPU gates, FS state, startup gates or TLS behavior.
-Collector tests separately reject byte-length/status/stderr failures and input/
-source drift. A supported FS/TEB subset is a prerequisite for later static TLS,
-not evidence that TLS callbacks, CRT or the game already work.
+Native Windows at `d25c411` returns all 16 raw DWORDs from the original owned
+FS/TEB observer. All three
+[PE jobs](https://github.com/daeken/Alkyhol/actions/runs/42436164368) and all 24
+[conformance jobs](https://github.com/daeken/Alkyhol/actions/runs/42436164413) pass
+on that capture revision, before the new Alkyhol FS implementation/comparison.
+The complete downloaded native report is frozen unchanged at
+`pe/reference/pe32-teb-windows-v1.json`. Exact executed PE and C/.def source hashes
+are required by default. No original fixture or game code/data is modified.
+
+The probe observes FS:[0x18] self identity and stack containment through FS:[4/8].
+SetLastError is visible at FS:[0x34], and a direct write there is returned by
+GetLastError. All 10,000 imported round trips retain that coherence and FS identity.
+Physical M4 development normal/forced-rebase execution agrees on all 16 words.
+The host-only repeated-entry diagnostic emits two complete identical blocks on
+one loaded image, with two actual selector-restoration/descriptor-cleanup checks.
+This repeats an owned callable body; it does not measure native process restart.
+Strict same-clean-revision paired CI/physical comparison remains pending.
+
+Each PE32 image now owns a minimal low one-page TEB with self/stack/last-error
+fields. Original assembly saves/restores host FS, restores it before Rust import
+calls and reinstalls guest FS on return. GS is untouched. Actual DS/ES/SS/FS/GS
+selectors must match after entry; host FS must initially be unused. A process-wide
+exclusive lease prevents concurrent entries from retargeting the shared LDT slot.
+Occupied slot 514 fails before replacement; it is cleared before successful return.
+Two entries on the physical M4 observed that cleanup/reinstallation successfully.
+This does not measure hidden segment bases or all hardware limit/fault behavior.
+
+All 105 PE host tests/12 compiler checks, 35 portable tests, 281 Python tests and
+Clippy pass locally. Host assertions separately cover descriptor bit fields/base/
+limit, initialized TEB extents/field values and memory permissions, last-error
+cleanup and exclusive-lease rejection. Protocol negatives enforce all raw words,
+scalar types, crashes, native diagnostics, actual relocation/cleanup, both repeat
+blocks, missing references and frozen identity. Existing PE32 integer/stdcall,
+self-export, geometry and certificate development runs retain their original
+finite results. Strict paired CI retains every older frozen comparison.
+
+Static TLS/callbacks, PEB, CRT, SEH and guest threads remain unsupported. An empty
+SEH-chain marker and zero unsupported TEB fields are not implementations of those
+facilities. The local game still stops at its unchanged startup gate; no game code
+executes. This is FS/TEB foundation evidence for later TLS, not game compatibility.
+See [PE32](pe32.md).
 
 ## PE32 executable self exports: native Windows and physical M4
 

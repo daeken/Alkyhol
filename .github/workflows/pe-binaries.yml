@@ -192,6 +192,12 @@ jobs:
             local/pe/pe32-exports/pe32-exports-fixture.json
       - name: Build owned FS/TEB observer for independent native execution
         run: python tools/build_pe32_teb.py
+      - name: Execute original FS/TEB observer normally rebased and twice on one image
+        run: python tools/run_pe32_teb.py --fixture local/pe/pe32-teb/pe32-teb.exe --output local/pe/pe32-teb-alkyhol.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe32-teb-alkyhol
+          path: local/pe/pe32-teb-alkyhol.json
       - uses: actions/upload-artifact@v4
         with:
           name: pe32-teb-fixture
@@ -914,3 +920,12 @@ jobs:
           name: pe32-exports-windows
           path: local/pe/observations
       - run: python tools/compare_pe32_exports.py local/pe/observations/pe32-exports-windows.json local/pe/observations/pe32-exports-alkyhol.json
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe32-teb-alkyhol
+          path: local/pe/observations
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe32-teb-windows
+          path: local/pe/observations
+      - run: python tools/compare_pe32_teb.py local/pe/observations/pe32-teb-windows.json local/pe/observations/pe32-teb-alkyhol.json

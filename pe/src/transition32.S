@@ -17,18 +17,26 @@ _alkyhol_enter_pe32:
     pushq %rax
     movw %ss,%ax
     pushq %rax
+    pushq $0 /* Preserve SysV 16-byte alignment with the extra FS save. */
+    movw %fs,%ax
+    pushq %rax
     movq %rsp,%r12
     leaq 1f(%rip),%r13
     movl %edx,%r14d
     movw %cx,%ds
     movw %cx,%es
     movw %cx,%ss
+    movw $0x1017,%ax /* Process-owned slot 514, installed for this entry. */
+    movw %ax,%fs
     movq %rsi,%rsp
     pushq %rdx
     pushq %rdi
     lretq
 1:
     movl %eax,%r11d
+    popq %rax
+    movw %ax,%fs
+    addq $8,%rsp
     popq %rax
     movw %ax,%ss
     popq %rax
@@ -48,6 +56,8 @@ _alkyhol_enter_pe32:
 .globl _alkyhol_pe32_gate_start,_alkyhol_pe32_gate_end,_alkyhol_pe32_dispatch_slot
 _alkyhol_pe32_gate_start:
     movq %rsp,%r15
+    movw (%r12),%cx
+    movw %cx,%fs /* Restore host FS before calling any Rust/host code. */
     movq %r12,%rsp
     pushq %rbx
     pushq %rbp
@@ -61,6 +71,8 @@ _alkyhol_pe32_gate_start:
     popq %rsi
     popq %rbp
     popq %rbx
+    movw $0x1017,%cx
+    movw %cx,%fs
     movl 4(%r15),%ecx
     leaq 8(%r15),%rsp
     pushq %r14

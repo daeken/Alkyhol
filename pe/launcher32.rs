@@ -47,10 +47,16 @@ fn embedded_pe() -> &'static [u8] {
 }
 fn main() {
     let args: Vec<_> = std::env::args().skip(1).collect();
-    if args
-        .iter()
-        .any(|a| !["--inspect", "--rebase", "--loader-info"].contains(&a.as_str()))
-    {
+    if args.iter().any(|a| {
+        ![
+            "--inspect",
+            "--rebase",
+            "--loader-info",
+            "--teb-info",
+            "--repeat",
+        ]
+        .contains(&a.as_str())
+    }) {
         process::exit(64);
     }
     let result = (|| -> alkyhol_pe::Result<u32> {
@@ -80,7 +86,24 @@ fn main() {
         if args.iter().any(|a| a == "--inspect") {
             return Ok(0);
         }
-        unsafe { image.enter() }
+        let mut status = 0;
+        // Explicit trusted-observer lifecycle diagnostic, not CRT/process restart.
+        for _ in 0..if args.iter().any(|a| a == "--repeat") {
+            2
+        } else {
+            1
+        } {
+            status = unsafe { image.enter() }?;
+            if args.iter().any(|a| a == "--teb-info") {
+                // enter() checked the actual before/after selectors and cleared
+                // its exclusively leased TEB descriptor before returning.
+                eprintln!("host segment selectors restored; owned FS descriptor cleared");
+            }
+            if status != 0 {
+                break;
+            }
+        }
+        Ok(status)
     })();
     match result {
         Ok(status) if status <= 255 => process::exit(status as i32),

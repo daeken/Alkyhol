@@ -1,7 +1,13 @@
 //! Experimental PE32 integer/stdcall path in a 64-bit Rosetta host.
-//! No Windows FS/TEB, CRT, DLL loading, callbacks, SEH or graphics ABI yet.
+//! Minimal FS/TEB self/stack/last-error fields; no TLS, PEB, CRT, DLLs or SEH.
 use crate::{ExportTable, ExportTarget, Image, ImportSymbol, ProcessContext, Result};
-use std::{cell::Cell, ffi::c_void, marker::PhantomData, ptr, sync::OnceLock};
+use std::{
+    cell::Cell,
+    ffi::c_void,
+    marker::PhantomData,
+    ptr,
+    sync::{Mutex, MutexGuard, OnceLock},
+};
 std::arch::global_asm!(include_str!("transition32.S"), options(att_syntax));
 unsafe extern "C" {
     fn mmap(
@@ -38,14 +44,19 @@ fn selectors() -> Result<(u16, u16)> {
     SELECTORS
         .get_or_init(|| {
             // Rosetta aborts for LDT_AUTO_ALLOC. Inspect the task's existing table,
-            // reserve two unused entries, and retain them for this process lifetime.
-            let mut entries = [0u64; 2];
-            let count = unsafe { i386_get_ldt(512, entries.as_mut_ptr(), 2) };
+            // reserve two flat entries for this process lifetime and check the
+            // third slot used only during an exclusively leased FS entry.
+            let mut entries = [0u64; 3];
+            let count = unsafe { i386_get_ldt(512, entries.as_mut_ptr(), 3) };
             if !(0..=8192).contains(&count) {
                 return Err("cannot inspect task LDT".into());
             }
-            if (count > 512 && entries[0] != 0) || (count > 513 && entries[1] != 0) {
-                return Err("PE32 host LDT slots 512/513 are already occupied".into());
+            if entries
+                .iter()
+                .enumerate()
+                .any(|(index, &value)| count > 512 + index as i32 && value != 0)
+            {
+                return Err("PE32 host LDT slots 512/513/514 are already occupied".into());
             }
             let descriptors = [0x00cffa000000ffffu64, 0x00cff2000000ffff];
             for (index, descriptor) in descriptors.iter().enumerate() {
@@ -58,6 +69,81 @@ fn selectors() -> Result<(u16, u16)> {
             Ok((0x1007, 0x100f))
         })
         .clone()
+}
+// LDT entries belong to the process, while FS state belongs to a thread.
+// Serialize CPU entries so a second thread cannot retarget the active TEB slot.
+static FS_SLOT: Mutex<()> = Mutex::new(());
+fn teb_descriptor(base: u32) -> u64 {
+    0x0040f20000000fff
+        | (u64::from(base & 0xffff) << 16)
+        | (u64::from((base >> 16) & 0xff) << 32)
+        | (u64::from(base >> 24) << 56)
+}
+struct TebLease {
+    _guard: MutexGuard<'static, ()>,
+}
+impl TebLease {
+    fn install(base: u32) -> Result<Self> {
+        let guard = FS_SLOT
+            .try_lock()
+            .map_err(|_| "another PE32 entry owns the FS slot")?;
+        let mut descriptor = 0u64;
+        let count = unsafe { i386_get_ldt(514, &mut descriptor, 1) };
+        if !(0..=8192).contains(&count) || (count > 514 && descriptor != 0) {
+            return Err("PE32 FS slot 514 is already occupied or cannot be inspected".into());
+        }
+        descriptor = teb_descriptor(base);
+        if unsafe { i386_set_ldt(514, &descriptor, 1) } != 514 {
+            return Err("cannot install bounded PE32 TEB descriptor".into());
+        }
+        Ok(Self { _guard: guard })
+    }
+}
+impl Drop for TebLease {
+    fn drop(&mut self) {
+        let empty = 0u64;
+        if unsafe { i386_set_ldt(514, &empty, 1) } != 514 {
+            // Host FS is restored before this guard is dropped. Do not leave an
+            // apparently reusable descriptor pointing at soon-to-be-freed memory.
+            eprintln!("Alkyhol PE32 unsupported: cannot clear owned FS descriptor");
+            std::process::abort();
+        }
+    }
+}
+fn segment_state() -> [u16; 5] {
+    let (mut ds, mut es, mut ss, mut fs, mut gs) = (0u16, 0u16, 0u16, 0u16, 0u16);
+    unsafe {
+        std::arch::asm!("mov {0:x}, ds", "mov {1:x}, es", "mov {2:x}, ss",
+        "mov {3:x}, fs", "mov {4:x}, gs", out(reg) ds, out(reg) es, out(reg) ss,
+        out(reg) fs, out(reg) gs, options(nomem, nostack, preserves_flags));
+    }
+    [ds, es, ss, fs, gs]
+}
+fn teb_bytes(base: u32, stack_limit: u32, stack_size: u32) -> Result<[u8; PAGE]> {
+    let stack_base = stack_limit
+        .checked_add(stack_size)
+        .ok_or("TEB stack extent overflow")?;
+    if stack_size == 0 || u64::from(base) + PAGE as u64 > 0x100000000 {
+        return Err("invalid TEB/stack extent".into());
+    }
+    let mut bytes = [0u8; PAGE];
+    for (at, value) in [
+        (0, u32::MAX),
+        (4, stack_base),
+        (8, stack_limit),
+        (0x18, base),
+    ] {
+        bytes[at..at + 4].copy_from_slice(&value.to_le_bytes());
+    }
+    Ok(bytes)
+}
+struct TebError(*mut u32);
+impl Drop for TebError {
+    fn drop(&mut self) {
+        unsafe {
+            self.0.write_unaligned(alkyhol::ffi::GetLastError());
+        }
+    }
 }
 struct LowMapping {
     base: *mut u8,
@@ -124,8 +210,9 @@ fn unsupported(reason: &str) -> ! {
     std::process::exit(78)
 }
 /// Trusted i386 EXE mapping with separate low stack and stdcall API gates.
-/// The process guard and all three mappings remain alive until drop. No guest
-/// threads, FS/TEB, callbacks, SEH, arbitrary syscalls or escaping pointers.
+/// The process guard and all mappings remain alive until drop. Minimal FS/TEB
+/// self/stack/last-error fields are supplied. No guest threads, TLS, PEB, callbacks,
+/// SEH, arbitrary syscalls or escaping pointers.
 /// The host executable must use a small __PAGEZERO (see translate_pe32.py).
 ///
 /// ```compile_fail,E0505
@@ -142,6 +229,7 @@ pub struct LoadedImage32<'a> {
     exports: Option<ExportTable>,
     gates: LowMapping,
     stack: LowMapping,
+    teb: LowMapping,
     entry: u32,
     relocated: bool,
     code: u16,
@@ -204,6 +292,12 @@ impl<'a> LoadedImage32<'a> {
         }
         let gates = LowMapping::new(PAGE, PAGE, 0)?;
         let stack = LowMapping::new(STACK + 2 * PAGE, PAGE, 0)?;
+        let teb = LowMapping::new(PAGE, PAGE, 0)?;
+        let initial_teb = teb_bytes(
+            teb.base as u32,
+            stack.base as u32 + PAGE as u32,
+            STACK as u32,
+        )?;
         let mut cs64 = 0u16;
         unsafe {
             std::arch::asm!("mov {0:x}, cs",out(reg) cs64,options(nomem,nostack,preserves_flags));
@@ -242,6 +336,7 @@ impl<'a> LoadedImage32<'a> {
         }
         unsafe {
             ptr::copy_nonoverlapping(template.as_ptr(), gates.base, PAGE);
+            ptr::copy_nonoverlapping(initial_teb.as_ptr(), teb.base, PAGE);
             ptr::copy_nonoverlapping(bytes.as_ptr(), image.base, parsed.headers);
             for section in &parsed.sections {
                 ptr::copy_nonoverlapping(
@@ -303,6 +398,7 @@ impl<'a> LoadedImage32<'a> {
             exports: parsed.exports()?,
             gates,
             stack,
+            teb,
             entry,
             relocated,
             code,
@@ -320,6 +416,10 @@ impl<'a> LoadedImage32<'a> {
         let Some(end) = address.checked_add(len) else {
             return false;
         };
+        let teb = self.teb.base as usize;
+        if address >= teb && end <= teb + self.teb.len {
+            return true;
+        }
         let first = self.stack.base as usize + PAGE;
         if address >= first && end <= first + STACK {
             return true;
@@ -376,6 +476,11 @@ impl<'a> LoadedImage32<'a> {
             if !slot.get().is_null() {
                 return Err("nested PE32 entry unsupported".into());
             }
+            let before = segment_state();
+            if before[3] != 0 {
+                return Err("PE32 requires an unused host FS selector".into());
+            }
+            let _teb_lease = TebLease::install(self.teb.base as u32)?;
             slot.set(ptr::from_ref(self).cast());
             let _guard = ActiveGuard;
             let sp = self.stack.base as u32 + PAGE as u32 + STACK as u32 - 4;
@@ -386,9 +491,16 @@ impl<'a> LoadedImage32<'a> {
                     .cast::<u32>()
                     .write_unaligned(self.gates.base as u32);
             }
-            Ok(unsafe {
+            let result = unsafe {
                 alkyhol_enter_pe32(self.entry, sp, u32::from(self.code), u32::from(self.data))
-            })
+            };
+            if segment_state() != before {
+                unsupported("PE32 host segment selectors were not restored");
+            }
+            alkyhol::ffi::SetLastError(unsafe {
+                self.teb.base.add(0x34).cast::<u32>().read_unaligned()
+            });
+            Ok(result)
         })
     }
 }
@@ -421,6 +533,11 @@ extern "C" fn dispatch(id: u32, arguments: *const u32) -> u32 {
         let Some(image) = (unsafe { slot.get().cast::<LoadedImage32<'_>>().as_ref() }) else {
             unsupported("no active Win32 image");
         };
+        // Import calls observe direct guest FS writes. Reflect all host API
+        // outcomes back into the same guest field, including early returns.
+        let error = unsafe { image.teb.base.add(0x34).cast::<u32>() };
+        alkyhol::ffi::SetLastError(unsafe { error.read_unaligned() });
+        let _teb_error = TebError(error);
         let Some(&(_, bytes)) = APIS.get(id as usize) else {
             unsupported("unknown gateway");
         };
@@ -532,6 +649,10 @@ mod tests {
                 base: 0x400000usize as *mut u8,
                 len: STACK + 2 * PAGE,
             },
+            teb: LowMapping {
+                base: 0x600000usize as *mut u8,
+                len: PAGE,
+            },
             entry: 0,
             relocated: false,
             code: 0,
@@ -630,5 +751,51 @@ mod tests {
         image.exports.as_mut().unwrap().entries[0].target =
             ExportTarget::Address { rva: 0xffff0000 };
         assert!(image.export_address(0x100000, 17).is_err());
+    }
+    #[test]
+    fn teb_descriptor_has_a_bounded_writable_user_data_segment_and_exact_base() {
+        for base in [0, 0x12345678u32, 0xfffff000] {
+            let d = teb_descriptor(base);
+            let decoded_base =
+                ((d >> 16) & 0xffff) | (((d >> 32) & 0xff) << 16) | (((d >> 56) & 0xff) << 24);
+            let limit = (d & 0xffff) | (((d >> 48) & 0xf) << 16);
+            assert_eq!(decoded_base, u64::from(base));
+            assert_eq!(limit, PAGE as u64 - 1);
+            assert_eq!((d >> 40) & 0xff, 0xf2); // Present, user, writable data.
+            assert_eq!((d >> 52) & 0xf, 4); // Byte limit, 32-bit, no long-mode bit.
+        }
+    }
+    #[test]
+    fn minimal_teb_initializes_self_stack_and_error_without_inventing_tls_or_peb() {
+        let b = teb_bytes(0x600000, 0x401000, STACK as u32).unwrap();
+        let read = |at| u32::from_le_bytes(b[at..at + 4].try_into().unwrap());
+        assert_eq!(read(0), u32::MAX);
+        assert_eq!(read(4), 0x501000);
+        assert_eq!(read(8), 0x401000);
+        assert_eq!(read(0x18), 0x600000);
+        for at in [0x2c, 0x30, 0x34] {
+            assert_eq!(read(at), 0);
+        }
+        assert!(teb_bytes(0x600000, u32::MAX - 4, 8).is_err());
+        assert!(teb_bytes(0x600000, 0x401000, 0).is_err());
+        assert!(teb_bytes(u32::MAX - 4, 0x401000, 4096).is_err());
+        let image = layout();
+        assert!(image.permits(0x600000, PAGE, false));
+        assert!(image.permits(0x600034, 4, true));
+        assert!(!image.permits(0x600fff, 2, true));
+        assert!(!image.permits(0x5fffff, 1, false));
+    }
+    #[test]
+    fn last_error_guard_reflects_early_host_outcomes_and_exclusive_entry_fails_before_ldt() {
+        let previous = alkyhol::ffi::GetLastError();
+        let mut guest_error = 0x31415926u32;
+        {
+            let _sync = TebError(&mut guest_error);
+            alkyhol::ffi::SetLastError(127);
+        }
+        assert_eq!(guest_error, 127);
+        alkyhol::ffi::SetLastError(previous);
+        let _occupied = FS_SLOT.lock().unwrap();
+        assert!(TebLease::install(0x600000).is_err());
     }
 }
