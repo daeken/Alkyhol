@@ -6,11 +6,12 @@ See the latest direct-Metal record for current implementation evidence.
 
 ## DAO reaches its original dependent-assembly lookup
 
-On the physical M4, the original CRT now executes GetSystemDirectoryW and calls
+On the physical M4 at clean `9a0474f`, the original CRT now executes GetSystemDirectoryW and calls
 FindActCtxSectionStringW itself. The runtime stops explicitly because activation
 of the original DLL manifests/dependent assemblies is unimplemented. It has not
 returned a fabricated successful binding or an invented missing-key result. The
-game EXE entry has **not run**; original identities/arguments stay ignored/local.
+game EXE entry has **not run**. The actual query uses flags 0, NULL extension GUID,
+section 2 and cbSize 64; its original filename key and identities stay ignored/local.
 
 `ProcessOptions32` and `load_files_configured` accept an explicit backed guest
 system-directory role. The library verifies an existing directory before guest
@@ -32,19 +33,34 @@ terminators and guards. Its 18 normalized DWORDs agree with the host profile's
 independently known complete directory path, including supplementary UTF-16 units.
 Four restrictions cover no role, read-only output, a regular file used as a
 directory and a missing directory; the latter two stop before guest entry. Native
-Windows comparison is pending. The native collector separately records Windows'
+Windows comparison passed at `9a0474f`: all 18 normalized words agree, including
+last-error preservation and untouched insufficient-buffer output. Each backend's
+complete path is validated separately. The native collector records Windows'
 actual directory and checks it exists under its OS root; this does not claim
 WOW64 filesystem-redirection support or equality with the local profile path.
 
 Local validation passes 154 PE host tests and 18 compile/documentation checks,
-338 Python tests, Clippy, all 25 prior startup cases and five new directory cases.
-All older native reports/source/PE identities remain frozen. Inspect the new
-dedicated startup CI result separately from historical download-dependent jobs.
+339 Python tests, Clippy, all 25 prior startup cases and five new directory cases.
+All five [PE jobs](https://github.com/daeken/Alkyhol/actions/runs/42473762953)
+and all 24 [conformance jobs](https://github.com/daeken/Alkyhol/actions/runs/42473762951)
+passed at `9a0474f`, including the unchanged historical native comparisons.
+The complete raw CRLF native directory record is frozen at
+`pe/reference/pe32-system-directory-windows-v1.json`, SHA-256
+`d0885526615a19f311d62283d3d6012b8ae9b1d591d1ee3d2fec1e907b4fbbd1`.
+Exact input identities and the observed contract are required without an initial
+capture bypass. All previous frozen reports and fixture source/PE identities remain.
 
 The next work is actual original assembly binding, using the locally extracted
 original assembly/publisher-policy metadata and native observations of activation
 during DLL startup. The current empty-default context profile remains insufficient
 for that graph; directory configuration alone does not make it empty or resolved.
+The next targeted native experiment should mirror a CRT without an embedded
+manifest imported by a resource-2 DLL, recording active contexts during both DLL
+initializers, EXE entry and teardown, plus the actual DLL-redirection payload.
+Do not infer the active context by unioning all manifests. Microsoft's
+[resource-ID rules](https://learn.microsoft.com/en-us/windows/win32/sbscs/using-side-by-side-assemblies-as-a-resource)
+and [assembly-file searching](https://learn.microsoft.com/en-us/windows/win32/sbscs/searching-for-assembly-files)
+provide the interface background; original-graph behavior still needs observation.
 
 ## DAO real module origins and path queries
 

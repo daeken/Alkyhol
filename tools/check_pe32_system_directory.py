@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Test the explicit backed system-directory role reached by DAO's CRT."""
 import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -35,9 +36,20 @@ def identities(directory):
     return {'sources':{(SOURCE/n).relative_to(ROOT).as_posix():digest(SOURCE/n) for n in SOURCES},
             'files':{n:digest(directory/n) for n in FILES}}
 
+def frozen():
+    raw=(ROOT/'pe/reference/pe32-system-directory-windows-v1.json').read_bytes()
+    if hashlib.sha256(raw).hexdigest()!='d0885526615a19f311d62283d3d6012b8ae9b1d591d1ee3d2fec1e907b4fbbd1':
+        raise ValueError('changed frozen native system-directory report')
+    value=json.loads(raw)
+    if value['backend']!='native Windows PE32 system-directory observer' or value['status'] or value['stderr_hex']:
+        raise ValueError('invalid frozen native system-directory evidence')
+    decode(bytes.fromhex(value['stdout_hex']),value['system_directory'])
+    return value
+
 def verify(directory):
     value=json.loads((directory/'system-directory-inputs.json').read_text())
     if value!=identities(directory):raise ValueError('system-directory source/PE identities changed')
+    if value!=frozen()['inputs']:raise ValueError('changed frozen native system-directory source/PE identities')
     return value
 
 def host(directory):

@@ -4,7 +4,7 @@ import sys
 import unittest
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'tools'))
-from check_pe32_system_directory import decode,expected
+from check_pe32_system_directory import decode,expected,frozen
 
 class SystemDirectoryContractTests(unittest.TestCase):
     def fixture(self):
@@ -23,5 +23,10 @@ class SystemDirectoryContractTests(unittest.TestCase):
         words=expected();words[3]^=1
         with self.assertRaises(ValueError):decode(struct.pack('<18I',*words)+data[72:],self.path)
         with self.assertRaises(ValueError):decode(data+b'\0',self.path)
+
+    def test_native_capture_is_complete_and_preserves_the_executed_pe_identity(self):
+        capture=frozen()
+        self.assertEqual(decode(bytes.fromhex(capture['stdout_hex']),capture['system_directory']),capture['system_directory'])
+        self.assertEqual(capture['inputs']['files']['system-directory0.exe'],'538811ab215b6293b0e648c79110e48ce831ed7d477991ecb2c1adea18c6b7e9')
 
 if __name__=='__main__':unittest.main()

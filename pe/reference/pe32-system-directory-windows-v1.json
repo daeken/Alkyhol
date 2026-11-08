@@ -1,0 +1,21 @@
+{
+  "backend": "native Windows PE32 system-directory observer",
+  "inputs": {
+    "sources": {
+      "pe/fixtures/pe32-startup/system-directory.c": "f3eb6416d29205eab2634b7b9475f56353bf80a26453776261242d8cea4e521b",
+      "pe/fixtures/pe32-startup/system-directory.def": "9a272e11bf72fab39f2b43991081970313312f282ac9ed2d5f9f695b1d712933"
+    },
+    "files": {
+      "system-directory0.exe": "538811ab215b6293b0e648c79110e48ce831ed7d477991ecb2c1adea18c6b7e9",
+      "system-directory1.exe": "6b0401eb79bc39c7e8010ee5d41d813f6021cc2b19b52bbb900fe3c3baae0fce",
+      "system-directory2.exe": "e6824c1b8b0a3bbb81bb8396c0a6f4a57f1bafead6dedeb7f2ecd86ba9be5314",
+      "system-directory3.exe": "6b0401eb79bc39c7e8010ee5d41d813f6021cc2b19b52bbb900fe3c3baae0fce",
+      "system-directory4.exe": "6b0401eb79bc39c7e8010ee5d41d813f6021cc2b19b52bbb900fe3c3baae0fce"
+    }
+  },
+  "status": 0,
+  "stdout_hex": "3233445304000000010000003412cefa0100000001000000010000003412cefa01000000010000003412cefa01000000010000003412cefa01000000010000003412cefa010000001300000043003a005c00570069006e0064006f00770073005c00730079007300740065006d00330032000000",
+  "stderr_hex": "",
+  "system_directory": "C:\\Windows\\system32",
+  "windows_root": "C:\\Windows"
+}
