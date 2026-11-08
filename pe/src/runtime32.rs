@@ -60,7 +60,7 @@ unsafe extern "C" {
 }
 const PAGE: usize = 4096;
 const STACK: usize = 1024 * 1024;
-const APIS: [(&str, u16); 66] = [
+const APIS: [(&str, u16); 68] = [
     ("GetLastError", 0),
     ("SetLastError", 4),
     ("GetStdHandle", 4),
@@ -127,6 +127,8 @@ const APIS: [(&str, u16); 66] = [
     ("DeactivateActCtx", 8),
     ("GetSystemWindowsDirectoryW", 8),
     ("FindFirstFileW", 8),
+    ("FindNextFileW", 8),
+    ("FindClose", 4),
 ];
 const EXIT_API: u32 = 14;
 // Win32 promises a reversible process-specific representation, not a published
@@ -354,6 +356,7 @@ struct Cpu32 {
     command_ansi: Cell<u32>,
     exit: Cell<Option<u32>>,
     files: RefCell<std::collections::BTreeSet<usize>>,
+    searches: RefCell<std::collections::BTreeMap<u32, files32::Search>>,
     phase: Cell<Phase32>,
     modules: RefCell<Vec<Module32>>,
     // Real owned tokens for imported host-service namespaces. Their pages are
@@ -384,6 +387,7 @@ impl Cpu32 {
     }
     fn close_files(&self) {
         let error = alkyhol::ffi::GetLastError();
+        self.searches.borrow_mut().clear();
         for handle in std::mem::take(&mut *self.files.borrow_mut()) {
             alkyhol::ffi::CloseHandle(handle);
         }
@@ -414,6 +418,7 @@ impl Cpu32 {
             command_ansi: Cell::new(0),
             exit: Cell::new(None),
             files: RefCell::new(Default::default()),
+            searches: RefCell::new(Default::default()),
             phase: Cell::new(Phase32::Isolated),
             modules: RefCell::new(Vec::new()),
             builtins: RefCell::new(Default::default()),
@@ -1473,6 +1478,8 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
             59..=63 => activation32::dispatch(image, id, &args),
             64 => module_path32::system_windows_directory(image, &args),
             65 => files32::first(image, &args),
+            66 => files32::next(image, &args),
+            67 => files32::close(image, args[0]),
             _ => unreachable!(),
         }
     })
@@ -1519,6 +1526,7 @@ mod tests {
                 command_ansi: Cell::new(0),
                 exit: Cell::new(None),
                 files: RefCell::new(Default::default()),
+                searches: RefCell::new(Default::default()),
                 phase: Cell::new(Phase32::Isolated),
                 modules: RefCell::new(Vec::new()),
                 builtins: RefCell::new(Default::default()),

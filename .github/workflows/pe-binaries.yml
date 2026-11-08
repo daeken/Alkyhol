@@ -37,8 +37,12 @@ jobs:
         run: python tools/observe_pe32_system_windows_directory.py
       - name: Execute the identical system Windows directory probe and explicit profile restrictions
         run: python tools/observe_pe32_system_windows_directory.py --host
-      - name: Build an owned exact-file observer for the next actual CRT call
-        run: python tools/observe_pe32_find_file.py
+      - name: Select the literal owned source-pinned exact-file PE executed on Windows
+        run: python tools/observe_pe32_find_file.py --frozen-fixture
+      - name: Execute identical exact-file metadata and handles against the frozen Windows record
+        run: python tools/observe_pe32_find_file.py --host
+      - name: Build an owned local-FILETIME observer for the next original CRT call
+        run: python tools/observe_pe32_local_filetime.py
       - uses: actions/upload-artifact@v4
         with:
           name: pe32-startup-microtests
@@ -71,6 +75,8 @@ jobs:
             local/pe/startup-microtests/system-windows-directory-inputs.json
             local/pe/startup-microtests/system-windows-directory-host.json
             local/pe/startup-microtests/find-file-inputs.json
+            local/pe/startup-microtests/find-file-host.json
+            local/pe/startup-microtests/local-filetime-inputs.json
             local/pe/startup-microtests/ctx-layout-empty-importer.dll
             local/pe/startup-microtests/ctx-layout-*.manifest
   native-pe32-startup:
@@ -112,6 +118,10 @@ jobs:
         run: cl /nologo /c /W4 /WX /std:c++17 pe/fixtures/pe32-startup/find-layout.cpp /Folocal/pe/startup-microtests/find-layout.obj
       - name: Observe native exact-file metadata and handle lifecycle for the next CRT blocker
         run: python tools/observe_pe32_find_file.py --native
+      - name: Check time structures against the independent Windows SDK
+        run: cl /nologo /c /W4 /WX /std:c++17 pe/fixtures/pe32-startup/time-layout.cpp /Folocal/pe/startup-microtests/time-layout.obj
+      - name: Observe actual UTC-qualified local FILETIME conversion and aliasing
+        run: python tools/observe_pe32_local_filetime.py --native
       - uses: actions/upload-artifact@v4
         if: always()
         with:

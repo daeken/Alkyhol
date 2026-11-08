@@ -814,8 +814,8 @@ pub(crate) unsafe fn stream_io(
 
 #[repr(C)]
 #[derive(Clone, Copy)]
-struct FindData {
-    attributes: u32,
+pub(crate) struct FindData {
+    pub(crate) attributes: u32,
     creation: [u32; 2],
     access: [u32; 2],
     write: [u32; 2],
@@ -835,7 +835,7 @@ pub(crate) fn file_time(time: SystemTime) -> std::result::Result<[u32; 2], u32> 
     Ok([ticks as u32, (ticks >> 32) as u32])
 }
 impl FindData {
-    fn from_metadata(name: &str, meta: &Metadata) -> std::result::Result<Self, u32> {
+    pub(crate) fn from_metadata(name: &str, meta: &Metadata) -> std::result::Result<Self, u32> {
         if meta.file_type().is_symlink() || !(meta.is_file() || meta.is_dir()) {
             return Err(NOT_SUPPORTED);
         }

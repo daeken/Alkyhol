@@ -4,6 +4,65 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## Original CRT obtains real assembly-manifest file metadata
+
+On the physical M4, the original CRT now executes FindFirstFileW successfully
+against its genuine backed assembly-manifest file. It receives a real owned
+search handle and the file's actual size, name and creation/access/write times.
+The next measured unsupported call is **FileTimeToLocalFileTime**; game entry
+has **not run**. All original data and detailed captures remain ignored/local.
+
+The corrected owned observer at `9630990` completed on native Windows in the
+[startup job](https://github.com/daeken/Alkyhol/actions/runs/42481671891).
+Its valid search/exhaustion/close lifecycle, missing file and missing parent
+produce 21 normalized DWORDs. Successful calls preserve last error; exhaustion
+sets 18, real missing files set 2, and missing parents set 3. Guarded outputs
+remain untouched on those failures. Native success fills the first 36 metadata
+bytes, the actual terminated filename and the first alternate-name WCHAR; the
+reserved DWORDs and unused name tails retain the caller's sentinel. These holes
+are preserved by the Rust gateway. The SDK independently confirms all relevant
+592-byte structure offsets.
+
+The raw native report is frozen at `pe/reference/pe32-find-file-windows-v1.json`,
+SHA-256 `b09164fb590477d5bb6bb8d20eca305387ab99446443ada0d29944eee9297c82`.
+The literal **owned, non-game** 4 KiB PE is retained as
+`pe/reference/pe32-find-file-v1.exe`, SHA-256
+`a1d7b6e3ca1b958fd91f71c22cae13c38820912739113158825e88c8a4e15fa5`.
+Its exact C/DEF/SDK-check sources and input identities remain mandatory. Local
+Apple Clang 21 emits different instruction bytes from this CI-produced image;
+that recompile is not represented as the identical native PE. Select the literal
+reference explicitly with `observe_pe32_find_file.py --frozen-fixture`, then use
+`--host`. CI does the same. The source builder remains available and fails an
+identity mismatch instead of silently substituting different code. The cause of
+the compiler-output difference has not been independently isolated.
+
+Normal and forced-relocation runs of that literal PE on the physical M4 agree
+with every native non-time record byte and all 21 normalized words. Only the
+three real FILETIMEs are normalized across machines: each is first checked
+against independently read actual filesystem metadata on its own host. Windows
+uses its parent process's stat data; macOS uses a separate SDK-typed C stat reader
+to retain full birth-time precision. This is filesystem evidence, not a frozen
+clock value or unmeasured native original-game comparison.
+
+The PE32 search profile admits exact ordinary canonical Z: paths and real
+regular-file/directory metadata. It returns owned inaccessible low-address
+handle tokens, checks each actual path component and preserves absent-file vs
+absent-parent errors. Unsupported aliases, DOS devices, wildcard searches,
+symlinks/reparse points, ambiguous spellings and exhausted budgets stop explicitly.
+Its translated filesystem has no generated 8.3 aliases; initial DOS attributes
+are archive for regular files or directory for directories, plus backed POSIX
+read-only state. This is an explicit filesystem profile, not an NTFS attribute
+or ACL dump. Closed/unowned handle operations stop; no native stale-handle
+failure behavior is claimed. Remaining owned searches close after DLL teardown.
+
+Local validation passes 182 PE tests/checks, 354 Python tests, Clippy and both
+literal-PE M4 runs. Prior PE64 metadata behavior remains unchanged; only internal
+visibility is shared. Current-code CI is pending. The next native-only observer
+now builds for the actual FileTimeToLocalFileTime call, measuring a verified UTC
+Windows timezone, valid/boundary inputs, aliases, errors and output guards. Its
+execution and a host local-time implementation are still pending; host-local
+DST behavior is not guessed.
+
 ## Exact-file observer correction (no successful file-search evidence yet)
 
 The first owned file-search observer at `a3443c6` exited on native Windows with
