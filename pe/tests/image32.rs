@@ -92,6 +92,30 @@ fn i386_header_width_extents_and_all_truncated_prefixes_are_checked() {
     }
 }
 #[test]
+fn explicit_i386_dll_parser_keeps_machine_kind_and_entry_contracts_separate() {
+    let mut bytes = fixture();
+    assert!(Image::parse_i386_dll(&bytes).is_err());
+    p16(&mut bytes, 0x96, 0x2102);
+    let dll = Image::parse_i386_dll(&bytes).unwrap();
+    assert_eq!(dll.bitness(), 32);
+    assert_eq!(dll.entry, 0x1000);
+    assert!(dll.check_startup().is_err());
+    assert!(Image::parse_i386(&bytes).is_err());
+    assert!(Image::parse_dll(&bytes).is_err());
+    p32(&mut bytes, OPT + 16, 0);
+    assert_eq!(Image::parse_i386_dll(&bytes).unwrap().entry, 0);
+    for entry in [0x2000, 0x1200, 0x3000] {
+        p32(&mut bytes, OPT + 16, entry);
+        assert!(Image::parse_i386_dll(&bytes).is_err());
+    }
+    for (machine, magic) in [(0x8664, 0x10b), (0x14c, 0x20b)] {
+        p32(&mut bytes, OPT + 16, 0);
+        p16(&mut bytes, 0x84, machine);
+        p16(&mut bytes, OPT, magic);
+        assert!(Image::parse_i386_dll(&bytes).is_err());
+    }
+}
+#[test]
 fn four_byte_import_slots_keep_original_names_ordinals_and_reject_malformed_shapes() {
     let b = fixture();
     let items = Image::parse_i386(&b).unwrap().imports().unwrap();

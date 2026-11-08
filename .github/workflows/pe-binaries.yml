@@ -228,6 +228,21 @@ jobs:
             local/pe/pe32-tls-data/pe32-tls-data-fixture.json
       - name: Build original legacy load-config cases with compiler-generated GS checks
         run: python tools/build_pe32_load_config.py
+      - name: Execute real PE32 DLL dynamic initialization and cdecl/stdcall exports
+        run: |
+          python tools/build_pe32_library.py
+          python tools/run_pe32_library.py --directory local/pe/pe32-library --output local/pe/pe32-library-alkyhol.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe32-library-fixture
+          path: |
+            local/pe/pe32-library/*.dll
+            local/pe/pe32-library/driver.exe
+            local/pe/pe32-library/pe32-library-fixture.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe32-library-alkyhol
+          path: local/pe/pe32-library-alkyhol.json
       - name: Execute legacy cookie/compiler-GS cases normally and rebased
         run: python tools/run_pe32_load_config.py --directory local/pe/pe32-load-config --output local/pe/pe32-load-config-alkyhol.json
       - uses: actions/upload-artifact@v4
@@ -647,6 +662,16 @@ jobs:
           path: local/pe/pe32-load-config
       - name: Assert actual SDK legacy IMAGE_LOAD_CONFIG_DIRECTORY32 field layouts
         run: cl /nologo /std:c++17 /W4 /WX /c pe/fixtures/pe32-load-config/sdk-layout.cpp /Folocal/pe/pe32-load-config/sdk-layout.obj
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe32-library-fixture
+          path: local/pe/pe32-library
+      - name: Execute identical PE32 DLLs through the native Windows dynamic loader
+        run: python tools/run_pe32_library.py --directory local/pe/pe32-library --output local/pe/pe32-library-windows.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe32-library-windows
+          path: local/pe/pe32-library-windows.json
       - name: Observe native load-config cookie handling and deliberate compiler-frame rejection
         run: python tools/run_pe32_load_config.py --directory local/pe/pe32-load-config --output local/pe/pe32-load-config-windows.json
       - uses: actions/upload-artifact@v4
@@ -1048,3 +1073,12 @@ jobs:
           name: pe32-load-config-geometry-windows
           path: local/pe/observations
       - run: python tools/compare_pe32_load_config.py local/pe/observations/pe32-load-config-geometry-windows.json local/pe/observations/pe32-load-config-geometry-alkyhol.json
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe32-library-alkyhol
+          path: local/pe/observations
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe32-library-windows
+          path: local/pe/observations
+      - run: python tools/compare_pe32_library.py local/pe/observations/pe32-library-windows.json local/pe/observations/pe32-library-alkyhol.json --initial-capture

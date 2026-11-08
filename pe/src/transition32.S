@@ -34,6 +34,7 @@ _alkyhol_enter_pe32:
     lretq
 1:
     movl %eax,%r11d
+    movl %edx,%r10d /* Actual guest ESP at the near-return gate. */
     popq %rax
     movw %ax,%fs
     addq $8,%rsp
@@ -50,6 +51,9 @@ _alkyhol_enter_pe32:
     popq %r12
     popq %rbx
     popq %rbp
+    movl %r10d,%edx
+    shlq $32,%rdx
+    orq %rdx,%rax
     retq
 
 .p2align 4

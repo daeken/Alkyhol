@@ -4,6 +4,32 @@ Current graphics development uses direct Metal from Rust. The historical records
 below describe their exact revisions, including the retired wgpu/Vulkan backend.
 See the latest direct-Metal record for current implementation evidence.
 
+## Isolated PE32 DLL milestone: physical M4 development; native comparison pending
+
+The physical M4 executes the unchanged owned accepted/rejected PE32 DLLs through
+real dynamic attach, integer exports and detach. Normal/forced-rebase runs emit
+the same 80 raw DWORDs. A host-only wrong-convention run executes the real cdecl
+body, rejects its actual post-return ESP, performs one detach and returns explicit
+status 78. Missing/data exports and excessive arity are rejected before entry.
+Host assertions separately cover call-frame alignment/bounds and DLL header/entry
+kind isolation; a compiler check enforces the process borrow through destruction.
+All 117 PE host tests, 13 compiler checks and Clippy pass locally. Physical M4
+execution of the existing frozen PE32 integer/stdcall, FS/TEB and compiler-TLS-data
+observers also retains their prior outputs and host cleanup checks after the CPU
+return-gate change. These development reports are separate from clean native CI.
+
+The new native i386 driver consumes those identical DLLs through Windows
+LoadLibrary/GetProcAddress/FreeLibrary. The existing workflow now transfers and
+compares every raw word, exact DLL/driver/source identities, clean revision,
+forced relocation and separate host ABI-negative cleanup. Its first native
+observation is pending; no native DLL parity is claimed yet. Once captured, the
+full unchanged native record will be frozen and required by default.
+
+This isolated API is a foundation for dependency startup, not a process loader.
+DLL dependencies/TLS, SafeSEH/SEH, CRT and game startup remain unsupported.
+Existing EXE/source/Metal paths and frozen reference inputs remain unchanged.
+The legacy-cookie strict comparison below is already complete independently.
+
 ## PE32 legacy load configuration / compiler GS: native Windows, hosted Mac and physical M4
 
 Strict-reference revision `1a844a6` passes all three

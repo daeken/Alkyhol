@@ -142,6 +142,11 @@ impl<'a> Image<'a> {
     pub fn parse_i386(bytes: &'a [u8]) -> Result<Self> {
         Self::parse_format(bytes, false, true)
     }
+    /// Inspect an i386 PE32 DLL without initializing it. DLL startup requires
+    /// the explicit PE32 library runtime; EXE and AMD64 APIs remain separate.
+    pub fn parse_i386_dll(bytes: &'a [u8]) -> Result<Self> {
+        Self::parse_format(bytes, true, true)
+    }
     /// Machine pointer width selected by the validated PE header.
     pub fn bitness(&self) -> u8 {
         if self.i386 { 32 } else { 64 }
@@ -1078,6 +1083,14 @@ impl<'a> Image<'a> {
     pub(crate) fn check_library_startup(&self) -> Result<()> {
         if !self.is_dll {
             return Err("expected DLL image".into());
+        }
+        if self.i386 {
+            self.export_table(true)?;
+            // DLL TLS needs a process-wide slot/module lifetime. The isolated
+            // EXE's single slot must not masquerade as a DLL TLS implementation.
+            if self.directories[9].1 != 0 {
+                return Err("PE32 DLL static TLS/callbacks are unsupported".into());
+            }
         }
         self.check_auxiliary_startup()
     }

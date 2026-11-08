@@ -1,5 +1,6 @@
 //! Experimental PE32 integer/stdcall path in a 64-bit Rosetta host.
-//! Minimal FS/TEB and single-thread static TLS data (SizeOfZeroFill=0); no callbacks, PEB, CRT or DLLs.
+//! Minimal FS/TEB, isolated DLL calls and single-thread EXE static TLS data.
+//! No guest callbacks, PEB, CRT, DLL dependencies or exception dispatch.
 use crate::{ExportTable, ExportTarget, Image, ImportSymbol, ProcessContext, Result};
 use std::{
     cell::Cell,
@@ -24,7 +25,7 @@ unsafe extern "C" {
     fn getentropy(buffer: *mut c_void, len: usize) -> i32;
     fn i386_get_ldt(start: i32, entries: *mut u64, count: i32) -> i32;
     fn i386_set_ldt(start: i32, entries: *const u64, count: i32) -> i32;
-    fn alkyhol_enter_pe32(entry: u32, stack: u32, code: u32, data: u32) -> u32;
+    fn alkyhol_enter_pe32(entry: u32, stack: u32, code: u32, data: u32) -> u64;
     static alkyhol_pe32_gate_start: u8;
     static alkyhol_pe32_gate_end: u8;
     static alkyhol_pe32_dispatch_slot: u8;
@@ -268,7 +269,9 @@ pub struct LoadedImage32<'a> {
     relocated: bool,
     code: u16,
     data: u16,
+    dll: bool,
     regions: Vec<(usize, usize, u32)>,
+    code_regions: Vec<(usize, usize)>,
     handles: [usize; 3],
     _process: PhantomData<&'a ProcessContext>,
 }
@@ -276,11 +279,27 @@ impl<'a> LoadedImage32<'a> {
     /// Preflight all features/imports, map checked sections and HIGHLOW fixups,
     /// build low stdcall gates and a guarded stack. No guest code runs here.
     pub fn load(bytes: &[u8], rebase: bool, _process: &'a ProcessContext) -> Result<Self> {
+        Self::load_kind(bytes, rebase, _process, false)
+    }
+    fn load_kind(
+        bytes: &[u8],
+        rebase: bool,
+        _process: &'a ProcessContext,
+        dll: bool,
+    ) -> Result<Self> {
         if unsafe { getpagesize() } != PAGE as i32 {
             return Err("PE32 requires 4-KiB host pages".into());
         }
-        let parsed = Image::parse_i386(bytes)?;
-        parsed.check_startup()?;
+        let parsed = if dll {
+            Image::parse_i386_dll(bytes)?
+        } else {
+            Image::parse_i386(bytes)?
+        };
+        if dll {
+            parsed.check_library_startup()?;
+        } else {
+            parsed.check_startup()?;
+        }
         let tls_info = parsed.static_tls32()?;
         let load_config = parsed.legacy_load_config32()?;
         let imports = parsed.imports()?;
@@ -314,7 +333,11 @@ impl<'a> LoadedImage32<'a> {
             parsed.size,
             65536,
             if rebase {
-                0x10000000
+                if parsed.base == 0x10000000 {
+                    0x20000000
+                } else {
+                    0x10000000
+                }
             } else {
                 parsed.base as usize
             },
@@ -354,7 +377,9 @@ impl<'a> LoadedImage32<'a> {
         template[2..6].copy_from_slice(&((gates.base as u32) + 8).to_le_bytes());
         template[8..12].copy_from_slice(&((gates.base as u32) + 16).to_le_bytes());
         template[12..14].copy_from_slice(&cs64.to_le_bytes());
-        template[16..22].copy_from_slice(&[0x4c, 0x89, 0xe4, 0x41, 0xff, 0xe5]);
+        // Capture actual post-RET ESP before recovering the host stack. This
+        // checks cdecl/stdcall cleanup rather than hiding a guest stack imbalance.
+        template[16..24].copy_from_slice(&[0x89, 0xe2, 0x4c, 0x89, 0xe4, 0x41, 0xff, 0xe5]);
         let start = ptr::addr_of!(alkyhol_pe32_gate_start) as usize;
         let end = ptr::addr_of!(alkyhol_pe32_gate_end) as usize;
         let slot = ptr::addr_of!(alkyhol_pe32_dispatch_slot) as usize - start;
@@ -450,6 +475,7 @@ impl<'a> LoadedImage32<'a> {
         image.protect(0, parsed.size, 0)?;
         image.protect(0, parsed.headers, 1)?;
         let mut regions = Vec::new();
+        let mut code_regions = Vec::new();
         for section in &parsed.sections {
             let rights = ((section.rights >> 30) & 1)
                 | (((section.rights >> 31) & 1) << 1)
@@ -460,6 +486,12 @@ impl<'a> LoadedImage32<'a> {
                 image.base as usize + section.rva + section.size,
                 section.rights,
             ));
+            if section.rights & 0x20000000 != 0 {
+                code_regions.push((
+                    image.base as usize + section.rva,
+                    image.base as usize + section.rva + section.raw_size,
+                ));
+            }
         }
         let standard: unsafe extern "win64" fn(u32) -> usize = unsafe {
             std::mem::transmute(crate::abi::resolve("kernel32.dll", "GetStdHandle").unwrap())
@@ -471,7 +503,11 @@ impl<'a> LoadedImage32<'a> {
                 standard(0xfffffff4),
             ]
         };
-        let entry = image.base as u32 + parsed.entry as u32;
+        let entry = if parsed.entry == 0 {
+            0
+        } else {
+            image.base as u32 + parsed.entry as u32
+        };
         Ok(Self {
             image,
             exports: parsed.exports()?,
@@ -484,7 +520,9 @@ impl<'a> LoadedImage32<'a> {
             relocated,
             code,
             data,
+            dll,
             regions,
+            code_regions,
             handles,
             _process: PhantomData,
         })
@@ -559,6 +597,22 @@ impl<'a> LoadedImage32<'a> {
     /// Input must obey this type's stated restricted native-code contract.
     /// This is execution, not an instruction validator or security sandbox.
     pub unsafe fn enter(&self) -> Result<u32> {
+        unsafe { self.invoke(self.entry, &[], CallingConvention32::Cdecl) }
+    }
+    unsafe fn invoke(
+        &self,
+        entry: u32,
+        args: &[u32],
+        convention: CallingConvention32,
+    ) -> Result<u32> {
+        let (offset, expected_offset) = call_stack(args.len(), convention)?;
+        if !self
+            .code_regions
+            .iter()
+            .any(|&(first, last)| entry as usize >= first && (entry as usize) < last)
+        {
+            return Err("PE32 call target is outside executable image storage".into());
+        }
         ACTIVE.with(|slot| {
             if !slot.get().is_null() {
                 return Err("nested PE32 entry unsupported".into());
@@ -573,19 +627,17 @@ impl<'a> LoadedImage32<'a> {
             let _teb_lease = TebLease::install(self.teb.base as u32)?;
             slot.set(ptr::from_ref(self).cast());
             let _guard = ActiveGuard;
-            let sp = self.stack.base as u32 + PAGE as u32 + STACK as u32 - 4;
+            let sp = self.stack.base as u32 + offset as u32;
             unsafe {
-                self.stack
-                    .base
-                    .add(PAGE + STACK - 4)
-                    .cast::<u32>()
-                    .write_unaligned(self.gates.base as u32);
+                let frame = self.stack.base.add(offset).cast::<u32>();
+                frame.write_unaligned(self.gates.base as u32);
+                ptr::copy_nonoverlapping(args.as_ptr(), frame.add(1), args.len());
             }
             if self.tls.is_some() {
                 self.tls_entered.set(true);
             }
             let result = unsafe {
-                alkyhol_enter_pe32(self.entry, sp, u32::from(self.code), u32::from(self.data))
+                alkyhol_enter_pe32(entry, sp, u32::from(self.code), u32::from(self.data))
             };
             if segment_state() != before {
                 unsupported("PE32 host segment selectors were not restored");
@@ -593,8 +645,131 @@ impl<'a> LoadedImage32<'a> {
             alkyhol::ffi::SetLastError(unsafe {
                 self.teb.base.add(0x34).cast::<u32>().read_unaligned()
             });
-            Ok(result)
+            let returned_sp = (result >> 32) as u32;
+            let expected_sp = self.stack.base as u32 + expected_offset as u32;
+            if returned_sp != expected_sp {
+                return Err(format!(
+                    "PE32 {convention:?} call returned with an unbalanced guest stack"
+                ));
+            }
+            Ok(result as u32)
         })
+    }
+}
+/// Stack cleanup expected from an integer-only PE32 exported function.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CallingConvention32 {
+    Cdecl,
+    Stdcall,
+}
+fn call_stack(count: usize, convention: CallingConvention32) -> Result<(usize, usize)> {
+    if count > 16 {
+        return Err("PE32 calls support at most sixteen DWORD arguments".into());
+    }
+    // Align the argument vector to 16 bytes; the return address precedes it.
+    let top = PAGE + STACK;
+    let arguments = (top - count * 4) & !15;
+    let frame = arguments - 4;
+    let expected = arguments
+        + if convention == CallingConvention32::Stdcall {
+            count * 4
+        } else {
+            0
+        };
+    Ok((frame, expected))
+}
+
+/// An isolated trusted i386 DLL with real dynamic PROCESS_ATTACH/DETACH and
+/// integer exported calls on the same host thread. This is not a DLL bundle,
+/// filesystem search, process module cache or support for DLL TLS/SEH/CRT.
+/// The ProcessContext borrow remains live through guest DETACH and unmapping.
+///
+/// ```compile_fail,E0505
+/// # use alkyhol_pe::{ProcessContext, LoadedLibrary32};
+/// # fn example(bytes: &[u8]) -> alkyhol_pe::Result<()> {
+/// let process = ProcessContext::install(&["library32".into()], &[])?;
+/// let library = unsafe { LoadedLibrary32::load(bytes, false, &process) }?;
+/// drop(process);
+/// drop(library);
+/// # Ok(()) }
+/// ```
+pub struct LoadedLibrary32<'a> {
+    mapping: LoadedImage32<'a>,
+    attached: bool,
+}
+impl<'a> LoadedLibrary32<'a> {
+    /// Map/bind the complete supported DLL before calling DllMain. FALSE attach
+    /// receives one matching dynamic detach; the rejected library never escapes.
+    ///
+    /// # Safety
+    /// DLL code must obey LoadedImage32's trusted integer-only, single-thread
+    /// native-code contract and retain no pointers after this object is dropped.
+    pub unsafe fn load(bytes: &[u8], rebase: bool, process: &'a ProcessContext) -> Result<Self> {
+        let mut library = Self {
+            mapping: LoadedImage32::load_kind(bytes, rebase, process, true)?,
+            attached: false,
+        };
+        if library.mapping.entry != 0 {
+            let accepted = unsafe { library.entry(1)? };
+            if accepted == 0 {
+                unsafe {
+                    library.entry(0)?;
+                }
+                return Err("PE32 DLL PROCESS_ATTACH returned FALSE".into());
+            }
+            library.attached = true;
+        }
+        Ok(library)
+    }
+    unsafe fn entry(&self, reason: u32) -> Result<u32> {
+        unsafe {
+            self.mapping.invoke(
+                self.mapping.entry,
+                &[self.mapping.image.base as u32, reason, 0],
+                CallingConvention32::Stdcall,
+            )
+        }
+    }
+    /// Whether this DLL actually required HIGHLOW relocation.
+    pub fn relocated(&self) -> bool {
+        self.mapping.relocated()
+    }
+    /// Invoke a named direct code export with up to sixteen DWORD arguments.
+    /// Missing names, data exports, forwarders and stack-cleanup mismatches fail.
+    ///
+    /// # Safety
+    /// The caller must supply the export's actual DWORD signature/convention;
+    /// guest pointers must remain valid for the entire trusted call.
+    pub unsafe fn call_name(
+        &self,
+        name: &str,
+        args: &[u32],
+        convention: CallingConvention32,
+    ) -> Result<u32> {
+        let export = self
+            .mapping
+            .exports
+            .as_ref()
+            .and_then(|t| t.entries.iter().find(|e| e.names.iter().any(|n| n == name)))
+            .ok_or_else(|| format!("missing PE32 DLL export {name}"))?;
+        let address = match export.target {
+            ExportTarget::Address { rva } => self.mapping.image.base as u32 + rva as u32,
+            ExportTarget::Forwarder(_) => {
+                return Err("PE32 DLL export forwarders are unsupported".into());
+            }
+        };
+        unsafe { self.mapping.invoke(address, args, convention) }
+    }
+}
+impl Drop for LoadedLibrary32<'_> {
+    fn drop(&mut self) {
+        if self.attached {
+            self.attached = false;
+            if let Err(error) = unsafe { self.entry(0) } {
+                // A failed teardown is not a successfully unloaded DLL.
+                unsupported(&error);
+            }
+        }
     }
 }
 // Keep the process borrow live through field destruction, including implicit drop.
@@ -702,6 +877,9 @@ extern "C" fn dispatch(id: u32, arguments: *const u32) -> u32 {
                 }
             }
             4 | 5 => {
+                if image.dll {
+                    unsupported("isolated PE32 DLL has no process executable module lookup");
+                }
                 if args[0] != 0 {
                     unsupported("named PE32 module lookup is unsupported");
                 }
@@ -752,11 +930,13 @@ mod tests {
             relocated: false,
             code: 0,
             data: 0,
+            dll: false,
             handles: [0; 3],
             regions: vec![
                 (0x100000, 0x101000, 0x60000000),
                 (0x200000, 0x201000, 0xc0000000),
             ],
+            code_regions: vec![(0x100000, 0x100200)],
             _process: PhantomData,
         })
     }
@@ -944,5 +1124,21 @@ mod tests {
             .is_err()
         );
         assert_eq!(requests, 128);
+    }
+    #[test]
+    fn call_frames_align_arguments_bound_arity_and_distinguish_actual_stack_cleanup() {
+        for count in 0..=16 {
+            let (cdecl, c_return) = call_stack(count, CallingConvention32::Cdecl).unwrap();
+            let (stdcall, s_return) = call_stack(count, CallingConvention32::Stdcall).unwrap();
+            assert_eq!(cdecl, stdcall);
+            assert_eq!((cdecl + 4) % 16, 0);
+            assert!(cdecl >= PAGE && cdecl + 4 + count * 4 <= PAGE + STACK);
+            assert_eq!(c_return, cdecl + 4);
+            assert_eq!(s_return, cdecl + 4 + count * 4);
+        }
+        for count in [17, usize::MAX] {
+            assert!(call_stack(count, CallingConvention32::Cdecl).is_err());
+            assert!(call_stack(count, CallingConvention32::Stdcall).is_err());
+        }
     }
 }
