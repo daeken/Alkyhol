@@ -31,9 +31,9 @@ def execute(d,native):
  command=[str(d/'registry-legacy.exe')] if native else [str(runner(d)),str(d/'registry-legacy.exe'),'--file-origins','--external','advapi32.dll','--registry-catalog',str(catalog)]
  try:r=subprocess.run(command,capture_output=True,timeout=60)
  except subprocess.TimeoutExpired as error:
-  (d/('native-registry-legacy.json' if native else 'registry-legacy-host.json')).write_text(json.dumps({'backend':'native Windows legacy registrys' if native else 'Alkyhol PE32','inputs':ident,'status':'timeout','stdout_hex':(error.stdout or b'').hex(),'stderr_hex':(error.stderr or b'').hex()},indent=2)+'\n')
+  (d/('native-registry-legacy.json' if native else 'registry-legacy-host.json')).write_text(json.dumps({'backend':'native Windows legacy registry calls' if native else 'Alkyhol PE32','inputs':ident,'status':'timeout','stdout_hex':(error.stdout or b'').hex(),'stderr_hex':(error.stderr or b'').hex()},indent=2)+'\n')
   raise
- report={'backend':'native Windows legacy registrys' if native else 'Alkyhol PE32 legacy registrys','inputs':ident,'platform':platform.platform(),'hosted_ci':os.getenv('GITHUB_ACTIONS')=='true','status':r.returncode,'stdout_hex':r.stdout.hex(),'stderr_hex':r.stderr.hex()}
+ report={'backend':'native Windows legacy registry calls' if native else 'Alkyhol PE32 legacy registry calls','inputs':ident,'platform':platform.platform(),'hosted_ci':os.getenv('GITHUB_ACTIONS')=='true','status':r.returncode,'stdout_hex':r.stdout.hex(),'stderr_hex':r.stderr.hex()}
  path=d/('native-registry-legacy.json' if native else 'registry-legacy-host.json');path.write_text(json.dumps(report,indent=2)+'\n')
  if r.returncode:raise ValueError('legacy registry witness failed; raw capture retained: '+r.stderr.decode(errors='replace')[-1500:])
  if len(r.stdout)%4:raise ValueError('truncated legacy registry report')

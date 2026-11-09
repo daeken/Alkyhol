@@ -6273,3 +6273,9 @@ premultiplication and output guards, followed by the original two programmable
 shader frames to detect accidental fixed-state influence. It passes on physical
 M4; native and hosted comparison are added and pending. All 204 PE units and
 Clippy pass. Integrated retry is pending.
+
+Startup/API CI 42623855118 on 373dd3b passes the Rosetta producer. Its native
+legacy-registry step does not execute: the new artifact was uploaded but omitted
+from the explicit native download list. There is no native semantic result from
+that step. The registry and instruction-feature artifact transfers are now
+included; this plumbing correction does not change an observation or comparator.

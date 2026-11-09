@@ -24,9 +24,9 @@ def execute(d,native):
  command=[str(d/'cpu-features.exe')] if native else [str(runner(d)),str(d/'cpu-features.exe'),'--file-origins']
  try:r=subprocess.run(command,capture_output=True,timeout=60)
  except subprocess.TimeoutExpired as error:
-  (d/('native-cpu-features.json' if native else 'cpu-features-host.json')).write_text(json.dumps({'backend':'native Windows instruction features' if native else 'Alkyhol PE32','inputs':ident,'status':'timeout','stdout_hex':(error.stdout or b'').hex(),'stderr_hex':(error.stderr or b'').hex()},indent=2)+'\n')
+  (d/('native-cpu-features.json' if native else 'cpu-features-host.json')).write_text(json.dumps({'backend':'native Windows instruction feature queries' if native else 'Alkyhol PE32','inputs':ident,'status':'timeout','stdout_hex':(error.stdout or b'').hex(),'stderr_hex':(error.stderr or b'').hex()},indent=2)+'\n')
   raise
- report={'backend':'native Windows instruction features' if native else 'Alkyhol PE32 instruction features','inputs':ident,'platform':platform.platform(),'hosted_ci':os.getenv('GITHUB_ACTIONS')=='true','status':r.returncode,'stdout_hex':r.stdout.hex(),'stderr_hex':r.stderr.hex()}
+ report={'backend':'native Windows instruction feature queries' if native else 'Alkyhol PE32 instruction feature queries','inputs':ident,'platform':platform.platform(),'hosted_ci':os.getenv('GITHUB_ACTIONS')=='true','status':r.returncode,'stdout_hex':r.stdout.hex(),'stderr_hex':r.stderr.hex()}
  path=d/('native-cpu-features.json' if native else 'cpu-features-host.json');path.write_text(json.dumps(report,indent=2)+'\n')
  if r.returncode:raise ValueError('instruction feature witness failed; raw capture retained: '+r.stderr.decode(errors='replace')[-1500:])
  if len(r.stdout)%4:raise ValueError('truncated instruction feature report')
