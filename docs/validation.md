@@ -6942,3 +6942,31 @@ DrawIndexedPrimitiveUP. This establishes original query creation progress, not
 a rendered character-creation frame or full query-result/game correctness.
 The targeted input queue/overflow unit and PE Clippy pass on the Rosetta host.
 Private traces and captures remain local; the original EXE is unchanged.
+
+### Caller-memory D3D9 draws after original query creation
+
+The original New Game replay described above reaches device slot 84 with a
+triangle-list call, eight vertices, twelve primitives, INDEX32 and a 12-byte
+stream-zero stride. DrawPrimitiveUP and DrawIndexedPrimitiveUP now feed the same
+fetch/shader/depth/stencil/query renderer as buffer draws. Checked guest ranges,
+finite triangle-list/strip bounds, INDEX16/32 decoding and nonzero MinVertexIndex
+normalization are enforced. Declarations referencing other streams are rejected.
+The caller's data is consumed before returning; stream zero is unbound afterward,
+and indexed UP also unbinds the index buffer, releasing retained COM bindings.
+Unsupported primitive types and out-of-profile layouts still fail explicitly.
+
+The owned --user-draw PE executes on physical M4 through Rosetta: four independent
+complete 32x32 frames cover plain list/strip and indexed list/strip, both index
+widths, nonzero minimum index, shader constants, caller-storage overwrite directly
+after return, retained stream-one state, index-binding differences and stack
+balance. All 4167 output words pass. No earlier draw can conceal a missing UP
+frame. The new bounds/format/strip/ABI unit, all 220 PE units, PE Clippy and 18
+observer units pass. Independent SDK slot assertions and the identical literal
+PE/four-frame Windows comparator are wired into existing CI; native results are
+pending. Synthetic comparator units are acceptance-guard tests, not GPU evidence.
+
+The documented binding and caller-storage contracts are from Microsoft's
+[DrawPrimitiveUP](https://learn.microsoft.com/en-us/windows/win32/api/d3d9/nf-d3d9-idirect3ddevice9-drawprimitiveup)
+and [DrawIndexedPrimitiveUP](https://learn.microsoft.com/en-us/windows/win32/api/d3d9/nf-d3d9-idirect3ddevice9-drawindexedprimitiveup)
+references. Complete original DAO scene/frame and native shaded parity remain
+unverified until the clean original replay passes this boundary.

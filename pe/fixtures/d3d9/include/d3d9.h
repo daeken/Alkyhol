@@ -138,8 +138,8 @@ struct IDirect3DDevice9 {
  virtual void __stdcall UnsupportedSlot80()=0;
  virtual HRESULT __stdcall DrawPrimitive(UINT,UINT,UINT)=0;
  virtual HRESULT __stdcall DrawIndexedPrimitive(UINT,INT,UINT,UINT,UINT,UINT)=0;
- virtual void __stdcall UnsupportedSlot83()=0;
- virtual void __stdcall UnsupportedSlot84()=0;
+ virtual HRESULT __stdcall DrawPrimitiveUP(UINT,UINT,const void*,UINT)=0;
+ virtual HRESULT __stdcall DrawIndexedPrimitiveUP(UINT,UINT,UINT,UINT,const void*,UINT,const void*,UINT)=0;
  virtual void __stdcall UnsupportedSlot85()=0;
  virtual HRESULT __stdcall CreateVertexDeclaration(const D3DVERTEXELEMENT9*,IDirect3DVertexDeclaration9**)=0;
  virtual HRESULT __stdcall SetVertexDeclaration(IDirect3DVertexDeclaration9*)=0;

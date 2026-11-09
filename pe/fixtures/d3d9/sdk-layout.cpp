@@ -115,3 +115,6 @@ static_assert(D3DQUERYTYPE_OCCLUSION==9&&D3DISSUE_BEGIN==2&&D3DISSUE_END==1);
 static_assert(sizeof(IDirect3DQuery9Vtbl)==8*4);
 static_assert(offsetof(IDirect3DDevice9Vtbl,CreateQuery)==118*4);
 static_assert(offsetof(IDirect3DQuery9Vtbl,Issue)==6*4&&offsetof(IDirect3DQuery9Vtbl,GetData)==7*4);
+
+static_assert(offsetof(IDirect3DDevice9Vtbl,DrawPrimitiveUP)==83*4);
+static_assert(offsetof(IDirect3DDevice9Vtbl,DrawIndexedPrimitiveUP)==84*4);

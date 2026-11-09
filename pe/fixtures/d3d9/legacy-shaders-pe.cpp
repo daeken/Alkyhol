@@ -22,7 +22,11 @@ static const DWORD pixel_code[]={
 #include "legacy-color.ps.inc"
 #endif
 };
+#ifdef USER_DRAW
+static DWORD words[4500],used;
+#else
 static DWORD words[2300],used;
+#endif
 static void put(DWORD n){words[used++]=n;}
 static void ok(BOOL n){put(n?1:0);}
 static DWORD fail(DWORD status,HRESULT detail){put(0xdeadc0de);put(status);put((DWORD)detail);DWORD done=0;WriteFile(GetStdHandle((DWORD)-11),words,used*4,&done,NULL);return status;}
@@ -317,9 +321,36 @@ static DWORD streams_witness(IDirect3DVertexBuffer9* positions){
  return 0;
 }
 #endif
+#ifdef USER_DRAW
+// Each UP path owns a complete frame, so an earlier draw cannot hide a bad fetch.
+static HRESULT user_draw(UINT frame,IDirect3DVertexBuffer9* vb){
+ const UINT stride=sizeof(vertices[0]);
+ float data[6][8]={};
+ for(UINT v=0;v<3;v++)for(UINT n=0;n<8;n++)data[v+2][n]=vertices[v][n];
+ for(UINT n=0;n<8;n++)data[5][n]=vertices[2][n];
+ unsigned short index16[]={2,3,4};DWORD index32[]={2,3,4,4};
+ IDirect3DIndexBuffer9* ib=NULL;
+ if(g_pd3dDevice->CreateIndexBuffer(6,8,101,0,&ib,NULL)!=S_OK||!ib)return (HRESULT)0x8bad0001;
+ if(g_pd3dDevice->SetIndices(ib)!=S_OK||g_pd3dDevice->SetStreamSource(0,vb,0,stride)!=S_OK||g_pd3dDevice->SetStreamSource(1,vb,0,stride)!=S_OK)return (HRESULT)0x8bad0002;
+ HRESULT hr=frame<2?g_pd3dDevice->DrawPrimitiveUP(frame?5:4,frame?2:1,data+2,stride):g_pd3dDevice->DrawIndexedPrimitiveUP(frame==2?4:5,2,3,frame==2?1:2,frame==2?(void*)index16:(void*)index32,frame==2?101:102,data,stride);
+ // Access to all caller bytes must have completed before return.
+ for(UINT v=0;v<6;v++)for(UINT n=0;n<8;n++)data[v][n]=0;
+ for(UINT n=0;n<3;n++)index16[n]=65535;for(UINT n=0;n<4;n++)index32[n]=0xffffffff;
+ if(hr!=S_OK)return hr;
+ IDirect3DVertexBuffer9* stream=NULL;UINT offset=99,step=99;
+ if(g_pd3dDevice->GetStreamSource(0,&stream,&offset,&step)!=S_OK||stream)return (HRESULT)0x8bad0003;
+ if(g_pd3dDevice->GetStreamSource(1,&stream,&offset,&step)!=S_OK||stream!=vb||offset!=0||step!=stride)return (HRESULT)0x8bad0004;stream->Release();
+ IDirect3DIndexBuffer9* bound=NULL;
+ if(g_pd3dDevice->GetIndices(&bound)!=S_OK||bound!=(frame<2?ib:NULL))return (HRESULT)0x8bad0005;if(bound)bound->Release();
+ if(g_pd3dDevice->SetIndices(NULL)!=S_OK||g_pd3dDevice->SetStreamSource(1,NULL,0,0)!=S_OK)return (HRESULT)0x8bad0006;
+ ib->Release();return S_OK;
+}
+#endif
 extern "C" DWORD entry(){
  DWORD before=stack();put(0x39534844);
-#ifdef OCCLUSION
+#ifdef USER_DRAW
+put(22);
+#elif defined(OCCLUSION)
 put(21);
 #elif defined(BIAS)
 put(20);
@@ -408,6 +439,9 @@ put(1);
  for(UINT i=0;i<vb_size;i++)((unsigned char*)storage)[i]=0;for(UINT i=0;i<sizeof(vertices);i++)((unsigned char*)storage)[i+vb_offset]=((const unsigned char*)vertices)[i];ok(vb->Unlock()==S_OK);
  ok(g_pd3dDevice->SetStreamSource(0,vb,stream_offset,sizeof(vertices[0]))==S_OK);
  // Internal bindings retain resources, including shader bytecode and declaration.
+ #ifdef USER_DRAW
+ vb->AddRef();
+ #endif
  vs->Release();ps->Release();decl->Release();vb->Release();
  IDirect3DVertexShader9* bound=NULL;ok(g_pd3dDevice->GetVertexShader(&bound)==S_OK&&bound==vs);if(bound)bound->Release();
  #ifdef STREAMS
@@ -504,7 +538,13 @@ put(1);
  #ifdef INDEXED
  DWORD index_stage=index_witness();ok(index_stage==0);if(index_stage)return fail(18,index_stage);
  #endif
- for(UINT frame=0;frame<2;frame++){
+ for(UINT frame=0;frame<
+ #ifdef USER_DRAW
+ 4
+ #else
+ 2
+ #endif
+ ;frame++){
   #ifdef FRESH_STENCIL
   if(frame){
    IDirect3DSurface9* explicit_depth=NULL;
@@ -593,7 +633,9 @@ put(1);
  for(UINT n=0;n<6;n++)if(observed[n+1]!=viewport[n])same=FALSE;ok(same);
  #endif
  ok(g_pd3dDevice->BeginScene()==S_OK);ok(
- #ifdef TRANSFORMED
+ #ifdef USER_DRAW
+ user_draw(frame,vb)
+ #elif defined(TRANSFORMED)
  g_pd3dDevice->DrawPrimitive(5,0,2)
  #elif defined(INDEXED)
  g_pd3dDevice->DrawIndexedPrimitive(4,-1,2,3,1,1)
@@ -615,6 +657,9 @@ put(1);
   ok(copy->UnlockRect()==S_OK);
  }
  copy->Release();back->Release();
+ #ifdef USER_DRAW
+ vb->Release();
+ #endif
  #ifdef FONTS
  if(g_pd3dDevice->SetTexture(0,NULL)!=S_OK)return 33;
  for(UINT n=0;n<2;n++)font_textures[n]->Release();

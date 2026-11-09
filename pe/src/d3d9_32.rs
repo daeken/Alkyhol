@@ -1815,7 +1815,114 @@ fn draw_indexed(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 
     args[1] = a[1];
     args[2] = base as u32;
     args[3] = a[6];
-    draw_buffer(image, s, &args, Some((a[4], normalized)))
+    draw_buffer(image, s, &args, Some((a[4], normalized)), None)
+}
+// Indices address the original stream-zero base; MinVertexIndex restricts the
+// accessible range, rather than rebasing the caller's pointer implicitly.
+fn user_indices(bytes: &[u8], format: u32, minimum: u32, count: u32) -> Option<Vec<u32>> {
+    let width = match format {
+        101 => 2,
+        102 => 4,
+        _ => return None,
+    };
+    let end = minimum.checked_add(count)?;
+    if count == 0 || bytes.is_empty() || !bytes.len().is_multiple_of(width) {
+        return None;
+    }
+    bytes
+        .chunks_exact(width)
+        .map(|b| {
+            let value = if width == 2 {
+                u16::from_le_bytes(b.try_into().unwrap()) as u32
+            } else {
+                u32::from_le_bytes(b.try_into().unwrap())
+            };
+            (minimum..end).contains(&value).then(|| value - minimum)
+        })
+        .collect()
+}
+fn draw_user_inner(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16], indexed: bool) -> u32 {
+    let (minimum, count, primitives, pointer, stride) = if indexed {
+        (a[2], a[3], a[4], a[7], a[8])
+    } else {
+        let Some(count) = primitive_vertices(a[1], a[2]) else {
+            return UNAVAILABLE;
+        };
+        (0, count, a[2], a[3], a[4])
+    };
+    let Some(index_count) = primitive_vertices(a[1], primitives) else {
+        return UNAVAILABLE;
+    };
+    if pointer == 0 || count == 0 {
+        return INVALID;
+    }
+    let Some((first, size)) = vertex_span(u32::MAX, 0, stride, minimum, count) else {
+        return INVALID;
+    };
+    let Some(address) = pointer
+        .checked_add(first)
+        .filter(|p| p.checked_add(size).is_some())
+    else {
+        return INVALID;
+    };
+    checked(image, address, size as usize, false);
+    let Body::Device { declaration, .. } = &s.objects[&a[0]].body else {
+        unreachable!()
+    };
+    if let Some(Object {
+        body: Body::Declaration { elements, .. },
+        ..
+    }) = s.objects.get(declaration)
+        && elements.iter().any(|e| e[1] & 255 != 17 && e[0] & 65535 != 0)
+    {
+        return INVALID;
+    }
+    let indices = if indexed {
+        let width = match a[6] {
+            101 => 2,
+            102 => 4,
+            _ => return INVALID,
+        };
+        let Some(length) = index_count
+            .checked_mul(width)
+            .filter(|&n| n <= 12 * 1024 * 1024)
+        else {
+            return INVALID;
+        };
+        if a[5] == 0 {
+            return INVALID;
+        }
+        checked(image, a[5], length as usize, false);
+        let bytes = unsafe { std::slice::from_raw_parts(a[5] as *const u8, length as usize) };
+        let Some(values) = user_indices(bytes, a[6], minimum, count) else {
+            return INVALID;
+        };
+        let values = if a[1] == 5 {
+            strip_triangles(&values).unwrap()
+        } else {
+            values
+        };
+        Some((count, values))
+    } else {
+        None
+    };
+    let mut args = [0; 16];
+    args[0] = a[0];
+    args[1] = a[1];
+    args[3] = primitives;
+    draw_buffer(image, s, &args, indices, Some((address, size, stride)))
+}
+fn draw_user(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16], indexed: bool) -> u32 {
+    let result = draw_user_inner(image, s, a, indexed);
+    // D3D9 UP calls consume user memory synchronously and clear these bindings.
+    // Releasing the retained binding also honors COM resource lifetimes.
+    let mut args = [0; 16];
+    args[0] = a[0];
+    stream_source(s, &args);
+    if indexed {
+        index_binding(image, s, &args, false);
+    }
+    result
 }
 fn swapchain(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
     if a[2] == 0 {
@@ -1965,6 +2072,7 @@ fn draw_buffer(
     s: &mut State,
     a: &[u32; 16],
     indexed: Option<(u32, Vec<u32>)>,
+    user: Option<(u32, u32, u32)>,
 ) -> u32 {
     if !matches!(a[1], 4 | 5) || a[3] == 0 {
         return UNAVAILABLE;
@@ -1993,9 +2101,6 @@ fn draw_buffer(
         programmable.1,
     );
     let fixed = *fvf == 0x44 && programmable.0 == 0 && programmable.1 == 0;
-    if fixed && indexed.is_some() {
-        return UNAVAILABLE;
-    }
     if fixed {
         texture_stages
             .validate_transformed_color(textures[0] != 0)
@@ -2028,7 +2133,8 @@ fn draw_buffer(
     };
     let referenced = indexed.as_ref().map(|(_, indices)| indices.as_slice());
     let fixed_source = if fixed {
-        let Some(source) = vertex_stream(image, s, streams[0], a[2], vertex_count, referenced)
+        let Some(source) =
+            user.or_else(|| vertex_stream(image, s, streams[0], a[2], vertex_count, referenced))
         else {
             return INVALID;
         };
@@ -2076,9 +2182,11 @@ fn draw_buffer(
             let ty = element[1] & 255;
             let size = alkyhol_d3d9::vertex::element_size(ty).unwrap() as u64;
             let stream = (element[0] & 65535) as usize;
-            let Some((address, length, stride)) =
+            let Some((address, length, stride)) = (if user.is_some() {
+                if stream == 0 { user } else { None }
+            } else {
                 vertex_stream(image, s, streams[stream], a[2], vertex_count, referenced)
-            else {
+            }) else {
                 return INVALID;
             };
             if offset + size > u64::from(stride) {
@@ -2207,7 +2315,11 @@ fn draw_buffer(
             return UNAVAILABLE;
         }
         let expanded;
-        let bytes = if let Some(indices) = &strip {
+        let bytes = if let Some(indices) = indexed
+            .as_ref()
+            .map(|(_, indices)| indices)
+            .or(strip.as_ref())
+        {
             expanded = indices
                 .iter()
                 .flat_map(|&index| {
@@ -3449,8 +3561,9 @@ fn dispatch_inner(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32 {
             0
         }
         (1, 104 | 105) => index_binding(image, &mut s, a, slot == 105),
-        (1, 81) => draw_buffer(image, &mut s, a, None),
+        (1, 81) => draw_buffer(image, &mut s, a, None, None),
         (1, 82) => draw_indexed(image, &mut s, a),
+        (1, 83 | 84) => draw_user(image, &mut s, a, slot == 84),
         (3, 10) => 6,
         (8, 10) => 7,
         (3 | 8, 11 | 12) => buffer_lock(image, &mut s, a, slot == 12),
@@ -3964,6 +4077,32 @@ mod tests {
         ] {
             assert!(buffer_slot(used, length).is_none());
         }
+    }
+    #[test]
+    fn user_index_ranges_decode_both_widths_without_rebasing_the_source() {
+        let words = [2u32, 4, 3];
+        for format in [101, 102] {
+            let bytes: Vec<u8> = words
+                .iter()
+                .flat_map(|&n| n.to_le_bytes()[..if format == 101 { 2 } else { 4 }].to_vec())
+                .collect();
+            assert_eq!(user_indices(&bytes, format, 2, 3), Some(vec![0, 2, 1]));
+            for (minimum, count) in [(3, 3), (2, 2), (2, 0), (u32::MAX, 1)] {
+                assert_eq!(user_indices(&bytes, format, minimum, count), None);
+            }
+            assert_eq!(user_indices(&bytes[..bytes.len() - 1], format, 2, 3), None);
+        }
+        assert_eq!(user_indices(&[], 101, 0, 3), None);
+        assert_eq!(user_indices(&[0, 0], 100, 0, 3), None);
+        assert_eq!(strip_triangles(&[0, 1, 2, 3]), Some(vec![0, 1, 2, 1, 3, 2]));
+        assert_eq!(
+            signature(BASE + 256 + 83),
+            Some(("IDirect3DDevice9::DrawPrimitiveUP", 20))
+        );
+        assert_eq!(
+            signature(BASE + 256 + 84),
+            Some(("IDirect3DDevice9::DrawIndexedPrimitiveUP", 36))
+        );
     }
     #[test]
     fn separate_stream_spans_keep_offsets_strides_and_overflow_checks() {
