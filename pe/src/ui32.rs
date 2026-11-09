@@ -46,6 +46,12 @@ pub(super) struct State {
     messages: BTreeMap<u32, VecDeque<[u32; 7]>>,
 }
 impl State {
+    pub(super) fn input_window(&self, hwnd: u32) -> bool {
+        self.windows.contains_key(&hwnd)
+    }
+    pub(super) fn input_foreground(&self, hwnd: u32) -> bool {
+        self.windows.get(&hwnd).is_some_and(|w| w.native.key())
+    }
     pub(super) fn graphics_client(&self, hwnd: u32) -> crate::Result<(u32, u32)> {
         let window = self
             .windows

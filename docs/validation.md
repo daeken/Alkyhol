@@ -5426,3 +5426,52 @@ The owned stress input now uses ps_2_a's extended budget with the required outpu
 MOV; no math/tolerance is relaxed. The backend explicitly ignores MULTISAMPLEMASK
 on single-sample targets per D3D9, and the updated native witness tests that rule.
 The revised PE checks pass on physical M4; complete new CI is pending.
+
+## DAO renderer reset: independent native/Metal/Vulkan results
+
+CI [42574139390](https://github.com/daeken/Alkyhol/actions/runs/42574139390)
+passes all three D3D9 jobs on `aaa9e61`: hosted Metal, independent native
+Windows SDK/D3D9 and Linux Mesa software Vulkan. The extended SM2a fixture,
+texture/sRGB, 2,133-word render-state witness, window transitions and earlier
+finite witnesses pass their existing exact/tolerance rules. This supersedes
+neither retained failed SM2 runs nor unmeasured full game/frame behavior.
+
+## DAO DirectInput lifecycle and first renderer resources
+
+The unchanged local DAO EXE now passes original DirectInput8 creation, A/W
+32-bit COM gates, keyboard/mouse creation, original data formats, cooperative
+settings and buffer-size properties. Interfaces own real low RO vtables/RX
+stdcall gates and checked storage; devices retain their factory. The explicitly
+named virtual system devices use a Quartz event backend. Unsupported effects,
+controllers, action maps, event notification handles, background/exclusive
+acquisition and confinement return failure. ClipCursor(NULL) releases this
+bridge's unconfined cursor; a range fails with Win32 error 120. DAO handles this
+failure and continues; storing a rectangle is never reported as confinement.
+
+Acquisition requires an actual foreground owned window and a successful native
+event tap; otherwise it fails. In the observed startup, the acquisition attempts
+failed before a native tap was acquired. Live keyboard/mouse event delivery is
+**not established** by this run. The own-process keyboard tap, foreground-gated
+mouse tap, bounded event queue and relative accumulators are implemented; host
+queue/overflow/wrap tests are synthetic units, not native input observations.
+
+Original rendering now reaches backbuffer/depth-attachment queries, default
+viewport inspection and a 1x1 texture lock. GetDepthStencilSurface returns actual
+absence (D3DERR_NOTFOUND with null output) because this device requested no
+automatic depth buffer. GetViewport and unchanged full-target SetViewport share
+the real target extent; custom viewports remain explicitly unsupported. The
+explicit whole-texture RECT now shares NULL locking and whole-level upload;
+subrectangles remain unsupported. Original DAO successfully uploads its first
+1x1 texture, then requests a full-size render-target texture (usage RENDERTARGET),
+which is the next unsupported resource. The earlier run exposed an original null
+dereference after our rejected explicit RECT; neither run rendered a frame.
+
+All 183 PE library tests, integration/doctest targets and Clippy pass on the
+physical M4 x86-64/Rosetta host before that texture-lock change. The owned input
+lifecycle PE passes locally, covering both ANSI/Unicode layouts, COM identity and
+parent lifetime, data formats, buffer/application properties, guarded descriptors,
+untouched output on nonacquired state and stdcall stack balance. Its raw APPDATA
+default is retained, with native Windows comparison pending. The expanded D3D9
+query witness passes all 233 words locally, including absent depth and viewport
+queries. SDK declarations are independently checked in CI; original game data,
+traces and shaders remain ignored local. No DAO frame, menu or gameplay exists yet.

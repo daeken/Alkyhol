@@ -55,6 +55,8 @@ mod d3d9_32;
 mod image32;
 #[path = "ini32.rs"]
 mod ini32;
+#[path = "input8_32.rs"]
+mod input8_32;
 #[path = "loader32.rs"]
 mod loader32;
 #[path = "machine32.rs"]
@@ -117,7 +119,7 @@ unsafe extern "C" {
 }
 const PAGE: usize = 4096;
 const STACK: usize = 1024 * 1024;
-const APIS: [(&str, u16); 258] = [
+const APIS: [(&str, u16); 260] = [
     ("GetLastError", 0),
     ("SetLastError", 4),
     ("GetStdHandle", 4),
@@ -376,6 +378,8 @@ const APIS: [(&str, u16); 258] = [
     ("Direct3DCreate9", 4),
     ("UnregisterClassW", 8),
     ("GetWindowInfo", 8),
+    ("ClipCursor", 4),
+    ("DirectInput8Create", 20),
 ];
 // The first 120 API slots retain their original offsets. The second bank
 // begins after both x87 bodies, leaving their machine code and failure gates
@@ -437,6 +441,8 @@ fn api_id(module: &str, symbol: &ImportSymbol) -> Option<usize> {
                 && *name == symbol
                 && module.eq_ignore_ascii_case(if cdecl_api(*id) {
                     "msvcrt.dll"
+                } else if *id == 259 {
+                    "dinput8.dll"
                 } else if *id == 255 {
                     "d3d9.dll"
                 } else if matches!(*id, 8 | 120) {
@@ -449,7 +455,7 @@ fn api_id(module: &str, symbol: &ImportSymbol) -> Option<usize> {
                     || (203..=211).contains(id)
                     || (218..=219).contains(id)
                     || (249..=254).contains(id)
-                    || matches!(*id, 256 | 257)
+                    || matches!(*id, 256..=258)
                 {
                     "user32.dll"
                 } else if matches!(*id, 107 | 108 | 216 | 220 | 221) {
@@ -815,7 +821,8 @@ struct Cpu32 {
     sections: RefCell<section32::State>,
     images: RefCell<image32::State>,
     d3d9: RefCell<d3d9_32::State>,
-    d3d9_storage: RefCell<Vec<(LowMapping, bool)>>,
+    input8: RefCell<input8_32::State>,
+    com_storage: RefCell<Vec<(LowMapping, bool)>>,
 }
 impl Cpu32 {
     fn stack(&self) -> &LowMapping {
@@ -939,7 +946,8 @@ impl Cpu32 {
             sections: RefCell::new(Default::default()),
             images: RefCell::new(Default::default()),
             d3d9: RefCell::new(Default::default()),
-            d3d9_storage: RefCell::new(Default::default()),
+            input8: RefCell::new(Default::default()),
+            com_storage: RefCell::new(Default::default()),
         })
     }
 }
@@ -1410,7 +1418,7 @@ impl<'a> LoadedImage32<'a> {
         let Some(end) = address.checked_add(len) else {
             return false;
         };
-        if self.cpu.d3d9_storage.borrow().iter().any(|(m, writable)| {
+        if self.cpu.com_storage.borrow().iter().any(|(m, writable)| {
             (!write || *writable) && address >= m.base as usize && end <= m.base as usize + m.len
         }) {
             return true;
@@ -2022,6 +2030,7 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
             .get(id as usize)
             .copied()
             .or_else(|| d3d9_32::signature(id))
+            .or_else(|| input8_32::signature(id))
         else {
             unsupported("unknown gateway");
         };
@@ -2309,6 +2318,9 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
             255 => d3d9_32::create(image, args[0]),
             256 => ui32::dispatch(image, 42, &words),
             257 => ui32::window_info(image, args[0], args[1]),
+            258 => cursor32::clip(image, args[0]),
+            259 => input8_32::create(image, &words),
+            input8_32::BASE.. => input8_32::dispatch(image, id, &words),
             d3d9_32::BASE.. => d3d9_32::dispatch(image, id, &words),
             215 => {
                 // No adapter/DHCP projection is implemented. Return the explicit
@@ -2496,7 +2508,8 @@ mod tests {
                 sections: RefCell::new(Default::default()),
                 images: RefCell::new(Default::default()),
                 d3d9: RefCell::new(Default::default()),
-                d3d9_storage: RefCell::new(Default::default()),
+                input8: RefCell::new(Default::default()),
+                com_storage: RefCell::new(Default::default()),
             }),
             tls: None,
             tls_entered: Cell::new(false),

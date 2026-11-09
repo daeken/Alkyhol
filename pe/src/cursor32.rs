@@ -1,5 +1,6 @@
 //! Read-only cursor queries in the host's Quartz logical desktop coordinates.
 //! No synthetic cursor, event injection, DPI virtualization or window mapping.
+//! Confinement requests fail explicitly until a real native backend exists.
 use super::{LoadedImage32, unsupported};
 use std::ffi::c_void;
 
@@ -50,6 +51,27 @@ pub(super) fn observed() -> [i32; 2] {
         CFRelease(event);
     }
     integer_point(point).unwrap_or_else(|e| unsupported(&e))
+}
+
+/// No native confinement is implemented yet. Preserve a genuine release of this
+/// bridge's unconfined cursor and return an explicit Win32 failure for a range;
+/// never claim that storing a rectangle has constrained physical input.
+pub(super) fn clip(image: &LoadedImage32<'_>, rectangle: u32) -> u32 {
+    if rectangle == 0 {
+        return 1;
+    }
+    if !image.permits(rectangle as usize, 16, false) {
+        unsupported("ClipCursor RECT outside checked guest storage");
+    }
+    let bounds = unsafe { (rectangle as *const [i32; 4]).read_unaligned() };
+    let error = if bounds[0] > bounds[2] || bounds[1] > bounds[3] {
+        87
+    } else {
+        120
+    };
+    eprintln!("PE32 ClipCursor: confinement unavailable; returning FALSE with Win32 error {error}");
+    alkyhol::ffi::SetLastError(error);
+    0
 }
 
 #[cfg(test)]

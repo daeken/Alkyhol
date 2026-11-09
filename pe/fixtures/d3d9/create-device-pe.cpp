@@ -23,7 +23,7 @@ static LRESULT __stdcall witness_proc(HWND w,UINT m,WPARAM a,LPARAM b){return De
 extern "C" DWORD entry(){
  DWORD before=stack();put(0x44394433);
 #ifdef QUERIES
-put(5);
+put(7);
 #else
 put(4);
 #endif
@@ -39,6 +39,8 @@ put(4);
  IDirect3D9* parent=NULL;put(g_pd3dDevice->GetDirect3D(&parent)==S_OK&&parent==g_pD3D);if(parent)parent->Release();
  put(g_pd3dDevice->TestCooperativeLevel()==S_OK);
  #ifdef QUERIES
+ DWORD viewport[8]={0x715e7a11,0,0,0,0,0,0,0x715e7a11};put(g_pd3dDevice->GetViewport(viewport+1)==S_OK&&viewport[0]==0x715e7a11&&viewport[7]==0x715e7a11&&viewport[1]==0&&viewport[2]==0&&viewport[3]==Width&&viewport[4]==Height&&viewport[5]==0&&viewport[6]==0x3f800000&&g_pd3dDevice->SetViewport(viewport+1)==S_OK);
+ IDirect3DSurface9* depth=(IDirect3DSurface9*)1;put(g_pd3dDevice->GetDepthStencilSurface(&depth)==(HRESULT)0x88760866&&depth==NULL);
  static DWORD window_info[17];window_info[0]=window_info[16]=0x715e7a11;window_info[1]=60;
  put(GetWindowInfo(window,window_info+1)!=0&&window_info[0]==0x715e7a11&&window_info[16]==0x715e7a11&&window_info[1]==60);
  INT outer[4]={},client[4]={},origin[2]={};

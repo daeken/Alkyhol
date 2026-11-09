@@ -361,8 +361,8 @@ fn write(image: &LoadedImage32<'_>, at: u32, words: &[u32]) {
         unsafe { (at as *mut u32).add(i).write_unaligned(*w) }
     }
 }
-fn memory(cpu: &Cpu32, bytes: &[u8], writable: bool, executable: bool) -> Result<u32> {
-    if cpu.d3d9_storage.borrow().len() >= 512 {
+pub(super) fn memory(cpu: &Cpu32, bytes: &[u8], writable: bool, executable: bool) -> Result<u32> {
+    if cpu.com_storage.borrow().len() >= 512 {
         return Err("D3D9 low-storage budget exhausted".into());
     }
     let m = cpu.mapping(bytes.len().div_ceil(PAGE) * PAGE, PAGE, 0)?;
@@ -375,7 +375,7 @@ fn memory(cpu: &Cpu32, bytes: &[u8], writable: bool, executable: bool) -> Result
         1 | if writable { 2 } else { 0 } | if executable { 4 } else { 0 },
     )?;
     let address = m.base as u32;
-    cpu.d3d9_storage.borrow_mut().push((m, writable));
+    cpu.com_storage.borrow_mut().push((m, writable));
     Ok(address)
 }
 fn table(cpu: &Cpu32, state: &mut State, kind: u32) -> Result<u32> {
@@ -417,7 +417,7 @@ fn table(cpu: &Cpu32, state: &mut State, kind: u32) -> Result<u32> {
     }
     m.protect(0, PAGE, 1)?;
     m.protect(PAGE, PAGE, 5)?;
-    cpu.d3d9_storage.borrow_mut().push((m, false));
+    cpu.com_storage.borrow_mut().push((m, false));
     state.tables.insert(kind, base);
     Ok(base)
 }
@@ -1620,8 +1620,18 @@ fn texture_operation(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16], sl
             if a[2] == 0 || level.lock.is_some() {
                 return INVALID;
             }
-            if a[3] != 0 || ![0, 16].contains(&a[4]) {
+            if ![0, 16].contains(&a[4]) {
                 return UNAVAILABLE;
+            }
+            if a[3] != 0 {
+                let rectangle = read::<4>(image, a[3]);
+                eprintln!(
+                    "D3D9 texture lock rectangle: {rectangle:?}; level={}x{}",
+                    level.width, level.height
+                );
+                if rectangle != [0, 0, level.width, level.height] {
+                    return UNAVAILABLE;
+                }
             }
             let readonly = a[4] == 16;
             if readonly && !level.initialized {
@@ -2022,6 +2032,30 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32
         }
         (1, 18) => backbuffer(image, &mut s, a),
         (1, 36) => offscreen(image, &mut s, a),
+        (1, 47 | 48) => {
+            if a[1] == 0 {
+                return INVALID;
+            }
+            let Body::Device { parameters, .. } = &s.objects[&a[0]].body else {
+                unreachable!()
+            };
+            let viewport = [0, 0, parameters[0], parameters[1], 0, 1f32.to_bits()];
+            if slot == 48 {
+                write(image, a[1], &viewport);
+            } else if read::<6>(image, a[1]) != viewport {
+                return UNAVAILABLE;
+            }
+            0
+        }
+        (1, 40) => {
+            // Devices currently reject automatic depth creation and cannot bind
+            // a depth surface. The attachment is genuinely absent.
+            if a[1] == 0 {
+                return INVALID;
+            }
+            write(image, a[1], &[0]);
+            0x88760866 // D3DERR_NOTFOUND
+        }
         (1, 32) => transfer(image, &mut s, a),
         (1, 41) | (1, 42) => {
             let Body::Device { scene, .. } = &mut s.objects.get_mut(&a[0]).unwrap().body else {

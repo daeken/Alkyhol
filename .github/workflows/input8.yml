@@ -1,0 +1,56 @@
+name: DAO DirectInput binary comparison
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  rosetta:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-apple-darwin
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: cargo fetch --manifest-path pe/Cargo.toml --locked
+      - name: Check input units and run the owned PE32 witness
+        run: |
+          cargo fmt --manifest-path pe/Cargo.toml --check
+          cargo test --manifest-path pe/Cargo.toml --target x86_64-apple-darwin --locked --offline input
+          python tools/observe_input8_lifecycle.py
+          python tools/observe_input8_lifecycle.py --host
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: input8-identical-pe
+          path: |
+            local/pe/input8-microtest/input8.exe
+            local/pe/input8-microtest/input8-inputs.json
+            local/pe/input8-microtest/input8-host.json
+          if-no-files-found: error
+  native:
+    needs: rosetta
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x86
+      - uses: actions/download-artifact@v4
+        with:
+          name: input8-identical-pe
+          path: local/pe/input8-microtest
+      - name: Check independent SDK layout and compare the identical input PE
+        run: |
+          cl /nologo /c /W4 /WX /std:c++17 pe/fixtures/input8/sdk-layout.cpp /Folocal/pe/input8-microtest/sdk-layout.obj
+          python tools/observe_input8_lifecycle.py --native
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: input8-native-observation
+          path: local/pe/input8-microtest/native-input8.json
+          if-no-files-found: warn

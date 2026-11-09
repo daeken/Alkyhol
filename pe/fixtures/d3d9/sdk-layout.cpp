@@ -71,3 +71,9 @@ static_assert(offsetof(WINDOWINFO,rcClient)==20);
 static_assert(offsetof(WINDOWINFO,dwStyle)==36);
 static_assert(offsetof(WINDOWINFO,atomWindowType)==56);
 static_assert(offsetof(WINDOWINFO,wCreatorVersion)==58);
+
+static_assert(offsetof(IDirect3DDevice9Vtbl,GetDepthStencilSurface)==40*4);
+
+static_assert(sizeof(D3DVIEWPORT9)==24);
+static_assert(offsetof(IDirect3DDevice9Vtbl,SetViewport)==47*4);
+static_assert(offsetof(IDirect3DDevice9Vtbl,GetViewport)==48*4);
