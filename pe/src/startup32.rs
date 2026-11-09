@@ -569,39 +569,7 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
             .borrow_mut()
             .free(args[0], args[1], args[2])
             .unwrap_or_else(|e| unsupported(&e)),
-        19 => {
-            // Legacy unmanifested Windows compatibility persona, not the Darwin
-            // kernel version and not a claim of modern Windows feature support.
-            if args[0] == 0 || !args[0].is_multiple_of(4) {
-                return fail(87);
-            }
-            checked(image, args[0], 4, false);
-            let size = unsafe { (args[0] as *const u32).read() };
-            if size == 156 {
-                unsupported("extended GetVersionExA record is unsupported");
-            }
-            if size != 148 {
-                return fail(87);
-            }
-            checked(image, args[0], 148, true);
-            let mut bytes = [0u8; 148];
-            for (i, value) in [
-                148u32,
-                LEGACY_VERSION[0],
-                LEGACY_VERSION[1],
-                LEGACY_VERSION[2],
-                LEGACY_VERSION[3],
-            ]
-            .into_iter()
-            .enumerate()
-            {
-                bytes[i * 4..i * 4 + 4].copy_from_slice(&value.to_le_bytes());
-            }
-            unsafe {
-                ptr::copy_nonoverlapping(bytes.as_ptr(), args[0] as *mut u8, bytes.len());
-            }
-            1
-        }
+        19 => version(image, args[0], false),
         20 => image
             .cpu
             .heap
@@ -782,9 +750,63 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
         _ => unreachable!(),
     }
 }
+fn version_bytes(size: u32, wide: bool, extended: bool) -> Option<Vec<u8>> {
+    let basic = if wide { 276 } else { 148 };
+    let full = basic + 8;
+    if size != basic && !(extended && size == full) {
+        return None;
+    }
+    let mut bytes = vec![0u8; size as usize];
+    for (i, v) in [
+        size,
+        LEGACY_VERSION[0],
+        LEGACY_VERSION[1],
+        LEGACY_VERSION[2],
+        LEGACY_VERSION[3],
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        bytes[i * 4..i * 4 + 4].copy_from_slice(&v.to_le_bytes());
+    }
+    if size == full {
+        bytes[basic as usize + 6] = 1;
+    }
+    Some(bytes)
+}
+pub(super) fn version(image: &LoadedImage32<'_>, address: u32, wide: bool) -> u32 {
+    checked(image, address, 4, false);
+    let size = unsafe { (address as *const u32).read() };
+    if size == 156 && !wide && !image.cpu.version_workstation {
+        unsupported("extended GetVersionExA record is unsupported");
+    }
+    let Some(bytes) = version_bytes(size, wide, image.cpu.version_workstation) else {
+        return fail(87);
+    };
+    checked(image, address, bytes.len(), true);
+    unsafe {
+        ptr::copy_nonoverlapping(bytes.as_ptr(), address as *mut u8, bytes.len());
+    }
+    1
+}
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn declared_workstation_version_has_exact_a_w_bounds_and_no_inferred_suites() {
+        assert!(version_bytes(156, false, false).is_none());
+        for (wide, basic) in [(false, 148), (true, 276)] {
+            let b = version_bytes(basic + 8, wide, true).unwrap();
+            assert_eq!(b.len(), basic as usize + 8);
+            assert_eq!(
+                &b[4..20],
+                &[6, 0, 0, 0, 2, 0, 0, 0, 240, 35, 0, 0, 2, 0, 0, 0]
+            );
+            assert_eq!(&b[basic as usize..], &[0, 0, 0, 0, 0, 0, 1, 0]);
+            assert!(b[20..basic as usize].iter().all(|b| *b == 0));
+            assert!(version_bytes(basic + 4, wide, true).is_none());
+        }
+    }
     #[test]
     fn argv_uses_four_byte_pointers_and_utf16_including_surrogate_pairs() {
         let args = vec!["x.exe".into(), "λ🌸".into(), "".into()];

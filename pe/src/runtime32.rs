@@ -85,6 +85,8 @@ mod ui32;
 mod watch32;
 #[path = "window_host32.rs"]
 mod window_host32;
+#[path = "winsock32.rs"]
+mod winsock32;
 pub use process32::{ProcessImage32, ProcessOptions32, TimeZone32};
 std::arch::global_asm!(include_str!("transition32.S"), options(att_syntax));
 unsafe extern "C" {
@@ -109,7 +111,7 @@ unsafe extern "C" {
 }
 const PAGE: usize = 4096;
 const STACK: usize = 1024 * 1024;
-const APIS: [(&str, u16); 225] = [
+const APIS: [(&str, u16); 239] = [
     ("GetLastError", 0),
     ("SetLastError", 4),
     ("GetStdHandle", 4),
@@ -335,6 +337,20 @@ const APIS: [(&str, u16); 225] = [
     ("LoadLibraryA", 4),
     ("LoadLibraryW", 4),
     ("FreeLibrary", 4),
+    ("WSAStartup", 8),
+    ("WSACleanup", 0),
+    ("WSAGetLastError", 0),
+    ("socket", 12),
+    ("closesocket", 4),
+    ("connect", 12),
+    ("htons", 4),
+    ("inet_addr", 4),
+    ("ioctlsocket", 12),
+    ("recv", 16),
+    ("send", 16),
+    ("gethostbyname", 4),
+    ("gethostbyaddr", 12),
+    ("GetVersionExW", 4),
 ];
 // The first 120 API slots retain their original offsets. The second bank
 // begins after both x87 bodies, leaving their machine code and failure gates
@@ -361,6 +377,31 @@ fn pointer_transform(value: u32, cookie: u32, decode: bool) -> u32 {
     }
 }
 fn api_id(module: &str, symbol: &ImportSymbol) -> Option<usize> {
+    let module = if module.eq_ignore_ascii_case("wsock32.dll") {
+        "ws2_32.dll"
+    } else {
+        module
+    };
+    if module.eq_ignore_ascii_case("ws2_32.dll")
+        && let ImportSymbol::Ordinal(n) = symbol
+    {
+        return match n {
+            115 => Some(225),
+            116 => Some(226),
+            111 => Some(227),
+            23 => Some(228),
+            3 => Some(229),
+            4 => Some(230),
+            9 => Some(231),
+            11 => Some(232),
+            10 => Some(233),
+            16 => Some(234),
+            19 => Some(235),
+            52 => Some(236),
+            51 => Some(237),
+            _ => None,
+        };
+    }
     let ImportSymbol::Name(symbol) = symbol else {
         return None;
     };
@@ -384,6 +425,8 @@ fn api_id(module: &str, symbol: &ImportSymbol) -> Option<usize> {
                     "user32.dll"
                 } else if matches!(*id, 107 | 108 | 216 | 220 | 221) {
                     "advapi32.dll"
+                } else if (225..=237).contains(id) {
+                    "ws2_32.dll"
                 } else if *id == 215 {
                     "iphlpapi.dll"
                 } else if *id == 110 {
@@ -736,8 +779,10 @@ struct Cpu32 {
     ui: RefCell<ui32::State>,
     gdi: RefCell<gdi32::State>,
     utc_timezone: bool,
+    version_workstation: bool,
     threads: RefCell<thread32::State>,
     watches: RefCell<watch32::State>,
+    winsock: RefCell<winsock32::State>,
 }
 impl Cpu32 {
     fn stack(&self) -> &LowMapping {
@@ -853,8 +898,10 @@ impl Cpu32 {
             ui: RefCell::new(Default::default()),
             gdi: RefCell::new(Default::default()),
             utc_timezone: false,
+            version_workstation: false,
             threads: RefCell::new(Default::default()),
             watches: RefCell::new(Default::default()),
+            winsock: RefCell::new(Default::default()),
         })
     }
 }
@@ -1325,6 +1372,9 @@ impl<'a> LoadedImage32<'a> {
         let Some(end) = address.checked_add(len) else {
             return false;
         };
+        if self.cpu.winsock.borrow().permits(address, len, write) {
+            return true;
+        }
         if self.cpu.gdi.borrow().permits(address, len) {
             return true;
         }
@@ -1445,7 +1495,9 @@ impl<'a> LoadedImage32<'a> {
             .find(|(_, token)| token.base as u32 == module)
         {
             if symbol <= u16::MAX as u32 {
-                return Err("PE32 host-service ordinal lookup is unsupported".into());
+                let id = api_id(name, &ImportSymbol::Ordinal(symbol as u16))
+                    .ok_or("PE32 host-service ordinal lookup is unsupported")?;
+                return Ok(Some(self.cpu.service_gates.get() + api_offset(id) as u32));
             }
             let symbol = self.export_name(symbol)?;
             // Frozen actual 32-bit system msvcrt export observations: this
@@ -2190,6 +2242,8 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
             220 | 221 => registry32::query(image, args, id == 220),
             222 | 223 => loader32::load(image, args[0], id == 222),
             224 => loader32::free(image, args[0]),
+            225..=237 => winsock32::dispatch(image, id - 225, args),
+            238 => startup32::version(image, args[0], true),
             215 => {
                 // No adapter/DHCP projection is implemented. Return the explicit
                 // API failure and let the original caller handle it; never invent
@@ -2362,8 +2416,10 @@ mod tests {
                 ui: RefCell::new(Default::default()),
                 gdi: RefCell::new(Default::default()),
                 utc_timezone: false,
+                version_workstation: false,
                 threads: RefCell::new(Default::default()),
                 watches: RefCell::new(Default::default()),
+                winsock: RefCell::new(Default::default()),
             }),
             tls: None,
             tls_entered: Cell::new(false),

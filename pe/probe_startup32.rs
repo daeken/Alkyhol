@@ -44,6 +44,7 @@ fn main() {
                     ));
                 }
                 "--host-machine-info" => profile.host_machine_info = true,
+                "--nt62-workstation-version" => profile.version_workstation = true,
                 "--private-profile-files" => profile.private_profile_files = true,
                 "--object-directory" => {
                     profile.object_directory = Some(
@@ -125,6 +126,7 @@ fn main() {
             || profile.documents_directory.is_some()
             || profile.private_profile_files
             || profile.host_machine_info
+            || profile.version_workstation
             || profile.registry_catalog.is_some()
             || profile.object_directory.is_some()
             || profile.time_zone.is_some()

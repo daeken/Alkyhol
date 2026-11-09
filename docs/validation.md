@@ -5239,3 +5239,10 @@ Additional host-service gates leave all previous offsets intact. Full-path,
 message/worker/GDI and software-context native mismatches remain recorded in CI
 42546413828; that run's directory notification step passed. No new full-game,
 GPU PhysX or native game equivalence claim follows from this startup progress.
+
+Original PhysX passes its ordinal Winsock startup and, with the explicit extended
+legacy workstation persona, next reaches CreateFileMappingA. Physical M4 runs the
+owned Winsock PE against an independent real loopback server, including exact
+payload bytes, ordinal/name identity, initialization references and buffer guards.
+All 175 PE library tests and Clippy pass. Windows SDK/identical-PE checks are
+scheduled; this is not yet native Winsock agreement or complete networking.

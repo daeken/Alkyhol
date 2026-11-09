@@ -28,6 +28,7 @@ struct GuestProfile32 {
     documents: Option<super::shell_folder32::Documents>,
     private_profile_files: bool,
     utc: bool,
+    version_workstation: bool,
     host_machine_info: bool,
     registry: Option<super::registry32::State>,
     mutexes: Option<super::mutex32::State>,
@@ -297,6 +298,9 @@ pub struct ProcessOptions32 {
     /// Opt into host-backed x86 machine information and enforced ordinary/LAA
     /// address bands. Other CPU vendors, page sizes and >32 CPU groups stop.
     pub host_machine_info: bool,
+    /// Explicit NT 6.2/build 9200 workstation persona, no service pack/suites.
+    /// Enables extended A/W records without inferring a Windows installation.
+    pub version_workstation: bool,
     /// Explicit read-only 32-bit registry catalog. Only declared scopes have
     /// authoritative existence state; outside scopes remain unknown/unsupported.
     pub registry_catalog: Option<std::path::PathBuf>,
@@ -542,6 +546,7 @@ impl<'a> ProcessImage32<'a> {
                     documents,
                     private_profile_files: options.private_profile_files,
                     utc: matches!(options.time_zone, Some(TimeZone32::Utc)),
+                    version_workstation: options.version_workstation,
                     host_machine_info: options.host_machine_info,
                     registry,
                     mutexes,
@@ -579,6 +584,7 @@ impl<'a> ProcessImage32<'a> {
         cpu.documents = directories.documents;
         cpu.private_profile_files = directories.private_profile_files;
         cpu.utc_timezone = directories.utc;
+        cpu.version_workstation = directories.version_workstation;
         cpu.registry = directories.registry.map(std::cell::RefCell::new);
         cpu.mutexes = directories.mutexes.map(std::cell::RefCell::new);
         // Keep unknown manifest/binding state deferred until an activation query.

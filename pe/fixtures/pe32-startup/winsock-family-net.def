@@ -1,0 +1,14 @@
+LIBRARY WS2_32.dll
+EXPORTS
+WSAStartup @115 NONAME
+WSACleanup @116 NONAME
+WSAGetLastError @111 NONAME
+socket @23 NONAME
+closesocket @3 NONAME
+connect @4 NONAME
+htons @9 NONAME
+inet_addr @11 NONAME
+ioctlsocket @10 NONAME
+recv @16 NONAME
+send @19 NONAME
+gethostbyname @52 NONAME

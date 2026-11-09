@@ -1,3 +1,12 @@
+#include <stddef.h>
+#include <netdb.h>
+#include <sys/socket.h>
+#include <sys/ioctl.h>
+_Static_assert(sizeof(struct hostent)==32, "Rust native hostent");
+_Static_assert(offsetof(struct hostent,h_addrtype)==16, "Rust native hostent family");
+_Static_assert(offsetof(struct hostent,h_addr_list)==24, "Rust native hostent address list");
+_Static_assert(AF_INET==2 && SOL_SOCKET==0xffff && SO_NOSIGPIPE==0x1022, "Rust socket constants");
+_Static_assert(FIONBIO==0x8004667e && FIONREAD==0x4004667f, "Rust socket ioctls");
 #include <sys/event.h>
 #include <stddef.h>
 _Static_assert(sizeof(struct kevent) == 32, "Rust kevent size");
