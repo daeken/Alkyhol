@@ -23,6 +23,7 @@ inline void ZeroMemory(void* p,UINT n){unsigned char* b=(unsigned char*)p;for(UI
 #define D3DCOLOR_XRGB(r,g,b) (0xff000000U|((DWORD)(r)<<16)|((DWORD)(g)<<8)|(DWORD)(b))
 struct D3DPRESENT_PARAMETERS{UINT BackBufferWidth,BackBufferHeight,BackBufferFormat,BackBufferCount,MultiSampleType,MultiSampleQuality,SwapEffect;HWND hDeviceWindow;BOOL Windowed,EnableAutoDepthStencil;UINT AutoDepthStencilFormat,Flags,FullScreen_RefreshRateInHz,PresentationInterval;};
 struct D3DSURFACE_DESC{UINT Format,Type,Usage,Pool,MultiSampleType,MultiSampleQuality,Width,Height;};
+struct D3DDISPLAYMODE{UINT Width,Height,RefreshRate,Format;};
 struct D3DVERTEXBUFFER_DESC{UINT Format,Type,Usage,Pool,Size,FVF;};
 struct D3DLOCKED_RECT{INT Pitch;void* pBits;};
 
@@ -34,15 +35,15 @@ struct IDirect3D9 {
  virtual void __stdcall UnsupportedSlot3()=0;
  virtual UINT __stdcall GetAdapterCount()=0;
  virtual HRESULT __stdcall GetAdapterIdentifier(UINT,DWORD,void*)=0;
- virtual void __stdcall UnsupportedSlot6()=0;
- virtual void __stdcall UnsupportedSlot7()=0;
- virtual void __stdcall UnsupportedSlot8()=0;
- virtual void __stdcall UnsupportedSlot9()=0;
- virtual void __stdcall UnsupportedSlot10()=0;
- virtual void __stdcall UnsupportedSlot11()=0;
+ virtual UINT __stdcall GetAdapterModeCount(UINT,UINT)=0;
+ virtual HRESULT __stdcall EnumAdapterModes(UINT,UINT,UINT,D3DDISPLAYMODE*)=0;
+ virtual HRESULT __stdcall GetAdapterDisplayMode(UINT,D3DDISPLAYMODE*)=0;
+ virtual HRESULT __stdcall CheckDeviceType(UINT,UINT,UINT,UINT,BOOL)=0;
+ virtual HRESULT __stdcall CheckDeviceFormat(UINT,UINT,UINT,DWORD,UINT,UINT)=0;
+ virtual HRESULT __stdcall CheckDeviceMultiSampleType(UINT,UINT,UINT,BOOL,UINT,DWORD*)=0;
  virtual void __stdcall UnsupportedSlot12()=0;
  virtual void __stdcall UnsupportedSlot13()=0;
- virtual void __stdcall UnsupportedSlot14()=0;
+ virtual HRESULT __stdcall GetDeviceCaps(UINT,UINT,void*)=0;
  virtual void __stdcall UnsupportedSlot15()=0;
  virtual HRESULT __stdcall CreateDevice(UINT,UINT,HWND,DWORD,D3DPRESENT_PARAMETERS*,IDirect3DDevice9**)=0;
 };

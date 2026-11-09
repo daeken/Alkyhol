@@ -45,6 +45,12 @@ unsafe extern "C" {
 #[link(name = "CoreGraphics", kind = "framework")]
 unsafe extern "C" {
     fn CGMainDisplayID() -> u32;
+    fn CGDisplayCopyAllDisplayModes(display: u32, options: Id) -> Id;
+    fn CGDisplayCopyDisplayMode(display: u32) -> Id;
+    fn CGDisplayModeGetWidth(mode: Id) -> usize;
+    fn CGDisplayModeGetHeight(mode: Id) -> usize;
+    fn CGDisplayModeGetRefreshRate(mode: Id) -> f64;
+    fn CGDisplayModeIsUsableForDesktopGUI(mode: Id) -> bool;
     fn CGWindowLevelForKey(key: i32) -> i32;
     fn CGDisplayBounds(display: u32) -> Rect;
     fn CGWindowListCopyWindowInfo(options: u32, window: u32) -> Id;
@@ -60,6 +66,80 @@ unsafe extern "C" {
 }
 unsafe extern "C" {
     fn pthread_main_np() -> i32;
+}
+/// Logical desktop coordinates match this bridge's window/client coordinates.
+/// The virtual D3D9 adapter uses an explicitly selected 8-bit RGB display format.
+#[derive(Debug)]
+pub(super) struct DisplayModes {
+    pub display: u32,
+    pub current: [u32; 4],
+    pub modes: Vec<[u32; 4]>,
+}
+fn display_mode(width: usize, height: usize, rate: f64) -> crate::Result<[u32; 4]> {
+    if width == 0
+        || height == 0
+        || width > u32::MAX as usize
+        || height > u32::MAX as usize
+        || !rate.is_finite()
+        || rate < 0.0
+        || rate.round() > u32::MAX as f64
+    {
+        return Err("native display mode has invalid dimensions or refresh".into());
+    }
+    // CoreGraphics reports zero for an unspecified/dynamic refresh. Preserve it;
+    // never turn an unknown rate into an invented fixed 60/120 Hz observation.
+    Ok([width as u32, height as u32, rate.round() as u32, 22])
+}
+pub(super) fn display_modes() -> crate::Result<DisplayModes> {
+    main_exec(|| {
+        struct Owned(Id);
+        impl Drop for Owned {
+            fn drop(&mut self) {
+                unsafe {
+                    CFRelease(self.0);
+                }
+            }
+        }
+        fn mode(value: Id) -> crate::Result<[u32; 4]> {
+            unsafe {
+                display_mode(
+                    CGDisplayModeGetWidth(value),
+                    CGDisplayModeGetHeight(value),
+                    CGDisplayModeGetRefreshRate(value),
+                )
+            }
+        }
+        let display = unsafe { CGMainDisplayID() };
+        let current = unsafe { CGDisplayCopyDisplayMode(display) };
+        if current.is_null() {
+            return Err("current display mode is unavailable".into());
+        }
+        let current = Owned(current);
+        let current = mode(current.0)?;
+        let available = unsafe { CGDisplayCopyAllDisplayModes(display, ptr::null_mut()) };
+        if available.is_null() {
+            return Err("display mode inventory is unavailable".into());
+        }
+        let available = Owned(available);
+        let count = unsafe { CFArrayGetCount(available.0) };
+        if !(1..=4096).contains(&count) {
+            return Err("display mode inventory exceeds bounds or is empty".into());
+        }
+        let mut modes = vec![current];
+        for index in 0..count {
+            let value = unsafe { CFArrayGetValueAtIndex(available.0, index) };
+            if !value.is_null() && unsafe { CGDisplayModeIsUsableForDesktopGUI(value) } {
+                modes.push(mode(value)?);
+            }
+        }
+        modes.sort_unstable();
+        modes.dedup();
+        Ok(DisplayModes {
+            display,
+            current,
+            modes,
+        })
+    })
 }
 // A request stays on the submitting thread's stack until main has completed it.
 // Fn/T are Send, so only AppKit's opaque tokens cross native thread boundaries.
@@ -869,5 +949,28 @@ mod handoff_tests {
             }
         }
         worker.join().unwrap();
+    }
+}
+
+#[cfg(test)]
+mod display_mode_tests {
+    use super::display_mode;
+    #[test]
+    fn mode_projection_preserves_unknown_refresh_and_checks_host_values() {
+        assert_eq!(display_mode(1512, 982, 0.).unwrap(), [1512, 982, 0, 22]);
+        assert_eq!(
+            display_mode(1920, 1080, 59.94).unwrap(),
+            [1920, 1080, 60, 22]
+        );
+        for (w, h, r) in [
+            (0, 1080, 60.),
+            (1, 0, 60.),
+            (1, 1, f64::NAN),
+            (1, 1, -1.),
+            (1, 1, f64::INFINITY),
+            (1, 1, u32::MAX as f64 + 1.),
+        ] {
+            assert!(display_mode(w, h, r).is_err());
+        }
     }
 }

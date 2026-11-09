@@ -35,7 +35,7 @@ struct Object {
     body: Body,
 }
 enum Body {
-    Factory(Rc<Gpu>),
+    Factory(Rc<Gpu>, Rc<super::window_host32::DisplayModes>),
     Device {
         parent: u32,
         gpu: Rc<Gpu>,
@@ -70,7 +70,7 @@ enum Body {
 impl Body {
     fn kind(&self) -> u32 {
         match self {
-            Self::Factory(_) => 0,
+            Self::Factory(..) => 0,
             Self::Device { .. } => 1,
             Self::Surface { .. } => 2,
             Self::VertexBuffer { .. } => 3,
@@ -134,6 +134,7 @@ pub(super) fn signature(id: u32) -> Option<(&'static str, u16)> {
         (3, 12) => ("IDirect3DVertexBuffer9::Unlock", 4),
         (3, 13) => ("IDirect3DVertexBuffer9::GetDesc", 8),
         (1, 6) => ("IDirect3DDevice9::GetDirect3D", 8),
+        (1, 7) => ("IDirect3DDevice9::GetDeviceCaps", 8),
         (1, 9) => ("IDirect3DDevice9::GetCreationParameters", 8),
         (1, 17) => ("IDirect3DDevice9::Present", 20),
         (1, 18) => ("IDirect3DDevice9::GetBackBuffer", 20),
@@ -260,7 +261,7 @@ fn release(s: &mut State, p: u32) -> u32 {
         return refs;
     }
     let parent = match &o.body {
-        Body::Factory(_) => None,
+        Body::Factory(..) => None,
         Body::Device { parent, .. }
         | Body::Surface { parent, .. }
         | Body::VertexBuffer { parent, .. } => Some(*parent),
@@ -305,10 +306,23 @@ pub(super) fn create(image: &LoadedImage32<'_>, sdk: u32) -> u32 {
         gpu.adapter_name(),
         gpu.backend_name()
     );
+    let modes = match super::window_host32::display_modes() {
+        Ok(modes) => modes,
+        Err(e) => {
+            eprintln!("D3D9 native display inventory: {e}");
+            return 0;
+        }
+    };
+    eprintln!(
+        "PE32 D3D9 mode snapshot: native_display={} count={} current={:?}",
+        modes.display,
+        modes.modes.len(),
+        modes.current
+    );
     object(
         &image.cpu,
         &mut image.cpu.d3d9.borrow_mut(),
-        Body::Factory(Rc::new(gpu)),
+        Body::Factory(Rc::new(gpu), Rc::new(modes)),
         1,
     )
 }
@@ -316,7 +330,7 @@ fn identifier(image: &LoadedImage32<'_>, s: &State, a: &[u32; 16]) -> u32 {
     if a[1] != 0 || a[2] & !2 != 0 {
         return INVALID;
     }
-    let Body::Factory(gpu) = &s.objects[&a[0]].body else {
+    let Body::Factory(gpu, _) = &s.objects[&a[0]].body else {
         unreachable!()
     };
     let mut bytes = [0u8; 1100];
@@ -339,6 +353,22 @@ fn identifier(image: &LoadedImage32<'_>, s: &State, a: &[u32; 16]) -> u32 {
         std::ptr::copy_nonoverlapping(bytes.as_ptr(), a[3] as *mut u8, bytes.len());
     }
     0
+}
+/// Only the operations already implemented by this adapter are exposed. In
+/// particular, an actual modern GPU is not evidence that our legacy bytecode
+/// frontend implements shader model 3, texture stages or arbitrary declarations.
+fn capabilities() -> [u32; 76] {
+    let mut caps = [0; 76];
+    caps[0] = 1; // HAL
+    caps[7] = 0x80000 | 0x400 | 0x40; // real rasterization and TL system-memory vertices
+    caps[8] = 0x40; // default CCW cull mode
+    caps[14] = 8; // diffuse Gouraud colors, measured by the original tutorial
+    caps[45] = 1024 * 1024 / 60; // bounded triangle-list upload
+    caps[47] = 1; // stream zero
+    caps[48] = 20; // implemented XYZRHW|DIFFUSE stride
+    caps[58] = 1; // one adapter in this adapter group
+    caps[60] = 1; // one color target
+    caps
 }
 fn device(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
     if a[6] == 0 {
@@ -379,7 +409,7 @@ fn device(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
         return UNAVAILABLE;
     }
     p[3] = 1;
-    let Body::Factory(gpu) = &s.objects[&a[0]].body else {
+    let Body::Factory(gpu, _) = &s.objects[&a[0]].body else {
         unreachable!()
     };
     let gpu = gpu.clone();
@@ -751,7 +781,92 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32
     match (kind, slot) {
         (0, 4) => 1,
         (0, 5) => identifier(image, &s, a),
+        (0, 6) => {
+            let Body::Factory(_, modes) = &s.objects[&a[0]].body else {
+                unreachable!()
+            };
+            if a[1] != 0 || a[2] != 22 {
+                0
+            } else {
+                modes.modes.len() as u32
+            }
+        }
+        (0, 7) => {
+            let Body::Factory(_, modes) = &s.objects[&a[0]].body else {
+                unreachable!()
+            };
+            if a[1] != 0 || a[2] != 22 || a[4] == 0 {
+                return INVALID;
+            }
+            let Some(mode) = modes.modes.get(a[3] as usize) else {
+                return INVALID;
+            };
+            write(image, a[4], mode);
+            0
+        }
+        (0, 8) => {
+            let Body::Factory(_, modes) = &s.objects[&a[0]].body else {
+                unreachable!()
+            };
+            if a[1] != 0 || a[2] == 0 {
+                return INVALID;
+            }
+            write(image, a[2], &modes.current);
+            0
+        }
+        (0, 9) => {
+            if a[1] != 0 || a[2] != 1 {
+                return UNAVAILABLE;
+            }
+            if a[5] != 1 || a[3] != 22 || ![0, 21, 22].contains(&a[4]) {
+                return UNAVAILABLE;
+            }
+            0
+        }
+        (0, 10) => {
+            if a[1] != 0 || a[2] != 1 || a[3] != 22 {
+                return INVALID;
+            }
+            // Only actual standalone system-memory surface formats are exposed.
+            // Texture, depth, filtering/sRGB and render-target queries stay false
+            // until their real resource/rendering paths are implemented.
+            if a[4] == 0 && a[5] == 1 && [21, 22].contains(&a[6]) {
+                0
+            } else {
+                UNAVAILABLE
+            }
+        }
+        (0, 11) => {
+            if a[1] != 0 || a[2] != 1 {
+                return INVALID;
+            }
+            if ![21, 22].contains(&a[3]) || a[4] != 1 || a[5] != 0 {
+                return UNAVAILABLE;
+            }
+            if a[6] != 0 {
+                write(image, a[6], &[1]);
+            }
+            0
+        }
+        (0, 12) | (0, 13) => UNAVAILABLE,
+        (0, 14) => {
+            if a[1] != 0 || a[2] != 1 {
+                return UNAVAILABLE;
+            }
+            if a[3] == 0 {
+                return INVALID;
+            }
+            write(image, a[3], &capabilities());
+            0
+        }
         (0, 16) => device(image, &mut s, a),
+        (1, 7) => {
+            if a[1] == 0 {
+                return INVALID;
+            }
+            write(image, a[1], &capabilities());
+            0
+        }
         (1, 3) => {
             let Body::Device { gpu, .. } = &s.objects[&a[0]].body else {
                 unreachable!()
@@ -994,6 +1109,20 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn capability_record_does_not_invent_unimplemented_shader_or_texture_support() {
+        let c = capabilities();
+        assert_eq!(c.len() * 4, 304);
+        assert_eq!((c[0], c[47], c[48], c[58], c[60]), (1, 1, 20, 1, 1));
+        assert_eq!(c[49], 0);
+        assert_eq!(c[51], 0); // shader versions
+        for offset in [
+            60, 64, 68, 72, 88, 92, 96, 136, 144, 148, 152, 236, 248, 264, 296, 300,
+        ] {
+            assert_eq!(c[offset / 4], 0);
+        }
+        assert_eq!(c[7] & 0x100000, 0); // no pure-device promise
+    }
     #[test]
     fn vertex_lock_ranges_enforce_owned_storage_without_overflow() {
         for (length, offset, size) in [

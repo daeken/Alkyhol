@@ -27,3 +27,13 @@ static_assert(offsetof(IDirect3DDevice9Vtbl,SetFVF)==89*4);
 static_assert(offsetof(IDirect3DDevice9Vtbl,SetStreamSource)==100*4);
 static_assert(offsetof(IDirect3DVertexBuffer9Vtbl,Lock)==11*4);
 static_assert(offsetof(IDirect3DVertexBuffer9Vtbl,Unlock)==12*4);
+
+static_assert(sizeof(D3DDISPLAYMODE)==16);
+static_assert(sizeof(D3DCAPS9)==304);
+static_assert(offsetof(D3DCAPS9,MaxPrimitiveCount)==180);
+static_assert(offsetof(D3DCAPS9,MaxStreams)==188);
+static_assert(offsetof(D3DCAPS9,MaxStreamStride)==192);
+static_assert(offsetof(D3DCAPS9,VertexShaderVersion)==196);
+static_assert(offsetof(D3DCAPS9,PixelShaderVersion)==204);
+static_assert(offsetof(D3DCAPS9,NumberOfAdaptersInGroup)==232);
+static_assert(offsetof(D3DCAPS9,NumSimultaneousRTs)==240);

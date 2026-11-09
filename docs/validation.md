@@ -5347,3 +5347,22 @@ M4 runtime 9dbab80: clear agrees in all words, triangle coverage agrees at all
 The acceptance thresholds are unchanged. SHA-256s and scope are in d3d9.md. The
 local 178 PE, five backend and four observer tests plus Clippy pass. Other PE/
 conformance failures remain separate; no full D3D9 or DAO rendering is claimed.
+
+
+DAO now executes adapter-mode enumeration through a retained actual CoreGraphics
+display snapshot, then conservative GetDeviceCaps and format/multisample queries.
+The virtual adapter exposes X8R8G8B8 with logical desktop coordinates consistent
+with the existing window bridge; unknown/dynamic native refresh remains zero.
+Enumeration does not implement fullscreen mode switching. The 304-byte caps
+record exposes the existing transformed-color/one-stream/one-target renderer and
+explicitly reports no programmable shader or texture support yet. Unsupported
+texture/sRGB/depth queries fail rather than promising unimplemented rendering.
+An owned query PE checks enumeration consistency and guarded mode/caps outputs;
+physical checks and all 180 PE library tests/Clippy pass. New native query/SDK
+comparisons are scheduled. Original DAO then emits its real “Failed to detect a
+supported video card” error; it has not created a D3D9 device. Its message-box
+path also exposes the existing host-main-thread GUI pumping limitation. This is
+not an API stub or a game-success claim. Legacy shader lowering is the next
+substantive rendering dependency, and unsupported shader versions stay zero
+until real execution exists. Detailed captures and game-derived inventories
+remain local.

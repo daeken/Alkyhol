@@ -33,6 +33,21 @@ extern "C" DWORD entry(){
  put(g_pD3D->QueryInterface(unknown,&identity)==S_OK&&identity==g_pD3D);if(identity)((IDirect3D9*)identity)->Release();
  IDirect3D9* parent=NULL;put(g_pd3dDevice->GetDirect3D(&parent)==S_OK&&parent==g_pD3D);if(parent)parent->Release();
  put(g_pd3dDevice->TestCooperativeLevel()==S_OK);
+ #ifdef QUERIES
+ const UINT mode_count=g_pD3D->GetAdapterModeCount(0,D3DFMT_X8R8G8B8);put(mode_count<=4096);
+ static DWORD mode_words[6];mode_words[0]=mode_words[5]=0x715e7a11;
+ put(g_pD3D->GetAdapterDisplayMode(0,(D3DDISPLAYMODE*)(mode_words+1))==S_OK&&mode_words[1]>0&&mode_words[2]>0&&mode_words[4]!=0&&mode_words[0]==0x715e7a11&&mode_words[5]==0x715e7a11);
+ BOOL modes_valid=TRUE;
+ for(UINT i=0;i<mode_count&&i<4096;i++){
+  if(g_pD3D->EnumAdapterModes(0,D3DFMT_X8R8G8B8,i,(D3DDISPLAYMODE*)(mode_words+1))!=S_OK||mode_words[1]==0||mode_words[2]==0||mode_words[4]!=D3DFMT_X8R8G8B8||mode_words[0]!=0x715e7a11||mode_words[5]!=0x715e7a11)modes_valid=FALSE;
+ }
+ put(modes_valid);put(g_pD3D->GetAdapterModeCount(99,D3DFMT_X8R8G8B8)==0);put(g_pD3D->GetAdapterModeCount(0,D3DFMT_UNKNOWN)==0);
+ static DWORD caps[78];caps[0]=caps[77]=0x715e7a11;
+ put(g_pD3D->GetDeviceCaps(0,D3DDEVTYPE_HAL,caps+1)==S_OK&&caps[0]==0x715e7a11&&caps[77]==0x715e7a11&&caps[1]==D3DDEVTYPE_HAL&&caps[48]>=1&&caps[49]>=20&&caps[61]>=1);
+ put(g_pD3D->CheckDeviceType(0,D3DDEVTYPE_HAL,D3DFMT_X8R8G8B8,D3DFMT_X8R8G8B8,TRUE)==S_OK);
+ put(g_pD3D->CheckDeviceFormat(0,D3DDEVTYPE_HAL,D3DFMT_X8R8G8B8,0,1,21)==S_OK);
+ DWORD quality=0;put(g_pD3D->CheckDeviceMultiSampleType(0,D3DDEVTYPE_HAL,D3DFMT_X8R8G8B8,TRUE,0,&quality)==S_OK&&quality>=1);
+#endif
  #ifdef VERTICES
  put(InitVB()==S_OK);if(!g_pVB)return 9;
  IDirect3DDevice9* owner=NULL;put(g_pVB->GetDevice(&owner)==S_OK&&owner==g_pd3dDevice);if(owner)owner->Release();
