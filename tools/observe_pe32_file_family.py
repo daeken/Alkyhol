@@ -5,7 +5,7 @@ from pathlib import Path
 from build_pe_fixture import ROOT,rust_tool
 from check_pe32_activation import SOURCE,digest
 from observe_pe32_activation_startup import runner
-SOURCES=['file-family.c','file-family.def'];FILES=['file-family.exe'];SYMBOLS=[('GetStdHandle',4),('GetModuleFileNameA',12),('SetCurrentDirectoryA',4),('CreateFileA',28),('CloseHandle',4),('GetLastError',0),('WriteFile',20),('ReadFile',20),('SetFilePointer',16),('SetFilePointerEx',20),('SetEndOfFile',4),('FlushFileBuffers',4),('GetFileInformationByHandle',8),('GetFileSize',8)]
+SOURCES=['file-family.c','file-family.def'];FILES=['file-family.exe'];SYMBOLS=[('GetStdHandle',4),('GetModuleFileNameA',12),('SetCurrentDirectoryA',4),('CreateFileA',28),('CloseHandle',4),('GetLastError',0),('WriteFile',20),('ReadFile',20),('SetFilePointer',16),('SetFilePointerEx',20),('SetEndOfFile',4),('FlushFileBuffers',4),('GetFileInformationByHandle',8),('GetFileSize',8),('GetHandleInformation',8)]
 def inputs(d):return {'sources':{(SOURCE/n).relative_to(ROOT).as_posix():digest(SOURCE/n) for n in SOURCES},'files':{n:digest(d/n) for n in FILES}}
 def build(d):
  d.mkdir(parents=True,exist_ok=True);lld=rust_tool('rust-lld');libs=[]
@@ -16,7 +16,7 @@ def build(d):
  (d/'file-family-inputs.json').write_text(json.dumps(inputs(d),indent=2)+'\n')
 def decode(data):
  if len(data)%4:raise ValueError('truncated window family report')
- words=list(struct.unpack('<'+'I'*(len(data)//4),data));expected=[0x46494c32,4]+[1]*26+[29]
+ words=list(struct.unpack('<'+'I'*(len(data)//4),data));expected=[0x46494c32,5]+[1]*33+[36]
  if words!=expected:raise ValueError('file contents, sharing, descriptor metadata or stack differ: '+repr(words))
  return words
 def execute(d,native=False):

@@ -5629,3 +5629,26 @@ A/W entry points, handle closure and stack balance. Two ownership units and all
 Native Windows comparison is pending. New texture failures are retained rather
 than counted as successful loads: original DXT5 requests remain unsupported.
 The game still has no observed draw, menu or gameplay.
+
+## Native mutex agreement and actual settings file security
+
+Input/startup ABI CI 42588914270 passes both jobs on ba89035. Native Windows,
+hosted Rosetta and physical M4 agree on the same 39-word mutex PE and its SHA,
+including real worker contention and exit abandonment. D3D9 CI 42587447080 also
+agrees with the physical M4 on the same complete 235-word swapchain query PE.
+
+The next actual file boundary uses SECURITY_ATTRIBUTES {12,NULL,TRUE} for an
+original settings write. This now selects the same real default-security file
+open as NULL attributes and retains the logical inheritance flag in the owned
+lease. GetHandleInformation reports that stored flag for live files, while
+known unsupported non-file objects and invalid handles fail explicitly. Guest
+child creation/inheritance transfer remains unavailable; this is current-process
+metadata, not a claim that host compiler subprocesses inherit guest file handles.
+Custom security descriptors and template handles remain unsupported.
+
+The expanded file witness retains its previous sharing/content/seek/truncate
+checks and adds true/false inheritance metadata, closure and invalid-output
+preservation (36 words). Actual final file contents remain empty as before.
+Physical M4 passes it, all 185 PE library tests, remaining targets and Clippy.
+Native expanded-file comparison is pending. The real game progresses past the
+settings write; no original game draw or frame is established.

@@ -121,7 +121,7 @@ unsafe extern "C" {
 }
 const PAGE: usize = 4096;
 const STACK: usize = 1024 * 1024;
-const APIS: [(&str, u16); 271] = [
+const APIS: [(&str, u16); 272] = [
     ("GetLastError", 0),
     ("SetLastError", 4),
     ("GetStdHandle", 4),
@@ -393,6 +393,7 @@ const APIS: [(&str, u16); 271] = [
     ("strchr", 8),
     ("strncmp", 12),
     ("CreateMutexA", 12),
+    ("GetHandleInformation", 8),
 ];
 // The first 120 API slots retain their original offsets. The second bank
 // begins after both x87 bodies, leaving their machine code and failure gates
@@ -2346,6 +2347,7 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
             261 | 263 | 264 => crt32::deallocate(image, args[0]),
             265..=269 => crt32::memory(image, id, args),
             270 => mutex32::create_ansi(image, args),
+            271 => fileio32::handle_information(image, args[0], args[1]),
             input8_32::BASE.. => input8_32::dispatch(image, id, &words),
             d3d9_32::BASE.. => d3d9_32::dispatch(image, id, &words),
             215 => {

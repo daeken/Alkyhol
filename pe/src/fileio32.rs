@@ -8,6 +8,7 @@ pub(super) struct Lease {
     pub identity: (u64, u64),
     pub access: u32,
     pub share: u32,
+    pub inherit: bool,
 }
 fn fail(error: u32) -> u32 {
     alkyhol::ffi::SetLastError(error);
@@ -23,13 +24,26 @@ pub(super) fn track(image: &LoadedImage32<'_>, h: u32, access: u32, share: u32) 
             identity: (meta.dev(), meta.ino()),
             access,
             share,
+            inherit: false,
         },
     );
 }
 pub(super) fn open(image: &LoadedImage32<'_>, a: &[u32; 8], ansi: bool) -> u32 {
-    if a[3] != 0 || a[6] != 0 {
-        unsupported("file security/template arguments are unsupported");
+    if a[6] != 0 {
+        unsupported("file template handles are unsupported");
     }
+    let inherit = if a[3] == 0 {
+        false
+    } else {
+        if !image.permits(a[3] as usize, 12, false) {
+            unsupported("file SECURITY_ATTRIBUTES outside readable guest storage");
+        }
+        let fields = unsafe { (a[3] as *const [u32; 3]).read_unaligned() };
+        if fields[0] != 12 || fields[1] != 0 {
+            unsupported("file custom security descriptors or structure sizes are unsupported");
+        }
+        fields[2] != 0
+    };
     if image.cpu.files.borrow().len() >= 4096 {
         unsupported("owned file-handle budget exhausted");
     }
@@ -126,6 +140,7 @@ pub(super) fn open(image: &LoadedImage32<'_>, a: &[u32; 8], ansi: bool) -> u32 {
             identity,
             access: a[1],
             share: a[2],
+            inherit,
         },
     );
     alkyhol::ffi::SetLastError(if matches!(a[4], 2 | 4) && existed {
@@ -251,4 +266,35 @@ pub(super) fn end(image: &LoadedImage32<'_>, h: u32) -> u32 {
             0
         }
     }
+}
+
+/// Current-process file handle metadata. Child creation/inheritance transfer is
+/// separate and unavailable; the logical flag is retained rather than discarded.
+pub(super) fn handle_information(image: &LoadedImage32<'_>, handle: u32, out: u32) -> u32 {
+    if out == 0 {
+        alkyhol::ffi::SetLastError(87);
+        return 0;
+    }
+    if !image.permits(out as usize, 4, true) {
+        unsupported("GetHandleInformation output outside writable guest storage");
+    }
+    let flags = image
+        .cpu
+        .file_leases
+        .borrow()
+        .get(&(handle as usize))
+        .map(|file| file.inherit as u32);
+    if let Some(flags) = flags {
+        unsafe {
+            (out as *mut u32).write_unaligned(flags);
+        }
+        return 1;
+    }
+    let known = (0x70000001..=0x70000003).contains(&handle)
+        || image.cpu.events.borrow().contains(handle)
+        || image.cpu.threads.borrow().contains(handle)
+        || image.cpu.unnamed_mutexes.borrow().contains(handle)
+        || image.cpu.watches.borrow().contains(handle);
+    alkyhol::ffi::SetLastError(if known { 120 } else { 6 });
+    0
 }

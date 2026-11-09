@@ -14,3 +14,5 @@ SetEndOfFile
 FlushFileBuffers
 GetFileInformationByHandle
 GetFileSize
+
+GetHandleInformation

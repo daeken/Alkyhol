@@ -20,6 +20,19 @@ jobs:
           cargo test --manifest-path pe/Cargo.toml --target x86_64-apple-darwin --locked --offline input
           python tools/observe_input8_lifecycle.py
           python tools/observe_input8_lifecycle.py --host
+      - name: Execute the file security attributes reached by DAO settings writes
+        run: |
+          python tools/observe_pe32_file_family.py --output local/pe/file-security-microtest
+          python tools/observe_pe32_file_family.py --host --output local/pe/file-security-microtest
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: file-security-identical-pe
+          path: |
+            local/pe/file-security-microtest/file-family.exe
+            local/pe/file-security-microtest/file-family-inputs.json
+            local/pe/file-security-microtest/file-family-host.json
+          if-no-files-found: error
       - name: Execute unnamed mutex ownership, waits and actual worker abandonment
         run: |
           cargo test --manifest-path pe/Cargo.toml --target x86_64-apple-darwin --locked --offline unnamed_mutex32
@@ -79,7 +92,20 @@ jobs:
         with:
           name: unnamed-mutex-identical-pe
           path: local/pe/unnamed-mutex-microtest
+      - uses: actions/download-artifact@v4
+        with:
+          name: file-security-identical-pe
+          path: local/pe/file-security-microtest
+      - name: Compare identical file PE, bytes and inheritance metadata
+        run: python tools/observe_pe32_file_family.py --native --output local/pe/file-security-microtest
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: file-security-native-observation
+          path: local/pe/file-security-microtest/native-file-family.json
+          if-no-files-found: warn
       - name: Compare identical mutex PE with native recursive ownership and abandonment
+        if: success() || failure()
         run: python tools/observe_pe32_unnamed_mutex.py --native
       - uses: actions/upload-artifact@v4
         if: always()
