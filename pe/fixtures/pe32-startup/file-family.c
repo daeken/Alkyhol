@@ -16,5 +16,5 @@ U entry(void){U n=GetModuleFileNameA(0,root,512);while(n&&root[n-1]!='\\')--n;co
  h=CreateFileA("owned.dat",0x40000000,3,0,2,128,0);put(h!=(H)-1);put(GetLastError()==183);put(GetFileSize(h,0)==0);put(CloseHandle(h)!=0);struct {U size;H descriptor;int inherit;} attributes={12,0,1};
  h=CreateFileA("owned.dat",0x40000000,3,&attributes,3,128,0);put(h!=(H)-1);U flags=0;put(GetHandleInformation(h,&flags)!=0&&flags==1);put(CloseHandle(h)!=0);
  attributes.inherit=0;h=CreateFileA("owned.dat",0x40000000,3,&attributes,3,128,0);put(h!=(H)-1);flags=0xface1234;put(GetHandleInformation(h,&flags)!=0&&flags==0);put(CloseHandle(h)!=0);
- flags=0xface1234;put(GetHandleInformation((H)-1,&flags)==0&&GetLastError()==6&&flags==0xface1234);
+ flags=0xface1234;put(GetHandleInformation(0,&flags)==0&&GetLastError()==6&&flags==0xface1234);
  put(stack()==before);put(used+1);if(!WriteFile(GetStdHandle((U)-11),words,used*4,&done,0)||done!=used*4)__builtin_trap();return 0;}

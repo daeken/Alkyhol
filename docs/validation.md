@@ -5652,3 +5652,11 @@ preservation (36 words). Actual final file contents remain empty as before.
 Physical M4 passes it, all 185 PE library tests, remaining targets and Clippy.
 Native expanded-file comparison is pending. The real game progresses past the
 settings write; no original game draw or frame is established.
+
+Native file-security CI 42592214809 executes successfully and agrees on every
+new default-security/inheritance case, but its final negative check fails: the
+witness incorrectly treated pseudo process handle -1 as an invalid handle.
+That case now supplies actual NULL, retaining the same false/error-6/untouched
+output requirement. Pseudo/non-file handle information remains explicitly
+unsupported by this file-only implementation. The failed raw native report is
+retained and is not counted as complete expanded-file parity.

@@ -290,7 +290,8 @@ pub(super) fn handle_information(image: &LoadedImage32<'_>, handle: u32, out: u3
         }
         return 1;
     }
-    let known = (0x70000001..=0x70000003).contains(&handle)
+    let known = matches!(handle, 0xffffffff | 0xfffffffe)
+        || (0x70000001..=0x70000003).contains(&handle)
         || image.cpu.events.borrow().contains(handle)
         || image.cpu.threads.borrow().contains(handle)
         || image.cpu.unnamed_mutexes.borrow().contains(handle)
