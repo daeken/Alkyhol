@@ -10,7 +10,7 @@ def sha(path):return hashlib.sha256(path.read_bytes()).hexdigest()
 def identity(d):return {'source':{p.relative_to(ROOT).as_posix():sha(p) for p in [SOURCE,HEADER]},'pe':sha(d/'input8.exe')}
 def build(d):
  d.mkdir(parents=True,exist_ok=True);lld=rust_tool('rust-lld');libs=[]
- symbols={'kernel32.dll':[('GetModuleHandleW',4),('GetStdHandle',4),('WriteFile',20)],'dinput8.dll':[('DirectInput8Create',20)]}
+ symbols={'kernel32.dll':[('GetModuleHandleW',4),('GetStdHandle',4),('WriteFile',20),('ExitProcess',4)],'dinput8.dll':[('DirectInput8Create',20)]}
  for dll,entries in symbols.items():
   deffile=d/(dll+'.def');deffile.write_text('LIBRARY '+dll+'\nEXPORTS\n'+'\n'.join(n for n,_ in entries)+'\n');lib=d/(dll+'.lib');libs.append(str(lib));subprocess.run([lld,'-flavor','link','/lib','/machine:x86','/def:'+str(deffile),'/out:'+str(lib)],check=True)
  obj=d/'input8.obj';subprocess.run([shutil.which('clang++'),'--target=i686-pc-windows-msvc','-std=c++17','-O1','-ffreestanding','-fno-builtin','-fno-stack-protector','-fno-exceptions','-fno-rtti','-Wall','-Wextra','-Werror','-I'+str(HEADER.parent),'-c',str(SOURCE),'-o',str(obj)],check=True)
@@ -23,7 +23,10 @@ def execute(d,native):
   (d/('native-input8.json' if native else 'input8-host.json')).write_text(json.dumps({'status':'rejected before execution','expected':expected_identity,'observed':ident},indent=2)+'\n')
   raise ValueError('input PE/source identity changed')
  command=[str(d/'input8.exe')] if native else [str(runner(d)),str(d/'input8.exe'),'--file-origins','--external','dinput8.dll']
- r=subprocess.run(command,capture_output=True,timeout=60)
+ try:r=subprocess.run(command,capture_output=True,timeout=60)
+ except subprocess.TimeoutExpired as error:
+  (d/('native-input8.json' if native else 'input8-host.json')).write_text(json.dumps({'backend':'native Windows DirectInput8' if native else 'Alkyhol PE32','inputs':ident,'status':'timeout','stdout_hex':(error.stdout or b'').hex(),'stderr_hex':(error.stderr or b'').hex()},indent=2)+'\n')
+  raise
  report={'backend':'native Windows DirectInput8' if native else 'Alkyhol PE32 DirectInput8 lifecycle','inputs':ident,'platform':platform.platform(),'hosted_ci':os.getenv('GITHUB_ACTIONS')=='true','status':r.returncode,'stdout_hex':r.stdout.hex(),'stderr_hex':r.stderr.hex()}
  path=d/('native-input8.json' if native else 'input8-host.json');path.write_text(json.dumps(report,indent=2)+'\n')
  if r.returncode:raise ValueError('input witness failed; raw capture retained: '+r.stderr.decode(errors='replace')[-1500:])

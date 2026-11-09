@@ -5481,3 +5481,10 @@ checks, then rejects before native execution: the new fixture directory lacked
 an LF checkout rule, so actual C++ source hashes differ on Windows. The explicit
 Git attribute now preserves the same source bytes; identity checks are retained,
 not normalized or relaxed. This failed run supplies no native input observation.
+
+Input CI 42580016760 clears the exact-byte identity and independent SDK checks,
+but the native process times out after the entry routine returns: DirectInput
+can keep process threads alive. The owned console witness now explicitly calls
+ExitProcess after flushing output, and timeouts retain partial raw captures.
+This changes the witness process lifecycle, not the input expectations or game.
+The timed-out run is not counted as native input parity.

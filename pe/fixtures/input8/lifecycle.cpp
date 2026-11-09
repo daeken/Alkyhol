@@ -1,5 +1,6 @@
 // Original MIT witness. No game bytes or host pointer is embedded.
 #include "d3d9.h"
+extern "C" __declspec(dllimport) void __stdcall ExitProcess(DWORD);
 extern "C" __declspec(dllimport) void* __stdcall GetStdHandle(DWORD);
 extern "C" __declspec(dllimport) BOOL __stdcall WriteFile(void*,const void*,DWORD,DWORD*,void*);
 extern "C" __declspec(dllimport) HRESULT __stdcall DirectInput8Create(HINSTANCE,DWORD,const GUID*,void**,void*);
@@ -16,7 +17,7 @@ struct Format {DWORD size,object_size,flags,data_size,count;ObjectFormat* object
 static DWORD out[200],used;
 static void put(DWORD n){out[used++]=n;}
 static DWORD stack(){DWORD n;__asm__ volatile("movl %%esp,%0":"=r"(n));return n;}
-static DWORD flush(DWORD status){DWORD done=0;WriteFile(GetStdHandle((DWORD)-11),out,used*4,&done,NULL);return status;}
+static DWORD flush(DWORD status){DWORD done=0;WriteFile(GetStdHandle((DWORD)-11),out,used*4,&done,NULL);ExitProcess(status);return status;}
 extern "C" DWORD entry(){DWORD before=stack();put(0x38494441);put(1);
  for(UINT wide=0;wide<2;wide++){
   void* factory=NULL;HRESULT hr=DirectInput8Create(GetModuleHandleW(NULL),0x800,wide?&input_w:&input_a,&factory,NULL);put(hr);if(FAILED(hr)||!factory)return flush(2);
