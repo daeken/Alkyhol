@@ -10,6 +10,77 @@ pub(super) struct State {
     app_type: u32,
     errno: std::collections::BTreeMap<u32, u32>,
     locks: std::collections::BTreeMap<u32, super::sync32::Section>,
+    c_locale: Option<u32>,
+}
+// The system CRT starts in C for every category. This profile permits queries
+// and an actual selection of C; other locale changes fail without changing it.
+fn c_locale_request(category: u32, locale: Option<&[u8]>) -> crate::Result<bool> {
+    if category > 5 {
+        return Err(
+            "CRT invalid locale category requires an unimplemented invalid-parameter handler"
+                .into(),
+        );
+    }
+    Ok(locale.is_none_or(|name| name == b"C"))
+}
+pub(super) fn set_locale(image: &LoadedImage32<'_>, category: u32, pointer: u32) -> u32 {
+    c_locale_request(category, None).unwrap_or_else(|e| unsupported(&e));
+    let mut name = Vec::new();
+    if pointer != 0 {
+        for index in 0..256 {
+            let byte = checked_byte(image, pointer, index);
+            if byte == 0 {
+                break;
+            }
+            name.push(byte);
+        }
+        if name.len() == 256 {
+            unsupported("CRT locale string exceeds the checked byte budget");
+        }
+    }
+    if !c_locale_request(category, if pointer == 0 { None } else { Some(&name) }).unwrap() {
+        eprintln!("PE32 CRT locale unavailable: only the actual initial C locale is implemented");
+        return 0;
+    }
+    let mut state = image.cpu.crt.borrow_mut();
+    if let Some(pointer) = state.c_locale {
+        return pointer;
+    }
+    let pointer = super::d3d9_32::memory(&image.cpu, b"C\0", false, false)
+        .unwrap_or_else(|e| unsupported(&e));
+    state.c_locale = Some(pointer);
+    pointer
+}
+fn terminated_bytes(
+    mut read: impl FnMut(u32) -> crate::Result<u8>,
+    limit: u32,
+) -> crate::Result<Vec<u8>> {
+    let mut bytes = Vec::new();
+    for index in 0..limit {
+        let byte = read(index)?;
+        bytes.push(byte);
+        if byte == 0 {
+            return Ok(bytes);
+        }
+    }
+    Err("CRT strdup string traversal budget exhausted".into())
+}
+pub(super) fn duplicate_string(image: &LoadedImage32<'_>, pointer: u32) -> u32 {
+    if pointer == 0 {
+        unsupported("CRT strdup NULL requires an unimplemented invalid-parameter handler");
+    }
+    let bytes = terminated_bytes(|i| Ok(checked_byte(image, pointer, i)), 1024 * 1024)
+        .unwrap_or_else(|e| unsupported(&e));
+    let mut args = [0; 8];
+    args[0] = bytes.len() as u32;
+    let result = dispatch(image, 78, &args); // Actual malloc storage, owned by CRT free.
+    if !image.permits(result as usize, bytes.len(), true) {
+        unsupported("CRT strdup destination is not owned writable heap storage");
+    }
+    unsafe {
+        std::ptr::copy_nonoverlapping(bytes.as_ptr(), result as *mut u8, bytes.len());
+    }
+    result
 }
 impl State {
     fn lock(&mut self, index: u32, thread: u32, enter: bool) -> crate::Result<()> {
@@ -358,6 +429,38 @@ pub(super) fn memory(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u32
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn strdup_scan_preserves_all_bytes_includes_terminator_and_propagates_bounds_failures() {
+        let source = [0x80, 0xff, 1, 0, 0x7f];
+        assert_eq!(
+            terminated_bytes(|i| Ok(source[i as usize]), 5).unwrap(),
+            source[..4]
+        );
+        assert_eq!(terminated_bytes(|_| Ok(0), 1).unwrap(), [0]);
+        assert!(terminated_bytes(|_| Ok(1), 4).is_err());
+        assert!(terminated_bytes(|_| Err("unmapped byte".into()), 4).is_err());
+        assert!(terminated_bytes(|_| panic!("zero budget must not read"), 0).is_err());
+    }
+    #[test]
+    fn c_locale_queries_and_c_selection_preserve_all_categories_without_host_locale_changes() {
+        for category in 0..=5 {
+            assert_eq!(c_locale_request(category, None), Ok(true));
+            assert_eq!(c_locale_request(category, Some(b"C")), Ok(true));
+            for other in [
+                b"".as_slice(),
+                b"en-US",
+                b".UTF8",
+                b"AlkyholUnsupportedLocale",
+                b"LC_NUMERIC=C",
+            ] {
+                assert_eq!(c_locale_request(category, Some(other)), Ok(false));
+                assert_eq!(c_locale_request(category, None), Ok(true));
+            }
+        }
+        for category in [6, u32::MAX, 0x80000000] {
+            assert!(c_locale_request(category, None).is_err());
+        }
+    }
     #[test]
     fn onexit_lock_tracks_real_recursion_ownership_and_rejects_unbalanced_release() {
         let mut state = State::default();

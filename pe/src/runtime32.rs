@@ -136,7 +136,7 @@ unsafe extern "C" {
 }
 const PAGE: usize = 4096;
 const STACK: usize = 1024 * 1024;
-const APIS: [(&str, u16); 302] = [
+const APIS: [(&str, u16); 304] = [
     ("GetLastError", 0),
     ("SetLastError", 4),
     ("GetStdHandle", 4),
@@ -439,6 +439,8 @@ const APIS: [(&str, u16); 302] = [
     ("SetCapture", 4),
     ("ReleaseCapture", 0),
     ("GetCapture", 0),
+    ("setlocale", 8),
+    ("_strdup", 4),
 ];
 // The first 120 API slots retain their original offsets. The second bank
 // begins after both x87 bodies, leaving their machine code and failure gates
@@ -548,7 +550,7 @@ fn api_id(module: &str, symbol: &ImportSymbol) -> Option<usize> {
         .map(|(id, _)| id)
 }
 fn cdecl_api(id: usize) -> bool {
-    matches!(id, 78..=86 | 88..=96 | 260..=269)
+    matches!(id, 78..=86 | 88..=96 | 260..=269 | 302..=303)
 }
 fn cleanup_bytes(id: usize, arguments: u16) -> u16 {
     if cdecl_api(id) { 0 } else { arguments }
@@ -2321,6 +2323,8 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
             299 => ui32::set_capture(image, args[0]),
             300 => ui32::release_capture(image),
             301 => ui32::get_capture(image),
+            302 => crt32::set_locale(image, args[0], args[1]),
+            303 => crt32::duplicate_string(image, args[0]),
             101 => module_path32::windows_directory_ansi(image, args),
             102 => module_path32::system_directory_ansi(image, args),
             103 => exception_filter32::replace(image, args[0]),
@@ -2607,6 +2611,17 @@ mod tests {
     }
     #[test]
     fn cdecl_crt_gateways_keep_arguments_for_the_guest_caller() {
+        let locale = ImportSymbol::Name("setlocale".into());
+        assert_eq!(api_id("msvcrt.dll", &locale), Some(302));
+        assert_eq!(api_id("kernel32.dll", &locale), None);
+        assert_eq!(APIS[302].1, 8);
+        assert_eq!(cleanup_bytes(302, 8), 0);
+        assert_eq!(
+            api_id("msvcrt.dll", &ImportSymbol::Name("_strdup".into())),
+            Some(303)
+        );
+        assert_eq!(APIS[303].1, 4);
+        assert_eq!(cleanup_bytes(303, 4), 0);
         for id in 0..120 {
             assert_eq!(api_offset(id), 256 + id * 32);
         }

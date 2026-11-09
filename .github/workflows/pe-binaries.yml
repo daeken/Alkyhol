@@ -222,6 +222,10 @@ jobs:
         run: |
           python tools/observe_pe32_mouse_capture.py
           python tools/observe_pe32_mouse_capture.py --host
+      - name: Execute D3DX system CRT C locale queries and selection
+        run: |
+          python tools/observe_pe32_c_locale.py
+          python tools/observe_pe32_c_locale.py --host
       - uses: actions/upload-artifact@v4
         with:
           name: pe32-startup-microtests
@@ -353,6 +357,8 @@ jobs:
             local/pe/startup-microtests/window-family-host.json
             local/pe/startup-microtests/mouse-capture-inputs.json
             local/pe/startup-microtests/mouse-capture-host.json
+            local/pe/startup-microtests/c-locale-inputs.json
+            local/pe/startup-microtests/c-locale-host.json
             local/pe/startup-microtests/ctx-layout-empty-importer.dll
             local/pe/startup-microtests/ctx-layout-*.manifest
   native-pe32-startup:
@@ -560,6 +566,9 @@ jobs:
       - name: Observe identical capture lifecycle PE on native Windows
         if: ${{ success() || failure() }}
         run: python tools/observe_pe32_mouse_capture.py --native
+      - name: Observe identical system CRT C locale PE on native Windows
+        if: ${{ success() || failure() }}
+        run: python tools/observe_pe32_c_locale.py --native
       - uses: actions/upload-artifact@v4
         if: always()
         with:

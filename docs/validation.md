@@ -6532,3 +6532,34 @@ All 211 preceding PE units and the additional cube address/gate unit pass; PE
 Clippy passes. Thirteen D3D9 observer tests reject failed resource stages and
 malformed output. Existing POSITIONT and StretchRect native discrepancies remain
 unchanged and are not covered up by this milestone.
+
+## D3DX initial C locale and real string copies
+
+The original D3DX helper now passes its system-CRT numeric-locale query and
+immediately reaches `_strdup` of that returned value. The initial C locale is
+backed by owned guest string storage. Queries and selecting C succeed for all
+six documented categories; unimplemented locale changes return NULL without
+changing the current profile. Invalid categories still stop explicitly because
+their invalid-parameter handler path is unimplemented. This does not change
+Win32 ACP/NLS or the host process locale.
+
+`_strdup` now scans checked guest bytes through the first terminator, allocates
+real writable storage in the existing CRT heap and copies every byte including
+the terminator. The result is independently mutable and belongs to CRT free.
+NULL/unterminated/unmapped inputs and the 1 MiB traversal budget remain explicit
+unsupported boundaries, as does the pre-existing exhausted-malloc policy.
+
+All 214 PE units and PE Clippy pass. The owned 22-word literal PE passes
+physically: all-category query/selection, rejected locale preservation,
+independent C-string copies, high bytes, empty strings, free and cdecl stack.
+Three observer tests reject every altered assertion and malformed report.
+The identical native Windows comparison is added to existing CI and pending.
+The next original-game run is still needed to establish progress beyond the
+string-copy boundary; these finite tests are not character creation/gameplay.
+
+On f3fa9a1, hosted Metal's complete D3D9 producer passed, including the new cube
+GPU/resource tests. GitHub then reported internal server errors before creating
+the remaining jobs; the input/PE workflows likewise initially created no jobs.
+The latter have been requested again. These infrastructure failures are not
+counted as native observations or passing comparisons; the prior retained native
+rendering differences remain unchanged.
