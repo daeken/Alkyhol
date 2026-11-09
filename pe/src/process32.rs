@@ -32,6 +32,7 @@ struct GuestProfile32 {
     host_machine_info: bool,
     registry: Option<super::registry32::State>,
     mutexes: Option<super::mutex32::State>,
+    sections: Option<super::section32::State>,
 }
 fn executable_name(name: &str) -> Result<String> {
     if name.len() > 255
@@ -494,6 +495,11 @@ impl<'a> ProcessImage32<'a> {
             .as_deref()
             .map(super::mutex32::State::open)
             .transpose()?;
+        let sections = options
+            .object_directory
+            .as_deref()
+            .map(super::section32::State::open)
+            .transpose()?;
         if options.activation_assemblies.is_none() && !options.activation_policies.is_empty() {
             return Err("publisher policy requires an explicit assembly profile".into());
         }
@@ -550,6 +556,7 @@ impl<'a> ProcessImage32<'a> {
                     host_machine_info: options.host_machine_info,
                     registry,
                     mutexes,
+                    sections,
                 },
                 options
                     .activation_assemblies
@@ -587,6 +594,9 @@ impl<'a> ProcessImage32<'a> {
         cpu.version_workstation = directories.version_workstation;
         cpu.registry = directories.registry.map(std::cell::RefCell::new);
         cpu.mutexes = directories.mutexes.map(std::cell::RefCell::new);
+        if let Some(sections) = directories.sections {
+            *cpu.sections.borrow_mut() = sections;
+        }
         // Keep unknown manifest/binding state deferred until an activation query.
         // Existing paths do not gain a fabricated empty/default context.
         *cpu.activation.borrow_mut() = crate::activation_manifest::empty_default(
@@ -643,8 +653,13 @@ impl<'a> ProcessImage32<'a> {
             .iter()
             .flat_map(|m| m.regions.iter().copied())
             .collect();
+        let executable_regions: Vec<_> = mappings
+            .iter()
+            .flat_map(|m| m.code_regions.iter().copied())
+            .collect();
         for mapping in &mut mappings {
             mapping.regions = regions.clone();
+            mapping.code_regions = executable_regions.clone();
         }
         cpu.executable
             .set(mappings.last().expect("root mapping").image.base as u32);

@@ -212,6 +212,16 @@ pub(super) fn create(image: &LoadedImage32<'_>, a: &[u32; 8]) -> u32 {
     {
         unsupported("thread entry outside executable guest storage");
     }
+    if !image.cpu.modules.borrow().is_empty()
+        && !image
+            .cpu
+            .modules
+            .borrow()
+            .iter()
+            .any(|m| m.loaded && a[2] >= m.base && (a[2] as u64) < m.base as u64 + m.size as u64)
+    {
+        unsupported("thread entry belongs to an inactive process DLL");
+    }
     if image.cpu.threads.borrow().records.len() >= 128 {
         return fail(8);
     }

@@ -5246,3 +5246,24 @@ owned Winsock PE against an independent real loopback server, including exact
 payload bytes, ordinal/name identity, initialization references and buffer guards.
 All 175 PE library tests and Clippy pass. Windows SDK/identical-PE checks are
 scheduled; this is not yet native Winsock agreement or complete networking.
+
+
+## DAO non-D3D9 startup boundary reached
+
+On physical M4/Rosetta, the unchanged original DAO EXE passes original PhysX
+initialization, creates its own hidden 1024×768 main client window, requests its
+original cursor files and reaches the guarded Direct3DCreate9 call. Status 78 is
+an explicit unimplemented D3D9 stop, not successful device creation, rendering,
+menu or gameplay. All game files, screenshots, raw traces and derived inventories
+remain local. D3D9 is still excluded from the task.
+
+The current local batch passes all 176 PE library tests, PE Clippy, new shared
+section/brush/cursor/affinity-error/DLL-worker PEs and the previous bitmap,
+primary/worker GDI and message regressions. Each is finite owned evidence. New
+native Windows comparisons are scheduled. The preceding CI 42550220024 passed
+Winsock, mixed-registry, deferred-DLL and directory checks; unrelated recorded
+full-path, message/worker/GDI and software-context mismatches remain unaltered.
+Literal CI Winsock/registry PE files subsequently ran on physical M4 and agreed
+with their native Windows input identities and every normalized output word.
+Their hashes and scope are recorded in pe32.md. None of this establishes full
+native Windows DAO behavior or game compatibility.

@@ -124,6 +124,29 @@ pub(super) fn affinity(image: &LoadedImage32<'_>, args: &[u32; 8]) -> u32 {
     1
 }
 
+pub(super) fn set_affinity(image: &LoadedImage32<'_>, args: &[u32; 8], thread: bool) -> u32 {
+    let valid = if thread {
+        args[0] == 0xfffffffe || image.cpu.threads.borrow().contains(args[0])
+    } else {
+        args[0] == u32::MAX
+    };
+    if !valid {
+        alkyhol::ffi::SetLastError(6);
+        return 0;
+    }
+    let machine = image.cpu.machine.as_ref().unwrap_or_else(|| {
+        unsupported("affinity setter requires the explicit host-machine profile")
+    });
+    alkyhol::ffi::SetLastError(if args[1] == 0 || args[1] & !machine.words[4] != 0 {
+        87
+    } else {
+        50
+    });
+    // A valid exact processor pin has no public macOS equivalent. Do not return
+    // a fabricated old mask or claim that a native affinity tag is a CPU pin.
+    0
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

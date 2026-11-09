@@ -485,6 +485,9 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
             base
         }
         9 => {
+            if image.cpu.sections.borrow_mut().close(args[0]) {
+                return 1;
+            }
             if image.cpu.watches.borrow_mut().close(args[0]) {
                 return 1;
             }

@@ -13,6 +13,8 @@ use std::{
 };
 #[path = "raise32.rs"]
 mod raise32;
+#[path = "section32.rs"]
+mod section32;
 #[path = "seh32.rs"]
 mod seh32;
 pub use seh32::ExceptionImage32;
@@ -47,6 +49,8 @@ mod heap32;
 #[path = "icon32.rs"]
 mod icon32;
 pub use icon32::IconImage32;
+#[path = "image32.rs"]
+mod image32;
 #[path = "ini32.rs"]
 mod ini32;
 #[path = "loader32.rs"]
@@ -111,7 +115,7 @@ unsafe extern "C" {
 }
 const PAGE: usize = 4096;
 const STACK: usize = 1024 * 1024;
-const APIS: [(&str, u16); 239] = [
+const APIS: [(&str, u16); 255] = [
     ("GetLastError", 0),
     ("SetLastError", 4),
     ("GetStdHandle", 4),
@@ -351,6 +355,22 @@ const APIS: [(&str, u16); 239] = [
     ("gethostbyname", 4),
     ("gethostbyaddr", 12),
     ("GetVersionExW", 4),
+    ("CreateFileMappingA", 24),
+    ("CreateFileMappingW", 24),
+    ("OpenFileMappingA", 12),
+    ("OpenFileMappingW", 12),
+    ("MapViewOfFile", 20),
+    ("UnmapViewOfFile", 4),
+    ("SetThreadAffinityMask", 8),
+    ("SetProcessAffinityMask", 8),
+    ("GetStockObject", 4),
+    ("CreateSolidBrush", 4),
+    ("FillRect", 12),
+    ("LoadImageW", 24),
+    ("LoadImageA", 24),
+    ("SetCursor", 4),
+    ("DestroyCursor", 4),
+    ("GetCursor", 0),
 ];
 // The first 120 API slots retain their original offsets. The second bank
 // begins after both x87 bodies, leaving their machine code and failure gates
@@ -414,13 +434,14 @@ fn api_id(module: &str, symbol: &ImportSymbol) -> Option<usize> {
                     "msvcrt.dll"
                 } else if matches!(*id, 8 | 120) {
                     "shell32.dll"
-                } else if (188..=197).contains(id) || *id == 202 {
+                } else if (188..=197).contains(id) || matches!(*id, 202 | 247 | 248) {
                     "gdi32.dll"
                 } else if matches!(*id, 100 | 115 | 187)
                     || (148..177).contains(id)
                     || (198..=201).contains(id)
                     || (203..=211).contains(id)
                     || (218..=219).contains(id)
+                    || (249..=254).contains(id)
                 {
                     "user32.dll"
                 } else if matches!(*id, 107 | 108 | 216 | 220 | 221) {
@@ -783,6 +804,8 @@ struct Cpu32 {
     threads: RefCell<thread32::State>,
     watches: RefCell<watch32::State>,
     winsock: RefCell<winsock32::State>,
+    sections: RefCell<section32::State>,
+    images: RefCell<image32::State>,
 }
 impl Cpu32 {
     fn stack(&self) -> &LowMapping {
@@ -808,6 +831,7 @@ impl Cpu32 {
     fn close_files(&self) {
         let error = alkyhol::ffi::GetLastError();
         self.watches.borrow_mut().clear();
+        self.sections.borrow_mut().clear_handles();
         self.events.borrow_mut().clear();
         self.current_directory.borrow_mut().take();
         if let Some(mutexes) = &self.mutexes {
@@ -902,6 +926,8 @@ impl Cpu32 {
             threads: RefCell::new(Default::default()),
             watches: RefCell::new(Default::default()),
             winsock: RefCell::new(Default::default()),
+            sections: RefCell::new(Default::default()),
+            images: RefCell::new(Default::default()),
         })
     }
 }
@@ -1372,6 +1398,9 @@ impl<'a> LoadedImage32<'a> {
         let Some(end) = address.checked_add(len) else {
             return false;
         };
+        if self.cpu.sections.borrow().permits(address, len, write) {
+            return true;
+        }
         if self.cpu.winsock.borrow().permits(address, len, write) {
             return true;
         }
@@ -2244,6 +2273,18 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
             224 => loader32::free(image, args[0]),
             225..=237 => winsock32::dispatch(image, id - 225, args),
             238 => startup32::version(image, args[0], true),
+            239 | 240 => section32::create(image, args, id == 239),
+            241 | 242 => section32::open(image, args, id == 241),
+            243 => section32::map(image, args),
+            244 => section32::unmap(image, args[0]),
+            245 | 246 => machine32::set_affinity(image, args, id == 245),
+            247 => gdi32::stock(image, args[0]),
+            248 => gdi32::solid(image, args[0]),
+            249 => gdi32::fill_rect(image, args),
+            250 | 251 => image32::load(image, args, id == 251),
+            252 => image32::set(image, args[0]),
+            253 => image32::destroy(image, args[0]),
+            254 => image32::current(image),
             215 => {
                 // No adapter/DHCP projection is implemented. Return the explicit
                 // API failure and let the original caller handle it; never invent
@@ -2420,6 +2461,8 @@ mod tests {
                 threads: RefCell::new(Default::default()),
                 watches: RefCell::new(Default::default()),
                 winsock: RefCell::new(Default::default()),
+                sections: RefCell::new(Default::default()),
+                images: RefCell::new(Default::default()),
             }),
             tls: None,
             tls_entered: Cell::new(false),

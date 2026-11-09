@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Owned Winsock ordinal ABI and real loopback TCP byte transport."""
+import platform,os
 import argparse,json,shutil,struct,subprocess,tempfile,os,socket,threading
 from pathlib import Path
 from build_pe_fixture import ROOT,rust_tool
@@ -24,7 +25,7 @@ def execute(d,native=False):
  if json.loads((d/'winsock-family-inputs.json').read_text())!=identity:raise ValueError('window family identity changed')
  run=Path(tempfile.mkdtemp(prefix='file-',dir=d));exe=run/FILES[0];shutil.copyfile(d/FILES[0],exe);(run/'root').mkdir();command=[str(exe.resolve())]
  if not native:command=[str(runner(d)),*command,'--strict','--file-origins']
- r=loopback(command);report={'backend':'native Windows owned file' if native else 'physical Rosetta PE32 file','inputs':identity,'status':r.returncode,'stdout_hex':r.stdout.hex(),'stderr_hex':r.stderr.hex()};path=d/('native-winsock-family.json' if native else 'winsock-family-host.json');path.write_text(json.dumps(report,indent=2)+'\n')
+ r=loopback(command);report={'backend':'native Windows PE32 Winsock' if native else 'Alkyhol macOS PE32 Winsock','hosted_ci':os.getenv('GITHUB_ACTIONS')=='true','host_platform':platform.platform(),'inputs':identity,'status':r.returncode,'stdout_hex':r.stdout.hex(),'stderr_hex':r.stderr.hex()};path=d/('native-winsock-family.json' if native else 'winsock-family-host.json');path.write_text(json.dumps(report,indent=2)+'\n')
  if r.returncode:raise ValueError('owned file PE failed; raw output retained')
  report['words']=decode(r.stdout)
  if native:

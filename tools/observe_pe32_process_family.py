@@ -5,7 +5,7 @@ from pathlib import Path
 from build_pe_fixture import ROOT,rust_tool
 from check_pe32_activation import SOURCE,digest
 from observe_pe32_activation_startup import runner
-SOURCES=['process-family.c','process-family.def'];FILES=['process-family.exe'];SYMBOLS=[('GetCurrentProcess',0),('GetCurrentProcessId',0),('GetProcessId',4),('GetProcessAffinityMask',12),('GetSystemInfo',4),('GetLastError',0),('GetStdHandle',4),('WriteFile',20)]
+SOURCES=['process-family.c','process-family.def'];FILES=['process-family.exe'];SYMBOLS=[('GetCurrentProcess',0),('SetThreadAffinityMask',8),('SetProcessAffinityMask',8),('GetCurrentProcessId',0),('GetProcessId',4),('GetProcessAffinityMask',12),('GetSystemInfo',4),('GetLastError',0),('GetStdHandle',4),('WriteFile',20)]
 def inputs(d):return {'sources':{(SOURCE/n).relative_to(ROOT).as_posix():digest(SOURCE/n) for n in SOURCES},'files':{n:digest(d/n) for n in FILES}}
 def build(d):
  d.mkdir(parents=True,exist_ok=True);lld=rust_tool('rust-lld');libs=[]
@@ -16,7 +16,7 @@ def build(d):
  (d/'process-family-inputs.json').write_text(json.dumps(inputs(d),indent=2)+'\n')
 def decode(data):
  if len(data)%4:raise ValueError('truncated process family report')
- words=list(struct.unpack('<'+'I'*(len(data)//4),data));expected=[0x50524332,4,1,1,1,1,1,6,1,10]
+ words=list(struct.unpack('<'+'I'*(len(data)//4),data));expected=[0x50524332,4,1,1,1,1,1,6,1,1,1,12]
  if words!=expected:raise ValueError('current process identity, mask relationship or stack differ: '+repr(words))
  return words
 def execute(d,native=False):

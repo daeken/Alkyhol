@@ -1,0 +1,12 @@
+LIBRARY KERNEL32.dll
+EXPORTS
+GetStdHandle
+WriteFile
+GetLastError
+CreateFileMappingA
+CreateFileMappingW
+OpenFileMappingA
+OpenFileMappingW
+MapViewOfFile
+UnmapViewOfFile
+CloseHandle

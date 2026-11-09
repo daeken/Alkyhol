@@ -1,0 +1,11 @@
+LIBRARY GDI32.dll
+EXPORTS
+GetStockObject
+CreateSolidBrush
+GetObjectW
+CreateCompatibleDC
+CreateDIBSection
+SelectObject
+GetCurrentObject
+DeleteObject
+DeleteDC

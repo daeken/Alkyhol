@@ -1,0 +1,3 @@
+// Original MIT independent SDK view of the same owned CUR container.
+#include <Windows.h>
+int wmain(int argc,wchar_t **argv){if(argc!=2)return 1;auto cursor=static_cast<HCURSOR>(LoadImageW(nullptr,argv[1],IMAGE_CURSOR,0,0,LR_LOADFROMFILE));if(!cursor)return 2;ICONINFO info{};if(!GetIconInfo(cursor,&info))return 3;BITMAP color{};const bool valid=!info.fIcon&&info.xHotspot==7&&info.yHotspot==9&&info.hbmColor&&GetObjectW(info.hbmColor,static_cast<int>(sizeof(color)),&color)==static_cast<int>(sizeof(BITMAP))&&color.bmWidth==32&&color.bmHeight==32;if(info.hbmMask)DeleteObject(info.hbmMask);if(info.hbmColor)DeleteObject(info.hbmColor);DestroyCursor(cursor);return valid?0:4;}

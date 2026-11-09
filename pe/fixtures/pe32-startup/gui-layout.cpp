@@ -17,3 +17,5 @@ static_assert(sizeof(CREATESTRUCTW)==48);
 static_assert(sizeof(OVERLAPPED)==20);
 static_assert(offsetof(OVERLAPPED,hEvent)==16);
 static_assert(offsetof(FILE_NOTIFY_INFORMATION,FileName)==12);
+
+static_assert(sizeof(LOGBRUSH)==12);

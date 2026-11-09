@@ -72,7 +72,7 @@ fn set_marker(file: &mut File, value: u8) -> Result<()> {
     file.seek(SeekFrom::Start(0)).map_err(|e| e.to_string())?;
     file.write_all(&[value]).map_err(|e| e.to_string())
 }
-fn name(units: &[u16]) -> Result<Vec<u16>> {
+pub(super) fn name(units: &[u16]) -> Result<Vec<u16>> {
     // Bare and Local names share this caller-selected session namespace.
     // Global/private namespaces remain unknown, rather than being aliased.
     let local: Vec<_> = "Local\\".encode_utf16().collect();
@@ -93,6 +93,10 @@ fn identity(units: &[u16]) -> (String, Vec<u8>) {
     });
     // The complete record is checked too: hash collision is an explicit error.
     (format!("mutex-{hash:016x}.lease"), record)
+}
+pub(super) fn live_name(directory: &File, units: &[u16]) -> Result<bool> {
+    let (filename, _) = identity(&name(units)?);
+    super::section32::live_lease(directory, &filename)
 }
 impl State {
     pub(super) fn open(path: &Path) -> Result<Self> {
@@ -208,6 +212,11 @@ impl State {
         let (filename, record) = identity(&name(units)?);
         let gate = self.file("namespace.gate")?;
         gate.lock().map_err(|e| e.to_string())?;
+        if super::section32::live_name(&self.directory, units)? {
+            return Err(
+                "mutex/section name collision is outside the admitted object profile".into(),
+            );
+        }
         let mut lease = self.file(&filename)?;
         let existing = match lease.try_lock() {
             Ok(()) => false,

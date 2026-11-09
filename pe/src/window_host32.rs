@@ -640,6 +640,118 @@ impl Drop for Window {
     }
 }
 
+pub(super) struct Cursor {
+    cursor: Id,
+}
+// All native operations, including destruction, marshal to the host main thread.
+unsafe impl Send for Cursor {}
+unsafe impl Sync for Cursor {}
+impl Cursor {
+    pub(super) fn new(
+        bytes: &[u8],
+        width: u32,
+        height: u32,
+        x: u32,
+        y: u32,
+    ) -> crate::Result<Self> {
+        let bytes = bytes.to_vec();
+        main_exec(move || unsafe {
+            let data_call: unsafe extern "C" fn(Id, Sel, *const u8, usize) -> Id =
+                std::mem::transmute(objc_msgSend as *const ());
+            let data = data_call(
+                class("NSData")?,
+                selector("dataWithBytes:length:"),
+                bytes.as_ptr(),
+                bytes.len(),
+            );
+            let image: Id = send1(
+                send0::<Id>(class("NSImage")?, "alloc"),
+                "initWithData:",
+                data,
+            );
+            if image.is_null() || send0::<i8>(image, "isValid") == 0 {
+                if !image.is_null() {
+                    send0::<()>(image, "release");
+                }
+                return Err("AppKit could not decode the original CUR data".into());
+            }
+            let size: Size = send0(image, "size");
+            if size.width != width as f64 || size.height != height as f64 {
+                send0::<()>(image, "release");
+                return Err("native cursor dimensions differ from the original directory".into());
+            }
+            let initialize: unsafe extern "C" fn(Id, Sel, Id, Point) -> Id =
+                std::mem::transmute(objc_msgSend as *const ());
+            let cursor = initialize(
+                send0::<Id>(class("NSCursor")?, "alloc"),
+                selector("initWithImage:hotSpot:"),
+                image,
+                Point {
+                    x: x as f64,
+                    y: y as f64,
+                },
+            );
+            send0::<()>(image, "release");
+            if cursor.is_null() {
+                return Err("native cursor allocation failed".into());
+            }
+            let actual: Point = send0(cursor, "hotSpot");
+            if actual.x != x as f64 || actual.y != y as f64 {
+                send0::<()>(cursor, "release");
+                return Err("native cursor hotspot differs from the original directory".into());
+            }
+            Ok(Cursor { cursor })
+        })
+    }
+    pub(super) fn same(&self, other: &Self) -> bool {
+        self.cursor == other.cursor
+    }
+    pub(super) fn retain_current() -> crate::Result<Option<Self>> {
+        main_exec(|| unsafe {
+            let cursor: Id = send0(class("NSCursor")?, "currentCursor");
+            if cursor.is_null() {
+                Ok(None)
+            } else {
+                send0::<()>(cursor, "retain");
+                Ok(Some(Cursor { cursor }))
+            }
+        })
+    }
+    pub(super) fn replace(&self) -> crate::Result<Option<Self>> {
+        let cursor = self.cursor as usize;
+        main_exec(move || unsafe {
+            let old: Id = send0(class("NSCursor")?, "currentCursor");
+            if !old.is_null() {
+                send0::<()>(old, "retain");
+            }
+            send0::<()>(cursor as Id, "set");
+            if send0::<Id>(class("NSCursor")?, "currentCursor") != cursor as Id {
+                if !old.is_null() {
+                    send0::<()>(old, "release");
+                }
+                return Err("native cursor selection was not observed".into());
+            }
+            Ok(if old.is_null() {
+                None
+            } else {
+                Some(Cursor { cursor: old })
+            })
+        })
+    }
+    pub(super) fn is_current(&self) -> bool {
+        let cursor = self.cursor as usize;
+        main_exec(move || unsafe {
+            class("NSCursor").is_ok_and(|class| send0::<Id>(class, "currentCursor") == cursor as Id)
+        })
+    }
+}
+impl Drop for Cursor {
+    fn drop(&mut self) {
+        let cursor = self.cursor as usize;
+        main_exec(move || unsafe { send0::<()>(cursor as Id, "release") });
+    }
+}
+
 fn alert_buttons(flags: u32) -> crate::Result<Vec<(u32, &'static str)>> {
     if flags & !0x0005137f != 0 {
         return Err("message box modality/help/desktop flags are unsupported".into());

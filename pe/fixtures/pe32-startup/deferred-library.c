@@ -4,3 +4,6 @@ int __stdcall DllMain(void *h,U reason,void *reserved){(void)h;(void)reserved;if
 __declspec(dllexport) U __cdecl AttachCount(void){return attached;}
 __declspec(dllexport) U __cdecl ThreadCount(void){return threads;}
 __declspec(dllexport) void __cdecl SetSink(U *p){sink=p;*p=0xac000000|attached;}
+
+static U __stdcall dll_worker(void *p){return threads==2&&(U)p==0x12345678?0:1;}
+__declspec(dllexport) U __cdecl GetWorker(void){return (U)dll_worker;}

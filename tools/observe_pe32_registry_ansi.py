@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Owned mixed ANSI/Unicode registry handles and trailing separator witness."""
+import platform,os
 import argparse,json,shutil,struct,subprocess,tempfile
 from pathlib import Path
 from build_pe_fixture import ROOT,rust_tool
@@ -24,7 +25,7 @@ def execute(d,native=False):
  if json.loads((d/'registry-ansi-inputs.json').read_text())!=identity:raise ValueError('window family identity changed')
  run=Path(tempfile.mkdtemp(prefix='file-',dir=d));exe=run/FILES[0];shutil.copyfile(d/FILES[0],exe);(run/'root').mkdir();command=[str(exe.resolve())]
  if not native:command=[str(runner(d)),*command,'--strict','--file-origins','--registry-catalog',str(SOURCE/'registry-ansi.xml')]
- r=run_native(command) if native else subprocess.run(command,capture_output=True,timeout=30);report={'backend':'native Windows owned file' if native else 'physical Rosetta PE32 file','inputs':identity,'status':r.returncode,'stdout_hex':r.stdout.hex(),'stderr_hex':r.stderr.hex()};path=d/('native-registry-ansi.json' if native else 'registry-ansi-host.json');path.write_text(json.dumps(report,indent=2)+'\n')
+ r=run_native(command) if native else subprocess.run(command,capture_output=True,timeout=30);report={'backend':'native Windows PE32 scoped A/W registry' if native else 'Alkyhol macOS PE32 scoped A/W registry','hosted_ci':os.getenv('GITHUB_ACTIONS')=='true','host_platform':platform.platform(),'inputs':identity,'status':r.returncode,'stdout_hex':r.stdout.hex(),'stderr_hex':r.stderr.hex()};path=d/('native-registry-ansi.json' if native else 'registry-ansi-host.json');path.write_text(json.dumps(report,indent=2)+'\n')
  if r.returncode:raise ValueError('owned file PE failed; raw output retained')
  report['words']=decode(r.stdout)
  if native:

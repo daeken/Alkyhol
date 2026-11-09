@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Owned deferred DLL initialization, binary exports and thread notifications."""
+import platform,os
 import argparse,json,shutil,struct,subprocess,tempfile
 from pathlib import Path
 from build_pe_fixture import ROOT,rust_tool
@@ -19,7 +20,7 @@ def build(d):
  (d/'deferred-family-inputs.json').write_text(json.dumps(inputs(d),indent=2)+'\n')
 def decode(data):
  if len(data)%4:raise ValueError('truncated window family report')
- words=list(struct.unpack('<'+'I'*(len(data)//4),data));expected=[0x444c4c32,4]+[1]*18+[21]
+ words=list(struct.unpack('<'+'I'*(len(data)//4),data));expected=[0x444c4c32,4]+[1]*20+[23]
  if words!=expected:raise ValueError('file contents, sharing, descriptor metadata or stack differ: '+repr(words))
  return words
 def execute(d,native=False):
@@ -27,7 +28,7 @@ def execute(d,native=False):
  if json.loads((d/'deferred-family-inputs.json').read_text())!=identity:raise ValueError('window family identity changed')
  run=Path(tempfile.mkdtemp(prefix='file-',dir=d));exe=run/FILES[0];shutil.copyfile(d/FILES[0],exe);(run/'root').mkdir();[shutil.copyfile(d/n,run/n) for n in FILES[1:]];command=[str(exe.resolve())]
  if not native:command=[str(runner(d)),*command,'--strict','--file-origins',*sum([['--deferred-dll',n+'='+str(run/n)] for n in FILES[1:]],[])]
- r=subprocess.run(command,capture_output=True,timeout=30);report={'backend':'native Windows owned file' if native else 'physical Rosetta PE32 file','inputs':identity,'status':r.returncode,'stdout_hex':r.stdout.hex(),'stderr_hex':r.stderr.hex()};path=d/('native-deferred-family.json' if native else 'deferred-family-host.json');path.write_text(json.dumps(report,indent=2)+'\n')
+ r=subprocess.run(command,capture_output=True,timeout=30);report={'backend':'native Windows PE32 deferred DLLs' if native else 'Alkyhol macOS PE32 deferred DLLs','hosted_ci':os.getenv('GITHUB_ACTIONS')=='true','host_platform':platform.platform(),'inputs':identity,'status':r.returncode,'stdout_hex':r.stdout.hex(),'stderr_hex':r.stderr.hex()};path=d/('native-deferred-family.json' if native else 'deferred-family-host.json');path.write_text(json.dumps(report,indent=2)+'\n')
  if r.returncode:raise ValueError('owned file PE failed; raw output retained')
  report['words']=decode(r.stdout)
  if native:

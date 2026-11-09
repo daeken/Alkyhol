@@ -71,17 +71,25 @@ impl Bitmap {
         }
     }
 }
+#[derive(Clone, Copy)]
+struct Brush {
+    color: Option<u32>,
+    stock: bool,
+}
 struct Dc {
     bitmap: u32,
     default: u32,
     window: Option<u32>,
     paint: bool,
+    brush: u32,
 }
 #[derive(Default)]
 pub(super) struct State {
     bitmaps: BTreeMap<u32, Bitmap>,
     dcs: BTreeMap<u32, Dc>,
     surfaces: BTreeMap<u32, u32>,
+    brushes: BTreeMap<u32, Brush>,
+    stocks: BTreeMap<u32, u32>,
 }
 fn u16at(b: &[u8], at: usize) -> Result<u16> {
     Ok(u16::from_le_bytes(
@@ -180,8 +188,12 @@ fn decode(b: &[u8]) -> Result<Bitmap> {
     })
 }
 fn token() -> u32 {
-    alkyhol::kernel::reserve_handle_token()
-        .unwrap_or_else(|_| unsupported("GDI handle namespace exhausted")) as u32
+    let n = alkyhol::kernel::reserve_handle_token()
+        .unwrap_or_else(|_| unsupported("GDI handle namespace exhausted"));
+    if n >= 0x10000000 {
+        unsupported("GDI handle namespace exhausted");
+    }
+    0x50000000 | n as u32
 }
 fn fail(error: u32) -> u32 {
     alkyhol::ffi::SetLastError(error);
@@ -219,6 +231,24 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32
         0 => {
             // GetObjectW, DDB BITMAP layout, not a host pointer.
             let state = image.cpu.gdi.borrow();
+            if let Some(brush) = state.brushes.get(&a[0]) {
+                if a[2] == 0 {
+                    return 12;
+                }
+                if a[1] < 12 {
+                    return fail(87);
+                }
+                checked(image, a[2], 12);
+                let values = [
+                    u32::from(brush.color.is_none()),
+                    brush.color.unwrap_or(0),
+                    0,
+                ];
+                unsafe {
+                    std::ptr::copy_nonoverlapping(values.as_ptr(), a[2] as *mut u32, 3);
+                }
+                return 12;
+            }
             let Some(b) = state.bitmaps.get(&a[0]) else {
                 return fail(6);
             };
@@ -259,6 +289,16 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32
         1 => {
             // DeleteObject; a selected bitmap remains owned.
             let mut state = image.cpu.gdi.borrow_mut();
+            if let Some(brush) = state.brushes.get(&a[0]) {
+                if brush.stock {
+                    return 1;
+                }
+                if state.dcs.values().any(|dc| dc.brush == a[0]) {
+                    return 0;
+                }
+                state.brushes.remove(&a[0]);
+                return 1;
+            }
             if state
                 .dcs
                 .values()
@@ -290,6 +330,7 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32
                 },
             );
             let h = token();
+            let brush = state.stock(0).expect("white stock brush");
             state.dcs.insert(
                 h,
                 Dc {
@@ -297,6 +338,7 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32
                     default,
                     window: None,
                     paint: false,
+                    brush,
                 },
             );
             h
@@ -314,6 +356,12 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32
         }
         4 => {
             let mut state = image.cpu.gdi.borrow_mut();
+            if state.brushes.contains_key(&a[1]) {
+                return state
+                    .dcs
+                    .get_mut(&a[0])
+                    .map_or(0, |dc| std::mem::replace(&mut dc.brush, a[1]));
+            }
             if !state.bitmaps.contains_key(&a[1]) {
                 return 0;
             }
@@ -474,17 +522,15 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32
             u32::from(p[2]) | (u32::from(p[1]) << 8) | (u32::from(p[0]) << 16)
         }
         9 => {
-            // GetCurrentObject, bitmap only.
-            if a[1] != 7 {
-                unsupported("GetCurrentObject type outside bitmap profile");
+            let state = image.cpu.gdi.borrow();
+            let Some(dc) = state.dcs.get(&a[0]) else {
+                return 0;
+            };
+            match a[1] {
+                7 => dc.bitmap,
+                2 => dc.brush,
+                _ => unsupported("GetCurrentObject type outside bitmap/brush profile"),
             }
-            image
-                .cpu
-                .gdi
-                .borrow()
-                .dcs
-                .get(&a[0])
-                .map_or(0, |dc| dc.bitmap)
         }
         _ => unreachable!(),
     }
@@ -548,6 +594,7 @@ pub(super) fn get_dc(image: &LoadedImage32<'_>, hwnd: u32, paint: bool) -> u32 {
                 dib: None,
             },
         );
+        let brush = state.stock(0).expect("white stock brush");
         state.dcs.insert(
             dc,
             Dc {
@@ -555,6 +602,7 @@ pub(super) fn get_dc(image: &LoadedImage32<'_>, hwnd: u32, paint: bool) -> u32 {
                 default: 0,
                 window: Some(0),
                 paint: false,
+                brush,
             },
         );
         return dc;
@@ -585,6 +633,7 @@ pub(super) fn get_dc(image: &LoadedImage32<'_>, hwnd: u32, paint: bool) -> u32 {
         h
     };
     let h = token();
+    let brush = state.stock(0).expect("white stock brush");
     state.dcs.insert(
         h,
         Dc {
@@ -592,6 +641,7 @@ pub(super) fn get_dc(image: &LoadedImage32<'_>, hwnd: u32, paint: bool) -> u32 {
             default: 0,
             window: Some(hwnd),
             paint,
+            brush,
         },
     );
     h
@@ -691,6 +741,109 @@ pub(super) fn dib_section(image: &LoadedImage32<'_>, a: &[u32; 8]) -> u32 {
     h
 }
 
+impl State {
+    fn stock(&mut self, index: u32) -> Option<u32> {
+        if let Some(&h) = self.stocks.get(&index) {
+            return Some(h);
+        }
+        let color = match index {
+            0 => Some(0xffffff),
+            4 => Some(0),
+            5 => None,
+            _ => return None,
+        };
+        let h = token();
+        self.brushes.insert(h, Brush { color, stock: true });
+        self.stocks.insert(index, h);
+        Some(h)
+    }
+}
+pub(super) fn stock(image: &LoadedImage32<'_>, index: u32) -> u32 {
+    image
+        .cpu
+        .gdi
+        .borrow_mut()
+        .stock(index)
+        .unwrap_or_else(|| fail(50))
+}
+pub(super) fn solid(image: &LoadedImage32<'_>, color: u32) -> u32 {
+    if color & 0xff000000 != 0 {
+        return fail(50);
+    }
+    let mut state = image.cpu.gdi.borrow_mut();
+    if state.brushes.len() >= 256 {
+        return fail(8);
+    }
+    let h = token();
+    state.brushes.insert(
+        h,
+        Brush {
+            color: Some(color),
+            stock: false,
+        },
+    );
+    h
+}
+fn fill_pixels(bitmap: &mut Bitmap, rect: [i32; 4], color: u32) {
+    let left = rect[0].max(0).min(bitmap.width as i32);
+    let right = rect[2].max(0).min(bitmap.width as i32);
+    let top = rect[1].max(0).min(bitmap.height as i32);
+    let bottom = rect[3].max(0).min(bitmap.height as i32);
+    let mut pixels = bitmap.read_pixels();
+    for y in top..bottom {
+        for x in left..right {
+            let at = (y as usize * bitmap.width as usize + x as usize) * 4;
+            pixels[at..at + 4].copy_from_slice(&[
+                (color >> 16) as u8,
+                (color >> 8) as u8,
+                color as u8,
+                255,
+            ]);
+        }
+    }
+    bitmap.commit(pixels);
+}
+pub(super) fn fill(image: &LoadedImage32<'_>, dc: u32, rect: [i32; 4], brush: u32) -> u32 {
+    let mut state = image.cpu.gdi.borrow_mut();
+    let Some(brush) = state.brushes.get(&brush).copied() else {
+        return fail(6);
+    };
+    let Some(dc) = state.dcs.get(&dc) else {
+        return fail(6);
+    };
+    let window = dc.window;
+    let bitmap = dc.bitmap;
+    if window == Some(0) {
+        unsupported("desktop GDI writes are unsupported");
+    }
+    let Some(color) = brush.color else {
+        return 1;
+    };
+    let b = state.bitmaps.get_mut(&bitmap).expect("DC surface");
+    if b.bits == 1 && !matches!(color, 0 | 0xffffff) {
+        unsupported(
+            "color brush mapping to a monochrome DC requires measured text/background behavior",
+        );
+    }
+    fill_pixels(b, rect, color);
+    let output = window.map(|hwnd| (hwnd, b.width, b.height, b.read_pixels()));
+    drop(state);
+    if let Some((hwnd, w, h, pixels)) = output {
+        super::ui32::present(image, hwnd, w, h, &pixels).unwrap_or_else(|e| unsupported(&e));
+    }
+    1
+}
+pub(super) fn fill_rect(image: &LoadedImage32<'_>, a: &[u32; 8]) -> u32 {
+    if !a[1].is_multiple_of(4) || !image.permits(a[1] as usize, 16, false) {
+        unsupported("FillRect RECT outside checked storage");
+    }
+    fill(
+        image,
+        a[0],
+        unsafe { (a[1] as *const [i32; 4]).read() },
+        a[2],
+    )
+}
 #[cfg(test)]
 mod tests {
     use super::*;

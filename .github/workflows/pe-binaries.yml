@@ -157,6 +157,14 @@ jobs:
         run: |
           python tools/observe_pe32_search_family.py
           python tools/observe_pe32_search_family.py --host
+      - name: Execute shared sections, stock brushes and file cursor images
+        run: |
+          python tools/observe_pe32_section_family.py
+          python tools/observe_pe32_section_family.py --host
+          python tools/observe_pe32_brush_family.py
+          python tools/observe_pe32_brush_family.py --host
+          python tools/observe_pe32_cursor_family.py
+          python tools/observe_pe32_cursor_family.py --host
       - name: Execute Winsock ordinal ABI against a real loopback server
         run: |
           python tools/observe_pe32_winsock_family.py
@@ -212,6 +220,7 @@ jobs:
           name: pe32-startup-microtests
           path: |
             local/pe/startup-microtests/*.exe
+            local/pe/startup-microtests/owned.cur
             local/pe/startup-microtests/owned-deferred.dll
             local/pe/startup-microtests/owned-rejected.dll
             local/pe/startup-microtests/owned-context.dll
@@ -303,6 +312,12 @@ jobs:
             local/pe/startup-microtests/full-path-host.json
             local/pe/startup-microtests/search-family-inputs.json
             local/pe/startup-microtests/search-family-host.json
+            local/pe/startup-microtests/section-family-inputs.json
+            local/pe/startup-microtests/section-family-host.json
+            local/pe/startup-microtests/brush-family-inputs.json
+            local/pe/startup-microtests/brush-family-host.json
+            local/pe/startup-microtests/cursor-family-inputs.json
+            local/pe/startup-microtests/cursor-family-host.json
             local/pe/startup-microtests/winsock-family-inputs.json
             local/pe/startup-microtests/winsock-family-host.json
             local/pe/startup-microtests/deferred-family-inputs.json
@@ -473,6 +488,20 @@ jobs:
       - name: Check GUI layouts against the independent Windows SDK
         if: ${{ success() || failure() }}
         run: cl /nologo /c /W4 /WX /std:c++17 pe/fixtures/pe32-startup/gui-layout.cpp /Folocal/pe/startup-microtests/gui-layout.obj
+      - name: Compare identical shared section PE on native Windows
+        if: ${{ success() || failure() }}
+        run: python tools/observe_pe32_section_family.py --native
+      - name: Compare identical GDI brush PE on native Windows
+        if: ${{ success() || failure() }}
+        run: python tools/observe_pe32_brush_family.py --native
+      - name: Compare identical file cursor PE on native Windows
+        if: ${{ success() || failure() }}
+        run: python tools/observe_pe32_cursor_family.py --native
+      - name: Check the identical owned cursor metadata through the Windows SDK
+        if: ${{ success() || failure() }}
+        run: |
+          cl /nologo /W4 /WX /std:c++17 pe/fixtures/pe32-startup/cursor-sdk.cpp user32.lib gdi32.lib /Felocal/pe/startup-microtests/cursor-sdk.exe
+          local/pe/startup-microtests/cursor-sdk.exe local/pe/startup-microtests/owned.cur
       - name: Compare identical Winsock ordinal and loopback transport PE on Windows
         if: ${{ success() || failure() }}
         run: python tools/observe_pe32_winsock_family.py --native

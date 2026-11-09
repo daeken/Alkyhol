@@ -473,11 +473,14 @@ fn default_proc(image: &LoadedImage32<'_>, a: &[u32; 16]) -> u32 {
             let Some(w) = ui.windows.get(&a[0]) else {
                 return error(1400);
             };
-            let class = &ui.classes[&w.class];
-            if class.background != 0 {
-                unsupported("default background brush erasure requires a supported GDI brush");
+            let background = ui.classes[&w.class].background;
+            if background == 0 {
+                return 0;
             }
-            0
+            let client = w.native.client();
+            let rect = [0, 0, client.size.width as i32, client.size.height as i32];
+            drop(ui);
+            super::gdi32::fill(image, a[2], rect, background)
         }
         0 | 1 | 2 | 3 | 5 | 6 | 7 | 8 | 0x18 | 0x1c | 0x46 | 0x47 | 0x7c | 0x7d | 0x82 | 0x85
         | 0x86 | 0x215 => 0,
@@ -1058,4 +1061,13 @@ pub(super) fn message_box(image: &LoadedImage32<'_>, a: &[u32; 8], ansi: bool) -
     let text = text.encode_utf16().collect();
     super::thread32::without_cpu(image, || host::message_box(title, text, a[3]))
         .unwrap_or_else(|e| unsupported(&e))
+}
+
+pub(super) fn ensure_app(image: &LoadedImage32<'_>) {
+    image
+        .cpu
+        .ui
+        .borrow_mut()
+        .app()
+        .unwrap_or_else(|e| unsupported(&e));
 }
