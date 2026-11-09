@@ -53,6 +53,8 @@ jobs:
         run: |
           python tools/observe_pe32_socket_select.py
           python tools/observe_pe32_socket_select.py --host
+          python tools/observe_pe32_socket_select.py --negative-exclusion
+          python tools/observe_pe32_socket_select.py --negative-exclusion --host
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -61,6 +63,7 @@ jobs:
             local/pe/socket-select-microtest/socket-select.exe
             local/pe/socket-select-microtest/socket-select-inputs.json
             local/pe/socket-select-microtest/socket-select-host.json
+            local/pe/socket-select-microtest/socket-select-negative-exclusion-host.json
           if-no-files-found: error
       - name: Execute actual filesystem-space accounting reached by DAO
         run: |

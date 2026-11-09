@@ -130,38 +130,10 @@ pub(super) fn event_api(image: &LoadedImage32<'_>, id: u32, a: &[u32; 8]) -> u32
         if !ready(image) {
             return failure(10093);
         }
-        if !(1..=64).contains(&a[0]) {
-            return failure(87);
-        }
         if a[4] != 0 {
             unsupported("alertable Winsock waits require APC delivery");
         }
-        checked(image, a[1], a[0] as usize * 4, false);
-        let handles: Vec<_> = (0..a[0] as usize)
-            .map(|index| unsafe { (a[1] as *const u32).add(index).read_unaligned() })
-            .collect();
-        for &handle in &handles {
-            let state = image.cpu.events.borrow();
-            if !state.is_event(handle) && !image.cpu.threads.borrow().contains(handle) {
-                if state.contains(handle) {
-                    unsupported(
-                        "Winsock wait sets currently require manual events or guest-thread completion handles",
-                    );
-                }
-                return failure(6);
-            }
-        }
-        if handles.len() == 1 {
-            return thread32::wait_handle(image, handles[0], a[3]);
-        }
-        let handles: Vec<_> = handles.into_iter().map(|handle| handle as usize).collect();
-        match thread32::wait_event_set(image, &handles, a[2] != 0, a[3]) {
-            Ok(result) => return result,
-            Err(error) if error.0 == 50 => {
-                unsupported("Winsock multi-wait contains an unsupported event alias or object kind")
-            }
-            Err(error) => return failure(error.0),
-        }
+        return super::event32::wait_set(image, a);
     }
     if !image.cpu.events.borrow().is_event(a[0]) {
         alkyhol::ffi::SetLastError(6);
@@ -366,7 +338,9 @@ pub(super) fn select_sockets(image: &LoadedImage32<'_>, a: &[u32; 8]) -> u32 {
         let seconds = unsafe { (a[4] as *const i32).read_unaligned() };
         let micros = unsafe { (a[4] as *const i32).add(1).read_unaligned() };
         if seconds < 0 || !(0..1_000_000).contains(&micros) {
-            return failure(10022);
+            unsupported(
+                "non-normalized select timeouts require a measured Windows normalization profile",
+            );
         }
         (seconds, micros)
     };

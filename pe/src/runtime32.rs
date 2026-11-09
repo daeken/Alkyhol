@@ -129,7 +129,7 @@ unsafe extern "C" {
 }
 const PAGE: usize = 4096;
 const STACK: usize = 1024 * 1024;
-const APIS: [(&str, u16); 295] = [
+const APIS: [(&str, u16); 298] = [
     ("GetLastError", 0),
     ("SetLastError", 4),
     ("GetStdHandle", 4),
@@ -425,6 +425,9 @@ const APIS: [(&str, u16); 295] = [
     ("WSARecvFrom", 36),
     ("Netbios", 4),
     ("select", 20),
+    ("timeBeginPeriod", 4),
+    ("timeEndPeriod", 4),
+    ("WaitForMultipleObjects", 16),
 ];
 // The first 120 API slots retain their original offsets. The second bank
 // begins after both x87 bodies, leaving their machine code and failure gates
@@ -524,7 +527,7 @@ fn api_id(module: &str, symbol: &ImportSymbol) -> Option<usize> {
                     "ws2_32.dll"
                 } else if *id == 215 {
                     "iphlpapi.dll"
-                } else if matches!(*id, 110 | 277 | 278) {
+                } else if matches!(*id, 110 | 277 | 278 | 295 | 296) {
                     "winmm.dll"
                 } else {
                     "kernel32.dll"
@@ -2423,6 +2426,16 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
             292 => winsock32::wsa_receive(image, &words),
             293 => netbios32::reset_unavailable(image, args[0]),
             294 => winsock32::select_sockets(image, args),
+            297 => event32::wait_set(image, args),
+            295 | 296 => {
+                // No minimum periodic-timer resolution policy is configured.
+                // TIMERR_NOCANDO is failure, not an accepted timer request.
+                eprintln!(
+                    "PE32 {} unavailable: TIMERR_NOCANDO (97); period={}ms; timer policy unchanged",
+                    APIS[id as usize].0, args[0]
+                );
+                97
+            }
             input8_32::BASE.. => input8_32::dispatch(image, id, &words),
             d3d9_32::BASE.. => d3d9_32::dispatch(image, id, &words),
             215 => {
@@ -2506,6 +2519,24 @@ mod tests {
             Some(285)
         );
         assert_eq!(APIS[285].1, 12);
+    }
+    #[test]
+    fn win32_event_sets_use_kernel32_without_winsock_startup() {
+        let symbol = ImportSymbol::Name("WaitForMultipleObjects".into());
+        assert_eq!(api_id("kernel32.dll", &symbol), Some(297));
+        assert_eq!(api_id("ws2_32.dll", &symbol), None);
+        assert_eq!(APIS[297].1, 16);
+        assert_eq!(cleanup_bytes(297, APIS[297].1), 16);
+    }
+    #[test]
+    fn multimedia_timer_requests_are_winmm_uint_stdcall_operations() {
+        for id in [295, 296] {
+            let symbol = ImportSymbol::Name(APIS[id].0.into());
+            assert_eq!(api_id("WINMM.dll", &symbol), Some(id));
+            assert_eq!(api_id("kernel32.dll", &symbol), None);
+            assert_eq!(APIS[id].1, 4);
+            assert_eq!(cleanup_bytes(id, APIS[id].1), 4);
+        }
     }
     #[test]
     fn netbios_uses_netapi32_and_one_stdcall_pointer() {

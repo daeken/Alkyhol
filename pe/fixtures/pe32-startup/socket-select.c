@@ -31,15 +31,18 @@ static U guards(const struct Set* set){return set->before==GUARD&&set->items[0]=
 static U __stdcall sender(H ignored){(void)ignored;Sleep(2);return sendto(s,"ping",4,0,endpoint,16)==4?5:9;}
 /* Literal RET leaves its argument for the startup caller, unlike sender's RET 4. */
 __declspec(naked) static U __stdcall caller_cleaned(H parameter __attribute__((unused))){__asm__ volatile("movl 4(%esp),%eax; retl");}
-U entry(void){U before=stack();put(0x4c455353);put(2);put(WSAStartup(0x202,data));s=socket(2,2,17);put(s!=(U)-1);if(s==(U)-1)ExitProcess(2);
+U entry(void){U before=stack();put(0x4c455353);put(3);put(WSAStartup(0x202,data));s=socket(2,2,17);put(s!=(U)-1);if(s==(U)-1)ExitProcess(2);
  U address[4]={2,0x0100007f,0,0};put(bind(s,address,16));U extent=16;put(getsockname(s,endpoint,&extent));put(GetProcAddress(GetModuleHandleA("ws2_32.dll"),(const char*)18)==(H)select);
  struct Set read,write,except;init(&read);init(&write);init(&except);U time[4]={GUARD,0,0,GUARD};
+#ifdef NEGATIVE_EXCLUSION
+ time[1]=(U)-1;time[2]=2000;select(0,&read.count,0,0,time+1);__builtin_trap();
+#endif
  put(select(999,&read.count,0,0,time+1));put(read.count==0&&guards(&read));
  init(&read);put(select(0,&read.count,&write.count,&except.count,time+1));put(read.count==0&&write.count==1&&except.count==0&&guards(&read)&&guards(&write)&&guards(&except));put(time[0]==GUARD&&time[1]==0&&time[2]==0&&time[3]==GUARD);
  init(&read);time[2]=2000;put(select(0,&read.count,0,0,time+1));put(read.count==0&&guards(&read)&&time[1]==0&&time[2]==2000&&time[0]==GUARD&&time[3]==GUARD);
  put(select(0,0,0,0,time+1));put(WSAGetLastError());
  init(&read);read.items[0]=(U)-1;put(select(0,&read.count,0,0,time+1));put(WSAGetLastError());put(read.count==1&&read.items[0]==(U)-1&&read.items[1]==GUARD&&read.before==GUARD&&read.after==GUARD);
- init(&read);time[1]=(U)-1;put(select(0,&read.count,0,0,time+1));put(WSAGetLastError());put(read.count==1&&guards(&read)&&time[1]==(U)-1&&time[2]==2000);
+ init(&read);
  time[1]=5;time[2]=0;put(sendto(s,"hello",5,0,endpoint,16));put(select(0,&read.count,0,0,time+1));put(read.count==1&&guards(&read)&&time[1]==5&&time[2]==0);
  init(&write);init(&except);time[1]=0;put(select(0,&read.count,&write.count,&except.count,time+1));put(read.count==1&&write.count==1&&except.count==0&&guards(&read)&&guards(&write)&&guards(&except));
  char buffer[8];for(U i=0;i<8;i++)buffer[i]=0x5a;put(recvfrom(s,buffer,8,0,0,0));put(buffer[0]=='h'&&buffer[4]=='o'&&buffer[5]==0x5a&&buffer[7]==0x5a);

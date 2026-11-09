@@ -80,6 +80,7 @@ impl SamplerState {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SampleFormat {
     Bgra8,
+    Luminance8,
     Bc1,
     Bc2,
     Bc3,
@@ -87,7 +88,7 @@ pub enum SampleFormat {
 impl SampleFormat {
     fn native(self) -> wgpu::TextureFormat {
         match self {
-            Self::Bgra8 => wgpu::TextureFormat::Bgra8Unorm,
+            Self::Bgra8 | Self::Luminance8 => wgpu::TextureFormat::Bgra8Unorm,
             Self::Bc1 => wgpu::TextureFormat::Bc1RgbaUnorm,
             Self::Bc2 => wgpu::TextureFormat::Bc2RgbaUnorm,
             Self::Bc3 => wgpu::TextureFormat::Bc3RgbaUnorm,
@@ -96,6 +97,12 @@ impl SampleFormat {
     pub fn block_layout(self, width: u32, height: u32) -> Result<(u32, u32)> {
         if width == 0 || height == 0 {
             return Err("zero texture block extent".into());
+        }
+        if self == Self::Luminance8 {
+            width
+                .checked_mul(height)
+                .ok_or("luminance texture byte extent overflow")?;
+            return Ok((width, height));
         }
         let (w, h) = self.native().block_dimensions();
         let bytes = self.native().block_copy_size(None).unwrap();
@@ -110,7 +117,7 @@ impl SampleFormat {
         Ok((pitch, rows))
     }
     pub fn compressed(self) -> bool {
-        self != Self::Bgra8
+        matches!(self, Self::Bc1 | Self::Bc2 | Self::Bc3)
     }
 }
 pub struct Texture2D {
@@ -144,6 +151,9 @@ impl Texture2D {
     pub(crate) fn view(&self, srgb: bool) -> Result<wgpu::TextureView> {
         if self.initialized.iter().any(|v| !v.load(Ordering::Acquire)) {
             return Err("sampling an uninitialized texture mip".into());
+        }
+        if self.format == SampleFormat::Luminance8 && srgb {
+            return Err("sRGB sampling of L8 requires native format evidence".into());
         }
         Ok(self.texture.create_view(&wgpu::TextureViewDescriptor {
             format: Some(if srgb {
@@ -210,7 +220,7 @@ impl Device {
         }
         self.scope();
         let texture = self.device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("D3D9 real BGRA8 texture"),
+            label: Some("D3D9 actual sampled texture storage"),
             size: wgpu::Extent3d {
                 width,
                 height,
@@ -241,6 +251,18 @@ impl Device {
         if bytes.len() != pitch as usize * rows as usize {
             return Err("texture upload byte extent differs".into());
         }
+        // L8 samples as (L,L,L,1) in D3D9. Expand without quantization while
+        // retaining the original one-byte guest mip layout and input bytes.
+        let expanded;
+        let (bytes, pitch) = if texture.format == SampleFormat::Luminance8 {
+            expanded = expand_luminance(bytes);
+            (
+                expanded.as_slice(),
+                width.checked_mul(4).ok_or("luminance GPU pitch overflow")?,
+            )
+        } else {
+            (bytes, pitch)
+        };
         self.scope();
         self.queue.write_texture(
             wgpu::TexelCopyTextureInfo {
@@ -267,6 +289,12 @@ impl Device {
         Ok(())
     }
 }
+fn expand_luminance(bytes: &[u8]) -> Vec<u8> {
+    bytes
+        .iter()
+        .flat_map(|&value| [value, value, value, 255])
+        .collect()
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -282,6 +310,20 @@ mod tests {
             assert!(format.block_layout(0, 4).is_err());
             assert!(format.block_layout(u32::MAX, u32::MAX).is_err());
         }
+    }
+    #[test]
+    fn luminance_mips_keep_byte_pitch_and_expand_all_channels_without_quantization() {
+        assert_eq!(SampleFormat::Luminance8.block_layout(3, 2).unwrap(), (3, 2));
+        assert_eq!(SampleFormat::Luminance8.block_layout(1, 1).unwrap(), (1, 1));
+        assert!(!SampleFormat::Luminance8.compressed());
+        assert!(SampleFormat::Luminance8.block_layout(0, 1).is_err());
+        assert!(SampleFormat::Luminance8.block_layout(u32::MAX, 2).is_err());
+        let original: Vec<_> = (0..=255u8).collect();
+        let expanded = expand_luminance(&original);
+        for (value, pixel) in original.iter().zip(expanded.as_chunks::<4>().0) {
+            assert_eq!(pixel, &[*value, *value, *value, 255]);
+        }
+        assert_eq!(original, (0..=255u8).collect::<Vec<_>>());
     }
     #[test]
     fn unsupported_sampler_settings_preserve_prior_state() {

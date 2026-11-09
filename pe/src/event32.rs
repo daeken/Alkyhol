@@ -161,6 +161,40 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
             .unwrap_or_else(|e| unsupported(&e))
     }
 }
+/// Win32 event/thread completion sets do not depend on Winsock initialization.
+pub(super) fn wait_set(image: &LoadedImage32<'_>, args: &[u32; 8]) -> u32 {
+    let fail = |error| {
+        alkyhol::ffi::SetLastError(error);
+        u32::MAX
+    };
+    if !(1..=64).contains(&args[0]) {
+        return fail(87);
+    }
+    if !image.permits(args[1] as usize, args[0] as usize * 4, false) {
+        unsupported("wait set array outside readable guest storage");
+    }
+    let handles: Vec<_> = (0..args[0] as usize)
+        .map(|index| unsafe { (args[1] as *const u32).add(index).read_unaligned() as usize })
+        .collect();
+    for &handle in &handles {
+        let state = image.cpu.events.borrow();
+        if !state.is_event(handle as u32) && !image.cpu.threads.borrow().contains(handle as u32) {
+            if state.contains(handle as u32) {
+                unsupported(
+                    "event-set wait contains a semaphore; mixed semaphore sets are not implemented",
+                );
+            }
+            return fail(6);
+        }
+    }
+    match super::thread32::wait_event_set(image, &handles, args[2] != 0, args[3]) {
+        Ok(result) => result,
+        Err(error) if error.0 == 50 => {
+            unsupported("wait set contains an unsupported event alias or object kind")
+        }
+        Err(error) => fail(error.0),
+    }
+}
 pub(super) fn release(image: &LoadedImage32<'_>, args: &[u32; 8]) -> u32 {
     if !image.cpu.events.borrow().semaphores.contains(&args[0]) {
         unsupported("semaphore release requires an owned live counting semaphore");

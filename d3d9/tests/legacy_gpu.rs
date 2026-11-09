@@ -172,6 +172,26 @@ fn real_legacy_texture_sampling_applies_srgb_to_rgb_and_preserves_alpha() {
             }
         );
     }
+    let mut luminance = device
+        .create_sampled_texture(3, 2, 0, alkyhol_d3d9::SampleFormat::Luminance8)
+        .unwrap();
+    assert_eq!(luminance.byte_layout(0).unwrap(), (3, 6));
+    assert_eq!(luminance.byte_layout(1).unwrap(), (1, 1));
+    assert!(draw(&luminance, SamplerState::default(), &mut target).is_err());
+    device
+        .upload_texture(&mut luminance, 0, &[0, 64, 128, 192, 254, 255])
+        .unwrap();
+    let mut mip_sampler = SamplerState::default();
+    mip_sampler.set(9, 1).unwrap();
+    for value in [0, 1, 127, 128, 254, 255] {
+        device.upload_texture(&mut luminance, 1, &[value]).unwrap();
+        draw(&luminance, mip_sampler, &mut target).unwrap();
+        let pixels = device.readback(&target).unwrap();
+        let at = (20 * 32 + 22) * 4;
+        assert_eq!(&pixels[at..at + 4], &[value, value, value, 255]);
+    }
+    mip_sampler.set(11, 1).unwrap();
+    assert!(draw(&luminance, mip_sampler, &mut target).is_err());
     let (sampled, mut rendered) = device.create_render_texture(32, 32).unwrap();
     assert!(sampled.shares_target(&rendered));
     assert!(!texture.shares_target(&rendered));

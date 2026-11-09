@@ -6004,3 +6004,83 @@ testing because a macOS-only dependency-fetch condition left Naga absent in
 offline resolution. That job now fetches locked dependencies after installing
 Rust on Linux as well; retry is pending. Frozen native criteria are unchanged.
 No original DAO draw, Present, audio playback, menu or gameplay is established.
+
+## Original Bink startup and real luminance movie planes
+
+Original DAO now opens its original intro movie through the original Bink DLL,
+starts Bink's original worker and reaches BeginScene plus movie-plane locks.
+The original EXE/DLL/assets remain local with recorded identities. The requested
+1ms timeBeginPeriod/timeEndPeriod policy is explicitly unavailable: TIMERR_NOCANDO
+(97), no accepted request, timer-resolution promise or scheduler change. Original
+Bink continues after that failure. This is not an implemented multimedia timer
+service. The [timer request contract](https://learn.microsoft.com/en-us/windows/win32/api/timeapi/nf-timeapi-timebeginperiod)
+is separate from actual native host Sleep and high-resolution counter calls.
+
+Win32 WaitForMultipleObjects now uses the same real event/thread dispatcher as
+Winsock waits, independently of WSAStartup. The owned 66-word PE exercises a
+Win32 wait before Winsock initialization, then all prior manual/automatic worker
+and wait-set cases. It passes physical M4; native comparison is pending. Semaphore
+sets and APC delivery remain excluded.
+
+Bink requests 1,280x720 Y and 640x360 chroma L8 textures. These now have actual
+one-byte CPU mip storage and lossless GPU expansion to (L,L,L,1), with unchanged
+source bytes and original dimensions. Linear samples preserve every luminance
+value; no YUV-to-RGB replacement shader, downsampling or substituted movie is
+introduced. Render-target/vertex-texture/sRGB L8 paths remain unavailable. The
+public [D3DFORMAT contract](https://learn.microsoft.com/en-us/windows/win32/direct3d9/d3dformat)
+describes luminance and default channels. All original game shaders remain under
+the existing open legacy-bytecode frontend.
+
+Fresh managed L8 READONLY locks may expose their actual already-owned CPU
+allocation, as requested by Bink while establishing previous/current buffers.
+Initial byte values are not promised to equal Windows allocation contents. A
+read-only unlock neither uploads zero pixels nor marks GPU storage initialized;
+sampling still fails until an actual writable upload. The native-facing owned
+witness tests the fresh read-only lock/return/const profile without comparing
+undefined initial values, then writes known data and compares real rendering.
+Other formats retain their existing uninitialized-shadow exclusion. See
+[LockRect](https://learn.microsoft.com/en-us/windows/win32/api/d3d9/nf-d3d9-idirect3dtexture9-lockrect).
+
+A format unit tests all 256 luminance bytes, alpha/default channels and odd mip
+extents; physical GPU execution tests odd 3x2/1x1 mips, six luminance extremes,
+alpha 255, uninitialized sampling rejection and the explicit sRGB exclusion. All
+15 backend units, other non-ignored backend targets, backend/PE Clippy, 199 PE
+units and nine observer tests pass. The new identical-PE L8 variant passes all
+2,118 words on physical M4, including two complete original-shader frames, COM
+and lock guards and guest stack. It is added to existing hosted Metal, native
+D3D9 and software Vulkan validation. New native L8 agreement is pending.
+
+D3D9 CI 42614135841 passes all three jobs on e5e68ab. Its 237-word query PE
+(including gamma void-call/input preservation) agrees with the physical M4's
+identical input and output. This is ABI/input and existing blue-frame evidence,
+not applied display gamma. The Linux PE comparison job also passes after the
+locked-dependency fetch correction; older native startup discrepancies remain.
+
+### Preserved negative-timeout mismatch
+
+The first socket-select native comparison, CI 42614135717, fails. Windows accepts
+the owned {-1,2000} timeval instead of returning the witness's expected WSAEINVAL.
+That clears the read count, causing the next reused-set observations to differ
+too. The raw 42-word result is retained unchanged in
+pe/reference/pe32-select-negative-timeval-windows-v1.json (SHA-256
+38949ae9bfa73c5327c6141492c9ba786290bc2bbbaeacfb0bcfeb8401c2efbe).
+The original source/PE identity and stricter failed assertion remain in history.
+Its ordinary readiness cases and literal caller-cleaned worker return succeed,
+but the entire witness is not counted as native agreement.
+
+Non-normalized timeval inputs now stop explicitly before host select/output
+mutation until their actual Windows normalization is established; they do not
+return a fabricated invalid-parameter error or successful timeout. A separate
+exclusion PE verifies that stop. The positive 39-word witness retains the
+ordinary nonnegative timeout, all readiness/guard/error criteria and literal RET
+worker, and initializes each subsequent descriptor set independently. Both
+positive and exclusion witnesses pass locally; admitted native retry is pending.
+No complete negative-timeout semantics, original game frame, audio playback,
+menu or gameplay is claimed.
+
+The next integrated run exercises a concurrent resource-loader path and stops at
+the existing 16MiB per-call I/O budget before a movie frame. Request details and
+any larger-read implementation remain the next investigation; no inferred read
+size or successful original frame is claimed. The fresh L8 read-only behavior is
+verified by the owned PE, while original Bink's subsequent complete draw is still
+pending.

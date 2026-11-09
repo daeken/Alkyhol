@@ -2247,6 +2247,7 @@ fn constants(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16], slot: u32)
 fn sample_format(format: u32) -> Option<SampleFormat> {
     match format {
         21 | 22 => Some(SampleFormat::Bgra8),
+        50 => Some(SampleFormat::Luminance8),
         0x31545844 => Some(SampleFormat::Bc1),
         0x33545844 => Some(SampleFormat::Bc2),
         0x35545844 => Some(SampleFormat::Bc3),
@@ -2262,7 +2263,7 @@ fn create_texture(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u3
         return UNAVAILABLE;
     };
     if a[4] > 1
-        || a[4] == 1 && format.compressed()
+        || a[4] == 1 && format != SampleFormat::Bgra8
         || ![0, 1].contains(&a[6])
         || a[8] != 0
         || a[4] == 1 && (a[3] != 1 || a[6] != 0)
@@ -2468,9 +2469,13 @@ fn texture_operation(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16], sl
                 }
             }
             let readonly = a[4] == 16;
-            if readonly && !level.initialized {
+            if readonly && !level.initialized && *format != 50 {
                 unsupported("D3D9 read of uninitialized texture shadow");
             }
+            // A fresh managed L8 mip already owns real CPU storage. READONLY
+            // may expose it, but its initial contents are not a Windows-value
+            // promise. This neither uploads zero pixels nor initializes the GPU;
+            // sampling still requires an actual writable unlock.
             write(image, a[2], &[level.pitch, level.data]);
             level.lock = Some(readonly);
             0
@@ -2624,6 +2629,11 @@ fn dispatch_inner(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32 {
                     unreachable!()
                 };
                 return if gpu.supports_bc() { 0 } else { UNAVAILABLE };
+            }
+            // Linear L8 luminance textures are real storage; render targets,
+            // vertex-texture and sRGB queries for L8 remain unavailable.
+            if a[4] == 0 && a[5] == 3 && a[6] == 50 {
+                return 0;
             }
             // Real BGRA8 color/sample storage and non-lockable D16 surfaces.
             if a[4] == 2 && a[5] == 1 && a[6] == 80 {

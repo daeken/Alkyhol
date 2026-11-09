@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Identical PE32 manual event-set Winsock waits reached by DAO."""
+"""Identical PE32 Win32 and Winsock event-set waits reached by DAO."""
 import argparse,hashlib,json,os,platform,shutil,struct,subprocess
 from pathlib import Path
 from build_pe_fixture import ROOT,rust_tool
@@ -9,7 +9,7 @@ def sha(path):return hashlib.sha256(path.read_bytes()).hexdigest()
 def identity(d):return {'source':{p.relative_to(ROOT).as_posix():sha(p) for p in [SOURCE]},'pe':sha(d/'wsa-events.exe')}
 def build(d):
  d.mkdir(parents=True,exist_ok=True);lld=rust_tool('rust-lld');libs=[]
- symbols={'kernel32.dll':[('CreateEventA',16),('CreateThread',24),('WaitForSingleObject',8),('GetExitCodeThread',8),('CloseHandle',4),('Sleep',4),('GetStdHandle',4),('WriteFile',20),('ExitProcess',4)],'ws2_32.dll':[('WSAStartup',8),('WSACleanup',0),('WSAGetLastError',0),('WSACreateEvent',0),('WSASetEvent',4),('WSAResetEvent',4),('WSACloseEvent',4),('WSAWaitForMultipleEvents',20)]}
+ symbols={'kernel32.dll':[('CreateEventA',16),('CreateThread',24),('WaitForSingleObject',8),('WaitForMultipleObjects',16),('GetExitCodeThread',8),('CloseHandle',4),('Sleep',4),('GetStdHandle',4),('WriteFile',20),('ExitProcess',4)],'ws2_32.dll':[('WSAStartup',8),('WSACleanup',0),('WSAGetLastError',0),('WSACreateEvent',0),('WSASetEvent',4),('WSAResetEvent',4),('WSACloseEvent',4),('WSAWaitForMultipleEvents',20)]}
  for dll,entries in symbols.items():
   deffile=d/(dll+'.def');deffile.write_text('LIBRARY '+dll+'\nEXPORTS\n'+'\n'.join(chr(34)+n+chr(34) for n,_ in entries)+'\n');lib=d/(dll+'.lib');libs.append(str(lib));subprocess.run([lld,'-flavor','link','/lib','/machine:x86','/def:'+str(deffile),'/out:'+str(lib)],check=True)
  obj=d/'wsa-events.obj';subprocess.run([shutil.which('clang'),'--target=i686-pc-windows-msvc','-std=c11','-O1','-ffreestanding','-fno-builtin','-fno-stack-protector','-Wall','-Wextra','-Werror','-c',str(SOURCE),'-o',str(obj)],check=True)
@@ -31,7 +31,7 @@ def execute(d,native):
  if r.returncode:raise ValueError('WSA event witness failed; raw capture retained: '+r.stderr.decode(errors='replace')[-1500:])
  if len(r.stdout)%4:raise ValueError('truncated WSA event report')
  words=list(struct.unpack('<'+'I'*(len(r.stdout)//4),r.stdout));report['words']=words
- expected=[0x45534157,3,0,1,258,1,0,0,1,1,0,1,0xffffffff,87,258]+[1,258,1,1,1,0,0,1,258,1,0,0,0xffffffff,87,1,1,0,1]+[1,1,258,1,258,0,258,1,0,1,1,0,0,258,1,0,258,1,0,1,1,1]+[1,1,0,6,0,1,1]
+ expected=[0x45534157,4,1,0,1,0,1,258,1,0,0,1,1,0,1,0xffffffff,87,258]+[1,258,1,1,1,0,0,1,258,1,0,0,0xffffffff,87,1,1,0,1]+[1,1,258,1,258,0,258,1,0,1,1,0,0,258,1,0,258,1,0,1,1,1]+[1,1,0,6,0,1,1]
  expected += [len(expected)+1]
  path.write_text(json.dumps(report,indent=2)+'\n')
  if native:

@@ -146,7 +146,9 @@ static DWORD compressed_witness(){
 #endif
 extern "C" DWORD entry(){
  DWORD before=stack();put(0x39534844);
-#ifdef PACKED
+#ifdef LUMINANCE
+put(10);
+#elif defined(PACKED)
 put(9);
 #elif defined(BC3)
 put(8);
@@ -213,14 +215,35 @@ put(1);
 #endif
 2,&copy,NULL)==S_OK);if(!back||!copy)return 10;
  #ifdef TEXTURES
- IDirect3DTexture9* texture=NULL;ok(g_pd3dDevice->CreateTexture(1,1,1,0,21,1,&texture,NULL)==S_OK);if(!texture)return 13;
- ok(texture->GetLevelCount()==1);D3DSURFACE_DESC desc={};ok(texture->GetLevelDesc(0,&desc)==S_OK&&desc.Format==21&&desc.Type==1&&desc.Pool==1&&desc.Width==1&&desc.Height==1);
- INT whole_texture[4]={0,0,1,1};D3DLOCKED_RECT texlock={};ok(texture->LockRect(0,&texlock,whole_texture,0)==S_OK);if(!texlock.pBits)return 14;*(DWORD*)texlock.pBits=0x80808080;
+ const UINT sampled_format=
+ #ifdef LUMINANCE
+ 50;
+ #else
+ 21;
+ #endif
+ IDirect3DTexture9* texture=NULL;ok(g_pd3dDevice->CreateTexture(1,1,1,0,sampled_format,1,&texture,NULL)==S_OK);if(!texture)return 13;
+ #ifdef LUMINANCE
+ D3DLOCKED_RECT initial={};BOOL initial_lock=texture->LockRect(0,&initial,NULL,16)==S_OK&&initial.pBits&&initial.Pitch>=1;
+ if(initial_lock){volatile unsigned char observed=*(volatile unsigned char*)initial.pBits;(void)observed;initial_lock=texture->UnlockRect(0)==S_OK;}ok(initial_lock); // No initial byte value is promised or compared.
+ #endif
+ ok(texture->GetLevelCount()==1);D3DSURFACE_DESC desc={};ok(texture->GetLevelDesc(0,&desc)==S_OK&&desc.Format==sampled_format&&desc.Type==1&&desc.Pool==1&&desc.Width==1&&desc.Height==1);
+ INT whole_texture[4]={0,0,1,1};D3DLOCKED_RECT texlock={};ok(texture->LockRect(0,&texlock,whole_texture,0)==S_OK);if(!texlock.pBits)return 14;
+ #ifdef LUMINANCE
+ *(unsigned char*)texlock.pBits=128;
+ #else
+ *(DWORD*)texlock.pBits=0x80808080;
+ #endif
  ok(texture->UnlockRect(0)==S_OK);ok(g_pd3dDevice->SetTexture(0,texture)==S_OK);
  IDirect3DBaseTexture9* retrieved=NULL;ok(g_pd3dDevice->GetTexture(0,&retrieved)==S_OK&&retrieved==texture);if(retrieved)retrieved->Release();
  parent=NULL;ok(texture->GetDevice(&parent)==S_OK&&parent==g_pd3dDevice);if(parent)parent->Release();ok(texture->GetType()==3);
  DWORD state=99;ok(g_pd3dDevice->GetSamplerState(0,11,&state)==S_OK&&state==0);ok(g_pd3dDevice->SetSamplerState(0,5,2)==S_OK);ok(g_pd3dDevice->GetSamplerState(0,5,&state)==S_OK&&state==2);
- ok(g_pD3D->CheckDeviceFormat(0,1,22,0x80000,3,21)==S_OK);
+ ok(g_pD3D->CheckDeviceFormat(0,1,22,
+ #ifdef LUMINANCE
+ 0,
+ #else
+ 0x80000,
+ #endif
+ 3,sampled_format)==S_OK);
  const GUID base_texture={0x580ca87e,0x1d3c,0x4d54,{0x99,0x1d,0xb7,0xd3,0xe3,0xc2,0x98,0xce}};void* texture_identity=NULL;
  ok(texture->QueryInterface(base_texture,&texture_identity)==S_OK&&texture_identity==texture);if(texture_identity)((IDirect3DBaseTexture9*)texture_identity)->Release();
  texture->Release();
@@ -272,7 +295,13 @@ put(1);
   ok(g_pd3dDevice->SetRenderState(168,frame?1:15)==S_OK);DWORD writes=0;ok(g_pd3dDevice->GetRenderState(168,&writes)==S_OK&&writes==(frame?1u:15u));
   #endif
   #ifdef TEXTURES
-  ok(g_pd3dDevice->SetSamplerState(0,11,frame)==S_OK);DWORD srgb=99;ok(g_pd3dDevice->GetSamplerState(0,11,&srgb)==S_OK&&srgb==frame);
+  const DWORD srgb_value=
+  #ifdef LUMINANCE
+  0;
+  #else
+  frame;
+  #endif
+  ok(g_pd3dDevice->SetSamplerState(0,11,srgb_value)==S_OK);DWORD srgb=99;ok(g_pd3dDevice->GetSamplerState(0,11,&srgb)==S_OK&&srgb==srgb_value);
   #endif
   ok(g_pd3dDevice->SetVertexShaderConstantF(0,matrix,4)==S_OK);
   static float actual[16];ok(g_pd3dDevice->GetVertexShaderConstantF(0,actual,4)==S_OK&&actual[3]==matrix[3]);
