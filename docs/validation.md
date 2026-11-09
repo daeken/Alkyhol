@@ -6749,3 +6749,32 @@ establishes that the combined NULL/offset/stride assertion differs, but does not
 identify which returned field differs. The witness now emits those raw fields
 on this same failure without weakening its assertion. Native multi-stream
 full-frame agreement remains unestablished until this contract is diagnosed.
+
+## DAO stencil diagnostics identify depth-range clear rejection and fresh storage
+
+Clean 9fc21bf confirms full-size color/stencil clears were rejected solely
+because the viewport's MaxZ was zero. [Clear](https://learn.microsoft.com/en-us/windows/win32/api/d3d9/nf-d3d9-idirect3ddevice9-clear)
+uses the viewport rectangle; its depth mapping interval does not change clear
+coverage. Full-rectangle clears now accept nondefault depth ranges. Partial
+regions/rectangle arrays remain explicit unsupported operations.
+
+The later 146x146 scene draw binds D24S8, enables depth and stencil, compares
+stencil ALWAYS and increments on pass; it has cleared color/depth but not the
+new stencil aspect. PE32 depth/stencil allocation now explicitly clears newly
+allocated GPU stencil storage to zero. This is a real queued GPU operation and
+a documented Alkyhol initial-storage policy, not a fabricated initialized flag,
+a removed stencil operation, or a claim about native initial stencil bytes.
+Depth still requires its actual clear. Low-level backend uninitialized-aspect
+guards and their existing GPU assertions remain intact. Native rendering that
+depends on unspecified initial stencil contents remains unmeasured.
+
+The existing stencil-mask PE still passes its complete frames, now with clears
+under [0,0] and [0.25,0.75] viewport depth intervals. A new owned literal
+`--fresh-stencil` PE passes two complete RGB frames physically: implicit then
+explicit D24S8 surfaces, color/depth-only clears, ALWAYS stencil comparison and
+increment-on-pass. Its RGB visibility is independent of the unspecified native
+initial stencil byte; the test does not compare that byte or assert native
+zero-initialization. The full backend stencil GPU operation/aspect test,
+PE Clippy and 15 observer tests pass. Existing CI transfers the identical new PE
+for native comparison, pending. The next clean DAO replay determines whether
+scene rendering advances; no character-creation frame/gameplay is yet claimed.

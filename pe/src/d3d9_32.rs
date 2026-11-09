@@ -1442,7 +1442,12 @@ fn allocate_depth(
         unreachable!()
     };
     let depth = if format == 75 {
-        gpu.create_depth_stencil(width, height)?
+        let depth = gpu.create_depth_stencil(width, height)?;
+        // D3D9 exposes no defined initial stencil value. This adapter chooses
+        // zero by actually clearing new GPU storage, not by declaring unknown
+        // contents initialized or silently removing the stencil operation.
+        gpu.clear_depth_stencil(&depth, None, Some(0))?;
+        depth
     } else {
         gpu.create_depth16(width, height)?
     };
@@ -3472,7 +3477,7 @@ fn dispatch_inner(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32 {
             let Body::Device { viewport, .. } = &s.objects[&a[0]].body else {
                 unreachable!()
             };
-            if *viewport != [0, 0, width, height, 0, 1f32.to_bits()] {
+            if viewport[..4] != [0, 0, width, height] {
                 eprintln!(
                     "D3D9 unavailable clear region: viewport={viewport:x?}; target={width}x{height}; flags={:x}",
                     a[3]

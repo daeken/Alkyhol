@@ -287,7 +287,9 @@ static DWORD streams_witness(IDirect3DVertexBuffer9* positions){
 #endif
 extern "C" DWORD entry(){
  DWORD before=stack();put(0x39534844);
-#ifdef STREAMS
+#ifdef FRESH_STENCIL
+put(19);
+#elif defined(STREAMS)
 put(18);
 #elif defined(SHORT4)
 put(17);
@@ -328,12 +330,12 @@ put(1);
  if(!RegisterClassExW(&wc))return 2;
  HWND window=CreateWindowExW(0,wc.lpszClassName,L"Original legacy shader execution",0x80000000,80,80,32,32,NULL,NULL,wc.hInstance,NULL);
  if(!window)return 3;
- #if defined(MODEL2)||defined(DEPTH)||defined(FONTS)
+ #if defined(MODEL2)||defined(DEPTH)||defined(FONTS)||defined(FRESH_STENCIL)
  g_pD3D=Direct3DCreate9(32);if(!g_pD3D)return 4;
  D3DPRESENT_PARAMETERS present={};present.BackBufferWidth=32;present.BackBufferHeight=32;present.BackBufferFormat=21;present.BackBufferCount=1;present.SwapEffect=1;present.hDeviceWindow=window;present.Windowed=TRUE;present.PresentationInterval=0x80000000;
- #ifdef DEPTH
+ #if defined(DEPTH)||defined(FRESH_STENCIL)
  present.EnableAutoDepthStencil=TRUE;
- #ifdef STENCIL
+ #if defined(STENCIL)||defined(FRESH_STENCIL)
  present.AutoDepthStencilFormat=75;
  #else
  present.AutoDepthStencilFormat=80;
@@ -375,8 +377,15 @@ put(1);
  #ifdef STREAMS
  DWORD streams_stage=streams_witness(vb);ok(streams_stage==0);if(streams_stage)return fail(34,streams_stage);
  #endif
+ #ifdef FRESH_STENCIL
+ // No Clear(STENCIL): visibility uses ALWAYS, so complete RGB output has no
+ // dependency on the native allocation's unspecified initial stencil value.
+ DWORD fresh_states[][2]={{52,1},{53,1},{54,1},{55,4},{56,8},{57,1},{58,255},{59,255}};
+ BOOL fresh_ok=TRUE;for(UINT n=0;n<8;n++){DWORD actual=0;if(g_pd3dDevice->SetRenderState(fresh_states[n][0],fresh_states[n][1])!=S_OK||g_pd3dDevice->GetRenderState(fresh_states[n][0],&actual)!=S_OK||actual!=fresh_states[n][1])fresh_ok=FALSE;}
+ ok(fresh_ok);if(!fresh_ok)return 35;
+ #endif
  IDirect3DSurface9 *back=NULL,*copy=NULL;ok(g_pd3dDevice->GetBackBuffer(0,0,0,&back)==S_OK);ok(g_pd3dDevice->CreateOffscreenPlainSurface(32,32,
-#if defined(MODEL2)||defined(DEPTH)||defined(FONTS)
+#if defined(MODEL2)||defined(DEPTH)||defined(FONTS)||defined(FRESH_STENCIL)
 21,
 #else
 22,
@@ -456,6 +465,14 @@ put(1);
  DWORD index_stage=index_witness();ok(index_stage==0);if(index_stage)return fail(18,index_stage);
  #endif
  for(UINT frame=0;frame<2;frame++){
+  #ifdef FRESH_STENCIL
+  if(frame){
+   IDirect3DSurface9* explicit_depth=NULL;
+   if(g_pd3dDevice->CreateDepthStencilSurface(32,32,75,0,0,TRUE,&explicit_depth,NULL)!=S_OK||!explicit_depth)return 38;
+   if(g_pd3dDevice->SetDepthStencilSurface(explicit_depth)!=S_OK)return 39;
+   explicit_depth->Release();
+  }
+  #endif
   #ifdef FONTS
   if(g_pd3dDevice->SetTexture(0,font_textures[frame])!=S_OK)return 32;
   #endif
@@ -499,15 +516,26 @@ put(1);
   #endif
   ok(g_pd3dDevice->SetVertexShaderConstantF(0,matrix,4)==S_OK);
   static float actual[16];ok(g_pd3dDevice->GetVertexShaderConstantF(0,actual,4)==S_OK&&actual[3]==matrix[3]);
+  #if defined(STENCIL)||defined(FRESH_STENCIL)
+  // Clear uses the viewport rectangle, not its depth mapping interval.
+  DWORD clear_viewport[6]={0,0,32,32,frame?0x3e800000u:0u,frame?0x3f400000u:0u};
+  if(g_pd3dDevice->SetViewport(clear_viewport)!=S_OK)return 36;
+  #endif
   ok(g_pd3dDevice->Clear(0,NULL,
  #ifdef STENCIL
  5,0xff0000ff,1,
+ #elif defined(FRESH_STENCIL)
+ 3,0xff0000ff,1,
  #elif defined(DEPTH)
  3,0xff0000ff,frame?1.f:0.f,
  #else
  1,0xff0000ff,1,
  #endif
  0)==S_OK);
+ #if defined(STENCIL)||defined(FRESH_STENCIL)
+ DWORD draw_viewport[6]={0,0,32,32,0,0x3f800000};
+ if(g_pd3dDevice->SetViewport(draw_viewport)!=S_OK)return 37;
+ #endif
  #ifdef STENCIL
  DWORD stencil_stage=stencil_mask(frame);if(stencil_stage)return fail(30,stencil_stage);
  #endif
