@@ -95,6 +95,8 @@ mod ui32;
 mod unnamed_mutex32;
 #[path = "watch32.rs"]
 mod watch32;
+#[path = "wave32.rs"]
+mod wave32;
 #[path = "window_host32.rs"]
 mod window_host32;
 #[path = "winsock32.rs"]
@@ -123,7 +125,7 @@ unsafe extern "C" {
 }
 const PAGE: usize = 4096;
 const STACK: usize = 1024 * 1024;
-const APIS: [(&str, u16); 277] = [
+const APIS: [(&str, u16); 284] = [
     ("GetLastError", 0),
     ("SetLastError", 4),
     ("GetStdHandle", 4),
@@ -401,6 +403,13 @@ const APIS: [(&str, u16); 277] = [
     ("CoUninitialize", 0),
     ("GdiFlush", 0),
     ("CoCreateInstance", 20),
+    ("waveOutGetNumDevs", 0),
+    ("waveInGetNumDevs", 0),
+    ("WSAWaitForMultipleEvents", 20),
+    ("WSACreateEvent", 0),
+    ("WSASetEvent", 4),
+    ("WSAResetEvent", 4),
+    ("WSACloseEvent", 4),
 ];
 // The first 120 API slots retain their original offsets. The second bank
 // begins after both x87 bodies, leaving their machine code and failure gates
@@ -483,11 +492,11 @@ fn api_id(module: &str, symbol: &ImportSymbol) -> Option<usize> {
                     "user32.dll"
                 } else if matches!(*id, 107 | 108 | 216 | 220 | 221) {
                     "advapi32.dll"
-                } else if (225..=237).contains(id) {
+                } else if (225..=237).contains(id) || (279..=283).contains(id) {
                     "ws2_32.dll"
                 } else if *id == 215 {
                     "iphlpapi.dll"
-                } else if *id == 110 {
+                } else if matches!(*id, 110 | 277 | 278) {
                     "winmm.dll"
                 } else {
                     "kernel32.dll"
@@ -847,6 +856,7 @@ struct Cpu32 {
     input8: RefCell<input8_32::State>,
     unnamed_mutexes: RefCell<unnamed_mutex32::State>,
     com: RefCell<com32::State>,
+    wave: RefCell<wave32::State>,
     com_storage: RefCell<Vec<(LowMapping, bool)>>,
 }
 impl Cpu32 {
@@ -976,6 +986,7 @@ impl Cpu32 {
             input8: RefCell::new(Default::default()),
             unnamed_mutexes: RefCell::new(Default::default()),
             com: RefCell::new(Default::default()),
+            wave: RefCell::new(Default::default()),
             com_storage: RefCell::new(Default::default()),
         })
     }
@@ -1570,6 +1581,12 @@ impl<'a> LoadedImage32<'a> {
             .map(|m| m.base))
     }
     fn export_address(&self, module: u32, symbol: u32) -> Result<Option<u32>> {
+        let module = if module == 0 {
+            self.module_handle(0, false)?
+                .ok_or("no process executable for NULL GetProcAddress")?
+        } else {
+            module
+        };
         if let Some((name, _)) = self
             .cpu
             .builtins
@@ -1598,9 +1615,6 @@ impl<'a> LoadedImage32<'a> {
         let exports = if modules.is_empty() {
             if module != self.image.base as u32 {
                 return Err("GetProcAddress requires the current PE32 executable module".into());
-            }
-            if self.exports.is_none() {
-                return Err("GetProcAddress without a PE32 export table is unsupported".into());
             }
             self.exports.as_ref()
         } else {
@@ -2363,6 +2377,8 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
             272..=274 => com32::dispatch(image, id, args),
             275 => gdi32::flush(),
             276 => com32::create(image, args),
+            277 | 278 => wave32::count(image, id == 278),
+            279..=283 => winsock32::event_api(image, id, args),
             input8_32::BASE.. => input8_32::dispatch(image, id, &words),
             d3d9_32::BASE.. => d3d9_32::dispatch(image, id, &words),
             215 => {
@@ -2400,6 +2416,15 @@ mod tests {
             assert_eq!(api_id(module, &symbol), Some(id));
             assert_eq!(api_id("kernel32.dll", &symbol), None);
             assert_eq!(cleanup_bytes(id, APIS[id].1), APIS[id].1);
+        }
+    }
+    #[test]
+    fn wave_device_count_gates_belong_to_winmm_with_no_stack_arguments() {
+        for id in [277, 278] {
+            let symbol = ImportSymbol::Name(APIS[id].0.into());
+            assert_eq!(api_id("WINMM.dll", &symbol), Some(id));
+            assert_eq!(api_id("kernel32.dll", &symbol), None);
+            assert_eq!(APIS[id].1, 0);
         }
     }
     #[test]
@@ -2574,6 +2599,7 @@ mod tests {
                 input8: RefCell::new(Default::default()),
                 unnamed_mutexes: RefCell::new(Default::default()),
                 com: RefCell::new(Default::default()),
+                wave: RefCell::new(Default::default()),
                 com_storage: RefCell::new(Default::default()),
             }),
             tls: None,
@@ -2649,7 +2675,8 @@ mod tests {
     fn self_export_addresses_require_own_module_and_preserve_biased_ordinals() {
         let mut image = layout();
         image.image.base = 0x100000usize as *mut u8;
-        assert!(image.export_address(0x100000, 17).is_err());
+        assert_eq!(image.export_address(0x100000, 17).unwrap(), None);
+        assert_eq!(image.export_address(0, 17).unwrap(), None);
         image.exports = Some(ExportTable {
             dll_name: "owned.exe".into(),
             ordinal_base: 17,
@@ -2671,14 +2698,17 @@ mod tests {
         for ordinal in [0, 16, 19, 65535] {
             assert_eq!(image.export_address(0x100000, ordinal).unwrap(), None);
         }
-        assert!(image.export_address(0, 17).is_err());
+        assert_eq!(image.export_address(0, 17).unwrap(), Some(0x101000));
+        assert!(image.export_address(0x200000, 17).is_err());
         assert!(image.export_address(0x100000, 0xdead0000).is_err());
         image.exports.as_mut().unwrap().entries[0].target =
             ExportTarget::Forwarder("kernel32.Sleep".into());
         assert!(image.export_address(0x100000, 17).is_err());
+        assert!(image.export_address(0, 17).is_err());
         image.exports.as_mut().unwrap().entries[0].target =
             ExportTarget::Address { rva: 0xffff0000 };
         assert!(image.export_address(0x100000, 17).is_err());
+        assert!(image.export_address(0, 17).is_err());
     }
     #[test]
     fn teb_descriptor_has_a_bounded_writable_user_data_segment_and_exact_base() {

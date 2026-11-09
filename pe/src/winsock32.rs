@@ -82,6 +82,49 @@ fn checked(image: &LoadedImage32<'_>, pointer: u32, len: usize, write: bool) {
         unsupported("Winsock buffer outside checked guest storage");
     }
 }
+/// WSA event aliases use the same real manual-reset kernel objects as Win32.
+/// The reached wait is one event; general wait sets and APC dispatch remain explicit.
+pub(super) fn event_api(image: &LoadedImage32<'_>, id: u32, a: &[u32; 8]) -> u32 {
+    if id == 280 {
+        return super::event32::dispatch(image, 116, &[0, 1, 0, 0, 0, 0, 0, 0]);
+    }
+    if id == 279 {
+        if !ready(image) {
+            return failure(10093);
+        }
+        if !(1..=64).contains(&a[0]) {
+            return failure(87);
+        }
+        if a[0] != 1 {
+            unsupported(
+                "Winsock wait sets with multiple objects require an atomic multi-wait implementation",
+            );
+        }
+        if a[4] != 0 {
+            unsupported("alertable Winsock waits require APC delivery");
+        }
+        checked(image, a[1], 4, false);
+        let event = unsafe { (a[1] as *const u32).read_unaligned() };
+        if !image.cpu.events.borrow().is_event(event) {
+            return failure(6);
+        }
+        return thread32::wait_handle(image, event, a[3]);
+    }
+    if !image.cpu.events.borrow().is_event(a[0]) {
+        alkyhol::ffi::SetLastError(6);
+        return 0;
+    }
+    match id {
+        281 | 282 => super::event32::dispatch(image, if id == 281 { 117 } else { 118 }, a),
+        283 => image
+            .cpu
+            .events
+            .borrow_mut()
+            .close(a[0])
+            .unwrap_or_else(|e| unsupported(&e)) as u32,
+        _ => unreachable!(),
+    }
+}
 fn ready(image: &LoadedImage32<'_>) -> bool {
     image.cpu.winsock.borrow().references != 0
 }

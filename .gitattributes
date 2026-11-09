@@ -204,3 +204,6 @@ d3d9/licenses/* text eol=lf
 
 # The owned DAO input witness is transferred, never rebuilt, on Windows.
 pe/fixtures/input8/** text eol=lf
+
+# Raw owned native palette-quantization observation, not game data.
+pe/reference/pe32-palette-quantizer-windows-v1.json -text whitespace=cr-at-eol

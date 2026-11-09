@@ -20,6 +20,46 @@ jobs:
           cargo test --manifest-path pe/Cargo.toml --target x86_64-apple-darwin --locked --offline input
           python tools/observe_input8_lifecycle.py
           python tools/observe_input8_lifecycle.py --host
+      - name: Execute the original network worker's single-event Winsock wait
+        run: |
+          python tools/observe_pe32_wsa_events.py
+          python tools/observe_pe32_wsa_events.py --host
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: wsa-events-identical-pe
+          path: |
+            local/pe/wsa-events-microtest/wsa-events.exe
+            local/pe/wsa-events-microtest/wsa-events-inputs.json
+            local/pe/wsa-events-microtest/wsa-events-host.json
+          if-no-files-found: error
+      - name: Execute relative INI directories reached by DAO's SKU lookup
+        run: |
+          python tools/observe_pe32_relative_ini.py
+          python tools/observe_pe32_relative_ini.py --host
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: relative-ini-identical-pe
+          path: |
+            local/pe/relative-ini-microtest/relative-ini.exe
+            local/pe/relative-ini-microtest/relative-ini-inputs.json
+            local/pe/relative-ini-microtest/relative-ini-host.json
+          if-no-files-found: error
+      - name: Execute FMOD null-module export lookup and real CoreAudio discovery
+        run: |
+          cargo test --manifest-path pe/Cargo.toml --target x86_64-apple-darwin --locked --offline wave32
+          python tools/observe_pe32_null_module_export.py
+          python tools/observe_pe32_null_module_export.py --host
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: null-module-export-identical-pe
+          path: |
+            local/pe/null-module-export-microtest/null-module-export.exe
+            local/pe/null-module-export-microtest/null-module-export-inputs.json
+            local/pe/null-module-export-microtest/null-module-export-host.json
+          if-no-files-found: error
       - name: Execute COM initialization reached by original FMOD
         run: |
           cargo test --manifest-path pe/Cargo.toml --target x86_64-apple-darwin --locked --offline com32
@@ -38,6 +78,8 @@ jobs:
         run: |
           python tools/observe_pe32_palette_dib.py
           python tools/observe_pe32_palette_dib.py --host
+          python tools/observe_pe32_palette_dib.py --quantize
+          python tools/observe_pe32_palette_dib.py --quantize --host
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -131,7 +173,47 @@ jobs:
         with:
           name: com-apartment-identical-pe
           path: local/pe/com-apartment-microtest
+      - uses: actions/download-artifact@v4
+        with:
+          name: null-module-export-identical-pe
+          path: local/pe/null-module-export-microtest
+      - uses: actions/download-artifact@v4
+        with:
+          name: relative-ini-identical-pe
+          path: local/pe/relative-ini-microtest
+      - uses: actions/download-artifact@v4
+        with:
+          name: wsa-events-identical-pe
+          path: local/pe/wsa-events-microtest
+      - name: Compare identical Winsock event PE on native Windows
+        if: success() || failure()
+        run: python tools/observe_pe32_wsa_events.py --native
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: wsa-events-native-observation
+          path: local/pe/wsa-events-microtest/native-wsa-events.json
+          if-no-files-found: warn
+      - name: Compare identical relative INI path PE on native Windows
+        if: success() || failure()
+        run: python tools/observe_pe32_relative_ini.py --native
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: relative-ini-native-observation
+          path: local/pe/relative-ini-microtest/native-relative-ini.json
+          if-no-files-found: warn
+      - name: Compare identical null-module export lookup PE on native Windows
+        if: success() || failure()
+        run: python tools/observe_pe32_null_module_export.py --native
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: null-module-export-native-observation
+          path: local/pe/null-module-export-microtest/native-null-module-export.json
+          if-no-files-found: warn
       - name: Compare identical COM initialization PE on native Windows
+        if: success() || failure()
         run: python tools/observe_pe32_com_apartment.py --native
       - uses: actions/upload-artifact@v4
         if: always()
@@ -140,6 +222,7 @@ jobs:
           path: local/pe/com-apartment-microtest/native-com-apartment.json
           if-no-files-found: warn
       - name: Compare identical indexed DIB PE on native Windows
+        if: success() || failure()
         run: python tools/observe_pe32_palette_dib.py --native
       - uses: actions/upload-artifact@v4
         if: always()
@@ -148,6 +231,7 @@ jobs:
           path: local/pe/palette-dib-microtest/native-palette-dib.json
           if-no-files-found: warn
       - name: Compare identical file PE, bytes and inheritance metadata
+        if: success() || failure()
         run: python tools/observe_pe32_file_family.py --native --output local/pe/file-security-microtest
       - uses: actions/upload-artifact@v4
         if: always()

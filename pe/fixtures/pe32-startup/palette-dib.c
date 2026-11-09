@@ -18,7 +18,7 @@ __declspec(dllimport) void __stdcall ExitProcess(U);
 static U out[80],used;static void put(U n){out[used++]=n;}
 static U stack(void){U n;__asm__ volatile("movl %%esp,%0":"=r"(n));return n;}
 struct Info {U header[10],colors[256];};static struct Info indexed={{40,5,(U)-2,0x80001,0,16,0,0,256,256},{0}};
-U entry(void){U before=stack();put(0x38424944);put(1);for(U i=0;i<256;i++)indexed.colors[i]=i*0x10101;indexed.colors[1]=0x1d0d07;
+U entry(void){U before=stack();put(0x38424944);put(2);for(U i=0;i<256;i++)indexed.colors[i]=i*0x10101;indexed.colors[1]=0x1d0d07;
  unsigned char *bits=0,*bottom_bits=0;U* target_bits=0;U direct[10]={40,5,(U)-2,0x200001,0,40,0,0,0,0};
  H source=CreateCompatibleDC(0),target=CreateCompatibleDC(0);put(source!=0&&target!=0);H bitmap=CreateDIBSection(source,&indexed,0,(void**)&bits,0,0);put(bitmap!=0&&bits!=0);if(!bitmap||!bits)ExitProcess(2);
  H rgb=CreateDIBSection(target,direct,0,(void**)&target_bits,0,0);put(rgb!=0&&target_bits!=0);if(!rgb||!target_bits)ExitProcess(3);
@@ -30,9 +30,12 @@ U entry(void){U before=stack();put(0x38424944);put(1);for(U i=0;i<256;i++)indexe
  for(U i=0;i<10;i++)target_bits[i]=0xaabbccdd;put(BitBlt(target,0,0,5,2,source,0,0,0xcc0020)!=0&&GdiFlush());for(U i=0;i<10;i++)put(target_bits[i]&0xffffff);
  indexed.header[2]=2;H bottom=CreateDIBSection(source,&indexed,0,(void**)&bottom_bits,0,0);put(bottom!=0&&bottom_bits!=0);if(!bottom||!bottom_bits)ExitProcess(4);
  for(U i=0;i<16;i++)bottom_bits[i]=0x5a;for(U x=0;x<5;x++){bottom_bits[x]=(unsigned char)(9+x);bottom_bits[8+x]=(unsigned char)(1+x);}
- put(SelectObject(source,bottom)==bitmap);put(GetPixel(source,1,0));put(GetPixel(source,1,1));put(BitBlt(source,0,0,5,2,target,0,0,0xcc0020)!=0&&GdiFlush());
+ put(SelectObject(source,bottom)==bitmap);put(GetPixel(source,1,0));put(GetPixel(source,1,1));
+#ifdef QUANTIZE
+ put(BitBlt(source,0,0,5,2,target,0,0,0xcc0020)!=0&&GdiFlush());
  for(U i=0;i<16;i++)put(bottom_bits[i]);
  put(bottom_bits[0]==6&&bottom_bits[8]==1&&bottom_bits[10]==17&&bottom_bits[5]==0x5a&&bottom_bits[13]==0x5a);
+#endif
  put(SelectObject(source,old_source)==bottom&&SelectObject(target,old_target)==rgb);put(DeleteObject(bitmap)&&DeleteObject(bottom)&&DeleteObject(rgb));put(DeleteDC(source)&&DeleteDC(target));put(stack()==before);put(used+1);
  U done=0;int ok=WriteFile(GetStdHandle((U)-11),out,used*4,&done,0);ExitProcess(ok&&done==used*4?0:8);return 8;
 }

@@ -520,6 +520,11 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32
             let target_window = dest_dc.window;
             let destination = dest_dc.bitmap;
             let dest = state.bitmaps.get_mut(&destination).unwrap();
+            if dest.bits == 8 {
+                unsupported(
+                    "BitBlt to indexed destinations requires the native Windows palette path; exact-color nearest mapping is not equivalent",
+                );
+            }
             let mut snapshot = dest.snapshot();
             blit(
                 &mut snapshot,

@@ -5765,3 +5765,56 @@ next observer preserves all previous criteria and adds all 16 raw destination
 bytes (including padding) to determine the actual Windows color-index conversion.
 No complete native DIB agreement is claimed. Both failed raw reports remain
 retained locally.
+
+
+## DAO proceeds through audio discovery, configuration and network workers
+
+D3D9 CI 42596983817 passes all three jobs on a7a832f. Physical M4 and native
+Windows execute the identical packed PE and agree on all 2,099 words, including
+both complete frames. This is finite packed-fetch evidence, not original game
+frame parity. The later D3D9 run 42597604307 also passes.
+
+FMOD's actual device-change check now gets real current CoreAudio input/output
+stream device counts; every call re-enumerates, so hotplug is not hidden behind
+a permanent snapshot. Actual SDK C calls run in the x86_64 host. This adds no
+playback, recording, synthetic device or Windows hardware identity. The original
+caller continues through the absence of optional DirectSound, using NULL-module
+GetProcAddress against the real EXE export table. Missing exports still fail;
+forwarders, bad storage and arbitrary foreign module handles remain unsupported.
+An EXE without an export table has genuine empty exports, not an unknown module.
+The owned 16-word export PE passes locally, including actual function calls,
+names, ordinals, missing errors and stack cleanup; native comparison is pending.
+
+Relative INI directory spellings now use the checked process-owned current
+directory (including explicit dot-relative descendants). Bare filename search,
+foreign namespaces, dot aliases and escaping remain outside the profile; writes
+retain the existing scoped Documents capability. The original SKU query advances
+only after actual backing absence is checked. An owned 21-word PE checks existing
+child-file values, both spellings, real absent leaf/parent errors and output
+bounds, with new native comparison pending. Existing frozen INI fixtures and
+criteria are unchanged.
+
+Original DAO then creates two more workers. The reached non-alertable one-event
+WSAWaitForMultipleEvents now waits on the actual kernel event while releasing the
+CPU lease. WSA create/set/reset/close share real manual-reset Win32 event objects.
+General multi-object wait sets and APC dispatch remain explicitly unsupported.
+The owned 23-word PE passes real worker signaling, manual reset, wait-all with
+one object, timed polls, invalid count/closed handle errors and stack balance.
+The integrated game run reaches GetDiskFreeSpaceExA as its next unsupported call.
+All 191 PE library tests, remaining targets and Clippy pass locally. New native
+export, INI and event comparisons are pending. No original DAO draw, Present,
+audio playback, menu or gameplay is claimed.
+
+Native palette evidence from CI 42597604351 shows the Windows RGB-to-index
+BitBlt path quantizes even colors that exist exactly in the supplied palette:
+the raw payload differs, while all padding remains intact. The raw owned native
+capture is preserved at pe/reference/pe32-palette-quantizer-windows-v1.json
+(SHA-256 226be28fb8994fadba8f4eccc1c674942e59ba133cb8b0f8435620226a190598).
+The prior exact-color reverse-copy implementation was not equivalent. BitBlt
+*to* indexed destinations now stops explicitly until that path is implemented.
+The admitted 31-word witness covers real palette storage, orientation, guards,
+GetPixel, exact FillRect and indexed-to-RGB copying; a separate exclusion PE
+ensures unsupported quantization cannot report success. Both pass locally.
+Earlier failed captures and their stricter reverse-copy criterion remain retained;
+they are not counted as complete conversion parity. New native comparison covers
+only admitted operations, not the excluded Windows quantizer.

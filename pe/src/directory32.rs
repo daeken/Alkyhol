@@ -177,13 +177,13 @@ pub(super) fn ordinary_path(image: &LoadedImage32<'_>, text: &str) -> Result<Str
         directory.windows.trim_end_matches('\\')
     ))
 }
-/// Explicit dot-relative INI names follow the real process-owned directory.
+/// INI names with a relative directory component follow the process-owned cwd.
 /// Bare names require Windows-directory searching and remain unsupported.
 pub(super) fn private_profile_path(image: &LoadedImage32<'_>, text: &str) -> Result<String> {
     if text.starts_with("Z:\\") || text.starts_with("z:\\") {
         return Ok(text.to_owned());
     }
-    let leaf = profile_leaf(text)?;
+    let leaf = profile_relative(text)?;
     let state = image.cpu.current_directory.borrow();
     let directory = state
         .as_ref()
@@ -194,14 +194,23 @@ pub(super) fn private_profile_path(image: &LoadedImage32<'_>, text: &str) -> Res
         directory.windows.trim_end_matches('\\')
     ))
 }
-fn profile_leaf(text: &str) -> Result<&str> {
-    let leaf = text.strip_prefix(".\\").ok_or(
-        "private-profile paths require absolute Z: or explicit dot-relative leaf spelling",
-    )?;
-    if leaf.is_empty() || leaf.contains(['\\', '/']) {
-        return Err("private-profile dot-relative path must name one ordinary leaf".into());
+fn profile_relative(text: &str) -> Result<&str> {
+    let relative = if let Some(rest) = text.strip_prefix(".\\") {
+        rest
+    } else if text.contains('\\') && !text.contains(':') && !text.starts_with('\\') {
+        text
+    } else {
+        return Err("private-profile paths require absolute Z: or explicit dot-relative leaf spelling (relative directories are also supported)".into());
+    };
+    if relative.is_empty()
+        || relative.contains(['/', ':'])
+        || relative
+            .split('\\')
+            .any(|component| component.is_empty() || matches!(component, "." | ".."))
+    {
+        return Err("private-profile relative path requires ordinary nonempty components".into());
     }
-    Ok(leaf)
+    Ok(relative)
 }
 /// Once cwd is set, existing read-only file opens use actual guest directory
 /// state. Unknown aliases and creation/write semantics stop rather than falling
@@ -268,16 +277,27 @@ mod tests {
         std::fs::remove_dir_all(moved).unwrap();
     }
     #[test]
-    fn profile_relative_spelling_requires_an_explicit_dot_and_one_leaf() {
-        assert_eq!(profile_leaf(".\\settings.ini").unwrap(), "settings.ini");
+    fn profile_relative_spelling_uses_directories_but_keeps_bare_name_search_explicit() {
+        assert_eq!(profile_relative(".\\settings.ini").unwrap(), "settings.ini");
+        assert_eq!(
+            profile_relative("data\\settings.ini").unwrap(),
+            "data\\settings.ini"
+        );
+        assert_eq!(
+            profile_relative(".\\data\\settings.ini").unwrap(),
+            "data\\settings.ini"
+        );
         for text in [
             "settings.ini",
             ".\\",
-            ".\\inner\\settings.ini",
             ".\\inner/settings.ini",
+            "..\\settings.ini",
+            ".\\data\\..\\settings.ini",
+            "\\rooted.ini",
+            "data\\\\settings.ini",
             "C:\\settings.ini",
         ] {
-            assert!(profile_leaf(text).is_err());
+            assert!(profile_relative(text).is_err());
         }
     }
     #[test]

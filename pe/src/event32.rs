@@ -9,6 +9,9 @@ pub(super) struct State {
     semaphores: BTreeSet<u32>,
 }
 impl State {
+    pub(super) fn is_event(&self, h: u32) -> bool {
+        self.handles.contains(&h)
+    }
     pub(super) fn contains(&self, h: u32) -> bool {
         self.handles.contains(&h) || self.semaphores.contains(&h)
     }
