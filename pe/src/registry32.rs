@@ -320,6 +320,44 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
     }
     if exists { 0 } else { 2 }
 }
+/// Legacy ANSI open: the actually reached absent-key and same-hive profiles.
+/// Existing subkeys require default security-mask semantics, not fabricated access.
+pub(super) fn legacy_open(image: &LoadedImage32<'_>, a: &[u32; 8]) -> u32 {
+    if a[2] == 0 || !a[2].is_multiple_of(4) || !image.permits(a[2] as usize, 4, true) {
+        unsupported("RegOpenKeyA output outside aligned writable guest storage");
+    }
+    let catalog = image
+        .cpu
+        .registry
+        .as_ref()
+        .unwrap_or_else(|| unsupported("RegOpenKeyA requires an explicit registry catalog"));
+    let state = catalog.borrow();
+    let text = if a[1] == 0 {
+        String::new()
+    } else {
+        super::bulk32::ascii(image, a[1])
+    };
+    if text.is_empty() && [HKCU, HKLM].contains(&a[0]) {
+        unsafe {
+            (a[2] as *mut u32).write(a[0]);
+        }
+        return 0; // The same predefined hive is returned; no key or permission is invented.
+    }
+    let (hive, key) = state
+        .target(a[0], text.trim_end_matches('\\'))
+        .unwrap_or_else(|e| unsupported(&e));
+    let exists = state.known(hive, &key).unwrap_or_else(|e| unsupported(&e));
+    if image.cpu.diagnostic.is_some() {
+        eprintln!("PE32 RegOpenKeyA: hive={hive:x}; path={key:?}; configured_exists={exists}");
+    }
+    if exists {
+        unsupported("RegOpenKeyA existing-key default security access is not implemented");
+    }
+    unsafe {
+        (a[2] as *mut u32).write(0);
+    }
+    2 // ERROR_FILE_NOT_FOUND from the authoritative scoped catalog; LastError untouched.
+}
 pub(super) fn query(image: &LoadedImage32<'_>, a: &[u32; 8], ansi: bool) -> u32 {
     if a[2] != 0 || (a[4] != 0 && a[5] == 0) {
         return 87;

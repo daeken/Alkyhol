@@ -1,4 +1,4 @@
-//! Fixed-function POSITIONT processing when D3D9 supplies no vertex shader.
+//! Fixed-function POSITIONT processing which bypasses the bound vertex shader.
 //! The original pixel shader remains unchanged; no missing varying is invented.
 use crate::{
     Result,

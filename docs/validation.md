@@ -6181,3 +6181,51 @@ KERN_INVALID_ADDRESS for an otherwise free low-address region under this
 Rosetta host; the retained implementation instead uses the working MAP_32BIT
 mmap path with actual extent checks. No fixed overwrite or fabricated allocation
 success is used. Integrated original-game retry is pending.
+
+## Native oversized-viewport discrepancy and presentation lifetime repair
+
+D3D9 CI 42622475396 on fb66f00 passes hosted Metal and software Vulkan, but its
+new native POSITIONT witness fails. Native Windows accepts the deliberately
+oversized x=31,width=2 viewport on a 32-wide target and changes the stored state,
+instead of the witness's expected INVALIDCALL/preservation. Drawing afterward
+therefore produces blue frames. The complete original 2,125-word raw observation
+is preserved unchanged in pe/reference/pe32-positiont-viewport-overflow-windows-v1.json
+(SHA-256 ee85f642b8c3aa5b4db8ea287ea7e49a536871ec0c96a6b20cf065639efcd6c1).
+No rendering equality is inferred from that failed record. The original source
+and expectation remain in history.
+
+The admitted POSITIONT witness now makes only valid full/subviewport requests
+and checks their exact returned state and sentinels; all other original
+shader/binding/RHW/strip/full-frame/stack checks remain. It has 2,121 words and
+passes physically; new native comparison is pending. Oversized PE viewport
+requests now stop explicitly for missing clipping emulation, rather than claim
+Windows rejected them. Direct backend extent rejection is still a host constraint,
+not evidence of Windows INVALIDCALL semantics. This supersedes the previous
+invalid-viewport native expectation.
+
+An actual host vmmap during original intro rendering showed 264 retained CG
+images occupying 1.8GiB, alongside substantial bitmap/CoreAnimation allocations.
+The standalone 160-frame 640x480 presentation probe measured 596,156,416 bytes of
+resident growth with the original lifetime. Nested pools scoped to each native
+Present and event-pump operation reduce the same probe's observed growth to
+3,244,032 bytes. The current image is retained by its real window/view; content,
+frame count and rendering quality are unchanged. The probe rejects growth of
+96MiB or more after warm-up and is added to hosted macOS CI. This is host resource
+lifetime evidence, not a Windows frame-equivalence claim.
+
+An integrated run with the bounded allocator passes the earlier next-movie
+boundary and reaches original d3dx9_36.dll calling RegOpenKeyA. That run did not
+need the fallback, so it is not additional proof of a successful integrated
+fallback allocation. The host gap/reuse probe remains the direct fallback
+implementation evidence. The exact original D3DX request addresses the optional
+HKLM Software\\Microsoft\\Direct3D configuration; the private macOS registry
+profile now explicitly declares that uninstalled configuration absent.
+
+Legacy RegOpenKeyA now supports authoritative absent scoped keys and null/empty
+subkeys of the two predefined backed hives. It writes the real resulting handle
+or NULL, preserves LastError and uses its full three-argument stdcall ABI.
+Unknown registry scopes and existing-subkey default security-mask semantics
+remain explicitly unsupported; no default write permission is fabricated. The
+owned 13-word PE checks absence, both same-hive forms, output guards, LastError
+and guest stack. It passes physical M4; native comparison is added and pending.
+201 PE units and Clippy pass. The next integrated retry is pending.

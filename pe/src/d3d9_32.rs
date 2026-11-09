@@ -3115,6 +3115,15 @@ fn dispatch_inner(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32 {
                 let words = read::<6>(image, a[1]);
                 let (target, _) = color_target(&s, a[0]);
                 let (width, height) = target.dimensions();
+                if words[0].checked_add(words[2]).is_none_or(|end| end > width)
+                    || words[1]
+                        .checked_add(words[3])
+                        .is_none_or(|end| end > height)
+                {
+                    unsupported(
+                        "SetViewport outside target extent needs native clipping emulation; Windows may accept this viewport",
+                    );
+                }
                 if alkyhol_d3d9::viewport_from_words(words, width, height).is_err() {
                     return INVALID;
                 }

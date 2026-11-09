@@ -343,10 +343,6 @@ put(1);
  DWORD observed[8]={0x719bad15,0,0,0,0,0,0,0x719bad15};
  BOOL same=g_pd3dDevice->GetViewport(observed+1)==S_OK&&observed[0]==0x719bad15&&observed[7]==0x719bad15;
  for(UINT n=0;n<6;n++)if(observed[n+1]!=viewport[n])same=FALSE;ok(same);
- DWORD invalid[6]={31,0,2,32,0,0x3f800000};
- ok(g_pd3dDevice->SetViewport(invalid)==(HRESULT)0x8876086c);
- same=g_pd3dDevice->GetViewport(observed+1)==S_OK;
- for(UINT n=0;n<6;n++)if(observed[n+1]!=viewport[n])same=FALSE;ok(same);
  #endif
  ok(g_pd3dDevice->BeginScene()==S_OK);ok(
  #ifdef TRANSFORMED

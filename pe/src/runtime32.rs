@@ -136,7 +136,7 @@ unsafe extern "C" {
 }
 const PAGE: usize = 4096;
 const STACK: usize = 1024 * 1024;
-const APIS: [(&str, u16); 298] = [
+const APIS: [(&str, u16); 299] = [
     ("GetLastError", 0),
     ("SetLastError", 4),
     ("GetStdHandle", 4),
@@ -435,6 +435,7 @@ const APIS: [(&str, u16); 298] = [
     ("timeBeginPeriod", 4),
     ("timeEndPeriod", 4),
     ("WaitForMultipleObjects", 16),
+    ("RegOpenKeyA", 12),
 ];
 // The first 120 API slots retain their original offsets. The second bank
 // begins after both x87 bodies, leaving their machine code and failure gates
@@ -524,7 +525,7 @@ fn api_id(module: &str, symbol: &ImportSymbol) -> Option<usize> {
                     || matches!(*id, 256..=258)
                 {
                     "user32.dll"
-                } else if matches!(*id, 107 | 108 | 216 | 220 | 221 | 285) {
+                } else if matches!(*id, 107 | 108 | 216 | 220 | 221 | 285 | 298) {
                     "advapi32.dll"
                 } else if (225..=237).contains(id)
                     || (279..=283).contains(id)
@@ -2472,6 +2473,7 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
             293 => netbios32::reset_unavailable(image, args[0]),
             294 => winsock32::select_sockets(image, args),
             297 => event32::wait_set(image, args),
+            298 => registry32::legacy_open(image, args),
             295 | 296 => {
                 // No minimum periodic-timer resolution policy is configured.
                 // TIMERR_NOCANDO is failure, not an accepted timer request.
@@ -2564,6 +2566,14 @@ mod tests {
             Some(285)
         );
         assert_eq!(APIS[285].1, 12);
+    }
+    #[test]
+    fn legacy_registry_uses_three_stdcall_arguments_and_advapi32() {
+        let symbol = ImportSymbol::Name("RegOpenKeyA".into());
+        assert_eq!(api_id("advapi32.dll", &symbol), Some(298));
+        assert_eq!(api_id("kernel32.dll", &symbol), None);
+        assert_eq!(APIS[298].1, 12);
+        assert_eq!(cleanup_bytes(298, 12), 12);
     }
     #[test]
     fn win32_event_sets_use_kernel32_without_winsock_startup() {

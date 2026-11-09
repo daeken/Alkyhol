@@ -42,7 +42,7 @@ def compare_triangle_pixels(first,second):
  for i,(a,b) in enumerate(zip(first,second)):
   if (a==0xff)!=(b==0xff) or any(abs(((a>>n)&255)-((b>>n)&255))>1 for n in [0,8,16]):raise ValueError(f'native triangle coverage or RGB tolerance 1 failed at {i%300},{i//300}')
 def shader_words(words,textured=False,model2=False,states=False):
- prefix=37 if L8 else 37 if BC3 else 23 if INDEXED else 23 if DEPTH else 37 if TARGETS else 44 if states else 23 if model2 else 36 if textured else 22;checks=14 if TRANSFORMED else 14 if states else 10 if textured else 8
+ prefix=37 if L8 else 37 if BC3 else 23 if INDEXED else 23 if DEPTH else 37 if TARGETS else 44 if states else 23 if model2 else 36 if textured else 22;checks=12 if TRANSFORMED else 14 if states else 10 if textured else 8
  block=1+checks+1024+1;footer=prefix+2*block;length=footer+9
  if len(words)!=length or words[:prefix]!=[0x39534844,11 if TRANSFORMED else 10 if L8 else 9 if PACKED else 8 if BC3 else 7 if INDEXED else 6 if DEPTH else 5 if TARGETS else 4 if states else 3 if model2 else 2 if textured else 1]+[1]*(prefix-2) or words[footer:]!=[0xfeedffff]+[1]*7+[length]:raise ValueError('legacy shader COM/metadata/stack witness differs')
  for frame in range(2):

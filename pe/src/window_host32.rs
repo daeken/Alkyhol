@@ -399,6 +399,7 @@ impl App {
     }
     pub(super) fn pump(&self) -> crate::Result<()> {
         main_exec(move || {
+            let _pool = FramePool::new()?;
             let date = unsafe { send0::<Id>(class("NSDate")?, "distantPast") };
             let next: unsafe extern "C" fn(Id, Sel, u64, Id, Id, i8) -> Id =
                 unsafe { std::mem::transmute(objc_msgSend as *const ()) };
@@ -489,6 +490,7 @@ impl Window {
             return Err("GDI device presentation requires opaque RGB pixels".into());
         }
         main_exec(move || {
+            let _pool = FramePool::new()?;
             let allocation = unsafe { send0::<Id>(class("NSBitmapImageRep")?, "alloc") };
             let initialize: unsafe extern "C" fn(
                 Id,
@@ -736,6 +738,24 @@ impl Drop for Window {
             send0::<()>(window as Id, "close");
             send0::<()>(window as Id, "release")
         });
+    }
+}
+
+// Nested pools bound temporary CoreGraphics/AppKit frame images to one host
+// operation. NSWindow/NSImageView retain the current image beyond this scope.
+struct FramePool(Id);
+impl FramePool {
+    fn new() -> crate::Result<Self> {
+        let pool = unsafe { send0::<Id>(class("NSAutoreleasePool")?, "new") };
+        if pool.is_null() {
+            return Err("native frame autorelease pool allocation failed".into());
+        }
+        Ok(Self(pool))
+    }
+}
+impl Drop for FramePool {
+    fn drop(&mut self) {
+        unsafe { send0::<()>(self.0, "drain") };
     }
 }
 

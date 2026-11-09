@@ -22,6 +22,9 @@ jobs:
           mkdir -p local/pe
           xcrun clang -arch x86_64 -mmacosx-version-min=14.0 -Wall -Wextra -Werror -Wl,-pagezero_size,0x1000 pe/probe_low_memory.c pe/src/memory_host32.c -o local/pe/probe-low-memory
           arch -x86_64 local/pe/probe-low-memory
+          xcrun clang -arch x86_64 -Wall -Wextra -Werror -c pe/src/memory_host32.c -o local/pe/memory-host32.o
+          rustc --edition=2024 --target x86_64-apple-darwin -A dead_code pe/probe_present_memory.rs -C link-arg=local/pe/memory-host32.o -o local/pe/probe-present-memory
+          arch -x86_64 local/pe/probe-present-memory
       - name: Validate portable renderer and execute actual Metal pixels
         run: |
           python -m unittest discover -s tests -p test_d3d9_observer.py -v
