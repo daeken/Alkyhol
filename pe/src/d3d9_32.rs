@@ -210,6 +210,7 @@ pub(super) struct State {
     objects: BTreeMap<u32, Object>,
     compiler: Option<Compiler>,
     programs: BTreeMap<(u32, u32), Compiled>,
+    headers: Vec<(u32, u32)>,
 }
 // Exact stack sizes for implemented slots. Unknown slots never return to the
 // guest, so their unsupported gate only snapshots this and terminates explicitly.
@@ -505,7 +506,20 @@ fn object(cpu: &Cpu32, state: &mut State, body: Body, refs: u32) -> u32 {
         unsupported("D3D9 object budget exhausted");
     }
     let t = table(cpu, state, body.kind()).unwrap_or_else(|e| unsupported(&e));
-    let pointer = memory(cpu, &t.to_le_bytes(), false, false).unwrap_or_else(|e| unsupported(&e));
+    // COM's private object header is writable heap-like storage, distinct from
+    // its immutable vtable/gates. Slots never move or get reused while the
+    // process lives, including after a last external reference is released.
+    if state.headers.last().is_none_or(|&(_, used)| used == 4096) {
+        let base = memory(cpu, &vec![0; 65536], true, false).unwrap_or_else(|e| unsupported(&e));
+        state.headers.push((base, 0));
+    }
+    let (base, used) = state.headers.last_mut().unwrap();
+    let pointer = *base + *used * 16;
+    *used += 1;
+    // SAFETY: this fresh 16-byte slot is in the owned writable mapping above.
+    unsafe {
+        (pointer as *mut u32).write(t);
+    }
     state.objects.insert(pointer, Object { refs, body });
     pointer
 }

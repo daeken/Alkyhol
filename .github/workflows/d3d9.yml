@@ -53,6 +53,10 @@ jobs:
         run: |
           python tools/observe_d3d9_cube.py
           python tools/observe_d3d9_cube.py --host
+      - name: Execute DAO COM header allocation and retained binding rollover
+        run: |
+          python tools/observe_d3d9_cube.py --com-headers
+          python tools/observe_d3d9_cube.py --com-headers --host
       - name: Execute original renderer stencil mask operations
         run: |
           python tools/observe_d3d9_create_device.py --stencil
@@ -133,6 +137,9 @@ jobs:
             local/pe/d3d9-microtests/d3d9-cube.exe
             local/pe/d3d9-microtests/d3d9-cube-inputs.json
             local/pe/d3d9-microtests/d3d9-cube-host.json
+            local/pe/d3d9-microtests/d3d9-com-headers.exe
+            local/pe/d3d9-microtests/d3d9-com-headers-inputs.json
+            local/pe/d3d9-microtests/d3d9-com-headers-host.json
             local/pe/d3d9-microtests/d3d9-stencil.exe
             local/pe/d3d9-microtests/d3d9-stencil-inputs.json
             local/pe/d3d9-microtests/d3d9-stencil-host.json
@@ -223,6 +230,9 @@ jobs:
       - name: Compare identical DAO cube resource and surface-alias PE
         if: success() || failure()
         run: python tools/observe_d3d9_cube.py --native
+      - name: Compare identical DAO COM header allocation and retained binding PE
+        if: success() || failure()
+        run: python tools/observe_d3d9_cube.py --com-headers --native
       - name: Compare stencil replacement, equal/not-equal masks and all pixels
         if: success() || failure()
         run: python tools/observe_d3d9_create_device.py --stencil --native

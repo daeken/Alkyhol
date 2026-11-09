@@ -6,6 +6,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
 import observe_d3d9_cube as observer
 
 class CubeResourceReportTests(unittest.TestCase):
+    def test_com_header_rollover_report_rejects_each_altered_word_and_failed_stage(self):
+        words = [0x434f4d48, 1, 0, 1, 1, 1, 2, 8]
+        self.assertEqual(observer.decode(struct.pack('<8I', *words), True), words)
+        for n in range(8):
+            changed = words.copy(); changed[n] ^= 1
+            with self.assertRaises(ValueError): observer.decode(struct.pack('<8I', *changed), True)
+        for stage in range(1, 8):
+            changed = words.copy(); changed[2] = stage
+            with self.assertRaises(ValueError): observer.decode(struct.pack('<8I', *changed), True)
+        with self.assertRaises(ValueError): observer.decode(struct.pack('<8I', *words))
     def test_complete_resource_contract(self):
         words = [0x43554245, 1, 0, 1, 1, 1, 1, 8]
         self.assertEqual(observer.decode(struct.pack('<8I', *words)), words)

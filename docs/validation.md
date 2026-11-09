@@ -6586,3 +6586,29 @@ The existing owned cube resource, full-RGBA font/subrectangle and BC3 mip PE/GPU
 witnesses all pass physically with packed storage. Their existing assertions
 and original bytecode are unchanged. The next clean original-game run is needed
 to establish whether packing clears the observed allocation boundary.
+
+## Character-generation resources expose COM-header mapping overhead
+
+The clean packed-mip run passes the earlier stopped allocation and opens
+additional original character-generation resources, then reaches the same
+512-map guard at a later texture allocation. It still has no verified character
+creation frame or gameplay. The remaining tiny COM headers each consumed an
+entire low mapping, independently of their actual descriptor storage.
+
+COM headers now occupy stable 16-byte slots in real 64 KiB writable arenas,
+separate from immutable vtables/executable gates. Header slots never move or get
+reused during a process lifetime, including while an object survives through an
+internal binding. Crossing an arena boundary allocates new checked storage.
+The 512-map and 4,096-live-object guards remain unchanged; no success is returned
+without an owned object and valid vtable. Resource payloads, references, lock
+and shader behavior are unchanged.
+
+A new owned literal PE passes physically: two batches each keep 4,094 requested
+declarations live, query every descriptor with guards, release all external
+references, recover the retained binding/parent and cross an arena boundary.
+Native drivers may cache equivalent declarations; the test makes no cross-object
+pointer-uniqueness assumption. The existing cube resource and full-RGBA font
+PE/GPU witnesses also pass with pooled headers. All 215 PE units, PE Clippy and
+14 D3D9 observer tests pass. Existing CI now transfers the allocation witness for
+native Windows comparison, which remains pending during GitHub's server errors.
+The next original-game run is still needed to identify the next loading boundary.
