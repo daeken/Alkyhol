@@ -5176,3 +5176,13 @@ creation/writing and reached its thread-name RaiseException before any window or
 D3D9 call. The run used e94ac05 plus explicitly recorded dirty runtime sources;
 local captures preserve that distinction. Native e94ac05 search-family observation
 succeeded; wide full-path sizing remains an explicitly unresolved mismatch.
+
+Native Windows 42537596292 passed both new owned file/window families. The literal
+CI-produced PEs were then run on physical M4; full input identities and output
+words agree. See pe32.md for hashes. This is finite API/window evidence, not DAO
+window or game compatibility. The workflow retains failures in the existing
+frozen atan comparison and wide full-path sizing. The new software-SEH/process
+families passed physically; their native comparison is pending. All 163 PE Rust
+library tests and PE Clippy passed after the software/process changes, and the
+root kernel integration tests passed. Original DAO now executes its thread-name
+handler and reaches CreateThread; threading remains the next integrated blocker.

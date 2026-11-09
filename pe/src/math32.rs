@@ -11,7 +11,7 @@ unsafe extern "C" {
     static alkyhol_ci_atan32_failure: u8;
 }
 // API stubs occupy the first page; numeric bodies have their own second page.
-pub(super) const GATE_SIZE: usize = 2 * PAGE;
+pub(super) const GATE_SIZE: usize = 3 * PAGE;
 pub(super) const OFFSET: usize = PAGE;
 pub(super) const ATAN_OFFSET: usize = PAGE + 256;
 pub(super) fn emit(template: &mut [u8], base: u32, failure: u32) -> crate::Result<()> {

@@ -1,0 +1,5 @@
+LIBRARY KERNEL32.dll
+EXPORTS
+RaiseException
+GetStdHandle
+WriteFile

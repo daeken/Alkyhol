@@ -1,0 +1,10 @@
+LIBRARY KERNEL32.dll
+EXPORTS
+GetCurrentProcess
+GetCurrentProcessId
+GetProcessId
+GetProcessAffinityMask
+GetSystemInfo
+GetLastError
+GetStdHandle
+WriteFile

@@ -11,6 +11,8 @@ use std::{
     rc::Rc,
     sync::{Mutex, MutexGuard, OnceLock},
 };
+#[path = "raise32.rs"]
+mod raise32;
 #[path = "seh32.rs"]
 mod seh32;
 pub use seh32::ExceptionImage32;
@@ -99,7 +101,7 @@ unsafe extern "C" {
 }
 const PAGE: usize = 4096;
 const STACK: usize = 1024 * 1024;
-const APIS: [(&str, u16); 177] = [
+const APIS: [(&str, u16); 181] = [
     ("GetLastError", 0),
     ("SetLastError", 4),
     ("GetStdHandle", 4),
@@ -277,6 +279,10 @@ const APIS: [(&str, u16); 177] = [
     ("ScreenToClient", 8),
     ("GetWindowThreadProcessId", 8),
     ("GetClassLongA", 8),
+    ("RaiseException", 16),
+    ("GetCurrentProcess", 0),
+    ("GetProcessAffinityMask", 12),
+    ("GetProcessId", 4),
 ];
 // The first 120 API slots retain their original offsets. The second bank
 // begins after both x87 bodies, leaving their machine code and failure gates
@@ -949,7 +955,7 @@ impl<'a> LoadedImage32<'a> {
         });
         template[64 + slot..72 + slot]
             .copy_from_slice(&(dispatch as *const () as u64).to_le_bytes());
-        if api_offset(APIS.len() - 1) + 32 > math32::GATE_SIZE {
+        if api_offset(APIS.len() - 1) + 32 > raise32::OFFSET {
             return Err("API table exceeds its checked gateway banks".into());
         }
         for (id, &(_, argument_bytes)) in APIS.iter().enumerate() {
@@ -990,6 +996,20 @@ impl<'a> LoadedImage32<'a> {
             template[at + 20..at + 24].copy_from_slice(&(gates.base as u32 + 64).to_le_bytes());
             template[at + 24..at + 26].copy_from_slice(&cs64.to_le_bytes());
         }
+        // The public software exception stub captures the real guest CPU state.
+        // Its private service copy keeps the ordinary host bridge unchanged.
+        let public = api_offset(177);
+        let private = raise32::OFFSET + 256;
+        let private_base = gates.base as u32 + private as u32;
+        let normal: [u8; 32] = template[public..public + 32].try_into().unwrap();
+        template[private..private + 32].copy_from_slice(&normal);
+        template[private + 1..private + 5].copy_from_slice(&(private_base + 16).to_le_bytes());
+        template[private + 12..private + 16].copy_from_slice(&(private_base + 20).to_le_bytes());
+        raise32::emit(&mut template, gates.base as u32, private_base)?;
+        template[public] = 0xe9;
+        template[public + 1..public + 5].copy_from_slice(
+            &((raise32::OFFSET as u32).wrapping_sub(public as u32 + 5)).to_le_bytes(),
+        );
         unsafe {
             ptr::copy_nonoverlapping(template.as_ptr(), gates.base, math32::GATE_SIZE);
             ptr::copy_nonoverlapping(bytes.as_ptr(), image.base, parsed.headers);
@@ -1932,6 +1952,17 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
             146 => fileio32::information(image, args),
             147 => fileio32::end(image, args[0]),
             148..=176 => ui32::dispatch(image, id - 148, &words),
+            177 => raise32::deliver(image, args),
+            178 => u32::MAX, // The documented current-process pseudo handle.
+            179 => machine32::affinity(image, args),
+            180 => {
+                if args[0] == u32::MAX {
+                    std::process::id()
+                } else {
+                    alkyhol::ffi::SetLastError(6);
+                    0
+                }
+            }
             _ => unreachable!(),
         }
     })
@@ -1946,8 +1977,8 @@ mod tests {
             assert_eq!(api_offset(id), 256 + id * 32);
         }
         assert_eq!(api_offset(120), math32::ATAN_OFFSET + 256);
-        assert_eq!(api_offset(231) + 32, math32::GATE_SIZE);
-        assert!(api_offset(232) + 32 > math32::GATE_SIZE);
+        assert_eq!(api_offset(231) + 32, raise32::OFFSET);
+        assert!(api_offset(232) + 32 > raise32::OFFSET);
         for id in 0..APIS.len() {
             let at = api_offset(id);
             assert!(at >= 256 && at + 32 <= math32::GATE_SIZE);
