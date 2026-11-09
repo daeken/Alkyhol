@@ -6084,3 +6084,31 @@ any larger-read implementation remain the next investigation; no inferred read
 size or successful original frame is claimed. The fresh L8 read-only behavior is
 verified by the owned PE, while original Bink's subsequent complete draw is still
 pending.
+
+## Original frame-loop boundary and complete large-read budget
+
+The integrated original game now repeatedly executes its BeginScene, Clear,
+DrawPrimitive, EndScene and swap-chain Present calls. Clear/Present themselves
+succeed, but the movie's triangle-strip DrawPrimitive returns D3DERR_NOTAVAILABLE;
+subrectangular viewport requests are also rejected by the current profile. This
+is original frame-loop execution, not a successfully rendered movie/game image.
+Those graphics profiles are the next rendering work. An actual concurrent loader
+request asks for 75,075,791 bytes; no shorter successful read is substituted.
+
+The existing checked synchronous I/O staging budget is now 128MiB per call. Full
+guest range/count/output checks remain enforced and exactly the actual transferred
+bytes are copied. Larger requests still stop explicitly with request diagnostics.
+The owned 14-word PE passes a complete 80MiB+3 read, a digest over every byte,
+untouched pre/post/EOF tail guards and a subsequent real EOF read. Only generated
+owned data enters that test; game data remains local. PE Clippy passes; a native
+identical-PE comparison is added and is pending. This is a larger bounded read
+profile, not the complete DWORD-sized asynchronous I/O surface.
+
+CI 42617007511 on b2bbec6 passes all three D3D9 jobs. All 2,118 L8 words and both
+complete original-shader frames agree byte-for-byte on physical M4, hosted Metal
+and native Windows with identical source/PE identities. The fresh READONLY lock
+also succeeds natively; initial allocation bytes are deliberately not promised or
+compared. CI 42617007466 passes both startup/API jobs. Physical M4 agrees with the
+identical native 66-word pre-Winsock Win32/event-set PE and 39-word admitted select
+PE. The preserved negative-timeout discrepancy remains an explicit exclusion.
+These are finite owned observations, not native DAO frame or game equivalence.

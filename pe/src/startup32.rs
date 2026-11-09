@@ -242,8 +242,18 @@ pub(super) fn io(image: &LoadedImage32<'_>, args: &[u32; 8], write: bool) -> u32
     if args[4] != 0 {
         unsupported("overlapped PE32 I/O is unsupported");
     }
-    if args[2] as usize > 16 * LIMIT {
-        unsupported("PE32 I/O exceeds 16 MiB");
+    if args[2] as usize > 16 * LIMIT && image.cpu.diagnostic.is_some() {
+        eprintln!(
+            "PE32 large {} request: handle={:08x} buffer={:08x} bytes={} count_output={:08x}",
+            if write { "write" } else { "read" },
+            args[0],
+            args[1],
+            args[2],
+            args[3]
+        );
+    }
+    if args[2] as usize > 128 * LIMIT {
+        unsupported("PE32 I/O exceeds the explicit 128 MiB per-call staging budget");
     }
     if args[3] == 0 || !args[3].is_multiple_of(4) {
         return fail(87);
