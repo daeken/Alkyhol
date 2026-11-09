@@ -12,6 +12,8 @@ use wgpu::util::DeviceExt;
 pub mod compiler;
 mod depth;
 mod depth_bias;
+mod occlusion;
+pub use occlusion::OcclusionQuery;
 pub mod legacy;
 mod legacy_gpu;
 pub mod vertex;
@@ -31,6 +33,7 @@ pub struct Device {
     device: wgpu::Device,
     queue: wgpu::Queue,
     info: wgpu::AdapterInfo,
+    occlusion: Arc<std::sync::Mutex<occlusion::Tracker>>,
 }
 #[derive(Clone)]
 pub struct Target {
@@ -95,6 +98,7 @@ impl Device {
             device,
             queue,
             info,
+            occlusion: Arc::default(),
         })
     }
     pub fn adapter_name(&self) -> &str {
@@ -387,6 +391,7 @@ impl Device {
             ..Default::default()
         });
         let mut encoder = self.device.create_command_encoder(&Default::default());
+        let query = self.draw_query()?;
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("D3D9 DrawPrimitive"),
@@ -406,6 +411,7 @@ impl Device {
                         store: wgpu::StoreOp::Store,
                     },
                 })],
+                occlusion_query_set: query.as_ref().map(|q| &q.set),
                 ..Default::default()
             });
             pass.set_pipeline(&pipeline);
@@ -413,10 +419,23 @@ impl Device {
             pass.set_blend_constant(state.constant());
             pass.set_bind_group(0, &bind, &[]);
             pass.set_vertex_buffer(0, vertices.slice(..));
+            if query.is_some() {
+                pass.begin_occlusion_query(0);
+            }
             pass.draw(0..(bytes.len() / 20) as u32, 0..1);
+            if query.is_some() {
+                pass.end_occlusion_query();
+            }
+        }
+        if let Some(query) = &query {
+            query.resolve(&mut encoder);
         }
         self.queue.submit([encoder.finish()]);
-        self.finish()
+        self.finish()?;
+        if let Some(query) = query {
+            query.submitted()?;
+        }
+        Ok(())
     }
     /// Returns tightly packed actual GPU BGRA8 bytes, never a CPU clear substitute.
     pub fn readback(&self, target: &Target) -> Result<Vec<u8>> {

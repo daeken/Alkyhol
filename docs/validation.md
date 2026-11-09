@@ -6820,3 +6820,54 @@ physically. Independent SDK enum/capability checks and identical-PE native
 comparison are added to existing CI and pending. The diagnostic String lint
 from 9fc21bf is fixed without changing its failure semantics. A clean original
 replay is required to identify the next scene boundary.
+
+## DAO reaches occlusion query creation; precise GPU counters
+
+Clean 0c6e568 passes the original nonzero depth-bias setting, executes further
+indexed scene draws after the opening movie, and stops at CreateQuery type 9
+(occlusion). This is not yet a verified character-creation frame or gameplay.
+Native CI [42687444752](https://github.com/daeken/Alkyhol/actions/runs/42687444752)
+on that revision passes the identical float-bias and fresh-stencil complete-frame
+comparisons; Metal and software Vulkan jobs pass. The workflow remains failed
+on the retained POSITIONT/StretchRect differences and separate-stream stage 11.
+Its new stream diagnostic reports S_OK, NULL buffer, offset 0, stride 32 after
+unbinding stream 0, rather than the test's assumed zero stride. That finite
+report is frozen at `pe/reference/pe32-separate-streams-unbind-fields-windows-v1.json`
+(SHA-256 `9626754adc62738eb982f5f4385045365b809e3cad93b6106160beaeb493e632`).
+The original failed stream fixture/report is retained; its correction is separate.
+
+Occlusion queries now have real PE32 COM identity, parent references and exact
+stdcall slots, type/size queries, begin/end ranges and nonblocking GetData.
+Draws resolve actual GPU counters asynchronously; overlapping scopes share each
+measured draw and sum their own ranges. Pending reads return S_FALSE without
+writing the caller's result. FLUSH submits/polls actual work; it does not invent
+completion. Reuse drops old counters; dropped scopes are weakly tracked. Active
+scopes are bounded at 128 and each range at 4,096 draws. Unissued data, unsupported
+issue sequences/query types, readback/device errors and DWORD overflow fail
+explicitly. Only the current single-sample profile is admitted, so samples equal
+pixels. No boolean result is substituted for a sample count.
+
+The first physical test caught upstream wgpu-hal's Metal boolean-query mode:
+its two visible draws returned two rather than the independently read-back
+pixel total. A pinned MIT/Apache-2.0 wgpu-hal 27.0.4 source vendor now provides an
+opt-in precise-count profile: Metal Counting, Vulkan PRECISE with its required
+device feature, and D3D12 OCCLUSION. Other query types and the unselected upstream
+profile remain unchanged. The archive SHA-256 was measured and equals the
+original Cargo checksum. Original licenses, upstream revision, a reviewable
+patch and changed-file hashes are in `vendor/wgpu-hal/ALKYHOL.md` and its adjacent
+manifest. The precise Metal profile is desktop macOS only; Vulkan adapters
+without precise-query support fail device creation with an explicit diagnostic.
+This is an Alkyhol profile, not a claim that WebGPU promises precise counts.
+Host runtime identities now include vendored sources and Cargo manifests.
+
+The physical M4 query test agrees with independent color readback for visible
+samples and overlapping ranges, returns zero for depth-hidden geometry, and
+checks reuse, empty ranges, invalid sequencing, cross-device ownership and
+scope-budget cleanup. The existing full ignored GPU suite also passes. The new
+owned literal `--occlusion` PE passes physically: original shader bodies and COM
+stack/identity checks, overlapping counts 552/276, actual depth-hidden count 0,
+empty reuse and two complete RGB frames. All 218 PE units, both crates' Clippy
+and 17 observer tests pass. Independent SDK query enum/vtable checks and the
+identical-PE native counter/frame comparator are added to existing CI; native
+counts and precise Vulkan/D3D12 execution remain pending. The next clean original
+replay must establish whether this clears DAO's observed query boundary.

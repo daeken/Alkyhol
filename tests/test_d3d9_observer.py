@@ -87,6 +87,16 @@ class LegacyShaderComparatorTests(unittest.TestCase):
             for changed in [words[:-1],words+[0]]:
                 with self.assertRaises(ValueError):shader_words(changed)
 
+    def test_occlusion_counter_report_requires_overlap_and_hidden_samples(self):
+        words=self.record();words[1]=21;words[20:20]=[1,552,276,0];words[-1]=2103
+        with patch.object(observer,'OCCLUSION',True):
+            self.assertEqual(shader_words(words),words)
+            for index,value in [(20,0),(21,2),(22,1),(23,1),(21,0),(22,0),(22,1025)]:
+                changed=words.copy();changed[index]=value
+                with self.assertRaises(ValueError):shader_words(changed)
+            for changed in [words[:-1],words+[0]]:
+                with self.assertRaises(ValueError):shader_words(changed)
+
     def test_exact_frames_and_stack_extent(self):
         words=self.record();self.assertEqual(shader_words(words),words)
         for changed in [words[:-1],words+[0]]:

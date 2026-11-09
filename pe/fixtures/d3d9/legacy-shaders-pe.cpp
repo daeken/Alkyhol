@@ -246,6 +246,38 @@ static DWORD font_formats_witness(){
  return 0;
 }
 #endif
+#ifdef OCCLUSION
+static DWORD query_counts[3];
+static BOOL query_result(IDirect3DQuery9* query,DWORD* value){
+ DWORD data[3]={0x719bad15,0x87654321,0x719bad15};
+ for(UINT spin=0;spin<200000;spin++){
+  HRESULT hr=query->GetData(data+1,4,1);
+  if(data[0]!=0x719bad15||data[2]!=0x719bad15)return FALSE;
+  if(hr==S_OK){*value=data[1];return TRUE;}
+  if(hr!=1||data[1]!=0x87654321)return FALSE;
+ }
+ return FALSE;
+}
+static DWORD occlusion_witness(){
+ #define REQUIRE_QUERY(test,stage) if(!(test))return stage
+ IDirect3DQuery9 *outer=NULL,*inner=NULL;
+ REQUIRE_QUERY(g_pd3dDevice->CreateQuery(9,NULL)==S_OK&&g_pd3dDevice->CreateQuery(9,&outer)==S_OK&&outer&&g_pd3dDevice->CreateQuery(9,&inner)==S_OK&&inner,1);
+ const GUID query_iid={0xd9771460,0xa695,0x4f26,{0xbb,0xd3,0x27,0xb8,0x40,0xb5,0x41,0xcc}};
+ void* identity=NULL;REQUIRE_QUERY(outer->QueryInterface(query_iid,&identity)==S_OK&&identity==outer,2);((IDirect3DQuery9*)identity)->Release();
+ IDirect3DDevice9* parent=NULL;REQUIRE_QUERY(outer->GetType()==9&&outer->GetDataSize()==4&&outer->GetDevice(&parent)==S_OK&&parent==g_pd3dDevice,3);parent->Release();
+ REQUIRE_QUERY(g_pd3dDevice->SetVertexShaderConstantF(0,matrix,4)==S_OK&&g_pd3dDevice->Clear(0,NULL,1,0xff0000ff,1,0)==S_OK&&g_pd3dDevice->BeginScene()==S_OK,4);
+ REQUIRE_QUERY(outer->Issue(2)==S_OK&&g_pd3dDevice->DrawPrimitive(4,0,1)==S_OK&&inner->Issue(2)==S_OK&&g_pd3dDevice->DrawPrimitive(4,0,1)==S_OK&&inner->Issue(1)==S_OK&&outer->Issue(1)==S_OK&&g_pd3dDevice->EndScene()==S_OK,5);
+ REQUIRE_QUERY(query_result(outer,query_counts)&&query_result(inner,query_counts+1)&&query_counts[1]>0&&query_counts[1]<=1024&&query_counts[0]==2*query_counts[1],6);
+ REQUIRE_QUERY(outer->GetData(NULL,0,1)==S_OK,7);
+ IDirect3DSurface9* depth=NULL;
+ REQUIRE_QUERY(g_pd3dDevice->CreateDepthStencilSurface(32,32,80,0,0,TRUE,&depth,NULL)==S_OK&&depth&&g_pd3dDevice->SetDepthStencilSurface(depth)==S_OK&&g_pd3dDevice->SetRenderState(7,1)==S_OK&&g_pd3dDevice->Clear(0,NULL,2,0,0,0)==S_OK,8);depth->Release();
+ REQUIRE_QUERY(g_pd3dDevice->BeginScene()==S_OK&&outer->Issue(2)==S_OK&&g_pd3dDevice->DrawPrimitive(4,0,1)==S_OK&&outer->Issue(1)==S_OK&&g_pd3dDevice->EndScene()==S_OK,9);
+ REQUIRE_QUERY(query_result(outer,query_counts+2)&&query_counts[2]==0,10);
+ DWORD empty=99;REQUIRE_QUERY(outer->Issue(2)==S_OK&&outer->Issue(1)==S_OK&&query_result(outer,&empty)&&empty==0,11);
+ REQUIRE_QUERY(g_pd3dDevice->SetRenderState(7,0)==S_OK&&g_pd3dDevice->SetDepthStencilSurface(NULL)==S_OK,12);
+ outer->Release();inner->Release();return 0;
+}
+#endif
 #ifdef STREAMS
 // Separate padded color data, distinct binding offset and stride, plus highest
 // stream positions. Keep every source alive solely through device bindings.
@@ -287,7 +319,9 @@ static DWORD streams_witness(IDirect3DVertexBuffer9* positions){
 #endif
 extern "C" DWORD entry(){
  DWORD before=stack();put(0x39534844);
-#ifdef BIAS
+#ifdef OCCLUSION
+put(21);
+#elif defined(BIAS)
 put(20);
 #elif defined(FRESH_STENCIL)
 put(19);
@@ -385,6 +419,10 @@ put(1);
  DWORD fresh_states[][2]={{52,1},{53,1},{54,1},{55,4},{56,8},{57,1},{58,255},{59,255}};
  BOOL fresh_ok=TRUE;for(UINT n=0;n<8;n++){DWORD actual=0;if(g_pd3dDevice->SetRenderState(fresh_states[n][0],fresh_states[n][1])!=S_OK||g_pd3dDevice->GetRenderState(fresh_states[n][0],&actual)!=S_OK||actual!=fresh_states[n][1])fresh_ok=FALSE;}
  ok(fresh_ok);if(!fresh_ok)return 35;
+ #endif
+ #ifdef OCCLUSION
+ DWORD query_stage=occlusion_witness();ok(query_stage==0);if(query_stage)return fail(41,query_stage);
+ for(UINT n=0;n<3;n++)put(query_counts[n]);
  #endif
  IDirect3DSurface9 *back=NULL,*copy=NULL;ok(g_pd3dDevice->GetBackBuffer(0,0,0,&back)==S_OK);ok(g_pd3dDevice->CreateOffscreenPlainSurface(32,32,
 #if defined(MODEL2)||defined(DEPTH)||defined(FONTS)||defined(FRESH_STENCIL)||defined(BIAS)

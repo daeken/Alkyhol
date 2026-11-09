@@ -73,6 +73,10 @@ jobs:
         run: |
           python tools/observe_d3d9_create_device.py --short4
           ALKYHOL_D3D9_SHADER_COMPILER="$PWD/local/tools/shader9/alkyhol-shader9" ALKYHOL_D3D9_SHADER_DIRECTORY="$PWD/local/d3d9/compiled-owned" python tools/observe_d3d9_create_device.py --short4 --host
+      - name: Execute DAO precise occlusion queries and overlapping scopes
+        run: |
+          python tools/observe_d3d9_create_device.py --occlusion
+          ALKYHOL_D3D9_SHADER_COMPILER="$PWD/local/tools/shader9/alkyhol-shader9" ALKYHOL_D3D9_SHADER_DIRECTORY="$PWD/local/d3d9/compiled-owned" python tools/observe_d3d9_create_device.py --occlusion --host
       - name: Execute DAO float depth bias without changing source shader bodies
         run: |
           python tools/observe_d3d9_create_device.py --bias
@@ -176,6 +180,9 @@ jobs:
             local/pe/d3d9-microtests/d3d9-half.exe
             local/pe/d3d9-microtests/d3d9-half-inputs.json
             local/pe/d3d9-microtests/d3d9-half-host.json
+            local/pe/d3d9-microtests/d3d9-occlusion.exe
+            local/pe/d3d9-microtests/d3d9-occlusion-inputs.json
+            local/pe/d3d9-microtests/d3d9-occlusion-host.json
             local/pe/d3d9-microtests/d3d9-bias.exe
             local/pe/d3d9-microtests/d3d9-bias-inputs.json
             local/pe/d3d9-microtests/d3d9-bias-host.json
@@ -287,6 +294,9 @@ jobs:
       - name: Compare identical signed short4 vertex fetch and complete frames
         if: success() || failure()
         run: python tools/observe_d3d9_create_device.py --short4 --native
+      - name: Compare identical precise occlusion samples and complete frames
+        if: success() || failure()
+        run: python tools/observe_d3d9_create_device.py --occlusion --native
       - name: Compare identical float depth bias and complete occlusion frames
         if: success() || failure()
         run: python tools/observe_d3d9_create_device.py --bias --native

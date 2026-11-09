@@ -24,7 +24,7 @@ const IID_RESOURCE: [u8; 16] = [
 const IID_BASE_TEXTURE: [u8; 16] = [
     0x7e, 0xa8, 0x0c, 0x58, 0x3c, 0x1d, 0x54, 0x4d, 0x99, 0x1d, 0xb7, 0xd3, 0xe3, 0xc2, 0x98, 0xce,
 ];
-const IIDS: [[u8; 16]; 11] = [
+const IIDS: [[u8; 16]; 12] = [
     [
         0xca, 0xcb, 0xbd, 0x81, 0xd4, 0x64, 0x6d, 0x42, 0xae, 0x8d, 0xad, 1, 0x47, 0xf4, 0x27, 0x5c,
     ],
@@ -68,6 +68,10 @@ const IIDS: [[u8; 16]; 11] = [
         0x81, 0x2f, 0xf3, 0xff, 0x53, 0xd9, 0x3a, 0x47, 0x92, 0x23, 0x93, 0xd6, 0x52, 0xab, 0xa9,
         0x3f,
     ],
+    [
+        0x60, 0x14, 0x77, 0xd9, 0x95, 0xa6, 0x26, 0x4f, 0xbb, 0xd3, 0x27, 0xb8, 0x40, 0xb5, 0x41,
+        0xcc,
+    ],
 ];
 struct Object {
     refs: u32,
@@ -84,6 +88,10 @@ struct TextureLevel {
     initialized: bool,
 }
 enum Body {
+    Query {
+        parent: u32,
+        query: alkyhol_d3d9::OcclusionQuery,
+    },
     Texture {
         cube: bool,
         parent: u32,
@@ -179,6 +187,7 @@ enum Body {
 impl Body {
     fn kind(&self) -> u32 {
         match self {
+            Self::Query { .. } => 11,
             Self::Factory(..) => 0,
             Self::Device { .. } => 1,
             Self::Surface { .. } => 2,
@@ -349,6 +358,7 @@ pub(super) fn signature(id: u32) -> Option<(&'static str, u16)> {
             2 => 17,
             3 | 8 => 14,
             9 => 10,
+            11 => 8,
             4..=6 => 5,
             7 | 10 => 22,
             _ => return None,
@@ -369,6 +379,11 @@ pub(super) fn signature(id: u32) -> Option<(&'static str, u16)> {
         return Some(DEVICE_METHODS[slot as usize]);
     }
     Some(match (kind, slot) {
+        (11, 3) => ("IDirect3DQuery9::GetDevice", 8),
+        (11, 4) => ("IDirect3DQuery9::GetType", 4),
+        (11, 5) => ("IDirect3DQuery9::GetDataSize", 4),
+        (11, 6) => ("IDirect3DQuery9::Issue", 8),
+        (11, 7) => ("IDirect3DQuery9::GetData", 16),
         (0, 3) => ("IDirect3D9::RegisterSoftwareDevice", 8),
         (0, 4) => ("IDirect3D9::GetAdapterCount", 4),
         (0, 6) => ("IDirect3D9::GetAdapterModeCount", 12),
@@ -466,6 +481,7 @@ fn table(cpu: &Cpu32, state: &mut State, kind: u32) -> Result<u32> {
         1 => 119,
         3 | 8 => 14,
         9 => 10,
+        11 => 8,
         4..=6 => 5,
         7 | 10 => 22,
         _ => 17,
@@ -560,7 +576,8 @@ fn release(s: &mut State, p: u32) -> u32 {
         | Body::SwapChain { parent, .. }
         | Body::Shader { parent, .. }
         | Body::Declaration { parent, .. }
-        | Body::Texture { parent, .. } => Some(*parent),
+        | Body::Texture { parent, .. }
+        | Body::Query { parent, .. } => Some(*parent),
     };
     let cached = matches!(
         o.body,
@@ -2416,7 +2433,8 @@ fn set_program_binding(s: &mut State, a: &[u32; 16], slot: u32) -> u32 {
         let parent = match o.body {
             Body::Shader { parent, .. }
             | Body::Declaration { parent, .. }
-            | Body::Texture { parent, .. } => parent,
+            | Body::Texture { parent, .. }
+            | Body::Query { parent, .. } => parent,
             _ => return INVALID,
         };
         if o.refs == 0 || o.body.kind() != kind || parent != a[0] {
@@ -3118,7 +3136,7 @@ fn dispatch_inner(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32 {
                 }
             }
         }
-        (1, 6) | (2..=8 | 10, 3) => {
+        (1, 6) | (2..=8 | 10 | 11, 3) => {
             if a[1] == 0 {
                 return INVALID;
             }
@@ -3130,12 +3148,79 @@ fn dispatch_inner(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32 {
                 | Body::SwapChain { parent, .. }
                 | Body::Shader { parent, .. }
                 | Body::Declaration { parent, .. }
-                | Body::Texture { parent, .. } => parent,
+                | Body::Texture { parent, .. }
+                | Body::Query { parent, .. } => parent,
                 _ => unreachable!(),
             };
             addref(&mut s, parent);
             write(image, a[1], &[parent]);
             0
+        }
+        (1, 118) => {
+            if a[2] != 0 {
+                write(image, a[2], &[0]);
+            }
+            if a[1] != 9 {
+                return UNAVAILABLE;
+            }
+            if a[2] == 0 {
+                return 0;
+            }
+            let Body::Device { gpu, .. } = &s.objects[&a[0]].body else {
+                unreachable!()
+            };
+            let query = gpu.create_occlusion_query();
+            addref(&mut s, a[0]);
+            let pointer = object(
+                &image.cpu,
+                &mut s,
+                Body::Query {
+                    parent: a[0],
+                    query,
+                },
+                1,
+            );
+            write(image, a[2], &[pointer]);
+            0
+        }
+        (11, 4) => 9,
+        (11, 5) => 4,
+        (11, 6 | 7) => {
+            let Body::Query { parent, query } = &s.objects[&a[0]].body else {
+                unreachable!()
+            };
+            let Body::Device { gpu, .. } = &s.objects[parent].body else {
+                unreachable!()
+            };
+            if slot == 6 {
+                match a[1] {
+                    2 => gpu
+                        .begin_occlusion_query(query)
+                        .unwrap_or_else(|e| unsupported(&e)),
+                    1 => gpu
+                        .end_occlusion_query(query)
+                        .unwrap_or_else(|e| unsupported(&e)),
+                    _ => return INVALID,
+                }
+                0
+            } else {
+                if a[3] > 1 || ![0, 4].contains(&a[2]) || a[1] == 0 && a[2] != 0 {
+                    return INVALID;
+                }
+                if a[2] == 4 {
+                    checked(image, a[1], 4, true);
+                }
+                let Some(value) = gpu
+                    .occlusion_data(query, a[3] != 0)
+                    .unwrap_or_else(|e| unsupported(&e))
+                else {
+                    return 1;
+                };
+                if a[2] == 4 {
+                    write(image, a[1], &[value]);
+                }
+                0
+            }
         }
         (1, 14) => swapchain(image, &mut s, a),
         (1, 15) => 1,
@@ -3895,6 +3980,29 @@ mod tests {
         ] {
             assert_eq!(vertex_span(args.0, args.1, args.2, args.3, args.4), None);
         }
+    }
+    #[test]
+    fn occlusion_vtable_and_i386_stack_extents() {
+        for (slot, bytes) in [
+            (0, 12),
+            (1, 4),
+            (2, 4),
+            (3, 8),
+            (4, 4),
+            (5, 4),
+            (6, 8),
+            (7, 16),
+        ] {
+            assert_eq!(signature(BASE + 11 * 256 + slot).unwrap().1, bytes);
+        }
+        assert!(signature(BASE + 11 * 256 + 8).is_none());
+        assert_eq!(
+            IIDS[11],
+            [
+                0x60, 0x14, 0x77, 0xd9, 0x95, 0xa6, 0x26, 0x4f, 0xbb, 0xd3, 0x27, 0xb8, 0x40, 0xb5,
+                0x41, 0xcc
+            ]
+        );
     }
     #[test]
     fn com_stack_contracts_and_bounds() {

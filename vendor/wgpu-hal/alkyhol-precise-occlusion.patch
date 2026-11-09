@@ -1,0 +1,99 @@
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -49,6 +49,7 @@
+ ]
+ 
+ [features]
++alkyhol-precise-occlusion = []
+ cargo-clippy = []
+ device_lost_panic = []
+ dx12 = [
+--- a/src/dx12/device.rs
++++ b/src/dx12/device.rs
+@@ -2177,7 +2177,7 @@
+         let (heap_ty, raw_ty) = match desc.ty {
+             wgt::QueryType::Occlusion => (
+                 Direct3D12::D3D12_QUERY_HEAP_TYPE_OCCLUSION,
+-                Direct3D12::D3D12_QUERY_TYPE_BINARY_OCCLUSION,
++                if cfg!(feature = "alkyhol-precise-occlusion") { Direct3D12::D3D12_QUERY_TYPE_OCCLUSION } else { Direct3D12::D3D12_QUERY_TYPE_BINARY_OCCLUSION },
+             ),
+             wgt::QueryType::PipelineStatistics(_) => (
+                 Direct3D12::D3D12_QUERY_HEAP_TYPE_PIPELINE_STATISTICS,
+--- a/src/metal/adapter.rs
++++ b/src/metal/adapter.rs
+@@ -47,6 +47,10 @@
+         _limits: &wgt::Limits,
+         _memory_hints: &wgt::MemoryHints,
+     ) -> Result<crate::OpenDevice<super::Api>, crate::DeviceError> {
++        if cfg!(feature = "alkyhol-precise-occlusion") && !cfg!(target_os = "macos") {
++            log::error!("Alkyhol D3D9 requires precise occlusion counting; this precise Metal profile is implemented only for macOS");
++            return Err(crate::DeviceError::Unexpected);
++        }
+         let queue = self
+             .shared
+             .device
+--- a/src/metal/command.rs
++++ b/src/metal/command.rs
+@@ -421,7 +421,7 @@
+                     .as_ref()
+                     .unwrap()
+                     .set_visibility_result_mode(
+-                        MTLVisibilityResultMode::Boolean,
++                        if cfg!(feature = "alkyhol-precise-occlusion") { MTLVisibilityResultMode::Counting } else { MTLVisibilityResultMode::Boolean },
+                         index as u64 * crate::QUERY_SIZE,
+                     );
+             }
+--- a/src/vulkan/adapter.rs
++++ b/src/vulkan/adapter.rs
+@@ -290,7 +290,7 @@
+                     requested_features.contains(wgt::Features::TEXTURE_COMPRESSION_BC),
+                     // BC provides formats for Sliced 3D
+                 )
+-                //.occlusion_query_precise(requested_features.contains(wgt::Features::PRECISE_OCCLUSION_QUERY))
++                .occlusion_query_precise(cfg!(feature = "alkyhol-precise-occlusion"))
+                 .pipeline_statistics_query(
+                     requested_features.contains(wgt::Features::PIPELINE_STATISTICS_QUERY),
+                 )
+@@ -2361,6 +2361,10 @@
+         memory_hints: &wgt::MemoryHints,
+         callback: Option<Box<super::CreateDeviceCallback<'a>>>,
+     ) -> Result<crate::OpenDevice<super::Api>, crate::DeviceError> {
++        if cfg!(feature = "alkyhol-precise-occlusion") && self.phd_features.core.occlusion_query_precise == 0 {
++            log::error!("Alkyhol D3D9 requires precise occlusion counting; this Vulkan adapter does not support it");
++            return Err(crate::DeviceError::Unexpected);
++        }
+         let mut enabled_extensions = self.required_device_extensions(features);
+         let mut enabled_phd_features = self.physical_device_features(&enabled_extensions, features);
+ 
+--- a/src/vulkan/command.rs
++++ b/src/vulkan/command.rs
+@@ -433,7 +433,7 @@
+                 self.active,
+                 set.raw,
+                 index,
+-                vk::QueryControlFlags::empty(),
++                if cfg!(feature = "alkyhol-precise-occlusion") && matches!(set.ty, wgt::QueryType::Occlusion) { vk::QueryControlFlags::PRECISE } else { vk::QueryControlFlags::empty() },
+             )
+         };
+     }
+--- a/src/vulkan/device.rs
++++ b/src/vulkan/device.rs
+@@ -2390,7 +2390,7 @@
+ 
+         self.counters.query_sets.add(1);
+ 
+-        Ok(super::QuerySet { raw })
++        Ok(super::QuerySet { raw, ty: desc.ty })
+     }
+ 
+     unsafe fn destroy_query_set(&self, set: super::QuerySet) {
+--- a/src/vulkan/mod.rs
++++ b/src/vulkan/mod.rs
+@@ -1303,6 +1303,7 @@
+ #[derive(Debug)]
+ pub struct QuerySet {
+     raw: vk::QueryPool,
++    ty: wgt::QueryType,
+ }
+ 
+ impl crate::DynQuerySet for QuerySet {}

@@ -33,6 +33,7 @@ struct IDirect3DIndexBuffer9;
 struct IDirect3DBaseTexture9;struct IDirect3DTexture9;struct IDirect3DCubeTexture9;
 struct IDirect3DVertexShader9;struct IDirect3DPixelShader9;struct IDirect3DVertexDeclaration9;
 struct D3DVERTEXELEMENT9{unsigned short Stream,Offset;unsigned char Type,Method,Usage,UsageIndex;};
+struct IDirect3DQuery9;
 struct IDirect3D9; struct IDirect3DDevice9; struct IDirect3DSurface9; struct IDirect3DVertexBuffer9;
 struct IDirect3D9 {
  virtual HRESULT __stdcall QueryInterface(const GUID&,void**)=0;
@@ -172,7 +173,7 @@ struct IDirect3DDevice9 {
  virtual void __stdcall UnsupportedSlot115()=0;
  virtual void __stdcall UnsupportedSlot116()=0;
  virtual void __stdcall UnsupportedSlot117()=0;
- virtual void __stdcall UnsupportedSlot118()=0;
+ virtual HRESULT __stdcall CreateQuery(UINT,IDirect3DQuery9**)=0;
 };
 struct IDirect3DSurface9 {
  virtual HRESULT __stdcall QueryInterface(const GUID&,void**)=0;
@@ -348,4 +349,15 @@ struct IDirect3DSwapChain9 {
  virtual HRESULT __stdcall GetDisplayMode(D3DDISPLAYMODE*)=0;
  virtual HRESULT __stdcall GetDevice(IDirect3DDevice9**)=0;
  virtual HRESULT __stdcall GetPresentParameters(D3DPRESENT_PARAMETERS*)=0;
+};
+
+struct IDirect3DQuery9 {
+ virtual HRESULT __stdcall QueryInterface(const GUID&,void**)=0;
+ virtual ULONG __stdcall AddRef()=0;
+ virtual ULONG __stdcall Release()=0;
+ virtual HRESULT __stdcall GetDevice(IDirect3DDevice9**)=0;
+ virtual UINT __stdcall GetType()=0;
+ virtual DWORD __stdcall GetDataSize()=0;
+ virtual HRESULT __stdcall Issue(DWORD)=0;
+ virtual HRESULT __stdcall GetData(void*,DWORD,DWORD)=0;
 };

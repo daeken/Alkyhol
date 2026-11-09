@@ -312,6 +312,7 @@ impl Device {
                 })
         });
         let mut encoder = self.device.create_command_encoder(&Default::default());
+        let query = self.draw_query()?;
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 depth_stencil_attachment: depth_view.as_ref().map(|view| {
@@ -322,6 +323,7 @@ impl Device {
                     }
                 }),
                 label: Some("D3D9 legacy shader draw"),
+                occlusion_query_set: query.as_ref().map(|q| &q.set),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: &view,
                     depth_slice: None,
@@ -348,15 +350,28 @@ impl Device {
                 pass.set_bind_group(n as u32, group, &[]);
             }
             pass.set_vertex_buffer(0, vertices.slice(..));
+            if query.is_some() {
+                pass.begin_occlusion_query(0);
+            }
             if let Some(indices) = &indices {
                 pass.set_index_buffer(indices.slice(..), wgpu::IndexFormat::Uint32);
                 pass.draw_indexed(0..draw.indices.unwrap().len() as u32, 0, 0..1);
             } else {
                 pass.draw(0..(draw.vertices.len() / draw.stride as usize) as u32, 0..1);
             }
+            if query.is_some() {
+                pass.end_occlusion_query();
+            }
+        }
+        if let Some(query) = &query {
+            query.resolve(&mut encoder);
         }
         self.queue.submit([encoder.finish()]);
-        self.finish()
+        self.finish()?;
+        if let Some(query) = query {
+            query.submitted()?;
+        }
+        Ok(())
     }
 }
 

@@ -1,0 +1,46 @@
+{
+  "upstream": "wgpu-hal 27.0.4",
+  "archive_sha256": "5b21cb61c57ee198bc4aff71aeadff4cbb80b927beb912506af9c780d64313ce",
+  "changes": [
+    {
+      "path": "Cargo.toml",
+      "upstream_sha256": "bc9ba3e706afe7130fa25893461c580c71437dfb6eee27eff80ebdfd2add2e88",
+      "profile_sha256": "87fb5654f766e2634ff447573c26ca0a40ae080870e58ed4b69bb9a161bc97ad"
+    },
+    {
+      "path": "src/dx12/device.rs",
+      "upstream_sha256": "15c075fe5fed3869e8d0c3bac01bb8cc4d8a0b91f6a420ce723d337653dc3d30",
+      "profile_sha256": "fb0f07aaba2fb1892a5aec15edb8d7043fbaf0bee4436d971aa3d628306a3993"
+    },
+    {
+      "path": "src/metal/adapter.rs",
+      "upstream_sha256": "9184c7658efe5dd43224d23294ebd3fe98a19b0290c41703496de276dad5f996",
+      "profile_sha256": "64b63a4365a0daddf5daafe2c3159d1625385df983d0c4946aee0841e755a184"
+    },
+    {
+      "path": "src/metal/command.rs",
+      "upstream_sha256": "20bf613b67ccc043de6e8ad3f3d332bbb678cc06c1593cf1880083de090574ba",
+      "profile_sha256": "a1db39d53dc0f52ef30ba136cadee7fe12b2d91939d55bd0dc941e742bc98d85"
+    },
+    {
+      "path": "src/vulkan/adapter.rs",
+      "upstream_sha256": "0c973c328064c509e2c05cf7d72fff881aad3d75234aa6040f09869e986eec17",
+      "profile_sha256": "647eff0c4c092adbaa3095f35f4442ed3aa1f473db8e878fe2f276b98fab0813"
+    },
+    {
+      "path": "src/vulkan/command.rs",
+      "upstream_sha256": "22fd05428c141ce58000c8f3541d39195023ffdfb72c4b00379a5c50a3ecea82",
+      "profile_sha256": "6d2bac6fa789fd79bbe582a5790cf0ba829fd6edba2321977446ad575bdc1eda"
+    },
+    {
+      "path": "src/vulkan/device.rs",
+      "upstream_sha256": "f49d5334705ca9de73fc7cbbae820d88d86a77b8b961699692a4fe00f66baa1d",
+      "profile_sha256": "853e787c4b0340ea9f78cda22141645be0305c29ba3ee0a09c7bb84bd903a0c4"
+    },
+    {
+      "path": "src/vulkan/mod.rs",
+      "upstream_sha256": "31db899bb7d079b2563a84c3b625d157552d7fe9f802b8099c6e8c1d62a23018",
+      "profile_sha256": "dae13073b3289b22fe950c8745e37ea6d237714cba2210949317038ba62a53cd"
+    }
+  ]
+}

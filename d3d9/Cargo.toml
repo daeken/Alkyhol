@@ -6,7 +6,11 @@ license = "MIT"
 description = "Incremental D3D9 rendering semantics over wgpu"
 
 [dependencies]
+wgpu-hal = { version = "=27.0.4", default-features = false, features = ["alkyhol-precise-occlusion"] }
 wgpu = { version = "=27.0.1", default-features = false, features = ["std", "metal", "vulkan", "dx12", "wgsl"] }
 pollster = "=0.4.0"
 naga = { version = "=27.0.3", features = ["spv-in", "spv-out", "wgsl-in", "wgsl-out"] }
 serde_json = "=1.0.154"
+
+[patch.crates-io]
+wgpu-hal = { path = "../vendor/wgpu-hal" }
