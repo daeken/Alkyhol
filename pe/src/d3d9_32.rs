@@ -2,7 +2,11 @@
 //! Unsupported virtual methods stop before returning; no successful COM stubs.
 use super::{Cpu32, LoadedImage32, PAGE, unsupported};
 use crate::Result;
-use alkyhol_d3d9::{Device as Gpu, Target};
+use alkyhol_d3d9::{
+    Device as Gpu, LegacyDraw, Target, VertexAttribute, VertexFormat,
+    compiler::{self, Compiled, Compiler},
+    legacy::Stage,
+};
 use std::{collections::BTreeMap, rc::Rc};
 pub(super) const BASE: u32 = 0x9000;
 const INVALID: u32 = 0x8876086c;
@@ -13,7 +17,7 @@ const IID_UNKNOWN: [u8; 16] = [0, 0, 0, 0, 0, 0, 0, 0, 0xc0, 0, 0, 0, 0, 0, 0, 0
 const IID_RESOURCE: [u8; 16] = [
     0x5d, 0xc0, 0xee, 0x05, 0x7d, 0x8f, 0x62, 0x43, 0xb9, 0x99, 0xd1, 0xba, 0xf3, 0x57, 0xc7, 0x04,
 ];
-const IIDS: [[u8; 16]; 4] = [
+const IIDS: [[u8; 16]; 7] = [
     [
         0xca, 0xcb, 0xbd, 0x81, 0xd4, 0x64, 0x6d, 0x42, 0xae, 0x8d, 0xad, 1, 0x47, 0xf4, 0x27, 0x5c,
     ],
@@ -29,12 +33,36 @@ const IIDS: [[u8; 16]; 4] = [
         0xb5, 0xb1, 0x4b, 0xb6, 0x70, 0xfd, 0xf6, 0x4d, 0xbf, 0x91, 0x19, 0xd0, 0xa1, 0x24, 0x55,
         0xe3,
     ],
+    [
+        0x7e, 0x55, 0xc5, 0xef, 0x65, 0x62, 0x13, 0x46, 0x8a, 0x94, 0x43, 0x85, 0x78, 0x89, 0xeb,
+        0x36,
+    ],
+    [
+        0xdc, 0xdb, 0x3b, 0x6d, 0x02, 0x5b, 0x15, 0x44, 0xb8, 0x52, 0xce, 0x5e, 0x8b, 0xcc, 0xb2,
+        0x89,
+    ],
+    [
+        0x9c, 0xc5, 0x13, 0xdd, 0xfa, 0x36, 0x98, 0x40, 0xa8, 0xfb, 0xc7, 0xed, 0x39, 0xdc, 0x85,
+        0x46,
+    ],
 ];
 struct Object {
     refs: u32,
     body: Body,
 }
 enum Body {
+    Shader {
+        parent: u32,
+        stage: Stage,
+        code: Vec<u8>,
+        compiled: Compiled,
+        bindings: u32,
+    },
+    Declaration {
+        parent: u32,
+        elements: Vec<[u32; 2]>,
+        bindings: u32,
+    },
     Factory(Rc<Gpu>, Rc<super::window_host32::DisplayModes>),
     Device {
         parent: u32,
@@ -46,6 +74,11 @@ enum Body {
         back: u32,
         fvf: u32,
         stream: Option<(u32, u32, u32)>,
+        vertex_shader: u32,
+        pixel_shader: u32,
+        declaration: u32,
+        vertex_constants: Vec<u8>,
+        pixel_constants: Vec<u8>,
     },
     Surface {
         parent: u32,
@@ -74,6 +107,15 @@ impl Body {
             Self::Device { .. } => 1,
             Self::Surface { .. } => 2,
             Self::VertexBuffer { .. } => 3,
+            Self::Shader {
+                stage: Stage::Vertex,
+                ..
+            } => 4,
+            Self::Shader {
+                stage: Stage::Pixel,
+                ..
+            } => 5,
+            Self::Declaration { .. } => 6,
         }
     }
 }
@@ -81,6 +123,8 @@ impl Body {
 pub(super) struct State {
     tables: BTreeMap<u32, u32>,
     objects: BTreeMap<u32, Object>,
+    compiler: Option<Compiler>,
+    programs: BTreeMap<(u32, u32), Compiled>,
 }
 // Exact stack sizes for implemented slots. Unknown slots never return to the
 // guest, so their unsupported gate only snapshots this and terminates explicitly.
@@ -94,6 +138,7 @@ pub(super) fn signature(id: u32) -> Option<(&'static str, u16)> {
             1 => 119,
             2 => 17,
             3 => 14,
+            4..=6 => 5,
             _ => return None,
         }
     {
@@ -125,6 +170,22 @@ pub(super) fn signature(id: u32) -> Option<(&'static str, u16)> {
         (0, 16) => ("IDirect3D9::CreateDevice", 28),
         (1, 3) => ("IDirect3DDevice9::TestCooperativeLevel", 4),
         (1, 26) => ("IDirect3DDevice9::CreateVertexBuffer", 28),
+        (1, 86) => ("IDirect3DDevice9::CreateVertexDeclaration", 12),
+        (1, 87) => ("IDirect3DDevice9::SetVertexDeclaration", 8),
+        (1, 88) => ("IDirect3DDevice9::GetVertexDeclaration", 8),
+        (1, 91) => ("IDirect3DDevice9::CreateVertexShader", 12),
+        (1, 92) => ("IDirect3DDevice9::SetVertexShader", 8),
+        (1, 93) => ("IDirect3DDevice9::GetVertexShader", 8),
+        (1, 94) => ("IDirect3DDevice9::SetVertexShaderConstantF", 16),
+        (1, 95) => ("IDirect3DDevice9::GetVertexShaderConstantF", 16),
+        (1, 106) => ("IDirect3DDevice9::CreatePixelShader", 12),
+        (1, 107) => ("IDirect3DDevice9::SetPixelShader", 8),
+        (1, 108) => ("IDirect3DDevice9::GetPixelShader", 8),
+        (1, 109) => ("IDirect3DDevice9::SetPixelShaderConstantF", 16),
+        (1, 110) => ("IDirect3DDevice9::GetPixelShaderConstantF", 16),
+        (4..=6, 3) => ("D3D9 shader/declaration GetDevice", 8),
+        (4 | 5, 4) => ("D3D9 shader GetFunction", 12),
+        (6, 4) => ("D3D9 declaration GetDeclaration", 12),
         (1, 81) => ("IDirect3DDevice9::DrawPrimitive", 16),
         (1, 89) => ("IDirect3DDevice9::SetFVF", 8),
         (1, 100) => ("IDirect3DDevice9::SetStreamSource", 20),
@@ -190,6 +251,7 @@ fn table(cpu: &Cpu32, state: &mut State, kind: u32) -> Result<u32> {
     let count = match kind {
         1 => 119,
         3 => 14,
+        4..=6 => 5,
         _ => 17,
     };
     let m = cpu.mapping(2 * PAGE, PAGE, 0)?;
@@ -264,15 +326,34 @@ fn release(s: &mut State, p: u32) -> u32 {
         Body::Factory(..) => None,
         Body::Device { parent, .. }
         | Body::Surface { parent, .. }
-        | Body::VertexBuffer { parent, .. } => Some(*parent),
+        | Body::VertexBuffer { parent, .. }
+        | Body::Shader { parent, .. }
+        | Body::Declaration { parent, .. } => Some(*parent),
     };
     let cached = matches!(
         o.body,
-        Body::Surface { back: true, .. } | Body::VertexBuffer { bindings: 1.., .. }
+        Body::Surface { back: true, .. }
+            | Body::VertexBuffer { bindings: 1.., .. }
+            | Body::Shader { bindings: 1.., .. }
+            | Body::Declaration { bindings: 1.., .. }
     );
     if !cached {
+        s.programs.retain(|&(vs, ps), _| vs != p && ps != p);
         let removed = s.objects.remove(&p).unwrap();
-        if let Body::Device { back, stream, .. } = removed.body {
+        if let Body::Device {
+            back,
+            stream,
+            vertex_shader,
+            pixel_shader,
+            declaration,
+            ..
+        } = removed.body
+        {
+            for bound in [vertex_shader, pixel_shader, declaration] {
+                if bound != 0 {
+                    unbind(s, bound);
+                }
+            }
             if back != 0 {
                 s.objects.remove(&back);
             }
@@ -289,6 +370,12 @@ fn release(s: &mut State, p: u32) -> u32 {
 pub(super) fn create(image: &LoadedImage32<'_>, sdk: u32) -> u32 {
     if sdk != 32 {
         return 0;
+    }
+    if image.cpu.diagnostic.is_some() {
+        eprintln!(
+            "PE32 D3D9 guest executable base={:08x}",
+            image.cpu.executable.get()
+        );
     }
     let gpu = match Gpu::new() {
         Ok(g) => g,
@@ -434,6 +521,11 @@ fn device(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
             back: 0,
             fvf: 0,
             stream: None,
+            vertex_shader: 0,
+            pixel_shader: 0,
+            declaration: 0,
+            vertex_constants: vec![0; 256 * 16],
+            pixel_constants: vec![0; 224 * 16],
         },
         1,
     );
@@ -601,7 +693,13 @@ fn vertex_buffer(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32
         return INVALID;
     }
     write(image, a[5], &[0]);
-    if a[1] == 0 || a[1] > 1024 * 1024 || a[2] != 0 || a[3] != 0x44 || a[4] != 0 || a[6] != 0 {
+    if a[1] == 0
+        || a[1] > 1024 * 1024
+        || a[2] != 0
+        || ![0, 0x44].contains(&a[3])
+        || a[4] != 0
+        || a[6] != 0
+    {
         return UNAVAILABLE;
     }
     let data = memory(&image.cpu, &vec![0u8; a[1] as usize], true, false)
@@ -628,13 +726,17 @@ fn unbind(s: &mut State, p: u32) {
     let Some(o) = s.objects.get_mut(&p) else {
         unsupported("missing bound vertex buffer");
     };
-    let Body::VertexBuffer { bindings, .. } = &mut o.body else {
-        unreachable!()
+    let bindings = match &mut o.body {
+        Body::VertexBuffer { bindings, .. }
+        | Body::Shader { bindings, .. }
+        | Body::Declaration { bindings, .. } => bindings,
+        _ => unreachable!(),
     };
     *bindings = bindings
         .checked_sub(1)
         .unwrap_or_else(|| unsupported("vertex binding count underflow"));
     if *bindings == 0 && o.refs == 0 {
+        s.programs.retain(|&(vs, ps), _| vs != p && ps != p);
         s.objects.remove(&p);
     }
 }
@@ -656,7 +758,7 @@ fn stream_source(s: &mut State, a: &[u32; 16]) -> u32 {
         else {
             return INVALID;
         };
-        if *parent != a[0] || a[3] > *length || a[4] != 20 {
+        if *parent != a[0] || a[3] > *length || a[4] == 0 || a[4] > 2048 {
             return INVALID;
         }
     }
@@ -691,12 +793,23 @@ fn draw(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
         return UNAVAILABLE;
     }
     let Body::Device {
-        scene, fvf, stream, ..
+        scene,
+        fvf,
+        stream,
+        vertex_shader,
+        pixel_shader,
+        declaration,
+        ..
     } = &s.objects[&a[0]].body
     else {
         unreachable!()
     };
-    if !*scene || *fvf != 0x44 {
+    if !*scene {
+        return INVALID;
+    }
+    let programmable = (*vertex_shader, *pixel_shader, *declaration);
+    let fixed = *fvf == 0x44 && programmable.0 == 0 && programmable.1 == 0;
+    if !fixed && (programmable.0 == 0 || programmable.1 == 0 || programmable.2 == 0) {
         return INVALID;
     }
     let Some((p, offset, stride)) = *stream else {
@@ -718,7 +831,7 @@ fn draw(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
     let Some(first) = a[2].checked_mul(stride).and_then(|n| n.checked_add(offset)) else {
         return INVALID;
     };
-    let Some(n) = a[3].checked_mul(60) else {
+    let Some(n) = a[3].checked_mul(3).and_then(|v| v.checked_mul(stride)) else {
         return INVALID;
     };
     let Some(end) = first.checked_add(n) else {
@@ -731,13 +844,367 @@ fn draw(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
     let address = *data + first;
     checked(image, address, n as usize, false);
     let bytes = unsafe { std::slice::from_raw_parts(address as *const u8, n as usize) };
-    let Body::Device { gpu, target, .. } = &mut s.objects.get_mut(&a[0]).unwrap().body else {
+    let mut attributes = Vec::new();
+    if !fixed {
+        let (vs, ps, decl) = programmable;
+        if !s.programs.contains_key(&(vs, ps)) {
+            let Body::Shader { code: vertex, .. } = &s.objects[&vs].body else {
+                unreachable!()
+            };
+            let Body::Shader { code: pixel, .. } = &s.objects[&ps].body else {
+                unreachable!()
+            };
+            let compiled = s
+                .compiler
+                .as_ref()
+                .unwrap()
+                .compile(vertex, Stage::Vertex, Some(pixel))
+                .unwrap_or_else(|e| unsupported(&e));
+            s.programs.insert((vs, ps), compiled);
+        }
+        let Body::Declaration { elements, .. } = &s.objects[&decl].body else {
+            unreachable!()
+        };
+        for input in &s.programs[&(vs, ps)].inputs {
+            let Some(element) = elements.iter().find(|e| {
+                semantic(e[1] >> 16 & 255) == Some(input.semantic.as_str())
+                    && e[1] >> 24 == input.index
+            }) else {
+                return INVALID;
+            };
+            let offset = (element[0] >> 16) as u64;
+            let (format, size) = declaration_format(element[1] & 255).unwrap();
+            if offset + size > stride as u64 {
+                return INVALID;
+            }
+            attributes.push(VertexAttribute {
+                format,
+                offset,
+                shader_location: input.register,
+            });
+        }
+    }
+    let program = s.programs.get(&(programmable.0, programmable.1));
+    let pixel_spirv = if fixed {
+        Vec::new()
+    } else {
+        let Body::Shader { compiled, .. } = &s.objects[&programmable.1].body else {
+            unreachable!()
+        };
+        compiled.spirv.clone()
+    };
+    let Body::Device {
+        gpu,
+        target,
+        vertex_constants,
+        pixel_constants,
+        ..
+    } = &mut s.objects.get_mut(&a[0]).unwrap().body
+    else {
         unreachable!()
     };
-    gpu.draw_transformed(target, bytes)
+    if fixed {
+        if stride != 20 {
+            return INVALID;
+        }
+        gpu.draw_transformed(target, bytes)
+            .unwrap_or_else(|e| unsupported(&e));
+    } else {
+        gpu.draw_legacy(
+            target,
+            &LegacyDraw {
+                vertex_spirv: &program.unwrap().spirv,
+                pixel_spirv: &pixel_spirv,
+                vertices: bytes,
+                stride: stride as u64,
+                attributes: &attributes,
+                vertex_constants,
+                pixel_constants,
+            },
+        )
         .unwrap_or_else(|e| unsupported(&e));
+    }
     0
 }
+fn semantic(usage: u32) -> Option<&'static str> {
+    Some(match usage {
+        0 => "POSITION",
+        1 => "BLENDWEIGHT",
+        2 => "BLENDINDICES",
+        3 => "NORMAL",
+        4 => "PSIZE",
+        5 => "TEXCOORD",
+        6 => "TANGENT",
+        7 => "BINORMAL",
+        10 => "COLOR",
+        11 => "FOG",
+        12 => "DEPTH",
+        13 => "SAMPLE",
+        _ => return None,
+    })
+}
+fn declaration_format(ty: u32) -> Option<(VertexFormat, u64)> {
+    Some(match ty {
+        0 => (VertexFormat::Float32, 4),
+        1 => (VertexFormat::Float32x2, 8),
+        2 => (VertexFormat::Float32x3, 12),
+        3 => (VertexFormat::Float32x4, 16),
+        _ => return None,
+    })
+}
+fn create_shader(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16], stage: Stage) -> u32 {
+    if a[2] == 0 || a[1] == 0 {
+        return INVALID;
+    }
+    write(image, a[2], &[0]);
+    let code = match compiler::bytecode(
+        |n| {
+            let address = (a[1] as usize)
+                .checked_add(n * 4)
+                .ok_or("shader pointer overflow")?;
+            if !image.permits(address, 4, false) {
+                return Err("shader token outside readable storage".into());
+            }
+            Ok(unsafe { (address as *const u32).read_unaligned() })
+        },
+        stage,
+    ) {
+        Ok(code) => code,
+        Err(e) => {
+            eprintln!("D3D9 bytecode: {e}");
+            return INVALID;
+        }
+    };
+    if s.compiler.is_none() {
+        match Compiler::from_environment() {
+            Ok(c) => s.compiler = Some(c),
+            Err(e) => {
+                eprintln!("D3D9 compiler configuration: {e}");
+                return UNAVAILABLE;
+            }
+        }
+    }
+    let compiled = match s.compiler.as_ref().unwrap().compile(&code, stage, None) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("D3D9 shader creation: {e}");
+            return INVALID;
+        }
+    };
+    addref(s, a[0]);
+    let shader = object(
+        &image.cpu,
+        s,
+        Body::Shader {
+            parent: a[0],
+            stage,
+            code,
+            compiled,
+            bindings: 0,
+        },
+        1,
+    );
+    write(image, a[2], &[shader]);
+    0
+}
+fn create_declaration(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
+    if a[1] == 0 || a[2] == 0 {
+        return INVALID;
+    }
+    write(image, a[2], &[0]);
+    let mut elements = Vec::new();
+    for i in 0..65u32 {
+        let Some(address) = a[1].checked_add(i * 8) else {
+            return INVALID;
+        };
+        let element = read::<2>(image, address);
+        if element == [255, 17] {
+            if elements.is_empty() {
+                return INVALID;
+            }
+            elements.push(element);
+            addref(s, a[0]);
+            let declaration = object(
+                &image.cpu,
+                s,
+                Body::Declaration {
+                    parent: a[0],
+                    elements,
+                    bindings: 0,
+                },
+                1,
+            );
+            write(image, a[2], &[declaration]);
+            return 0;
+        }
+        if element[0] & 65535 != 0
+            || element[0] >> 16 & 3 != 0
+            || element[1] >> 8 & 255 != 0
+            || semantic(element[1] >> 16 & 255).is_none()
+            || declaration_format(element[1] & 255).is_none()
+        {
+            return UNAVAILABLE;
+        }
+        if elements
+            .iter()
+            .any(|e: &[u32; 2]| e[1] >> 16 == element[1] >> 16)
+        {
+            return INVALID;
+        }
+        elements.push(element);
+    }
+    INVALID
+}
+fn set_program_binding(s: &mut State, a: &[u32; 16], slot: u32) -> u32 {
+    let kind = match slot {
+        87 => 6,
+        92 => 4,
+        107 => 5,
+        _ => unreachable!(),
+    };
+    if a[1] != 0 {
+        let Some(o) = s.objects.get(&a[1]) else {
+            return INVALID;
+        };
+        let parent = match o.body {
+            Body::Shader { parent, .. } | Body::Declaration { parent, .. } => parent,
+            _ => return INVALID,
+        };
+        if o.refs == 0 || o.body.kind() != kind || parent != a[0] {
+            return INVALID;
+        }
+    }
+    let Body::Device {
+        declaration,
+        vertex_shader,
+        pixel_shader,
+        ..
+    } = &mut s.objects.get_mut(&a[0]).unwrap().body
+    else {
+        unreachable!()
+    };
+    let value = match slot {
+        87 => declaration,
+        92 => vertex_shader,
+        107 => pixel_shader,
+        _ => unreachable!(),
+    };
+    let old = *value;
+    if old == a[1] {
+        return 0;
+    }
+    *value = a[1];
+    if a[1] != 0 {
+        let bindings = match &mut s.objects.get_mut(&a[1]).unwrap().body {
+            Body::Shader { bindings, .. } | Body::Declaration { bindings, .. } => bindings,
+            _ => unreachable!(),
+        };
+        *bindings = bindings
+            .checked_add(1)
+            .unwrap_or_else(|| unsupported("shader binding overflow"));
+    }
+    if old != 0 {
+        unbind(s, old);
+    }
+    0
+}
+fn get_program_binding(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16], slot: u32) -> u32 {
+    if a[1] == 0 {
+        return INVALID;
+    }
+    let Body::Device {
+        declaration,
+        vertex_shader,
+        pixel_shader,
+        ..
+    } = &s.objects[&a[0]].body
+    else {
+        unreachable!()
+    };
+    let value = match slot {
+        88 => *declaration,
+        93 => *vertex_shader,
+        108 => *pixel_shader,
+        _ => unreachable!(),
+    };
+    if value != 0 {
+        let o = s.objects.get_mut(&value).unwrap();
+        if o.refs == 0 {
+            o.refs = 1;
+            addref(s, a[0]);
+        } else {
+            addref(s, value);
+        }
+    }
+    write(image, a[1], &[value]);
+    0
+}
+fn get_function(image: &LoadedImage32<'_>, s: &State, a: &[u32; 16]) -> u32 {
+    if a[2] == 0 {
+        return INVALID;
+    }
+    let (bytes, count) = match &s.objects[&a[0]].body {
+        Body::Shader { code, .. } => (code.clone(), code.len() as u32),
+        Body::Declaration { elements, .. } => (
+            elements
+                .iter()
+                .flatten()
+                .flat_map(|v| v.to_le_bytes())
+                .collect(),
+            elements.len() as u32,
+        ),
+        _ => unreachable!(),
+    };
+    if a[1] != 0 {
+        let capacity = read::<1>(image, a[2])[0];
+        if capacity < count {
+            return INVALID;
+        }
+        checked(image, a[1], bytes.len(), true);
+        unsafe {
+            std::ptr::copy_nonoverlapping(bytes.as_ptr(), a[1] as *mut u8, bytes.len());
+        }
+    }
+    write(image, a[2], &[count]);
+    0
+}
+fn constants(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16], slot: u32) -> u32 {
+    let Body::Device {
+        vertex_constants,
+        pixel_constants,
+        ..
+    } = &mut s.objects.get_mut(&a[0]).unwrap().body
+    else {
+        unreachable!()
+    };
+    let buffer = if slot == 94 || slot == 95 {
+        vertex_constants
+    } else {
+        pixel_constants
+    };
+    let Some(end) = a[1].checked_add(a[3]).and_then(|v| v.checked_mul(16)) else {
+        return INVALID;
+    };
+    if end as usize > buffer.len() || (a[3] != 0 && a[2] == 0) {
+        return INVALID;
+    }
+    if a[3] == 0 {
+        return 0;
+    }
+    let start = a[1] as usize * 16;
+    let bytes = &mut buffer[start..end as usize];
+    let get = slot == 95 || slot == 110;
+    checked(image, a[2], bytes.len(), get);
+    unsafe {
+        if get {
+            std::ptr::copy_nonoverlapping(bytes.as_ptr(), a[2] as *mut u8, bytes.len());
+        } else {
+            std::ptr::copy_nonoverlapping(a[2] as *const u8, bytes.as_mut_ptr(), bytes.len());
+        }
+    }
+    0
+}
+
 pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32 {
     let kind = (id - BASE) / 256;
     let slot = (id - BASE) % 256;
@@ -879,14 +1346,16 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32
                 }
             }
         }
-        (1, 6) | (2, 3) | (3, 3) => {
+        (1, 6) | (2..=6, 3) => {
             if a[1] == 0 {
                 return INVALID;
             }
             let parent = match s.objects[&a[0]].body {
                 Body::Device { parent, .. }
                 | Body::Surface { parent, .. }
-                | Body::VertexBuffer { parent, .. } => parent,
+                | Body::VertexBuffer { parent, .. }
+                | Body::Shader { parent, .. }
+                | Body::Declaration { parent, .. } => parent,
                 _ => unreachable!(),
             };
             addref(&mut s, parent);
@@ -901,9 +1370,32 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32
             0
         }
         (1, 26) => vertex_buffer(image, &mut s, a),
+        (1, 86) => create_declaration(image, &mut s, a),
+        (1, 91 | 106) => create_shader(
+            image,
+            &mut s,
+            a,
+            if slot == 91 {
+                Stage::Vertex
+            } else {
+                Stage::Pixel
+            },
+        ),
+        (1, 87 | 92 | 107) => set_program_binding(&mut s, a, slot),
+        (1, 88 | 93 | 108) => get_program_binding(image, &mut s, a, slot),
+        (1, 94 | 95 | 109 | 110) => constants(image, &mut s, a, slot),
+        (4..=6, 4) => get_function(image, &s, a),
         (1, 89) => {
             if a[1] != 0x44 {
                 return UNAVAILABLE;
+            }
+            let result = set_program_binding(
+                &mut s,
+                &[a[0], 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                87,
+            );
+            if result != 0 {
+                return result;
             }
             let Body::Device { fvf, .. } = &mut s.objects.get_mut(&a[0]).unwrap().body else {
                 unreachable!()

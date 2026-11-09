@@ -37,3 +37,14 @@ static_assert(offsetof(D3DCAPS9,VertexShaderVersion)==196);
 static_assert(offsetof(D3DCAPS9,PixelShaderVersion)==204);
 static_assert(offsetof(D3DCAPS9,NumberOfAdaptersInGroup)==232);
 static_assert(offsetof(D3DCAPS9,NumSimultaneousRTs)==240);
+
+static_assert(sizeof(D3DVERTEXELEMENT9)==8);
+static_assert(offsetof(IDirect3DDevice9Vtbl,CreateVertexDeclaration)==86*4);
+static_assert(offsetof(IDirect3DDevice9Vtbl,SetVertexDeclaration)==87*4);
+static_assert(offsetof(IDirect3DDevice9Vtbl,CreateVertexShader)==91*4);
+static_assert(offsetof(IDirect3DDevice9Vtbl,SetVertexShaderConstantF)==94*4);
+static_assert(offsetof(IDirect3DDevice9Vtbl,CreatePixelShader)==106*4);
+static_assert(offsetof(IDirect3DDevice9Vtbl,SetPixelShaderConstantF)==109*4);
+static_assert(offsetof(IDirect3DVertexShader9Vtbl,GetFunction)==4*4);
+static_assert(offsetof(IDirect3DPixelShader9Vtbl,GetFunction)==4*4);
+static_assert(offsetof(IDirect3DVertexDeclaration9Vtbl,GetDeclaration)==4*4);

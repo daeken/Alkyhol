@@ -27,6 +27,8 @@ struct D3DDISPLAYMODE{UINT Width,Height,RefreshRate,Format;};
 struct D3DVERTEXBUFFER_DESC{UINT Format,Type,Usage,Pool,Size,FVF;};
 struct D3DLOCKED_RECT{INT Pitch;void* pBits;};
 
+struct IDirect3DVertexShader9;struct IDirect3DPixelShader9;struct IDirect3DVertexDeclaration9;
+struct D3DVERTEXELEMENT9{unsigned short Stream,Offset;unsigned char Type,Method,Usage,UsageIndex;};
 struct IDirect3D9; struct IDirect3DDevice9; struct IDirect3DSurface9; struct IDirect3DVertexBuffer9;
 struct IDirect3D9 {
  virtual HRESULT __stdcall QueryInterface(const GUID&,void**)=0;
@@ -134,16 +136,16 @@ struct IDirect3DDevice9 {
  virtual void __stdcall UnsupportedSlot83()=0;
  virtual void __stdcall UnsupportedSlot84()=0;
  virtual void __stdcall UnsupportedSlot85()=0;
- virtual void __stdcall UnsupportedSlot86()=0;
- virtual void __stdcall UnsupportedSlot87()=0;
- virtual void __stdcall UnsupportedSlot88()=0;
+ virtual HRESULT __stdcall CreateVertexDeclaration(const D3DVERTEXELEMENT9*,IDirect3DVertexDeclaration9**)=0;
+ virtual HRESULT __stdcall SetVertexDeclaration(IDirect3DVertexDeclaration9*)=0;
+ virtual HRESULT __stdcall GetVertexDeclaration(IDirect3DVertexDeclaration9**)=0;
  virtual HRESULT __stdcall SetFVF(DWORD)=0;
  virtual void __stdcall UnsupportedSlot90()=0;
- virtual void __stdcall UnsupportedSlot91()=0;
- virtual void __stdcall UnsupportedSlot92()=0;
- virtual void __stdcall UnsupportedSlot93()=0;
- virtual void __stdcall UnsupportedSlot94()=0;
- virtual void __stdcall UnsupportedSlot95()=0;
+ virtual HRESULT __stdcall CreateVertexShader(const DWORD*,IDirect3DVertexShader9**)=0;
+ virtual HRESULT __stdcall SetVertexShader(IDirect3DVertexShader9*)=0;
+ virtual HRESULT __stdcall GetVertexShader(IDirect3DVertexShader9**)=0;
+ virtual HRESULT __stdcall SetVertexShaderConstantF(UINT,const float*,UINT)=0;
+ virtual HRESULT __stdcall GetVertexShaderConstantF(UINT,float*,UINT)=0;
  virtual void __stdcall UnsupportedSlot96()=0;
  virtual void __stdcall UnsupportedSlot97()=0;
  virtual void __stdcall UnsupportedSlot98()=0;
@@ -154,11 +156,11 @@ struct IDirect3DDevice9 {
  virtual void __stdcall UnsupportedSlot103()=0;
  virtual void __stdcall UnsupportedSlot104()=0;
  virtual void __stdcall UnsupportedSlot105()=0;
- virtual void __stdcall UnsupportedSlot106()=0;
- virtual void __stdcall UnsupportedSlot107()=0;
- virtual void __stdcall UnsupportedSlot108()=0;
- virtual void __stdcall UnsupportedSlot109()=0;
- virtual void __stdcall UnsupportedSlot110()=0;
+ virtual HRESULT __stdcall CreatePixelShader(const DWORD*,IDirect3DPixelShader9**)=0;
+ virtual HRESULT __stdcall SetPixelShader(IDirect3DPixelShader9*)=0;
+ virtual HRESULT __stdcall GetPixelShader(IDirect3DPixelShader9**)=0;
+ virtual HRESULT __stdcall SetPixelShaderConstantF(UINT,const float*,UINT)=0;
+ virtual HRESULT __stdcall GetPixelShaderConstantF(UINT,float*,UINT)=0;
  virtual void __stdcall UnsupportedSlot111()=0;
  virtual void __stdcall UnsupportedSlot112()=0;
  virtual void __stdcall UnsupportedSlot113()=0;
@@ -248,4 +250,26 @@ struct IDirect3DVertexBuffer9 {
  virtual HRESULT __stdcall Lock(UINT,UINT,void**,DWORD)=0;
  virtual HRESULT __stdcall Unlock()=0;
  virtual HRESULT __stdcall GetDesc(void*)=0;
+};
+
+struct IDirect3DVertexShader9 {
+ virtual HRESULT __stdcall QueryInterface(const GUID&,void**)=0;
+ virtual ULONG __stdcall AddRef()=0;
+ virtual ULONG __stdcall Release()=0;
+ virtual HRESULT __stdcall GetDevice(IDirect3DDevice9**)=0;
+ virtual HRESULT __stdcall GetFunction(void*,UINT*)=0;
+};
+struct IDirect3DPixelShader9 {
+ virtual HRESULT __stdcall QueryInterface(const GUID&,void**)=0;
+ virtual ULONG __stdcall AddRef()=0;
+ virtual ULONG __stdcall Release()=0;
+ virtual HRESULT __stdcall GetDevice(IDirect3DDevice9**)=0;
+ virtual HRESULT __stdcall GetFunction(void*,UINT*)=0;
+};
+struct IDirect3DVertexDeclaration9 {
+ virtual HRESULT __stdcall QueryInterface(const GUID&,void**)=0;
+ virtual ULONG __stdcall AddRef()=0;
+ virtual ULONG __stdcall Release()=0;
+ virtual HRESULT __stdcall GetDevice(IDirect3DDevice9**)=0;
+ virtual HRESULT __stdcall GetDeclaration(D3DVERTEXELEMENT9*,UINT*)=0;
 };

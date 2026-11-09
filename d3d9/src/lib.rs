@@ -2,6 +2,11 @@
 //! Initial contract: single-sample BGRA8 render targets, clear and real readback.
 use std::{sync::mpsc, time::Duration};
 use wgpu::util::DeviceExt;
+pub mod compiler;
+pub mod legacy;
+mod legacy_gpu;
+pub use legacy_gpu::LegacyDraw;
+pub use wgpu::{VertexAttribute, VertexFormat};
 pub type Result<T> = std::result::Result<T, String>;
 
 pub struct Device {

@@ -24,6 +24,15 @@ jobs:
           cargo test --manifest-path d3d9/Cargo.toml --locked --offline
           cargo test --manifest-path d3d9/Cargo.toml --locked --offline -- --ignored --nocapture
           cargo clippy --manifest-path d3d9/Cargo.toml --locked --offline --all-targets -- -D warnings
+      - name: Build the pinned open legacy shader compiler
+        run: |
+          brew install bison flex make
+          python tools/build_d3d9_shader_compiler.py
+          python tools/check_d3d9_shader_artifacts.py
+      - name: Execute literal legacy shader bytecode through PE32 COM and Metal
+        run: |
+          python tools/observe_d3d9_create_device.py --shaders
+          ALKYHOL_D3D9_SHADER_COMPILER="$PWD/local/tools/shader9/alkyhol-shader9" ALKYHOL_D3D9_SHADER_DIRECTORY="$PWD/local/d3d9/compiled-owned" python tools/observe_d3d9_create_device.py --shaders --host
       - name: Compile unchanged Microsoft Tutorial 01 bodies into a single PE
         run: python tools/observe_d3d9_create_device.py
       - name: Execute that PE through binary COM and Metal
@@ -41,6 +50,9 @@ jobs:
         with:
           name: d3d9-identical-pe
           path: |
+            local/pe/d3d9-microtests/d3d9-shaders.exe
+            local/pe/d3d9-microtests/d3d9-shaders-inputs.json
+            local/pe/d3d9-microtests/d3d9-shaders-host.json
             local/pe/d3d9-microtests/d3d9-create-device.exe
             local/pe/d3d9-microtests/d3d9-create-device-inputs.json
             local/pe/d3d9-microtests/d3d9-create-device-host.json
@@ -77,6 +89,9 @@ jobs:
       - name: Compare identical triangle PE on native Windows D3D9
         if: success() || failure()
         run: python tools/observe_d3d9_create_device.py --vertices --native
+      - name: Compare literal legacy shader bytecode and every pixel on native Windows
+        if: success() || failure()
+        run: python tools/observe_d3d9_create_device.py --shaders --native
       - uses: actions/upload-artifact@v4
         if: always()
         with:

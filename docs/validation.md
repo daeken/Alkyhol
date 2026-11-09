@@ -1,8 +1,8 @@
 # Executed validation
 
-Current graphics development uses direct Metal from Rust. The historical records
-below describe their exact revisions, including the retired wgpu/Vulkan backend.
-See the latest direct-Metal record for current implementation evidence.
+D3D12 graphics uses direct Metal from Rust; the newer D3D9 layer uses wgpu by
+explicit user choice. Historical records below describe their exact revisions,
+including the earlier retired wgpu renderer. See d3d9.md for current D3D9 evidence.
 
 ## Search family and physical native-window backend during the integrated push
 
@@ -5366,3 +5366,17 @@ not an API stub or a game-success claim. Legacy shader lowering is the next
 substantive rendering dependency, and unsupported shader versions stay zero
 until real execution exists. Detailed captures and game-derived inventories
 remain local.
+
+The D3D9 adapter-query milestone 0b3d13a passes CI 42563476060: hosted Metal,
+native Windows mode/caps/SDK comparisons and Linux Mesa Vulkan-software. The
+next bounded shader milestone executes owned literal SM3 bytecode via open pinned
+vkd3d-shader/Naga/wgpu, through both real PE32 COM and the physical M4 backend.
+It includes semantic stage linkage, explicit triangle PointSize/half-pixel
+adapters, actual matrix constants, bytecode/declaration roundtrips and retained
+binding lifetimes. Its owned shader artifact regeneration is exact; 180 PE library
+units and PE Clippy pass. Native Windows shaded-pixel comparison is still pending.
+This is not execution of original DAO shaders or full SM3 conformance: shader
+versions remain unadvertised. Actual DAO selection rejects an unsupported texture
+sRGB-format query before its later capability callback; the prior shader-version
+explanation was inference. No DAO device/frame has been observed. See d3d9.md for
+compiler pins, explicit configuration, tests and remaining scope.

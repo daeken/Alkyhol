@@ -67,7 +67,7 @@ mod tests {
         );
         assert!(ctype1(&[b'A' as u16, 0x2603, b'a' as u16]).is_err());
         assert!(ctype1(&[0xd800]).is_err());
-        assert_eq!(ctype1(&[]).unwrap(), []);
+        assert!(ctype1(&[]).unwrap().is_empty());
     }
     #[test]
     fn case_mapping_preserves_native_nonexpansion_and_nonrepresentable_uppercase() {

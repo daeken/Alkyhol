@@ -1,0 +1,180 @@
+//! Real programmable draws over translated legacy bytecode. Initial binding
+//! profile: float constants, triangle lists and explicit float vertex attributes.
+use super::{Device, Result, Target, legacy};
+use wgpu::util::DeviceExt;
+pub struct LegacyDraw<'a> {
+    pub vertex_spirv: &'a [u8],
+    pub pixel_spirv: &'a [u8],
+    pub vertices: &'a [u8],
+    pub stride: u64,
+    pub attributes: &'a [wgpu::VertexAttribute],
+    pub vertex_constants: &'a [u8],
+    pub pixel_constants: &'a [u8],
+}
+fn resources(module: &naga::Module, stage: u32, used: &mut [bool; 3]) -> Result<()> {
+    let info = naga::valid::Validator::new(
+        naga::valid::ValidationFlags::all(),
+        naga::valid::Capabilities::all(),
+    )
+    .validate(module)
+    .map_err(|e| e.to_string())?;
+    if module.entry_points.len() != 1 {
+        return Err("expected one legacy entry point".into());
+    }
+    for (handle, var) in module.global_variables.iter() {
+        if info.get_entry_point(0)[handle].is_empty() {
+            continue;
+        }
+        if let Some(binding) = &var.binding {
+            if binding.binding != 0
+                || ![stage, 2].contains(&binding.group)
+                || var.space != naga::AddressSpace::Uniform
+            {
+                return Err("legacy draw binding outside float constants/viewport profile".into());
+            }
+            used[binding.group as usize] = true;
+        }
+    }
+    Ok(())
+}
+impl Device {
+    pub fn draw_legacy(&self, target: &mut Target, draw: &LegacyDraw<'_>) -> Result<()> {
+        if !target.initialized
+            || draw.stride == 0
+            || draw.stride > 2048
+            || draw.vertices.is_empty()
+            || !draw.vertices.len().is_multiple_of(draw.stride as usize)
+            || !(draw.vertices.len() / draw.stride as usize).is_multiple_of(3)
+            || draw.vertices.len() > 1024 * 1024
+        {
+            return Err("legacy draw extent/state outside bounded triangle profile".into());
+        }
+        let mut vs = legacy::lower_spirv(draw.vertex_spirv, legacy::Stage::Vertex)?;
+        legacy::vertex_pixel_centers(&mut vs)?;
+        let ps = legacy::lower_spirv(draw.pixel_spirv, legacy::Stage::Pixel)?;
+        let mut used = [false; 3];
+        resources(&vs, 0, &mut used)?;
+        resources(&ps, 1, &mut used)?;
+        let vs_text = legacy::wgsl(&vs)?;
+        let ps_text = legacy::wgsl(&ps)?;
+        let viewport: Vec<u8> = [target.width as f32, target.height as f32, 0., 0.]
+            .iter()
+            .flat_map(|n| n.to_le_bytes())
+            .collect();
+        let data = [draw.vertex_constants, draw.pixel_constants, &viewport];
+        for n in 0..3 {
+            if used[n] && (data[n].is_empty() || !data[n].len().is_multiple_of(16)) {
+                return Err("missing/alignment-invalid legacy constant buffer".into());
+            }
+        }
+        self.scope();
+        let vertex = self
+            .device
+            .create_shader_module(wgpu::ShaderModuleDescriptor {
+                label: Some("translated D3D9 vertex shader"),
+                source: wgpu::ShaderSource::Wgsl(vs_text.into()),
+            });
+        let pixel = self
+            .device
+            .create_shader_module(wgpu::ShaderModuleDescriptor {
+                label: Some("translated D3D9 pixel shader"),
+                source: wgpu::ShaderSource::Wgsl(ps_text.into()),
+            });
+        let pipeline = self
+            .device
+            .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some("D3D9 programmable triangle"),
+                layout: None,
+                vertex: wgpu::VertexState {
+                    module: &vertex,
+                    entry_point: Some("main"),
+                    compilation_options: Default::default(),
+                    buffers: &[wgpu::VertexBufferLayout {
+                        array_stride: draw.stride,
+                        step_mode: wgpu::VertexStepMode::Vertex,
+                        attributes: draw.attributes,
+                    }],
+                },
+                primitive: wgpu::PrimitiveState {
+                    front_face: wgpu::FrontFace::Cw,
+                    cull_mode: Some(wgpu::Face::Back),
+                    ..Default::default()
+                },
+                depth_stencil: None,
+                multisample: Default::default(),
+                fragment: Some(wgpu::FragmentState {
+                    module: &pixel,
+                    entry_point: Some("main"),
+                    compilation_options: Default::default(),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: wgpu::TextureFormat::Bgra8Unorm,
+                        blend: None,
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                }),
+                multiview: None,
+                cache: None,
+            });
+        let buffers: Vec<_> = (0..3)
+            .map(|n| {
+                used[n].then(|| {
+                    self.device
+                        .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                            label: Some("D3D9 actual constants"),
+                            contents: data[n],
+                            usage: wgpu::BufferUsages::UNIFORM,
+                        })
+                })
+            })
+            .collect();
+        let groups: Vec<_> = (0..3)
+            .map(|n| {
+                let entries: Vec<_> = buffers[n]
+                    .as_ref()
+                    .map(|b| wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: b.as_entire_binding(),
+                    })
+                    .into_iter()
+                    .collect();
+                self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("D3D9 stage constants"),
+                    layout: &pipeline.get_bind_group_layout(n as u32),
+                    entries: &entries,
+                })
+            })
+            .collect();
+        let vertices = self
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("D3D9 actual shader vertices"),
+                contents: draw.vertices,
+                usage: wgpu::BufferUsages::VERTEX,
+            });
+        let view = target.texture.create_view(&Default::default());
+        let mut encoder = self.device.create_command_encoder(&Default::default());
+        {
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("D3D9 legacy shader draw"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    depth_slice: None,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                ..Default::default()
+            });
+            pass.set_pipeline(&pipeline);
+            for (n, group) in groups.iter().enumerate() {
+                pass.set_bind_group(n as u32, group, &[]);
+            }
+            pass.set_vertex_buffer(0, vertices.slice(..));
+            pass.draw(0..(draw.vertices.len() / draw.stride as usize) as u32, 0..1);
+        }
+        self.queue.submit([encoder.finish()]);
+        self.finish()
+    }
+}

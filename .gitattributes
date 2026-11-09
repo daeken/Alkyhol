@@ -195,3 +195,9 @@ pe/fixtures/pe32-startup/search-family.def text eol=lf
 # D3D9 tutorial provenance and owned PE inputs are byte-identical across hosts.
 pe/fixtures/d3d9/** text eol=lf
 samples/d3d9/** -text whitespace=cr-at-eol,-blank-at-eol,-blank-at-eof
+
+d3d9/tests/fixtures/*.bin -text
+d3d9/tests/fixtures/*.spv -text
+d3d9/tests/fixtures/*.hlsl text eol=lf
+d3d9/tests/fixtures/*.json text eol=lf
+d3d9/licenses/* text eol=lf
