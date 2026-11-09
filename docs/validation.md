@@ -6253,3 +6253,23 @@ The 80MiB owned read comparison now also uses the literal CI-produced PE on the
 physical M4: source, PE and generated-data identities and all 14 output words
 agree with native Windows from 42618857208. The independently compiled local PE
 has a different identity and was not used to claim identical-binary agreement.
+
+## Original D3DX transform-state frontier
+
+With instruction discovery implemented, original DAO reaches
+IDirect3DDevice9::SetTransform(D3DTS_PROJECTION). Set/GetTransform now retain the
+actual 16 DWORD matrix bits per valid world/view/projection/texture state, with
+independent identity defaults. MultiplyTransform premultiplies the supplied
+matrix, as specified by the [Microsoft contract](https://learn.microsoft.com/en-us/windows/win32/api/d3d9/nf-d3d9-idirect3ddevice9-multiplytransform).
+Nonfinite multiplication and unsupported state identifiers fail explicitly.
+Set/Get storage itself does not sanitize matrix bits. This state does not alter
+programmable shaders or POSITIONT draws; unsupported fixed-function drawing
+paths still fail instead of silently ignoring a required transformation.
+
+Two units check independent/default states, signed-zero/NaN storage, invalid
+state atomicity, finite-only multiplication and noncommuting scale/translation
+order. The owned 2,100-word PE checks five identity defaults, actual set/get,
+premultiplication and output guards, followed by the original two programmable
+shader frames to detect accidental fixed-state influence. It passes on physical
+M4; native and hosted comparison are added and pending. All 204 PE units and
+Clippy pass. Integrated retry is pending.

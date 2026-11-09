@@ -150,9 +150,32 @@ static DWORD compressed_witness(){
  return 0;
 }
 #endif
+#ifdef TRANSFORMS
+static DWORD transform_witness(){
+ float identity[16]={1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1};
+ const UINT states[]={2,3,16,23,256};
+ float observed[18];observed[0]=73;observed[17]=91;
+ for(UINT n=0;n<5;n++){
+  if(g_pd3dDevice->GetTransform(states[n],observed+1)!=S_OK)return 1;
+  for(UINT k=0;k<16;k++)if(observed[k+1]!=identity[k])return 2;
+ }
+ float scale[16]={2,0,0,0,0,3,0,0,0,0,4,0,0,0,0,1};
+ float translation[16]={1,0,0,0,0,1,0,0,0,0,1,0,5,7,11,1};
+ if(g_pd3dDevice->SetTransform(256,scale)!=S_OK||g_pd3dDevice->MultiplyTransform(256,translation)!=S_OK)return 3;
+ if(g_pd3dDevice->GetTransform(256,observed+1)!=S_OK)return 4;
+ scale[12]=10;scale[13]=21;scale[14]=44;
+ for(UINT k=0;k<16;k++)if(observed[k+1]!=scale[k])return 5;
+ if(g_pd3dDevice->SetTransform(3,translation)!=S_OK||g_pd3dDevice->GetTransform(3,observed+1)!=S_OK)return 6;
+ for(UINT k=0;k<16;k++)if(observed[k+1]!=translation[k])return 7;
+ if(observed[0]!=73||observed[17]!=91)return 8;
+ return 0;
+}
+#endif
 extern "C" DWORD entry(){
  DWORD before=stack();put(0x39534844);
-#ifdef TRANSFORMED
+#ifdef TRANSFORMS
+put(12);
+#elif defined(TRANSFORMED)
 put(11);
 #elif defined(LUMINANCE)
 put(10);
@@ -192,6 +215,9 @@ put(1);
  #ifdef MODEL2
  static DWORD caps[78];caps[0]=caps[77]=0x715e7a11;DWORD creation[4]={};
  ok(g_pD3D->GetDeviceCaps(0,1,caps+1)==S_OK&&caps[0]==0x715e7a11&&caps[77]==0x715e7a11&&caps[50]>=0xfffe0200&&caps[52]>=0xffff0200&&caps[71]>=128&&caps[23]>=32&&caps[24]>=32&&g_pd3dDevice->GetCreationParameters(creation)==S_OK&&creation[3]==0x24);
+ #endif
+ #ifdef TRANSFORMS
+ DWORD transform_stage=transform_witness();ok(transform_stage==0);if(transform_stage)return fail(28,transform_stage);
  #endif
  IDirect3DVertexShader9* vs=NULL;IDirect3DPixelShader9* ps=NULL;IDirect3DVertexDeclaration9* decl=NULL;IDirect3DVertexBuffer9* vb=NULL;
  HRESULT vertex_hr=g_pd3dDevice->CreateVertexShader(vertex_code,&vs);ok(vertex_hr==S_OK);if(!vs)return fail(5,vertex_hr);

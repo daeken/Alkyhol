@@ -98,9 +98,9 @@ struct IDirect3DDevice9 {
  virtual HRESULT __stdcall BeginScene()=0;
  virtual HRESULT __stdcall EndScene()=0;
  virtual HRESULT __stdcall Clear(DWORD,const void*,DWORD,DWORD,float,DWORD)=0;
- virtual void __stdcall UnsupportedSlot44()=0;
- virtual void __stdcall UnsupportedSlot45()=0;
- virtual void __stdcall UnsupportedSlot46()=0;
+ virtual HRESULT __stdcall SetTransform(UINT,const float*)=0;
+ virtual HRESULT __stdcall GetTransform(UINT,float*)=0;
+ virtual HRESULT __stdcall MultiplyTransform(UINT,const float*)=0;
  virtual HRESULT __stdcall SetViewport(const void*)=0;
  virtual HRESULT __stdcall GetViewport(void*)=0;
  virtual void __stdcall UnsupportedSlot49()=0;

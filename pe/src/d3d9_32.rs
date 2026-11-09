@@ -1,5 +1,7 @@
 //! PE32 stdcall COM over owned low vtables. No host pointer is published.
 //! Unsupported virtual methods stop before returning; no successful COM stubs.
+#[path = "d3d9_transforms32.rs"]
+mod transforms;
 use super::{Cpu32, LoadedImage32, PAGE, unsupported};
 use crate::Result;
 use alkyhol_d3d9::{
@@ -9,6 +11,7 @@ use alkyhol_d3d9::{
     legacy::Stage,
 };
 use std::{cell::RefCell, collections::BTreeMap, rc::Rc};
+use transforms::Transforms;
 pub(super) const BASE: u32 = 0x9000;
 const INVALID: u32 = 0x8876086c;
 const UNAVAILABLE: u32 = 0x8876086a;
@@ -115,6 +118,7 @@ enum Body {
         scene: bool,
         parameters: [u32; 14],
         viewport: [u32; 6],
+        transforms: Transforms,
         creation_flags: u32,
         render_state: RenderState,
         texture_stages: TextureStages,
@@ -812,6 +816,7 @@ fn device(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
             scene: false,
             parameters: p,
             viewport: [0, 0, p[0], p[1], 0, 1f32.to_bits()],
+            transforms: Transforms::default(),
             creation_flags: a[4],
             render_state: initial_state,
             texture_stages: TextureStages::default(),
@@ -3102,6 +3107,32 @@ fn dispatch_inner(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32 {
         }
         (1, 18) => backbuffer(image, &mut s, a),
         (1, 36) => offscreen(image, &mut s, a),
+        (1, 44..=46) => {
+            if a[2] == 0 {
+                return INVALID;
+            }
+            if !Transforms::valid(a[1]) {
+                return UNAVAILABLE;
+            }
+            if slot == 45 {
+                let Body::Device { transforms, .. } = &s.objects[&a[0]].body else {
+                    unreachable!()
+                };
+                write(image, a[2], &transforms.get(a[1]).unwrap());
+            } else {
+                let matrix = read::<16>(image, a[2]);
+                let Body::Device { transforms, .. } = &mut s.objects.get_mut(&a[0]).unwrap().body
+                else {
+                    unreachable!()
+                };
+                if slot == 44 {
+                    transforms.set(a[1], matrix);
+                } else if !transforms.multiply(a[1], matrix) {
+                    return UNAVAILABLE;
+                }
+            }
+            0
+        }
         (1, 47 | 48) => {
             if a[1] == 0 {
                 return INVALID;
