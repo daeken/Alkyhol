@@ -5705,3 +5705,32 @@ identities. With that configuration the unchanged original EXE continues into
 its original archive searches/opens and a larger original shader batch. No
 original draw, Present or game frame is established yet. Original files and
 all derived traces remain local.
+
+## DAO audio startup reaches real COM apartment state
+
+The original FMOD path now calls CoInitialize against real per-guest-thread
+apartment/balance records. STA/MTA mismatch fails without acquiring a balance;
+S_FALSE acquires one, final CoUninitialize permits a new mode, and actual worker
+teardown clears that worker's state. OLE/DDE, RPC, proxies and registered class
+activation remain unimplemented. CoCreateInstance returns CO_E_NOTINITIALIZED
+before initialization and REGDB_E_CLASSNOTREG only when *both* configured HKCU
+and HKLM class-registration scopes establish absence; registered or unknown
+classes stop explicitly. No success object or audio endpoint is fabricated.
+
+The new 25-word identical-PE witness passes on physical M4: nested initialization,
+mode changes, real worker isolation, uninitialized/missing-class failures with
+NULL output and guards, cleanup and stack balance. All 189 PE library tests,
+remaining targets and Clippy pass. Native COM comparison is pending.
+
+CI 42595589598 on 39b237b agrees on 32 of 33 indexed-DIB words but fails the
+reverse-copy raw-index assertion. Its raw native observation is retained. The
+witness omitted required GdiFlush synchronization before reading DIB bytes after
+GDI drawing (CreateDIBSection documentation explicitly requires this). It now
+flushes before each such read, retaining the original RGB/index/padding criteria.
+All admitted Alkyhol GDI writes are synchronous, so its calling-thread flush has
+no pending batch or errors. The synchronized witness passes locally; native
+retry is pending, and this correction is not yet counted as native DIB parity.
+
+The next integrated game run retains the configured empty class inventories and
+original EXE/source/profile identities. Its startup evidence, including any
+failed audio initialization, remains private. No original DAO frame is claimed.

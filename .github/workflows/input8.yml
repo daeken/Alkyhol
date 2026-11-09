@@ -20,6 +20,20 @@ jobs:
           cargo test --manifest-path pe/Cargo.toml --target x86_64-apple-darwin --locked --offline input
           python tools/observe_input8_lifecycle.py
           python tools/observe_input8_lifecycle.py --host
+      - name: Execute COM initialization reached by original FMOD
+        run: |
+          cargo test --manifest-path pe/Cargo.toml --target x86_64-apple-darwin --locked --offline com32
+          python tools/observe_pe32_com_apartment.py
+          python tools/observe_pe32_com_apartment.py --host
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: com-apartment-identical-pe
+          path: |
+            local/pe/com-apartment-microtest/com-apartment.exe
+            local/pe/com-apartment-microtest/com-apartment-inputs.json
+            local/pe/com-apartment-microtest/com-apartment-host.json
+          if-no-files-found: error
       - name: Execute the indexed DIB operations reached by DAO font setup
         run: |
           python tools/observe_pe32_palette_dib.py
@@ -113,6 +127,18 @@ jobs:
         with:
           name: palette-dib-identical-pe
           path: local/pe/palette-dib-microtest
+      - uses: actions/download-artifact@v4
+        with:
+          name: com-apartment-identical-pe
+          path: local/pe/com-apartment-microtest
+      - name: Compare identical COM initialization PE on native Windows
+        run: python tools/observe_pe32_com_apartment.py --native
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: com-apartment-native-observation
+          path: local/pe/com-apartment-microtest/native-com-apartment.json
+          if-no-files-found: warn
       - name: Compare identical indexed DIB PE on native Windows
         run: python tools/observe_pe32_palette_dib.py --native
       - uses: actions/upload-artifact@v4

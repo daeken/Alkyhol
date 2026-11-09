@@ -226,6 +226,13 @@ impl State {
         }
         Ok(self.keys.contains(&(hive, key.into())))
     }
+    pub(super) fn class_registered(&self, guid: &str) -> Result<bool> {
+        let key = path(&format!("Software\\Classes\\CLSID\\{guid}"))?;
+        // Both hives must be authoritative, even if one side has no entry.
+        let user = self.known(HKCU, &key)?;
+        let machine = self.known(HKLM, &key)?;
+        Ok(user || machine)
+    }
     fn target(&self, handle: u32, child: &str) -> Result<(u32, String)> {
         let (hive, full) = if [HKCU, HKLM].contains(&handle) {
             (handle, path(child)?)
@@ -467,6 +474,27 @@ mod tests {
             .map(|i| format!(r#"<key name="Child{i}"/>"#))
             .collect::<String>();
         assert!(State::parse(&format!(r#"<registry view="32"><scope hive="HKCU" path="Software\Owned" exists="true">{keys}</scope></registry>"#)).is_err());
+    }
+    #[test]
+    fn class_lookup_requires_both_hives_and_never_turns_unknown_into_absence() {
+        let machine = r#"<scope hive="HKLM" path="Software\Classes\CLSID" exists="true"/>"#;
+        let user = r#"<scope hive="HKCU" path="Software\Classes\CLSID" exists="true"/>"#;
+        let only_machine =
+            State::parse(&format!(r#"<registry view="32">{machine}</registry>"#)).unwrap();
+        assert!(only_machine.class_registered("{owned-class}").is_err());
+        let empty = State::parse(&format!(
+            r#"<registry view="32">{machine}{user}</registry>"#
+        ))
+        .unwrap();
+        assert!(!empty.class_registered("{owned-class}").unwrap());
+        for (hive, other) in [("HKLM", user), ("HKCU", machine)] {
+            let xml = format!(
+                r#"<registry view="32">{other}<scope hive="{hive}" path="Software\Classes\CLSID" exists="true"><key name="{{owned-class}}"/></scope></registry>"#
+            );
+            let registered = State::parse(&xml).unwrap();
+            assert!(registered.class_registered("{Owned-Class}").unwrap());
+            assert!(!registered.class_registered("{different-class}").unwrap());
+        }
     }
     #[test]
     fn ascii_case_paths_and_scope_boundaries_are_checked() {

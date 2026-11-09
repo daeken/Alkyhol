@@ -2,6 +2,7 @@
  * the reserved high byte of 32-bit BI_RGB pixels; no alpha guarantee is inferred. */
 typedef unsigned int U;typedef int L;typedef void* H;
 __declspec(dllimport) H __stdcall CreateCompatibleDC(H);
+__declspec(dllimport) int __stdcall GdiFlush(void);
 __declspec(dllimport) H __stdcall CreateDIBSection(H,const void*,U,void**,H,U);
 __declspec(dllimport) H __stdcall SelectObject(H,H);
 __declspec(dllimport) int __stdcall GetObjectW(H,L,void*);
@@ -25,11 +26,11 @@ U entry(void){U before=stack();put(0x38424944);put(1);for(U i=0;i<256;i++)indexe
  for(U i=0;i<16;i++)bits[i]=0x5a;for(U y=0;y<2;y++)for(U x=0;x<5;x++)bits[y*8+x]=(unsigned char)(y*5+x+1);
  U info[23];for(U i=0;i<23;i++)info[i]=0x715e7a11;
  put(GetObjectW(bitmap,84,info+1)==84&&info[0]==0x715e7a11&&info[22]==0x715e7a11&&info[1]==0&&info[2]==5&&info[3]==2&&info[4]==8&&info[5]==0x80001&&info[6]==(U)bits);
- put(GetPixel(source,0,0));put(GetPixel(source,1,1));L rectangle[4]={2,0,3,1};H brush=CreateSolidBrush(0x111111);put(brush&&FillRect(source,rectangle,brush)&&DeleteObject(brush));put(bits[2]==17&&bits[5]==0x5a&&bits[13]==0x5a);
- for(U i=0;i<10;i++)target_bits[i]=0xaabbccdd;put(BitBlt(target,0,0,5,2,source,0,0,0xcc0020)!=0);for(U i=0;i<10;i++)put(target_bits[i]&0xffffff);
+ put(GetPixel(source,0,0));put(GetPixel(source,1,1));L rectangle[4]={2,0,3,1};H brush=CreateSolidBrush(0x111111);put(brush&&FillRect(source,rectangle,brush)&&GdiFlush()&&DeleteObject(brush));put(bits[2]==17&&bits[5]==0x5a&&bits[13]==0x5a);
+ for(U i=0;i<10;i++)target_bits[i]=0xaabbccdd;put(BitBlt(target,0,0,5,2,source,0,0,0xcc0020)!=0&&GdiFlush());for(U i=0;i<10;i++)put(target_bits[i]&0xffffff);
  indexed.header[2]=2;H bottom=CreateDIBSection(source,&indexed,0,(void**)&bottom_bits,0,0);put(bottom!=0&&bottom_bits!=0);if(!bottom||!bottom_bits)ExitProcess(4);
  for(U i=0;i<16;i++)bottom_bits[i]=0x5a;for(U x=0;x<5;x++){bottom_bits[x]=(unsigned char)(9+x);bottom_bits[8+x]=(unsigned char)(1+x);}
- put(SelectObject(source,bottom)==bitmap);put(GetPixel(source,1,0));put(GetPixel(source,1,1));put(BitBlt(source,0,0,5,2,target,0,0,0xcc0020)!=0);
+ put(SelectObject(source,bottom)==bitmap);put(GetPixel(source,1,0));put(GetPixel(source,1,1));put(BitBlt(source,0,0,5,2,target,0,0,0xcc0020)!=0&&GdiFlush());
  put(bottom_bits[0]==6&&bottom_bits[8]==1&&bottom_bits[10]==17&&bottom_bits[5]==0x5a&&bottom_bits[13]==0x5a);
  put(SelectObject(source,old_source)==bottom&&SelectObject(target,old_target)==rgb);put(DeleteObject(bitmap)&&DeleteObject(bottom)&&DeleteObject(rgb));put(DeleteDC(source)&&DeleteDC(target));put(stack()==before);put(used+1);
  U done=0;int ok=WriteFile(GetStdHandle((U)-11),out,used*4,&done,0);ExitProcess(ok&&done==used*4?0:8);return 8;

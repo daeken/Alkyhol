@@ -9,7 +9,7 @@ def sha(path):return hashlib.sha256(path.read_bytes()).hexdigest()
 def identity(d):return {'source':{p.relative_to(ROOT).as_posix():sha(p) for p in [SOURCE]},'pe':sha(d/'palette-dib.exe')}
 def build(d):
  d.mkdir(parents=True,exist_ok=True);lld=rust_tool('rust-lld');libs=[]
- symbols={'kernel32.dll':[('GetStdHandle',4),('WriteFile',20),('ExitProcess',4)],'gdi32.dll':[('CreateCompatibleDC',4),('CreateDIBSection',24),('SelectObject',8),('GetObjectW',12),('GetPixel',12),('CreateSolidBrush',4),('BitBlt',36),('DeleteObject',4),('DeleteDC',4)],'user32.dll':[('FillRect',12)]}
+ symbols={'kernel32.dll':[('GetStdHandle',4),('WriteFile',20),('ExitProcess',4)],'gdi32.dll':[('GdiFlush',0),('CreateCompatibleDC',4),('CreateDIBSection',24),('SelectObject',8),('GetObjectW',12),('GetPixel',12),('CreateSolidBrush',4),('BitBlt',36),('DeleteObject',4),('DeleteDC',4)],'user32.dll':[('FillRect',12)]}
  for dll,entries in symbols.items():
   deffile=d/(dll+'.def');deffile.write_text('LIBRARY '+dll+'\nEXPORTS\n'+'\n'.join(chr(34)+n+chr(34) for n,_ in entries)+'\n');lib=d/(dll+'.lib');libs.append(str(lib));subprocess.run([lld,'-flavor','link','/lib','/machine:x86','/def:'+str(deffile),'/out:'+str(lib)],check=True)
  obj=d/'palette-dib.obj';subprocess.run([shutil.which('clang'),'--target=i686-pc-windows-msvc','-std=c11','-O1','-ffreestanding','-fno-builtin','-fno-stack-protector','-Wall','-Wextra','-Werror','-c',str(SOURCE),'-o',str(obj)],check=True)

@@ -423,6 +423,11 @@ unsafe fn run(
         .unnamed_mutexes
         .borrow_mut()
         .abandon(alkyhol::ffi::GetCurrentThreadId());
+    image
+        .cpu
+        .com
+        .borrow_mut()
+        .exit(alkyhol::ffi::GetCurrentThreadId());
     record.control.exit.store(status, Ordering::Release);
     // Signal the independently retained object even if the guest closed its handle.
     if alkyhol::ffi::SetEvent(record.control.retained as usize) == 0 {

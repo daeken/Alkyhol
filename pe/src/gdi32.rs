@@ -2,6 +2,11 @@
 use super::{LoadedImage32, unsupported};
 use crate::Result;
 use std::{collections::BTreeMap, rc::Rc};
+/// All admitted GDI writes complete synchronously before their API returns.
+/// There are no deferred batches/errors left for the calling thread to flush.
+pub(super) fn flush() -> u32 {
+    1
+}
 #[derive(Clone)]
 struct Bitmap {
     width: u32,

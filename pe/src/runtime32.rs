@@ -24,6 +24,8 @@ mod activation32;
 mod ansi32;
 #[path = "bulk32.rs"]
 mod bulk32;
+#[path = "com32.rs"]
+mod com32;
 #[path = "crt32.rs"]
 mod crt32;
 #[path = "cursor32.rs"]
@@ -121,7 +123,7 @@ unsafe extern "C" {
 }
 const PAGE: usize = 4096;
 const STACK: usize = 1024 * 1024;
-const APIS: [(&str, u16); 272] = [
+const APIS: [(&str, u16); 277] = [
     ("GetLastError", 0),
     ("SetLastError", 4),
     ("GetStdHandle", 4),
@@ -394,6 +396,11 @@ const APIS: [(&str, u16); 272] = [
     ("strncmp", 12),
     ("CreateMutexA", 12),
     ("GetHandleInformation", 8),
+    ("CoInitialize", 4),
+    ("CoInitializeEx", 8),
+    ("CoUninitialize", 0),
+    ("GdiFlush", 0),
+    ("CoCreateInstance", 20),
 ];
 // The first 120 API slots retain their original offsets. The second bank
 // begins after both x87 bodies, leaving their machine code and failure gates
@@ -457,11 +464,13 @@ fn api_id(module: &str, symbol: &ImportSymbol) -> Option<usize> {
                     "msvcrt.dll"
                 } else if *id == 259 {
                     "dinput8.dll"
+                } else if (272..=274).contains(id) || *id == 276 {
+                    "ole32.dll"
                 } else if *id == 255 {
                     "d3d9.dll"
                 } else if matches!(*id, 8 | 120) {
                     "shell32.dll"
-                } else if (188..=197).contains(id) || matches!(*id, 202 | 247 | 248) {
+                } else if (188..=197).contains(id) || matches!(*id, 202 | 247 | 248 | 275) {
                     "gdi32.dll"
                 } else if matches!(*id, 100 | 115 | 187)
                     || (148..177).contains(id)
@@ -837,6 +846,7 @@ struct Cpu32 {
     d3d9: RefCell<d3d9_32::State>,
     input8: RefCell<input8_32::State>,
     unnamed_mutexes: RefCell<unnamed_mutex32::State>,
+    com: RefCell<com32::State>,
     com_storage: RefCell<Vec<(LowMapping, bool)>>,
 }
 impl Cpu32 {
@@ -858,6 +868,7 @@ impl Cpu32 {
         }
         self.fls.borrow_mut().clear();
         self.unnamed_mutexes.borrow_mut().clear();
+        self.com.borrow_mut().clear();
         self.heap.borrow_mut().clear();
         *self.crt.borrow_mut() = Default::default();
     }
@@ -964,6 +975,7 @@ impl Cpu32 {
             d3d9: RefCell::new(Default::default()),
             input8: RefCell::new(Default::default()),
             unnamed_mutexes: RefCell::new(Default::default()),
+            com: RefCell::new(Default::default()),
             com_storage: RefCell::new(Default::default()),
         })
     }
@@ -2348,6 +2360,9 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
             265..=269 => crt32::memory(image, id, args),
             270 => mutex32::create_ansi(image, args),
             271 => fileio32::handle_information(image, args[0], args[1]),
+            272..=274 => com32::dispatch(image, id, args),
+            275 => gdi32::flush(),
+            276 => com32::create(image, args),
             input8_32::BASE.. => input8_32::dispatch(image, id, &words),
             d3d9_32::BASE.. => d3d9_32::dispatch(image, id, &words),
             215 => {
@@ -2371,6 +2386,21 @@ mod tests {
         assert_eq!(api_id("USER32.dll", &symbol), Some(257));
         assert_eq!(api_id("kernel32.dll", &symbol), None);
         assert_eq!(APIS[257], ("GetWindowInfo", 8));
+    }
+    #[test]
+    fn com_and_gdi_flush_imports_have_correct_module_and_stdcall_ownership() {
+        for (id, module) in [
+            (272, "ole32.dll"),
+            (273, "ole32.dll"),
+            (274, "ole32.dll"),
+            (275, "gdi32.dll"),
+            (276, "ole32.dll"),
+        ] {
+            let symbol = ImportSymbol::Name(APIS[id].0.into());
+            assert_eq!(api_id(module, &symbol), Some(id));
+            assert_eq!(api_id("kernel32.dll", &symbol), None);
+            assert_eq!(cleanup_bytes(id, APIS[id].1), APIS[id].1);
+        }
     }
     #[test]
     fn cdecl_crt_gateways_keep_arguments_for_the_guest_caller() {
@@ -2543,6 +2573,7 @@ mod tests {
                 d3d9: RefCell::new(Default::default()),
                 input8: RefCell::new(Default::default()),
                 unnamed_mutexes: RefCell::new(Default::default()),
+                com: RefCell::new(Default::default()),
                 com_storage: RefCell::new(Default::default()),
             }),
             tls: None,
