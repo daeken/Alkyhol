@@ -44,6 +44,7 @@ static_assert(offsetof(D3DCAPS9,NumberOfAdaptersInGroup)==232);
 static_assert(offsetof(D3DCAPS9,NumSimultaneousRTs)==240);
 
 static_assert(sizeof(D3DVERTEXELEMENT9)==8);
+static_assert(D3DDECLTYPE_FLOAT16_2==15&&D3DDECLTYPE_FLOAT16_4==16);
 static_assert(offsetof(IDirect3DDevice9Vtbl,CreateVertexDeclaration)==86*4);
 static_assert(offsetof(IDirect3DDevice9Vtbl,SetVertexDeclaration)==87*4);
 static_assert(offsetof(IDirect3DDevice9Vtbl,CreateVertexShader)==91*4);

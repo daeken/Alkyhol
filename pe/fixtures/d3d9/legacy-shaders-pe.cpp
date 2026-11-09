@@ -28,7 +28,12 @@ static void ok(BOOL n){put(n?1:0);}
 static DWORD fail(DWORD status,HRESULT detail){put(0xdeadc0de);put(status);put((DWORD)detail);DWORD done=0;WriteFile(GetStdHandle((DWORD)-11),words,used*4,&done,NULL);return status;}
 static DWORD stack(){DWORD s;__asm__ volatile("movl %%esp,%0":"=r"(s));return s;}
 static LRESULT __stdcall proc(HWND w,UINT m,WPARAM a,LPARAM b){return DefWindowProcW(w,m,a,b);}
-#ifdef FONTS
+#ifdef HALF
+struct HalfVertex { unsigned short position[2],color[4]; };
+static const HalfVertex vertices[]={{{0,0x3c00},{0x3c00,0,0,0x3c00}},{{0x3c00,0xbc00},{0x3c00,0,0,0x3c00}},{{0xbc00,0xbc00},{0x3c00,0,0,0x3c00}}};
+static float matrix[16]={.75f,0,0,0,0,.75f,0,0,0,0,1,0,0,0,0,1};
+static const D3DVERTEXELEMENT9 elements[]={{0,0,15,0,0,0},{0,4,16,0,10,0},{255,0,17,0,0,0}};
+#elif defined(FONTS)
 static const float vertices[][8]={{0,.75f,.5f,1,.75f,.75f,0,1},{.75f,-.75f,.5f,1,.75f,.75f,0,1},{-.75f,-.75f,.5f,1,.75f,.75f,0,1}};
 static float matrix[16]={1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1};
 static const D3DVERTEXELEMENT9 elements[]={{0,0,3,0,0,0},{0,16,3,0,10,0},{255,0,17,0,0,0}};
@@ -238,7 +243,9 @@ static DWORD font_formats_witness(){
 #endif
 extern "C" DWORD entry(){
  DWORD before=stack();put(0x39534844);
-#ifdef FONTS
+#ifdef HALF
+put(16);
+#elif defined(FONTS)
 put(15);
 #elif defined(STENCIL)
 put(14);

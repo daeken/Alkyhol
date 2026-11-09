@@ -1,11 +1,12 @@
 //! D3D9 vertex fetch for the packed declarations requested by DAO.
-//! Expansion preserves original float bits; only integer formats are converted.
+//! Expansion preserves original float32 bits and widens packed input components.
 use crate::Result;
 /// Size of each admitted source declaration element. Other formats fail explicitly.
 pub fn element_size(ty: u32) -> Result<usize> {
     match ty {
         0..=3 => Ok((ty as usize + 1) * 4),
-        4 | 6 | 8 => Ok(4), // D3DCOLOR, SHORT2, UBYTE4N
+        4 | 6 | 8 | 15 => Ok(4), // D3DCOLOR, SHORT2, UBYTE4N, FLOAT16_2
+        16 => Ok(8),             // FLOAT16_4
         _ => Err("vertex element format is not implemented".into()),
     }
 }
@@ -35,9 +36,33 @@ pub fn expand(ty: u32, source: &[u8]) -> Result<[u8; 16]> {
                     .copy_from_slice(&(value as f32).to_le_bytes());
             }
         }
+        15 | 16 => {
+            for (component, bytes) in source.as_chunks::<2>().0.iter().enumerate() {
+                output[component * 4..component * 4 + 4]
+                    .copy_from_slice(&half_float(u16::from_le_bytes(*bytes)).to_le_bytes());
+            }
+        }
         _ => unreachable!(),
     }
     Ok(output)
+}
+fn half_float(bits: u16) -> f32 {
+    let sign = u32::from(bits & 0x8000) << 16;
+    let exponent = u32::from(bits >> 10) & 31;
+    let fraction = u32::from(bits & 1023);
+    let value = if exponent == 0 {
+        if fraction == 0 {
+            sign
+        } else {
+            let shift = fraction.leading_zeros() - 21;
+            sign | ((113 - shift) << 23) | (((fraction << shift) & 1023) << 13)
+        }
+    } else if exponent == 31 {
+        sign | 0x7f800000 | (fraction << 13)
+    } else {
+        sign | ((exponent + 112) << 23) | (fraction << 13)
+    };
+    f32::from_bits(value)
 }
 #[cfg(test)]
 mod tests {
@@ -95,10 +120,54 @@ mod tests {
             assert!(element_size(ty).is_err());
             assert!(expand(ty, &[0; 4]).is_err());
         }
-        for ty in [0, 1, 2, 3, 4, 6, 8] {
+        for ty in [0, 1, 2, 3, 4, 6, 8, 15, 16] {
             let size = element_size(ty).unwrap();
             assert!(expand(ty, &vec![0; size - 1]).is_err());
             assert!(expand(ty, &vec![0; size + 1]).is_err());
         }
+    }
+    #[test]
+    fn half_formats_widen_every_finite_encoding_and_keep_vector_defaults() {
+        for bits in 0..=u16::MAX {
+            let value = half_float(bits);
+            let exponent = (bits >> 10) & 31;
+            let fraction = bits & 1023;
+            if exponent == 31 {
+                if fraction == 0 {
+                    assert!(value.is_infinite());
+                } else {
+                    assert!(value.is_nan());
+                }
+                assert_eq!(value.to_bits() >> 31, u32::from(bits >> 15));
+                continue;
+            }
+            let magnitude = if exponent == 0 {
+                f64::from(fraction) * 2f64.powi(-24)
+            } else {
+                f64::from(1024 + fraction) * 2f64.powi(i32::from(exponent) - 25)
+            };
+            let expected = if bits & 0x8000 != 0 {
+                -magnitude
+            } else {
+                magnitude
+            } as f32;
+            assert_eq!(value.to_bits(), expected.to_bits(), "half={bits:04x}");
+        }
+        assert_eq!(element_size(15).unwrap(), 4);
+        assert_eq!(element_size(16).unwrap(), 8);
+        assert_eq!(
+            floats(expand(15, &[0, 0x3c, 0, 0xc0]).unwrap()),
+            [1., -2., 0., 1.]
+        );
+        let vector = expand(16, &[0, 0x3c, 0, 0xc0, 1, 0, 0, 0x80]).unwrap();
+        assert_eq!(
+            floats(vector).map(f32::to_bits),
+            [
+                1f32.to_bits(),
+                (-2f32).to_bits(),
+                2f32.powi(-24).to_bits(),
+                0x80000000
+            ]
+        );
     }
 }

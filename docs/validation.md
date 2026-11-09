@@ -6612,3 +6612,28 @@ PE/GPU witnesses also pass with pooled headers. All 215 PE units, PE Clippy and
 14 D3D9 observer tests pass. Existing CI now transfers the allocation witness for
 native Windows comparison, which remains pending during GitHub's server errors.
 The next original-game run is still needed to identify the next loading boundary.
+
+## Allocation stops clear; original half-precision vertex layouts
+
+The clean e605635 replay passes both earlier allocation stops and continues
+through original character-generation resources. It then rejects FLOAT16_4 and
+FLOAT16_2 declarations before an original null-pointer cleanup fault. Inspection
+of original instruction bytes shows an attempted interface Release through that
+null value. A causal connection to the rejected declarations is a hypothesis
+until the next replay; the original cleanup code is not patched or skipped.
+
+The two [documented declaration types](https://learn.microsoft.com/en-us/windows/win32/direct3d9/d3ddecltype)
+now have checked 4-/8-byte layouts and binary16-to-binary32 fetch. FLOAT16_2
+supplies the specified zero/one defaults; four-component values widen all four
+lanes. No original vertex, index or shader data is modified. Exhaustive units
+compare every finite encoding with an independent f64 arithmetic construction,
+check infinities/NaN classification, signed zero, subnormals, vector defaults
+and malformed extents. This does not establish native NaN-payload equivalence.
+
+All 21 backend units and backend Clippy pass. A new owned literal PE uses these
+actual declaration types with the unchanged owned shader bodies, checks COM and
+stack behavior and renders two complete RGB frames physically. The exact native
+Windows comparator and independent SDK enum checks are added to existing CI and
+pending. Fourteen D3D9 observer tests pass; existing acceptance rules for earlier
+witnesses and retained failed native observations remain unchanged. The next
+original run must establish whether the cleanup boundary is cleared.
