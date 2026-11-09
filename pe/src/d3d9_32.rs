@@ -129,7 +129,7 @@ enum Body {
         texture_stages: TextureStages,
         back: u32,
         fvf: u32,
-        stream: Option<(u32, u32, u32)>,
+        streams: Box<[Option<(u32, u32, u32)>; 16]>,
         indices: u32,
         textures: Box<[u32; 16]>,
         samplers: Box<[SamplerState; 16]>,
@@ -594,7 +594,7 @@ fn release(s: &mut State, p: u32) -> u32 {
             auto_depth,
             swapchain,
             back,
-            stream,
+            streams,
             indices,
             vertex_shader,
             pixel_shader,
@@ -626,7 +626,7 @@ fn release(s: &mut State, p: u32) -> u32 {
             if back != 0 {
                 s.objects.remove(&back);
             }
-            if let Some((buffer, _, _)) = stream {
+            for (buffer, _, _) in (*streams).into_iter().flatten() {
                 unbind(s, buffer);
             }
             if indices != 0 {
@@ -747,7 +747,7 @@ fn capabilities(programmable: bool) -> [u32; 76] {
     caps[8] = 0x40; // default CCW cull mode
     caps[14] = 8; // diffuse Gouraud colors, measured by the original tutorial
     caps[45] = 1024 * 1024 / 60; // bounded triangle-list upload
-    caps[47] = 1; // stream zero
+    caps[47] = 16; // independently bound vertex streams
     caps[48] = 20; // implemented XYZRHW|DIFFUSE stride
     caps[58] = 1; // one adapter in this adapter group
     caps[34] = 0xff; // Actual eight stencil operations on depth/stencil attachments.
@@ -855,7 +855,7 @@ fn device(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
             texture_stages: TextureStages::default(),
             back: 0,
             fvf: 0,
-            stream: None,
+            streams: Box::new([None; 16]),
             indices: 0,
             textures: Box::new([0; 16]),
             samplers: Box::new([SamplerState::default(); 16]),
@@ -1804,8 +1804,8 @@ fn device_mode(image: &LoadedImage32<'_>, s: &State, device: u32, out: u32) -> u
     0
 }
 fn stream_source(s: &mut State, a: &[u32; 16]) -> u32 {
-    if a[1] != 0 {
-        return UNAVAILABLE;
+    if a[1] >= 16 {
+        return INVALID;
     }
     if a[2] == 0 && (a[3] != 0 || a[4] != 0) {
         return UNAVAILABLE;
@@ -1828,10 +1828,10 @@ fn stream_source(s: &mut State, a: &[u32; 16]) -> u32 {
             return INVALID;
         }
     }
-    let Body::Device { stream, .. } = &s.objects[&a[0]].body else {
+    let Body::Device { streams, .. } = &s.objects[&a[0]].body else {
         unreachable!()
     };
-    let old = *stream;
+    let old = streams[a[1] as usize];
     if old.map(|v| v.0) != Some(a[2]) {
         if a[2] != 0 {
             let Body::VertexBuffer { bindings, .. } = &mut s.objects.get_mut(&a[2]).unwrap().body
@@ -1844,15 +1844,70 @@ fn stream_source(s: &mut State, a: &[u32; 16]) -> u32 {
             unbind(s, buffer);
         }
     }
-    let Body::Device { stream, .. } = &mut s.objects.get_mut(&a[0]).unwrap().body else {
+    let Body::Device { streams, .. } = &mut s.objects.get_mut(&a[0]).unwrap().body else {
         unreachable!()
     };
-    *stream = if a[2] == 0 {
+    streams[a[1] as usize] = if a[2] == 0 {
         None
     } else {
         Some((a[2], a[3], a[4]))
     };
     0
+}
+// Validate every source independently: offsets and strides belong to bindings,
+// while the vertex/index selection is shared by all declaration streams.
+fn vertex_span(
+    length: u32,
+    offset: u32,
+    stride: u32,
+    start: u32,
+    count: u32,
+) -> Option<(u32, u32)> {
+    if stride == 0 || stride > 2048 || count == 0 {
+        return None;
+    }
+    let first = start.checked_mul(stride)?.checked_add(offset)?;
+    let size = count.checked_mul(stride)?;
+    let end = first.checked_add(size)?;
+    (size <= 64 * 1024 * 1024 && end <= length).then_some((first, size))
+}
+fn vertex_stream(
+    image: &LoadedImage32<'_>,
+    s: &State,
+    binding: Option<(u32, u32, u32)>,
+    start: u32,
+    count: u32,
+    indices: Option<&[u32]>,
+) -> Option<(u32, u32, u32)> {
+    let (pointer, offset, stride) = binding?;
+    let Body::VertexBuffer {
+        data,
+        length,
+        lock: None,
+        initialized,
+        ..
+    } = &s.objects.get(&pointer)?.body
+    else {
+        return None;
+    };
+    let (first, size) = vertex_span(*length, offset, stride, start, count)?;
+    let written = |at: u32, end: u32| initialized.iter().any(|&(a, b)| at >= a && end <= b);
+    if let Some(indices) = indices {
+        for &index in indices {
+            if index >= count {
+                return None;
+            }
+            let at = first + index * stride;
+            if !written(at, at + stride) {
+                return None;
+            }
+        }
+    } else if !written(first, first + size) {
+        return None;
+    }
+    let address = data.checked_add(first)?;
+    checked(image, address, size as usize, false);
+    Some((address, size, stride))
 }
 fn draw_buffer(
     image: &LoadedImage32<'_>,
@@ -1868,7 +1923,7 @@ fn draw_buffer(
         texture_stages,
         textures,
         fvf,
-        stream,
+        streams,
         vertex_shader,
         pixel_shader,
         declaration,
@@ -1900,25 +1955,7 @@ fn draw_buffer(
     {
         return INVALID;
     }
-    let Some((p, offset, stride)) = *stream else {
-        return INVALID;
-    };
-    let Body::VertexBuffer {
-        data,
-        length,
-        lock,
-        initialized,
-        ..
-    } = &s.objects[&p].body
-    else {
-        unreachable!()
-    };
-    if lock.is_some() {
-        return INVALID;
-    }
-    let Some(first) = a[2].checked_mul(stride).and_then(|n| n.checked_add(offset)) else {
-        return INVALID;
-    };
+    let streams = **streams;
     let vertices = if let Some((count, _)) = &indexed {
         Some(*count)
     } else {
@@ -1935,30 +1972,19 @@ fn draw_buffer(
     } else {
         None
     };
-    let Some(n) = vertices.and_then(|v| v.checked_mul(stride)) else {
+    let Some(vertex_count) = vertices else {
         return INVALID;
     };
-    let Some(end) = first.checked_add(n) else {
-        return INVALID;
-    };
-    if n > 64 * 1024 * 1024 || end > *length {
-        return INVALID;
-    }
-    let written = |first: u32, end: u32| initialized.iter().any(|&(a, b)| first >= a && end <= b);
-    if let Some((_, indices)) = &indexed {
-        if indices.iter().any(|&index| {
-            let at = first + index * stride;
-            !written(at, at + stride)
-        }) {
+    let referenced = indexed.as_ref().map(|(_, indices)| indices.as_slice());
+    let fixed_source = if fixed {
+        let Some(source) = vertex_stream(image, s, streams[0], a[2], vertex_count, referenced)
+        else {
             return INVALID;
-        }
-    } else if !written(first, end) {
-        return INVALID;
-    }
-
-    let address = *data + first;
-    checked(image, address, n as usize, false);
-    let bytes = unsafe { std::slice::from_raw_parts(address as *const u8, n as usize) };
+        };
+        Some(source)
+    } else {
+        None
+    };
     let mut attributes = Vec::new();
     let mut fetch = Vec::new();
     if !fixed {
@@ -1998,10 +2024,18 @@ fn draw_buffer(
             let offset = (element[0] >> 16) as u64;
             let ty = element[1] & 255;
             let size = alkyhol_d3d9::vertex::element_size(ty).unwrap() as u64;
-            if offset + size > stride as u64 {
+            let stream = (element[0] & 65535) as usize;
+            let Some((address, length, stride)) =
+                vertex_stream(image, s, streams[stream], a[2], vertex_count, referenced)
+            else {
+                return INVALID;
+            };
+            if offset + size > u64::from(stride) {
                 return INVALID;
             }
-            fetch.push((offset as usize, ty));
+            let bytes =
+                unsafe { std::slice::from_raw_parts(address as *const u8, length as usize) };
+            fetch.push((bytes, stride as usize, offset as usize, ty));
             attributes.push(VertexAttribute {
                 format: VertexFormat::Float32x4,
                 offset: (attributes.len() * 16) as u64,
@@ -2022,8 +2056,8 @@ fn draw_buffer(
         };
         packed.resize(size, 0);
         let mut convert = |index: usize| {
-            for (component, &(offset, ty)) in fetch.iter().enumerate() {
-                let start = index * stride as usize + offset;
+            for (component, &(bytes, stride, offset, ty)) in fetch.iter().enumerate() {
+                let start = index * stride + offset;
                 let count = alkyhol_d3d9::vertex::element_size(ty).unwrap();
                 let value = alkyhol_d3d9::vertex::expand(ty, &bytes[start..start + count]).unwrap();
                 let dest = index * packed_stride + component * 16;
@@ -2113,6 +2147,8 @@ fn draw_buffer(
         unreachable!()
     };
     if fixed {
+        let (address, length, stride) = fixed_source.unwrap();
+        let bytes = unsafe { std::slice::from_raw_parts(address as *const u8, length as usize) };
         if stride != 20 {
             return INVALID;
         }
@@ -2312,7 +2348,7 @@ fn create_declaration(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -
             write(image, a[2], &[declaration]);
             return 0;
         }
-        if element[0] & 65535 != 0
+        if element[0] & 65535 >= 16
             || element[0] >> 16 & 3 != 0
             || element[1] >> 8 & 255 != 0
             || semantic(element[1] >> 16 & 255).is_none()
@@ -3252,13 +3288,13 @@ fn dispatch_inner(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32 {
         }
         (1, 100) => stream_source(&mut s, a),
         (1, 101) => {
-            if a[1] != 0 || [a[2], a[3], a[4]].contains(&0) {
+            if a[1] >= 16 || [a[2], a[3], a[4]].contains(&0) {
                 return INVALID;
             }
-            let Body::Device { stream, .. } = &s.objects[&a[0]].body else {
+            let Body::Device { streams, .. } = &s.objects[&a[0]].body else {
                 unreachable!()
             };
-            let (buffer, offset, stride) = stream.unwrap_or((0, 0, 0));
+            let (buffer, offset, stride) = streams[a[1] as usize].unwrap_or((0, 0, 0));
             if buffer != 0 {
                 let o = s.objects.get_mut(&buffer).unwrap();
                 if o.refs == 0 {
@@ -3274,7 +3310,7 @@ fn dispatch_inner(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32 {
             0
         }
         (1, 102) => {
-            if a[1] != 0 {
+            if a[1] >= 16 {
                 INVALID
             } else if a[2] == 1 {
                 0
@@ -3287,7 +3323,7 @@ fn dispatch_inner(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32 {
             }
         }
         (1, 103) => {
-            if a[1] != 0 || a[2] == 0 {
+            if a[1] >= 16 || a[2] == 0 {
                 return INVALID;
             }
             write(image, a[2], &[1]);
@@ -3743,7 +3779,7 @@ mod tests {
     fn capability_record_does_not_invent_unimplemented_shader_or_texture_support() {
         let c = capabilities(false);
         assert_eq!(c.len() * 4, 304);
-        assert_eq!((c[0], c[47], c[48], c[58], c[60]), (1, 1, 20, 1, 1));
+        assert_eq!((c[0], c[47], c[48], c[58], c[60]), (1, 16, 20, 1, 1));
         assert_eq!(c[34], 0xff); // eight real stencil operations; no two-sided capability claim
         assert_eq!(c[3], 0); // no gamma-ramp/calibration support
         assert_eq!(c[49], 0);
@@ -3779,6 +3815,22 @@ mod tests {
         assert_eq!(lock_length(60, 0, 0), Some(60));
         assert_eq!(lock_length(60, 4, 0), Some(56));
         assert_eq!(lock_length(60, 40, 20), Some(20));
+    }
+    #[test]
+    fn separate_stream_spans_keep_offsets_strides_and_overflow_checks() {
+        assert_eq!(vertex_span(256, 16, 16, 2, 3), Some((48, 48)));
+        assert_eq!(vertex_span(256, 4, 8, 2, 3), Some((20, 24)));
+        for args in [
+            (40, 4, 8, 2, 3),
+            (256, 0, 0, 0, 3),
+            (256, 0, 8, 0, 0),
+            (u32::MAX, 0, 2048, u32::MAX, 3),
+            (u32::MAX, u32::MAX, 16, 1, 3),
+            (u32::MAX, 0, 2048, 0, u32::MAX),
+            (u32::MAX, 0, 2048, 0, 32769),
+        ] {
+            assert_eq!(vertex_span(args.0, args.1, args.2, args.3, args.4), None);
+        }
     }
     #[test]
     fn com_stack_contracts_and_bounds() {

@@ -246,9 +246,49 @@ static DWORD font_formats_witness(){
  return 0;
 }
 #endif
+#ifdef STREAMS
+// Separate padded color data, distinct binding offset and stride, plus highest
+// stream positions. Keep every source alive solely through device bindings.
+static DWORD streams_witness(IDirect3DVertexBuffer9* positions){
+ #define REQUIRE_STREAM(test,stage) if(!(test))return stage
+ IDirect3DVertexBuffer9* color=NULL;
+ IDirect3DVertexBuffer9* position_ref=NULL;UINT position_offset=0,position_stride=0;
+ REQUIRE_STREAM(g_pd3dDevice->GetStreamSource(0,&position_ref,&position_offset,&position_stride)==S_OK&&position_ref==positions,18);
+ REQUIRE_STREAM(g_pd3dDevice->CreateVertexBuffer(104,8,0,0,&color,NULL)==S_OK&&color,1);
+ void* data=NULL;REQUIRE_STREAM(color->Lock(0,0,&data,0)==S_OK&&data,2);
+ for(UINT i=0;i<104;i++)((unsigned char*)data)[i]=0;
+ float* values=(float*)((unsigned char*)data+8);
+ for(UINT v=0;v<4;v++){values[v*6]=17.f;values[v*6+1]=v?1.f:0.f;values[v*6+2]=0.f;values[v*6+3]=v?0.f:1.f;values[v*6+4]=1.f;values[v*6+5]=-19.f;}
+ REQUIRE_STREAM(color->Unlock()==S_OK,3);
+ for(UINT stream=1;stream<16;stream++){
+  REQUIRE_STREAM(g_pd3dDevice->SetStreamSource(stream,color,32,24)==S_OK,4);
+  UINT offset=0,stride=0,frequency=0;IDirect3DVertexBuffer9* query=NULL;
+  REQUIRE_STREAM(g_pd3dDevice->GetStreamSource(stream,&query,&offset,&stride)==S_OK&&query==color&&offset==32&&stride==24,5);query->Release();
+  REQUIRE_STREAM(g_pd3dDevice->SetStreamSourceFreq(stream,1)==S_OK&&g_pd3dDevice->GetStreamSourceFreq(stream,&frequency)==S_OK&&frequency==1,6);
+ }
+ color->Release();
+ for(UINT stream=2;stream<16;stream++)REQUIRE_STREAM(g_pd3dDevice->SetStreamSource(stream,NULL,0,0)==S_OK,7);
+ REQUIRE_STREAM(g_pd3dDevice->SetStreamSource(15,positions,0,sizeof(vertices[0]))==S_OK,8);
+ position_ref->Release();
+ REQUIRE_STREAM(g_pd3dDevice->SetStreamSource(0,NULL,0,0)==S_OK,9);
+ IDirect3DVertexBuffer9* retained=NULL;UINT offset=99,stride=99;
+ REQUIRE_STREAM(g_pd3dDevice->GetStreamSource(1,&retained,&offset,&stride)==S_OK&&retained==color&&offset==32&&stride==24,10);retained->Release();
+ REQUIRE_STREAM(g_pd3dDevice->GetStreamSource(0,&retained,&offset,&stride)==S_OK&&!retained&&offset==0&&stride==0,11);
+ REQUIRE_STREAM(g_pd3dDevice->SetStreamSource(16,NULL,0,0)<0&&g_pd3dDevice->GetStreamSource(16,&retained,&offset,&stride)<0&&g_pd3dDevice->SetStreamSourceFreq(16,1)<0&&g_pd3dDevice->GetStreamSourceFreq(16,&stride)<0,12);
+ const D3DVERTEXELEMENT9 split[]={{15,0,3,0,0,0},{1,4,3,0,10,0},{255,0,17,0,0,0}};
+ IDirect3DVertexDeclaration9* declaration=NULL;REQUIRE_STREAM(g_pd3dDevice->CreateVertexDeclaration(split,&declaration)==S_OK&&declaration,13);
+ REQUIRE_STREAM(g_pd3dDevice->SetVertexDeclaration(declaration)==S_OK,14);declaration->Release();
+ IDirect3DIndexBuffer9* indices=NULL;REQUIRE_STREAM(g_pd3dDevice->CreateIndexBuffer(8,8,101,0,&indices,NULL)==S_OK&&indices,15);
+ REQUIRE_STREAM(indices->Lock(0,0,&data,0)==S_OK&&data,16);unsigned short index_values[]={65535,0,1,2};for(UINT i=0;i<4;i++)((unsigned short*)data)[i]=index_values[i];
+ REQUIRE_STREAM(indices->Unlock()==S_OK&&g_pd3dDevice->SetIndices(indices)==S_OK,17);indices->Release();
+ return 0;
+}
+#endif
 extern "C" DWORD entry(){
  DWORD before=stack();put(0x39534844);
-#ifdef SHORT4
+#ifdef STREAMS
+put(18);
+#elif defined(SHORT4)
 put(17);
 #elif defined(HALF)
 put(16);
@@ -331,6 +371,9 @@ put(1);
  // Internal bindings retain resources, including shader bytecode and declaration.
  vs->Release();ps->Release();decl->Release();vb->Release();
  IDirect3DVertexShader9* bound=NULL;ok(g_pd3dDevice->GetVertexShader(&bound)==S_OK&&bound==vs);if(bound)bound->Release();
+ #ifdef STREAMS
+ DWORD streams_stage=streams_witness(vb);ok(streams_stage==0);if(streams_stage)return fail(34,streams_stage);
+ #endif
  IDirect3DSurface9 *back=NULL,*copy=NULL;ok(g_pd3dDevice->GetBackBuffer(0,0,0,&back)==S_OK);ok(g_pd3dDevice->CreateOffscreenPlainSurface(32,32,
 #if defined(MODEL2)||defined(DEPTH)||defined(FONTS)
 21,
@@ -480,7 +523,11 @@ put(1);
  #elif defined(INDEXED)
  g_pd3dDevice->DrawIndexedPrimitive(4,-1,2,3,1,1)
  #else
+ #ifdef STREAMS
+ (frame?g_pd3dDevice->DrawIndexedPrimitive(4,0,0,3,1,1):g_pd3dDevice->DrawPrimitive(4,0,1))
+ #else
  g_pd3dDevice->DrawPrimitive(4,0,1)
+ #endif
  #endif
  ==S_OK);ok(g_pd3dDevice->EndScene()==S_OK);
   ok(g_pd3dDevice->GetRenderTargetData(back,copy)==S_OK);

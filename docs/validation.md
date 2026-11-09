@@ -6655,3 +6655,44 @@ on the M4, including two complete RGB frames using SHORT4 positions and the
 unchanged shader bodies. Existing CI transfers that identical PE for native
 comparison and independently checks the SDK enum; those results remain pending.
 The next original-game replay must establish whether its cleanup fault clears.
+
+### Native comparisons recover after GitHub runner failures
+
+CI [42678993014](https://github.com/daeken/Alkyhol/actions/runs/42678993014)
+on 5f5449c executes all three D3D9 jobs: Metal producer and software Vulkan pass.
+Native Windows passes the identical cube resource/surface-alias, COM arena and
+half-precision full-frame comparisons. The native D3D9 job remains failed on the
+previously retained StretchRect alpha and POSITIONT pixel differences; those
+assertions were not weakened. This establishes these finite native contracts,
+not original full-scene or game parity. The DirectInput workflow
+[42678992722](https://github.com/daeken/Alkyhol/actions/runs/42678992722) and
+conformance [42678993303](https://github.com/daeken/Alkyhol/actions/runs/42678993303)
+also pass on that revision.
+
+## DAO character-resource declarations use separate vertex streams
+
+The clean 7786a27 replay passes the SHORT4 elements. Its next rejected element
+is a FLOAT4 POSITION on stream 1; original cleanup still encounters the null
+interface. That observation narrows the earlier format hypothesis: accepting
+SHORT4 alone does not clear the original loading fault. No original instructions
+or assets were changed to bypass it.
+
+Device bindings now independently own streams 0–15, including offsets, strides,
+retained buffer references, query references and teardown. Declarations retain
+their actual stream numbers; both normal and indexed draws fetch each attribute
+from its own checked source. Each source must be unlocked, in bounds and
+initialized for the referenced vertices. Streams retain the existing 64 MiB
+fetch budget and 2,048-byte stride bound. Zero/divided/instanced frequency modes
+remain explicitly unsupported; frequency 1 is real per-vertex fetch. Fixed
+transformed-color rendering remains the existing bounded stream-0 path.
+
+All 216 PE units, PE Clippy and 14 observer tests pass locally. The owned
+`--streams` literal PE renders two complete RGB frames physically on the M4:
+ordinary and indexed draws use stream 15 positions and separately padded stream
+1 colors, nonzero source/element offsets and distinct strides, with stream 0
+unbound. It queries all 16 binding/frequency slots, rejects slot 16 and exercises
+buffer lifetimes after external release. Existing indexed and original Microsoft
+Tutorial 02 fixed-function GPU witnesses pass without changing acceptance rules.
+Existing CI now transfers the identical stream PE for native Windows comparison,
+which remains pending. The next original replay is still required to determine
+whether the observed loading cleanup fault clears.
