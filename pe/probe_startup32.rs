@@ -46,6 +46,7 @@ fn main() {
                 "--host-machine-info" => profile.host_machine_info = true,
                 "--nt62-workstation-version" => profile.version_workstation = true,
                 "--private-profile-files" => profile.private_profile_files = true,
+                "--casefold-file-opens" => profile.casefold_file_opens = true,
                 "--object-directory" => {
                     profile.object_directory = Some(
                         options
@@ -125,6 +126,7 @@ fn main() {
             || profile.windows_directory.is_some()
             || profile.documents_directory.is_some()
             || profile.private_profile_files
+            || profile.casefold_file_opens
             || profile.host_machine_info
             || profile.version_workstation
             || profile.registry_catalog.is_some()

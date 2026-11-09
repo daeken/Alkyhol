@@ -127,7 +127,7 @@ unsafe extern "C" {
 }
 const PAGE: usize = 4096;
 const STACK: usize = 1024 * 1024;
-const APIS: [(&str, u16); 285] = [
+const APIS: [(&str, u16); 293] = [
     ("GetLastError", 0),
     ("SetLastError", 4),
     ("GetStdHandle", 4),
@@ -413,6 +413,14 @@ const APIS: [(&str, u16); 285] = [
     ("WSAResetEvent", 4),
     ("WSACloseEvent", 4),
     ("GetDiskFreeSpaceExA", 16),
+    ("OpenSCManagerW", 12),
+    ("setsockopt", 20),
+    ("getsockopt", 20),
+    ("bind", 12),
+    ("getsockname", 12),
+    ("sendto", 24),
+    ("recvfrom", 24),
+    ("WSARecvFrom", 36),
 ];
 // The first 120 API slots retain their original offsets. The second bank
 // begins after both x87 bodies, leaving their machine code and failure gates
@@ -451,6 +459,12 @@ fn api_id(module: &str, symbol: &ImportSymbol) -> Option<usize> {
             115 => Some(225),
             116 => Some(226),
             111 => Some(227),
+            2 => Some(288),
+            6 => Some(289),
+            20 => Some(290),
+            17 => Some(291),
+            21 => Some(286),
+            7 => Some(287),
             23 => Some(228),
             3 => Some(229),
             4 => Some(230),
@@ -493,9 +507,12 @@ fn api_id(module: &str, symbol: &ImportSymbol) -> Option<usize> {
                     || matches!(*id, 256..=258)
                 {
                     "user32.dll"
-                } else if matches!(*id, 107 | 108 | 216 | 220 | 221) {
+                } else if matches!(*id, 107 | 108 | 216 | 220 | 221 | 285) {
                     "advapi32.dll"
-                } else if (225..=237).contains(id) || (279..=283).contains(id) {
+                } else if (225..=237).contains(id)
+                    || (279..=283).contains(id)
+                    || (286..=292).contains(id)
+                {
                     "ws2_32.dll"
                 } else if *id == 215 {
                     "iphlpapi.dll"
@@ -839,6 +856,7 @@ struct Cpu32 {
     windows_directory: Option<Vec<u16>>,
     documents: Option<shell_folder32::Documents>,
     private_profile_files: bool,
+    casefold_file_opens: bool,
     unhandled_filter: Cell<u32>,
     machine: Option<machine32::Machine>,
     registry: Option<RefCell<registry32::State>>,
@@ -969,6 +987,7 @@ impl Cpu32 {
             windows_directory: None,
             documents: None,
             private_profile_files: false,
+            casefold_file_opens: false,
             unhandled_filter: Cell::new(0),
             machine,
             registry: None,
@@ -2383,6 +2402,17 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
             277 | 278 => wave32::count(image, id == 278),
             279..=283 => winsock32::event_api(image, id, args),
             284 => disk32::query(image, args),
+            285 => {
+                // No guest Windows service controller/database is implemented.
+                // SC_HANDLE NULL is failure, never an invented successful object.
+                eprintln!("PE32 OpenSCManagerW unavailable: ERROR_CALL_NOT_IMPLEMENTED (120)");
+                alkyhol::ffi::SetLastError(120);
+                0
+            }
+            286 | 287 => winsock32::broadcast_option(image, args, id == 287),
+            288 | 289 => winsock32::endpoint(image, args, id == 289),
+            290 | 291 => winsock32::datagram(image, args, id == 291),
+            292 => winsock32::wsa_receive(image, &words),
             input8_32::BASE.. => input8_32::dispatch(image, id, &words),
             d3d9_32::BASE.. => d3d9_32::dispatch(image, id, &words),
             215 => {
@@ -2430,6 +2460,41 @@ mod tests {
             assert_eq!(api_id("kernel32.dll", &symbol), None);
             assert_eq!(APIS[id].1, 0);
         }
+    }
+    #[test]
+    fn lan_socket_ordinals_alias_names_and_extended_receive_has_full_stack_extent() {
+        for (ordinal, id) in [
+            (21, 286),
+            (7, 287),
+            (2, 288),
+            (6, 289),
+            (20, 290),
+            (17, 291),
+        ] {
+            assert_eq!(
+                api_id("ws2_32.dll", &ImportSymbol::Ordinal(ordinal)),
+                Some(id)
+            );
+            assert_eq!(
+                api_id("wsock32.dll", &ImportSymbol::Ordinal(ordinal)),
+                Some(id)
+            );
+            assert_eq!(
+                api_id("ws2_32.dll", &ImportSymbol::Name(APIS[id].0.into())),
+                Some(id)
+            );
+        }
+        assert_eq!(
+            api_id("ws2_32.dll", &ImportSymbol::Name("WSARecvFrom".into())),
+            Some(292)
+        );
+        assert_eq!(APIS[292].1, 36);
+        assert_eq!(cleanup_bytes(292, 36), 36);
+        assert_eq!(
+            api_id("advapi32.dll", &ImportSymbol::Name("OpenSCManagerW".into())),
+            Some(285)
+        );
+        assert_eq!(APIS[285].1, 12);
     }
     #[test]
     fn cdecl_crt_gateways_keep_arguments_for_the_guest_caller() {
@@ -2583,6 +2648,7 @@ mod tests {
                 windows_directory: None,
                 documents: None,
                 private_profile_files: false,
+                casefold_file_opens: false,
                 unhandled_filter: Cell::new(0),
                 machine: None,
                 registry: None,

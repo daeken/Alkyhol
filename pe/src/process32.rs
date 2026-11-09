@@ -27,6 +27,7 @@ struct GuestProfile32 {
     user_windows: Option<Vec<u16>>,
     documents: Option<super::shell_folder32::Documents>,
     private_profile_files: bool,
+    casefold_file_opens: bool,
     utc: bool,
     version_workstation: bool,
     host_machine_info: bool,
@@ -292,10 +293,13 @@ pub struct ProcessOptions32 {
     /// This declares fresh guest state, not a recovered Windows user profile.
     pub documents_directory: Option<std::path::PathBuf>,
     /// Explicit file-only INI profile: no IniFileMapping registry redirection.
-    /// Currently admits scalar queries of actually absent absolute Z: files or
-    /// dot-relative leaves in the explicitly set guest current directory.
-    /// Existing files, enumeration and Windows-directory searching stop.
+    /// Admits scalar queries of actually absent files and parsed Documents
+    /// backing, with explicit relative-directory resolution through the guest cwd.
+    /// Enumeration and bare-name Windows-directory searching remain unsupported.
     pub private_profile_files: bool,
+    /// Opt into bounded ASCII case-insensitive existing read-only file opens.
+    /// Ambiguous folded names, Unicode, reparse points and writes remain separate.
+    pub casefold_file_opens: bool,
     /// Opt into host-backed x86 machine information and enforced ordinary/LAA
     /// address bands. Other CPU vendors, page sizes and >32 CPU groups stop.
     pub host_machine_info: bool,
@@ -551,6 +555,7 @@ impl<'a> ProcessImage32<'a> {
                     user_windows,
                     documents,
                     private_profile_files: options.private_profile_files,
+                    casefold_file_opens: options.casefold_file_opens,
                     utc: matches!(options.time_zone, Some(TimeZone32::Utc)),
                     version_workstation: options.version_workstation,
                     host_machine_info: options.host_machine_info,
@@ -590,6 +595,7 @@ impl<'a> ProcessImage32<'a> {
         cpu.windows_directory = directories.user_windows;
         cpu.documents = directories.documents;
         cpu.private_profile_files = directories.private_profile_files;
+        cpu.casefold_file_opens = directories.casefold_file_opens;
         cpu.utc_timezone = directories.utc;
         cpu.version_workstation = directories.version_workstation;
         cpu.registry = directories.registry.map(std::cell::RefCell::new);

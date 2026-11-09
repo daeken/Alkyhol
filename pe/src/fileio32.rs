@@ -85,7 +85,12 @@ pub(super) fn open(image: &LoadedImage32<'_>, a: &[u32; 8], ansi: bool) -> u32 {
         if a[4] != 3 {
             unsupported("read-only file creation dispositions are unsupported");
         }
-        let (path, meta) = match files32::existing(&name).unwrap_or_else(|e| unsupported(&e)) {
+        let resolved = if image.cpu.casefold_file_opens {
+            files32::existing_casefold(&name)
+        } else {
+            files32::existing(&name)
+        };
+        let (path, meta) = match resolved.unwrap_or_else(|e| unsupported(&e)) {
             Ok(v) => v,
             Err(error) => return fail(error),
         };

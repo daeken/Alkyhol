@@ -5838,3 +5838,44 @@ across machines. The original game passes its actual NULL-path space query and
 next requests a lowercased settings path. The strict exact-spelling filesystem
 profile stops there rather than fabricating file absence. No original frame or
 audio output is claimed.
+
+## DAO foreground transition and real LAN socket setup
+
+The unchanged original EXE now reads its lowercased settings spelling through an
+explicit `--casefold-file-opens` profile. Existing ASCII components must resolve
+to actual unique names; canonical backing paths/inode checks, real missing
+leaf/parent errors, reparse rejection and sharing remain enforced. Only existing
+read-only opens opt in. Strict search/metadata paths and their frozen exclusions,
+Unicode folding, ambiguous aliases and write capabilities are unchanged. The
+owned 13-word file PE and a new filesystem unit pass on physical M4.
+
+OpenSCManagerW is explicitly unavailable: NULL SC_HANDLE plus Win32 error 120,
+with no successful service object/database invented. The original caller handles
+that failure and proceeds to its foreground-window transition. This does not
+implement SCM or imply a rendered frame. Actual startup then configures its LAN
+socket using real SO_BROADCAST, IPv4 bind, manual events and sendto. The backend
+normalizes Darwin's option bit into Win32 BOOL; endpoints and datagrams come from
+actual BSD sockets. Immediate recvfrom and one-buffer non-overlapped WSARecvFrom
+perform real receives with checked source/data/output ranges and CPU release.
+
+The owned 35-word UDP PE passes real loopback packet roundtrips, actual assigned
+endpoint data, option toggles, import-name/ordinal identity, descriptor/address
+and buffer guards, nonblocking errors and stack cleanup. No game packet/asset is
+part of the fixture. The separate 12-word exclusion proves asynchronous receives
+return SOCKET_ERROR/WSAEOPNOTSUPP without changing outputs or claiming pending
+I/O/completion. UDP truncation, nonzero message flags and general scatter arrays
+remain outside this profile. Original DAO requests overlapped receive, receives
+that explicit unsupported error, then stops at a real multi-object Winsock wait.
+No original game draw, Present, audio playback or functional multiplayer is
+claimed. All 195 PE library tests, remaining targets and Clippy pass locally;
+new native case-open/UDP comparisons are pending.
+
+Native CI 42599680071 passes the 16-word NULL-module export, 21-word relative INI
+and 23-word single-event comparisons. Physical M4 agrees with the same literal
+PE identities (the INI PE was downloaded and executed unchanged). CI 42600483781
+also passes the expanded disk-space comparison. Both overall runs still fail
+because the admitted palette comparator used Python path/string concatenation
+after successful native execution. The raw native/hosted 31-word palette outputs
+and PE/source identities already agree exactly; the comparator path is corrected
+here, with full workflow retry pending. This does not add support for the
+separately excluded Windows RGB-to-indexed quantizer.

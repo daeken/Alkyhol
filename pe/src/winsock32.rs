@@ -17,10 +17,30 @@ struct Hostent {
     addresses: *const *const u8,
 }
 unsafe extern "C" {
+    fn sendto(
+        fd: i32,
+        buffer: *const u8,
+        length: usize,
+        flags: i32,
+        address: *const u8,
+        address_length: u32,
+    ) -> isize;
+    fn alkyhol_udp_receive(
+        fd: i32,
+        buffer: *mut u8,
+        capacity: u32,
+        address: *mut u8,
+        address_length: *mut u32,
+        truncated: *mut i32,
+        error: *mut i32,
+    ) -> i64;
     fn socket(domain: i32, kind: i32, protocol: i32) -> i32;
+    fn bind(fd: i32, address: *const u8, length: u32) -> i32;
+    fn getsockname(fd: i32, address: *mut u8, length: *mut u32) -> i32;
     fn connect(fd: i32, address: *const u8, length: u32) -> i32;
     fn recv(fd: i32, buffer: *mut u8, length: usize, flags: i32) -> isize;
     fn send(fd: i32, buffer: *const u8, length: usize, flags: i32) -> isize;
+    fn getsockopt(fd: i32, level: i32, option: i32, value: *mut c_void, length: *mut u32) -> i32;
     fn setsockopt(fd: i32, level: i32, option: i32, value: *const c_void, length: u32) -> i32;
     fn fcntl(fd: i32, command: i32, ...) -> i32;
     fn ioctl(fd: i32, command: std::ffi::c_ulong, ...) -> i32;
@@ -39,13 +59,19 @@ unsafe extern "C" {
     ) -> *mut Hostent;
     fn freehostent(host: *mut Hostent);
 }
+struct Socket {
+    fd: Arc<OwnedFd>,
+    kind: u32,
+    bound: bool,
+}
 #[derive(Default)]
 pub(super) struct State {
     references: u32,
     next: u32,
-    sockets: BTreeMap<u32, Arc<OwnedFd>>,
+    sockets: BTreeMap<u32, Socket>,
     busy: BTreeSet<u32>,
     hosts: BTreeMap<u32, LowMapping>,
+    logged_receive_limit: bool,
 }
 impl State {
     pub(super) fn permits(&self, address: usize, len: usize, write: bool) -> bool {
@@ -68,7 +94,7 @@ fn errno(code: i32) -> u32 {
     match code {
         4 => 10004,
         9 => 10038,
-        13 => 10013,
+        1 | 13 => 10013,
         14 => 10014,
         22 => 10022,
         24 => 10024,
@@ -133,7 +159,11 @@ fn begin(image: &LoadedImage32<'_>, handle: u32) -> std::result::Result<Arc<Owne
     if state.references == 0 {
         return Err(10093);
     }
-    let fd = state.sockets.get(&handle).cloned().ok_or(10038u32)?;
+    let fd = state
+        .sockets
+        .get(&handle)
+        .map(|socket| socket.fd.clone())
+        .ok_or(10038u32)?;
     if !state.busy.insert(handle) {
         return Err(10036);
     }
@@ -183,6 +213,78 @@ fn cleanup(image: &LoadedImage32<'_>) -> u32 {
     }
     0
 }
+/// The original LAN setup requests SOL_SOCKET/SO_BROADCAST. This changes and
+/// queries the real host socket option; other options remain explicit.
+pub(super) fn broadcast_option(image: &LoadedImage32<'_>, a: &[u32; 8], get: bool) -> u32 {
+    if a[1] != 0xffff || a[2] != 0x20 {
+        unsupported(&format!(
+            "Winsock option outside implemented SO_BROADCAST profile: level={:x} option={:x}",
+            a[1], a[2]
+        ));
+    }
+    let length = if get {
+        checked(image, a[4], 4, true);
+        unsafe { (a[4] as *const u32).read_unaligned() }
+    } else {
+        a[4]
+    };
+    if length < 4 {
+        return failure(10014);
+    }
+    if !get && length != 4 {
+        unsupported("SO_BROADCAST setters currently require one four-byte BOOL");
+    }
+    checked(image, a[3], 4, get);
+    let mut value = if get {
+        0i32
+    } else {
+        i32::from(unsafe { (a[3] as *const i32).read_unaligned() } != 0)
+    };
+    let fd = match begin(image, a[0]) {
+        Ok(fd) => fd,
+        Err(e) => return failure(e),
+    };
+    let mut actual_length = 4;
+    let result = unsafe {
+        if get {
+            getsockopt(
+                fd.as_raw_fd(),
+                0xffff,
+                0x20,
+                std::ptr::from_mut(&mut value).cast(),
+                &mut actual_length,
+            )
+        } else {
+            setsockopt(
+                fd.as_raw_fd(),
+                0xffff,
+                0x20,
+                std::ptr::from_ref(&value).cast(),
+                4,
+            )
+        }
+    };
+    let result = if result < 0 {
+        Err(native_error())
+    } else {
+        Ok(())
+    };
+    if let Err(error) = finish(image, a[0], result) {
+        return failure(error);
+    }
+    if get {
+        if actual_length != 4 {
+            unsupported("SO_BROADCAST host result has an unexpected extent");
+        }
+        unsafe {
+            // Darwin can expose the socket option bit itself (0x20). Win32's
+            // BOOL result is normalized independently of its internal bit flag.
+            (a[3] as *mut i32).write_unaligned(i32::from(value != 0));
+            (a[4] as *mut u32).write_unaligned(4);
+        }
+    }
+    0
+}
 fn create(image: &LoadedImage32<'_>, a: &[u32; 8]) -> u32 {
     if !ready(image) {
         return failure(10093);
@@ -224,7 +326,14 @@ fn create(image: &LoadedImage32<'_>, a: &[u32; 8]) -> u32 {
     };
     state.next = next;
     let handle = 0x60000000 | next;
-    state.sockets.insert(handle, Arc::new(fd));
+    state.sockets.insert(
+        handle,
+        Socket {
+            fd: Arc::new(fd),
+            kind: a[1],
+            bound: false,
+        },
+    );
     handle
 }
 fn close(image: &LoadedImage32<'_>, h: u32) -> u32 {
@@ -237,6 +346,77 @@ fn close(image: &LoadedImage32<'_>, h: u32) -> u32 {
     }
     if state.sockets.remove(&h).is_none() {
         return failure(10038);
+    }
+    0
+}
+/// Bind a real IPv4 socket; query its actual explicitly bound endpoint.
+/// No guest port/address is invented to match a native observation.
+pub(super) fn endpoint(image: &LoadedImage32<'_>, a: &[u32; 8], get: bool) -> u32 {
+    let length = if get {
+        checked(image, a[2], 4, true);
+        unsafe { (a[2] as *const u32).read_unaligned() }
+    } else {
+        a[2]
+    };
+    if length < 16 || !get && length != 16 {
+        return failure(10014);
+    }
+    checked(image, a[1], 16, get);
+    let mut address = if get {
+        [0; 16]
+    } else {
+        unsafe { (a[1] as *const [u8; 16]).read_unaligned() }
+    };
+    if !get {
+        if u16::from_le_bytes([address[0], address[1]]) != 2 {
+            return failure(10047);
+        }
+        address[0] = 16;
+        address[1] = 2;
+    }
+    let fd = match begin(image, a[0]) {
+        Ok(fd) => fd,
+        Err(error) => return failure(error),
+    };
+    if get && !image.cpu.winsock.borrow().sockets.get(&a[0]).unwrap().bound {
+        finish(image, a[0], Ok(())).unwrap();
+        unsupported("getsockname currently requires an explicitly bound socket");
+    }
+    let mut actual_length = 16;
+    let result = unsafe {
+        if get {
+            getsockname(fd.as_raw_fd(), address.as_mut_ptr(), &mut actual_length)
+        } else {
+            bind(fd.as_raw_fd(), address.as_ptr(), 16)
+        }
+    };
+    let result = if result < 0 {
+        Err(native_error())
+    } else {
+        Ok(())
+    };
+    if let Err(error) = finish(image, a[0], result) {
+        return failure(error);
+    }
+    if get {
+        if actual_length != 16 || address[0] != 16 || address[1] != 2 {
+            unsupported("bound host endpoint is outside the IPv4 sockaddr profile");
+        }
+        address[0] = 2;
+        address[1] = 0;
+        unsafe {
+            (a[1] as *mut [u8; 16]).write_unaligned(address);
+            (a[2] as *mut u32).write_unaligned(16);
+        }
+    } else {
+        image
+            .cpu
+            .winsock
+            .borrow_mut()
+            .sockets
+            .get_mut(&a[0])
+            .unwrap()
+            .bound = true;
     }
     0
 }
@@ -266,6 +446,169 @@ fn connect_to(image: &LoadedImage32<'_>, a: &[u32; 8]) -> u32 {
         Ok(n) => n as u32,
         Err(e) => failure(e),
     }
+}
+/// Real bounded IPv4 datagrams. Receive truncation remains an explicit failure
+/// boundary until its partial-write behavior is independently measured.
+pub(super) fn datagram(image: &LoadedImage32<'_>, a: &[u32; 8], receive: bool) -> u32 {
+    if a[3] != 0 {
+        unsupported("datagram message flags are outside the zero-flags profile");
+    }
+    if a[2] > 1024 * 1024 {
+        return failure(10040);
+    }
+    checked(image, a[1], a[2] as usize, receive);
+    let mut address = [0u8; 16];
+    let mut length = 16;
+    if receive {
+        if (a[4] == 0) != (a[5] == 0) {
+            unsupported("recvfrom address and extent must both be supplied or both omitted");
+        }
+        if a[4] != 0 {
+            checked(image, a[5], 4, true);
+            length = unsafe { (a[5] as *const u32).read_unaligned() };
+            if length < 16 {
+                return failure(10014);
+            }
+            checked(image, a[4], 16, true);
+            length = 16;
+        }
+    } else {
+        if a[5] != 16 {
+            unsupported("sendto currently requires an explicit IPv4 destination");
+        }
+        checked(image, a[4], 16, false);
+        address = unsafe { (a[4] as *const [u8; 16]).read_unaligned() };
+        if u16::from_le_bytes([address[0], address[1]]) != 2 {
+            return failure(10047);
+        }
+        address[0] = 16;
+        address[1] = 2;
+    }
+    let mut buffer = vec![0u8; a[2] as usize];
+    if !receive && !buffer.is_empty() {
+        unsafe {
+            std::ptr::copy_nonoverlapping(a[1] as *const u8, buffer.as_mut_ptr(), buffer.len());
+        }
+    }
+    let fd = match begin(image, a[0]) {
+        Ok(fd) => fd,
+        Err(error) => return failure(error),
+    };
+    if image.cpu.winsock.borrow().sockets.get(&a[0]).unwrap().kind != 2 {
+        finish(image, a[0], Ok(())).unwrap();
+        unsupported("datagram gateways currently require a UDP socket");
+    }
+    let mut truncated = 0;
+    let mut error = 0;
+    let result = thread32::without_cpu(image, || {
+        let n = unsafe {
+            if receive {
+                alkyhol_udp_receive(
+                    fd.as_raw_fd(),
+                    buffer.as_mut_ptr(),
+                    a[2],
+                    address.as_mut_ptr(),
+                    &mut length,
+                    &mut truncated,
+                    &mut error,
+                )
+            } else {
+                sendto(
+                    fd.as_raw_fd(),
+                    buffer.as_ptr(),
+                    buffer.len(),
+                    0,
+                    address.as_ptr(),
+                    16,
+                ) as i64
+            }
+        };
+        if n < 0 {
+            Err(if receive {
+                errno(error)
+            } else {
+                native_error()
+            })
+        } else {
+            Ok(n as usize)
+        }
+    });
+    let n = match finish(image, a[0], result) {
+        Ok(n) => n,
+        Err(error) => return failure(error),
+    };
+    if truncated != 0 {
+        unsupported("UDP receive truncation requires measured partial-write semantics");
+    }
+    if n > buffer.len() {
+        unsupported("native datagram count exceeded supplied storage");
+    }
+    if receive {
+        checked(image, a[1], n, true);
+        if n != 0 {
+            unsafe {
+                std::ptr::copy_nonoverlapping(buffer.as_ptr(), a[1] as *mut u8, n);
+            }
+        }
+        if a[4] != 0 {
+            if length != 16 || address[0] != 16 || address[1] != 2 {
+                unsupported("datagram source is outside the IPv4 sockaddr profile");
+            }
+            address[0] = 2;
+            address[1] = 0;
+            checked(image, a[4], 16, true);
+            checked(image, a[5], 4, true);
+            unsafe {
+                (a[4] as *mut [u8; 16]).write_unaligned(address);
+                (a[5] as *mut u32).write_unaligned(16);
+            }
+        }
+    }
+    n as u32
+}
+/// The reached scatter descriptor contains one WSABUF. Immediate non-overlapped
+/// receives reuse the actual UDP path; asynchronous completion is never invented.
+pub(super) fn wsa_receive(image: &LoadedImage32<'_>, a: &[u32; 16]) -> u32 {
+    if a[7] != 0 || a[8] != 0 {
+        let mut state = image.cpu.winsock.borrow_mut();
+        if !state.logged_receive_limit {
+            eprintln!(
+                "PE32 WSARecvFrom asynchronous completion unavailable: WSAEOPNOTSUPP (10045)"
+            );
+            state.logged_receive_limit = true;
+        }
+        return failure(10045);
+    }
+    if a[2] != 1 {
+        eprintln!(
+            "PE32 WSARecvFrom scatter count outside implemented one-buffer profile: {}",
+            a[2]
+        );
+        return failure(10045);
+    }
+    if a[3] == 0 || a[4] == 0 {
+        return failure(10014);
+    }
+    checked(image, a[1], 8, false);
+    checked(image, a[3], 4, true);
+    checked(image, a[4], 4, true);
+    let descriptor = unsafe { (a[1] as *const [u32; 2]).read_unaligned() };
+    let flags = unsafe { (a[4] as *const u32).read_unaligned() };
+    let count = datagram(
+        image,
+        &[a[0], descriptor[1], descriptor[0], flags, a[5], a[6], 0, 0],
+        true,
+    );
+    if count == u32::MAX {
+        return count;
+    }
+    checked(image, a[3], 4, true);
+    checked(image, a[4], 4, true);
+    unsafe {
+        (a[3] as *mut u32).write_unaligned(count);
+        (a[4] as *mut u32).write_unaligned(0);
+    }
+    0
 }
 fn transfer(image: &LoadedImage32<'_>, a: &[u32; 8], writing: bool) -> u32 {
     if a[3] != 0 {

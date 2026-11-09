@@ -44,7 +44,7 @@ def execute(d,native):
  expected += [len(expected)+1]
  path.write_text(json.dumps(report,indent=2)+'\n')
  if native:
-  peer=json.loads((d/PREFIX+'-host.json').read_text())
+  peer=json.loads((d/(PREFIX+'-host.json')).read_text())
   if peer['inputs']!=ident or peer['status'] or peer['stdout_hex']!=r.stdout.hex():raise ValueError('identical palette DIB PE differs; raw native and host observations retained')
  if words!=expected:raise ValueError('palette DIB witness differs: '+repr(words))
  print('Identical PE32 8-bit palette, DWORD stride/padding, orientation, indexed-to-RGB copy and exact FillRect writes pass')

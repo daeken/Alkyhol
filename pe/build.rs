@@ -12,6 +12,7 @@ fn main() {
     println!("cargo:rerun-if-changed=src/screen_capture32.m");
     println!("cargo:rerun-if-changed=src/audio_host32.c");
     println!("cargo:rerun-if-changed=src/filesystem_host32.c");
+    println!("cargo:rerun-if-changed=src/network_host32.c");
     if env::var("TARGET").unwrap() != "x86_64-apple-darwin" {
         return;
     }
@@ -36,7 +37,7 @@ fn main() {
         ])
         .arg(&object));
     let mut native = Vec::new();
-    for name in ["audio_host32", "filesystem_host32"] {
+    for name in ["audio_host32", "filesystem_host32", "network_host32"] {
         let object = out.join(format!("{name}.o"));
         run(Command::new("xcrun")
             .args([

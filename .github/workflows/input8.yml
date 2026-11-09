@@ -20,6 +20,35 @@ jobs:
           cargo test --manifest-path pe/Cargo.toml --target x86_64-apple-darwin --locked --offline input
           python tools/observe_input8_lifecycle.py
           python tools/observe_input8_lifecycle.py --host
+      - name: Execute DAO's ASCII case-insensitive read-only file profile
+        run: |
+          python tools/observe_pe32_casefold_open.py
+          python tools/observe_pe32_casefold_open.py --host
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: casefold-open-identical-pe
+          path: |
+            local/pe/casefold-open-microtest/casefold-open.exe
+            local/pe/casefold-open-microtest/casefold-open-inputs.json
+            local/pe/casefold-open-microtest/casefold-open-host.json
+          if-no-files-found: error
+      - name: Execute real UDP endpoints, options and datagrams reached by DAO LAN setup
+        run: |
+          python tools/observe_pe32_socket_broadcast.py
+          python tools/observe_pe32_socket_broadcast.py --host
+          python tools/observe_pe32_socket_broadcast.py --async-exclusion
+          python tools/observe_pe32_socket_broadcast.py --async-exclusion --host
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: socket-broadcast-identical-pe
+          path: |
+            local/pe/socket-broadcast-microtest/socket-broadcast.exe
+            local/pe/socket-broadcast-microtest/socket-broadcast-inputs.json
+            local/pe/socket-broadcast-microtest/socket-broadcast-host.json
+            local/pe/socket-broadcast-microtest/socket-async-exclusion-host.json
+          if-no-files-found: error
       - name: Execute actual filesystem-space accounting reached by DAO
         run: |
           cargo test --manifest-path pe/Cargo.toml --target x86_64-apple-darwin --locked --offline disk32
@@ -203,6 +232,32 @@ jobs:
         with:
           name: disk-space-identical-pe
           path: local/pe/disk-space-microtest
+      - uses: actions/download-artifact@v4
+        with:
+          name: casefold-open-identical-pe
+          path: local/pe/casefold-open-microtest
+      - uses: actions/download-artifact@v4
+        with:
+          name: socket-broadcast-identical-pe
+          path: local/pe/socket-broadcast-microtest
+      - name: Compare identical case-insensitive file-open PE on native Windows
+        if: success() || failure()
+        run: python tools/observe_pe32_casefold_open.py --native
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: casefold-open-native-observation
+          path: local/pe/casefold-open-microtest/native-casefold-open.json
+          if-no-files-found: warn
+      - name: Compare identical UDP endpoint, option and datagram PE on native Windows
+        if: success() || failure()
+        run: python tools/observe_pe32_socket_broadcast.py --native
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: socket-broadcast-native-observation
+          path: local/pe/socket-broadcast-microtest/native-socket-broadcast.json
+          if-no-files-found: warn
       - name: Compare identical disk-space API and guard witness on native Windows
         if: success() || failure()
         run: python tools/observe_pe32_disk_space.py --native

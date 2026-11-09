@@ -10,7 +10,7 @@ pub(super) struct Search {
     next: usize,
 }
 enum Query {
-    Found(String, Metadata),
+    Found(String, Metadata, PathBuf),
     Failed(u32),
 }
 fn io(error: std::io::Error) -> Result<Query> {
@@ -25,6 +25,9 @@ fn io(error: std::io::Error) -> Result<Query> {
 // Exact canonical spellings only. Inspect each actual directory so an
 // unsupported case alias cannot turn into an invented absent-file result.
 fn query(text: &str) -> Result<Query> {
+    query_with_casefold(text, false)
+}
+fn query_with_casefold(text: &str, fold: bool) -> Result<Query> {
     let rest = text
         .strip_prefix("Z:\\")
         .or_else(|| text.strip_prefix("z:\\"))
@@ -64,6 +67,7 @@ fn query(text: &str) -> Result<Query> {
             Err(e) => return io(e),
         };
         let mut exact = None;
+        let mut folded = None;
         let mut aliases = 0;
         let mut unknown = false;
         for (count, entry) in entries.enumerate() {
@@ -80,12 +84,13 @@ fn query(text: &str) -> Result<Query> {
             }
             if name.is_ascii() && part.is_ascii() && name.eq_ignore_ascii_case(part) {
                 aliases += 1;
+                folded = Some(entry.path());
             }
             if !name.is_ascii() {
                 unknown = true;
             }
         }
-        let Some(path) = exact else {
+        let Some(path) = exact.or(if fold { folded } else { None }) else {
             if aliases != 0 || unknown {
                 return Err("PE32 find cannot resolve an unmeasured case/Unicode alias".into());
             }
@@ -102,7 +107,11 @@ fn query(text: &str) -> Result<Query> {
             return Err("PE32 find symbolic links/reparse points are unsupported".into());
         }
         if index + 1 == parts.len() {
-            return Ok(Query::Found((*part).to_owned(), meta));
+            return Ok(Query::Found(
+                path.file_name().unwrap().to_str().unwrap().to_owned(),
+                meta,
+                path,
+            ));
         }
         if !meta.is_dir() {
             return Ok(Query::Failed(3));
@@ -115,9 +124,20 @@ fn query(text: &str) -> Result<Query> {
 /// Returns a backed path or measured absence, never a guessed case alias.
 pub(super) fn existing(text: &str) -> Result<std::result::Result<(PathBuf, Metadata), u32>> {
     match query(text)? {
-        Query::Found(_, metadata) => {
-            Ok(Ok((PathBuf::from(text[2..].replace('\\', "/")), metadata)))
-        }
+        Query::Found(_, metadata, path) => Ok(Ok((path, metadata))),
+        Query::Failed(error) => Ok(Err(error)),
+    }
+}
+/// Explicit bounded ASCII case-insensitive *read-only open* profile. The strict
+/// search/metadata path and its frozen exclusions remain unchanged.
+pub(super) fn existing_casefold(
+    text: &str,
+) -> Result<std::result::Result<(PathBuf, Metadata), u32>> {
+    if !text.is_ascii() {
+        return Err("case-insensitive file opens currently require ASCII paths".into());
+    }
+    match query_with_casefold(text, true)? {
+        Query::Found(_, metadata, path) => Ok(Ok((path, metadata))),
         Query::Failed(error) => Ok(Err(error)),
     }
 }
@@ -138,7 +158,7 @@ fn fail(error: u32, value: u32) -> u32 {
 fn records(pattern: &str) -> Result<std::result::Result<Vec<(String, Metadata)>, u32>> {
     if !pattern.contains(['*', '?']) {
         return match query(pattern)? {
-            Query::Found(name, metadata) => Ok(Ok(vec![(name, metadata)])),
+            Query::Found(name, metadata, _) => Ok(Ok(vec![(name, metadata)])),
             Query::Failed(error) => Ok(Err(error)),
         };
     }
@@ -350,6 +370,39 @@ mod tests {
         std::fs::remove_dir_all(root).unwrap();
     }
     #[test]
+    fn opted_in_ascii_casefold_resolves_actual_names_and_preserves_absence_and_alias_errors() {
+        let root = std::env::temp_dir().join(format!("alkyhol-fold-{}", std::process::id()));
+        std::fs::create_dir(&root).unwrap();
+        let root = root.canonicalize().unwrap();
+        std::fs::create_dir(root.join("OwnedCase")).unwrap();
+        let actual = root.join("OwnedCase/MiXeD.DAT");
+        std::fs::write(&actual, b"case").unwrap();
+        let guest = format!("Z:{}", root.to_str().unwrap().replace('/', "\\"));
+        let spelling = format!("{guest}\\ownedcase\\mixed.dat");
+        assert!(existing(&spelling).is_err());
+        let (path, metadata) = existing_casefold(&spelling).unwrap().unwrap();
+        assert_eq!(path, actual);
+        assert_eq!(metadata.len(), 4);
+        assert_eq!(std::fs::read(path).unwrap(), b"case");
+        assert_eq!(
+            existing_casefold(&format!("{guest}\\ownedcase\\absent"))
+                .unwrap()
+                .err(),
+            Some(2)
+        );
+        assert_eq!(
+            existing_casefold(&format!("{guest}\\absent\\file"))
+                .unwrap()
+                .err(),
+            Some(3)
+        );
+        std::os::unix::fs::symlink(&actual, root.join("OwnedCase/Link")).unwrap();
+        assert!(existing_casefold(&format!("{guest}\\ownedcase\\link")).is_err());
+        assert!(existing_casefold(&format!("{guest}\\ownedcase\\..\\file")).is_err());
+        assert!(existing_casefold(&format!("{guest}\\ownedcase\\桜")).is_err());
+        std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
     fn exact_paths_have_real_metadata_and_missing_parents_are_distinct() {
         let root = std::fs::canonicalize(std::env::temp_dir())
             .unwrap()
@@ -365,7 +418,7 @@ mod tests {
         std::fs::write(root.join("probe.dat"), b"Alkyhol").unwrap();
         let windows = format!("Z:{}", root.to_str().unwrap().replace('/', "\\"));
         match query(&format!("{windows}\\probe.dat")).unwrap() {
-            Query::Found(name, meta) => {
+            Query::Found(name, meta, _) => {
                 assert_eq!(name, "probe.dat");
                 assert_eq!(meta.len(), 7);
             }
