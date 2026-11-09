@@ -48,6 +48,15 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
+          name: d3d9-open-compiler-build
+          path: |
+            local/tools/shader9/build.log
+            local/tools/shader9/build/config.log
+            local/tools/shader9/compiler.json
+          if-no-files-found: warn
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
           name: d3d9-identical-pe
           path: |
             local/pe/d3d9-microtests/d3d9-shaders.exe

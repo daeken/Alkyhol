@@ -16,7 +16,9 @@ REPOS=[('spirv','https://github.com/KhronosGroup/SPIRV-Headers.git','01e0577914a
 def digest(p):return hashlib.sha256(p.read_bytes()).hexdigest()
 def run(command,cwd,log,env=None):
  log.write(('\n$ '+shlex.join([str(v) for v in command])+'\n').encode());log.flush()
- subprocess.run([str(v) for v in command],cwd=cwd,stdout=log,stderr=subprocess.STDOUT,check=True,env=env)
+ try:subprocess.run([str(v) for v in command],cwd=cwd,stdout=log,stderr=subprocess.STDOUT,check=True,env=env)
+ except subprocess.CalledProcessError:
+  log.flush();print(Path(log.name).read_text(errors='replace')[-12000:]);raise
 def checkout(url,revision,path,log):
  if not (path/'.git').is_dir():
   if path.exists() and any(path.iterdir()):raise ValueError('refusing nonempty unrecognized source directory: '+str(path))
@@ -66,7 +68,21 @@ def build(output,jobs):
  with (output/'build.log').open('ab')as log:
   for name,url,revision in REPOS:checkout(url,revision,output/name,log)
   flags=shlex.join(['-I'+str(output/'spirv/include'),'-I'+str(output/'vulkan/include')])
-  env=dict(os.environ,CC=cc,OBJC=cc,CPPFLAGS=flags)
+  # configure and header generators require the real Perl JSON module.
+  # Some macOS images only provide JSON::PP. Use pinned pure-Perl JSON 4.10
+  # from CPAN when necessary, without altering the host Perl installation.
+  perl=shutil.which('perl')
+  if not perl:raise ValueError('Perl is required by the upstream build')
+  env=dict(os.environ,CC=cc,OBJC=cc,CPPFLAGS=flags,BISON=bison,FLEX=flex,PERL=perl)
+  if subprocess.run([perl,'-MJSON','-e','1'],capture_output=True).returncode:
+   json_archive=output/'JSON-4.10.tar.gz'
+   json_sha='df8b5143d9a7de99c47b55f1a170bd1f69f711935c186a6dc0ab56dd05758e35'
+   if not json_archive.exists():
+    with urllib.request.urlopen('https://cpan.metacpan.org/authors/id/I/IS/ISHIGAKI/JSON-4.10.tar.gz',timeout=60)as response,json_archive.open('wb')as out:shutil.copyfileobj(response,out)
+   if digest(json_archive)!=json_sha:raise ValueError('pinned Perl JSON archive differs')
+   with tarfile.open(json_archive)as tar:tar.extractall(output,filter='data')
+   env['PERL5LIB']=str(output/'JSON-4.10/lib')+(os.pathsep+os.environ['PERL5LIB'] if os.environ.get('PERL5LIB') else '')
+   run([perl,'-MJSON','-e','print $JSON::VERSION'],ROOT,log,env)
   configure=[source/'configure','--prefix='+str(output/'install'),'--disable-tests','--disable-demos','--without-xcb','--without-ncurses','--without-opengl','--without-spirv-tools','SONAME_LIBVULKAN='+('libvulkan.dylib'if platform.system()=='Darwin'else'libvulkan.so.1')]
   configuration={'argv':[str(v)for v in configure],'flags':flags,'tools':tools,'architecture':platform.machine(),'archive':SHA}
   marker=output/'configuration.json'
