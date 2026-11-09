@@ -6871,3 +6871,19 @@ and 17 observer tests pass. Independent SDK query enum/vtable checks and the
 identical-PE native counter/frame comparator are added to existing CI; native
 counts and precise Vulkan/D3D12 execution remain pending. The next clean original
 replay must establish whether this clears DAO's observed query boundary.
+
+### Native app packaging and activation target verification
+
+The query-enabled DAO host reaches its main menu, but the unbundled diagnostic
+process cannot be selected by the desktop-control service. A local app bundle
+now wraps the identical compiled host executable; it does not alter the guest
+EXE. Its first run exposes an AppKit activation setter rejection. Host setup now
+reads the resulting activationPolicy and requires actual Regular policy (0),
+rather than treating the setter acknowledgement alone as the target condition.
+A non-Regular result still fails with the requested/resulting values. All 218 PE
+units and PE Clippy pass. The candidate run physically opens the original splash
+and is recognized as Alkyhol DAO by native accessibility control. Its captured
+runtime is marked dirty before build and includes the exact source/binary hashes;
+committing that identical source does not relabel the earlier capture as clean.
+The local app bundle/launch records and original captures remain ignored local
+data. The original-query scene replay is still in progress.

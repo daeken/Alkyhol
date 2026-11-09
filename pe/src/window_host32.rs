@@ -388,8 +388,11 @@ impl App {
                 return Err("AppKit application initialization failed".into());
             }
             let policy: i8 = unsafe { send1(app, "setActivationPolicy:", 0isize) };
-            if policy == 0 {
-                return Err("AppKit activation policy was rejected".into());
+            let actual: isize = unsafe { send0(app, "activationPolicy") };
+            if actual != 0 {
+                return Err(format!(
+                    "AppKit regular activation policy was not established; request_result={policy}; actual_policy={actual}"
+                ));
             }
             unsafe { send0::<()>(app, "finishLaunching") };
             let desktop = unsafe { CGDisplayBounds(CGMainDisplayID()) };
