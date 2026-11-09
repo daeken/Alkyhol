@@ -6973,8 +6973,10 @@ unverified until the clean original replay passes this boundary.
 
 ### Original UP draw progress and fresh color-target storage
 
-Clean 1983dbe passes original DAO query creation and DrawIndexedPrimitiveUP. It
-then reaches a later render-texture pass and stops in the backend's combined
+Clean 1983dbe passes original DAO query creation and no longer terminates at the
+DrawIndexedPrimitiveUP dispatch slot. A later audit below finds that the original
+fixed-function XYZ invocation returns INVALIDCALL; it is not a passing draw. DAO
+continues despite that error and reaches a later render-texture pass and stops in the backend's combined
 initialized-content/triangle-extent guard. Given the adapter's bounded nonempty
 packed float4 stride and primitive normalization, uninitialized target storage
 is the inferred remaining condition; that old combined error did not capture
@@ -7022,3 +7024,33 @@ this is finite float-reference evidence, not a claim about all native precision
 or game materials. All 27 backend units (two GPU units separately ignored),
 both crates' Clippy and 19 observer units pass. Existing CI runs the new GPU test
 and native comparator; original DAO replay with alpha testing is next.
+
+### Alpha-enabled original replay and audit correction
+
+Clean 0fd342b on physical M4 passes alpha-enable state and proceeds to shader
+resource binding. The next fatal failure is an actual wgpu validation error:
+texture binding 16 expects D3 while the retained texture view is D2. The preceding
+original SetTexture(stage 0,pointer 3) still returns INVALIDCALL. No original
+CreateVolumeTexture call appears in the retained trace. This is a resource-kind/
+lifetime investigation, not evidence that a missing 3D allocation is the sole
+cause; do not substitute a D2 texture or accept the invalid pointer.
+
+Audit correction: the original occlusion-box DrawIndexedPrimitiveUP call disables
+both shaders, binds an untransformed position declaration and uses stride 12. It
+returns INVALIDCALL in our current programmable/POSITIONT adapter. Original DAO
+ignores that draw failure and proceeds; this must not be described as successful
+original occlusion geometry or query-count correctness. The finite owned UP
+fixtures exercise programmable draws successfully, but the actual original XYZ
+fixed-function transform path remains unsupported. Implement that real path and
+its query/depth transforms before treating the query-box milestone as complete.
+The later D3/D2 texture error is an additional observed blocker. Character
+creation and gameplay remain unverified; no scene-frame parity is claimed.
+
+CI [42698287554](https://github.com/daeken/Alkyhol/actions/runs/42698287554)
+on 1983dbe passes hosted Metal, software Vulkan and the native identical-PE
+version-22 UP comparison: all 4167 words and four full frames agree. The overall
+native job still fails the earlier separate-stream unbind, StretchRect and
+POSITIONT comparisons. CI 42699413184 on c77d399 stops its Metal producer on a
+rustfmt difference in the added error diagnostic; no fresh-target native result
+comes from that run. That formatting is corrected in 0fd342b. Fresh-target and
+alpha native results remain pending; physical evidence is recorded above.
