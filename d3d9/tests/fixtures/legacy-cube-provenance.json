@@ -1,0 +1,15 @@
+{
+  "origin": "Original MIT cube sampler for the DAO resource contract; not game-derived",
+  "compiler": "vkd3d-shader 2.1",
+  "upstream_revision": "fb7f9ff3c1f8d972ee6f1b8c6a92caf6c8ba1e10",
+  "archive_sha256": "7510146aff2adfb4ae07ab890701a607e5ff7c66e57100cfc9f630ec92eeda6a",
+  "binding_profile": "VS set0, PS set1; constant sets bindings0..2, SRVs16..31, samplers32..47",
+  "interstage": "vertex output is compiled against the actual pixel input signature using vkd3d_shader_build_varying_map",
+  "files": {
+    "legacy-cube.ps.bin": "132bdad21b7400d4500c03b63808b666e167c941857328e61d103129296c5f9b",
+    "legacy-cube.ps.hlsl": "675b585a443423590569253e37dcdda09d8a971c7254571ad366fb89e03b86df",
+    "legacy-cube.ps.json": "2283b83a5dbe6b5f036efb132ac50d84b376ecd624d1c4300208e69d86c7c785",
+    "legacy-cube.ps.spv": "edeb94b38e8fc760dbca4e4a263c040c5fcb75bc2fba70351df3286b937c88e7"
+  },
+  "helper_source_sha256": "8d627ecb485af26e905aa5dd5b4c91096707e9b3d2fc8cfa2b063e25ce049fa8"
+}

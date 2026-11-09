@@ -6492,3 +6492,43 @@ All 210 preceding PE units and the additional API-routing unit pass, as does PE
 Clippy. Three observer tests reject every failed assertion, malformed/truncated
 report and extra output. Existing CI now transfers this literal PE and exact
 source identities for native Windows comparison; that result is pending.
+
+## DAO cube textures and the next scene-loading boundary
+
+The original New Game path now passes CreateCubeTexture and its original face
+uploads. The next observed stop is the original D3DX helper's system msvcrt
+setlocale(LC_NUMERIC,NULL) query. Character creation, a shaded 3D game scene,
+gameplay and audio remain unverified. No original game shader, mesh or asset was
+replaced to reach this point; private source snapshots and traces identify each
+experimental run without committing game-derived data.
+
+SampledTexture now owns either one 2D layer or six actual cube layers; the
+Texture2D source alias preserves existing users. Cube views bind as Cube to the
+translated original shader. Face/mip uploads preserve independent CPU/GPU data,
+format/color-space behavior and initialization guards. Every sampled face/mip
+must have been uploaded; an absent one fails explicitly. Cube render targets,
+automatic mip generation and general resource methods remain unsupported.
+
+The PE interface supplies the distinct cube COM identity/type, 24-byte LockRect
+and 12-byte UnlockRect gates, checked face/mip addressing, cached surface aliases,
+GetContainer/GetDevice, reference retention while bound and raw lock coherence.
+The 64 MiB CPU shadow budget is checked across all faces before allocation.
+Independent Windows SDK vtable-offset assertions and the existing CI now cover
+the cube ABI; capability flags are not expanded into an unsupported full profile.
+
+Physical M4/Rosetta GPU tests pass all six direction centers across three mip
+levels, including full target RGBA, distinct colors/alpha, incomplete-upload
+rejection, wrong shape/face/mip/byte extents and invalid allocations. This tests
+the owned original SM2 cube sampler through the open compiler pipeline, not a
+substitute fixed shader. All prior ignored physical GPU regressions and backend
+Clippy pass. Source/bytecode/SPIR-V/reflection regeneration agrees exactly with
+the pinned open compiler; new owned shader provenance contains every hash.
+
+The separate identical-PE cube resource witness passes physically: all 18 face
+mips, descriptors, raw writes/reads, six surface aliases and containers, invalid
+face/mip failure, parent and bound lifetime. Its independent native Windows
+comparison is added and pending; it is not a native cube-sampling frame oracle.
+All 211 preceding PE units and the additional cube address/gate unit pass; PE
+Clippy passes. Thirteen D3D9 observer tests reject failed resource stages and
+malformed output. Existing POSITIONT and StretchRect native discrepancies remain
+unchanged and are not covered up by this milestone.

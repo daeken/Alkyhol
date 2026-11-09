@@ -30,7 +30,7 @@ struct D3DLOCKED_RECT{INT Pitch;void* pBits;};
 
 struct IDirect3DSwapChain9;
 struct IDirect3DIndexBuffer9;
-struct IDirect3DBaseTexture9;struct IDirect3DTexture9;
+struct IDirect3DBaseTexture9;struct IDirect3DTexture9;struct IDirect3DCubeTexture9;
 struct IDirect3DVertexShader9;struct IDirect3DPixelShader9;struct IDirect3DVertexDeclaration9;
 struct D3DVERTEXELEMENT9{unsigned short Stream,Offset;unsigned char Type,Method,Usage,UsageIndex;};
 struct IDirect3D9; struct IDirect3DDevice9; struct IDirect3DSurface9; struct IDirect3DVertexBuffer9;
@@ -79,7 +79,7 @@ struct IDirect3DDevice9 {
  virtual void __stdcall UnsupportedSlot22()=0;
  virtual HRESULT __stdcall CreateTexture(UINT,UINT,UINT,DWORD,UINT,UINT,IDirect3DTexture9**,void*)=0;
  virtual void __stdcall UnsupportedSlot24()=0;
- virtual void __stdcall UnsupportedSlot25()=0;
+ virtual HRESULT __stdcall CreateCubeTexture(UINT,UINT,DWORD,UINT,UINT,IDirect3DCubeTexture9**,void*)=0;
  virtual HRESULT __stdcall CreateVertexBuffer(UINT,DWORD,DWORD,UINT,IDirect3DVertexBuffer9**,void*)=0;
  virtual HRESULT __stdcall CreateIndexBuffer(UINT,DWORD,UINT,UINT,IDirect3DIndexBuffer9**,void*)=0;
  virtual void __stdcall UnsupportedSlot28()=0;
@@ -309,6 +309,13 @@ struct IDirect3DTexture9 : IDirect3DBaseTexture9 {
  virtual HRESULT __stdcall GetSurfaceLevel(UINT,IDirect3DSurface9**)=0;
  virtual HRESULT __stdcall LockRect(UINT,D3DLOCKED_RECT*,const void*,DWORD)=0;
  virtual HRESULT __stdcall UnlockRect(UINT)=0;
+ virtual void __stdcall UnsupportedSlot21()=0;
+};
+struct IDirect3DCubeTexture9 : IDirect3DBaseTexture9 {
+ virtual HRESULT __stdcall GetLevelDesc(UINT,D3DSURFACE_DESC*)=0;
+ virtual HRESULT __stdcall GetCubeMapSurface(UINT,UINT,IDirect3DSurface9**)=0;
+ virtual HRESULT __stdcall LockRect(UINT,UINT,D3DLOCKED_RECT*,const void*,DWORD)=0;
+ virtual HRESULT __stdcall UnlockRect(UINT,UINT)=0;
  virtual void __stdcall UnsupportedSlot21()=0;
 };
 

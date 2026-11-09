@@ -132,15 +132,27 @@ impl SampleFormat {
         matches!(self, Self::Bc1 | Self::Bc2 | Self::Bc3)
     }
 }
-pub struct Texture2D {
+pub struct SampledTexture {
     texture: wgpu::Texture,
     format: SampleFormat,
     width: u32,
     height: u32,
     levels: u32,
+    layers: u32,
     initialized: Vec<Arc<AtomicBool>>,
 }
-impl Texture2D {
+/// Historical source-compatible name for the sampled storage container.
+pub type Texture2D = SampledTexture;
+impl SampledTexture {
+    pub fn is_cube(&self) -> bool {
+        self.layers == 6
+    }
+    fn subresource(&self, level: u32, face: u32) -> Result<usize> {
+        if level >= self.levels || face >= self.layers {
+            return Err("texture face/mip outside allocation".into());
+        }
+        Ok((face * self.levels + level) as usize)
+    }
     pub fn dimensions(&self, level: u32) -> Result<(u32, u32)> {
         if level >= self.levels {
             return Err("texture level outside allocation".into());
@@ -168,6 +180,11 @@ impl Texture2D {
             return Err("sRGB sampling of L8/A8 requires native format evidence".into());
         }
         Ok(self.texture.create_view(&wgpu::TextureViewDescriptor {
+            dimension: Some(if self.is_cube() {
+                wgpu::TextureViewDimension::Cube
+            } else {
+                wgpu::TextureViewDimension::D2
+            }),
             format: Some(if srgb {
                 self.format.native().add_srgb_suffix()
             } else {
@@ -193,6 +210,7 @@ impl Device {
             width,
             height,
             levels: 1,
+            layers: 1,
             initialized: vec![target.initialized.clone()],
         };
         Ok((sampled, target))
@@ -212,6 +230,26 @@ impl Device {
         levels: u32,
         format: SampleFormat,
     ) -> Result<Texture2D> {
+        self.create_sampled_layers(width, height, levels, format, 1)
+    }
+    /// Six independent +X,-X,+Y,-Y,+Z,-Z face/mip allocations. No render-target
+    /// or generated-mip behavior is implied; every sampled subresource must be uploaded.
+    pub fn create_cube_texture(
+        &self,
+        edge: u32,
+        levels: u32,
+        format: SampleFormat,
+    ) -> Result<SampledTexture> {
+        self.create_sampled_layers(edge, edge, levels, format, 6)
+    }
+    fn create_sampled_layers(
+        &self,
+        width: u32,
+        height: u32,
+        levels: u32,
+        format: SampleFormat,
+        layers: u32,
+    ) -> Result<SampledTexture> {
         if format.compressed()
             && (!self.supports_bc() || !width.is_multiple_of(4) || !height.is_multiple_of(4))
         {
@@ -236,7 +274,7 @@ impl Device {
             size: wgpu::Extent3d {
                 width,
                 height,
-                depth_or_array_layers: 1,
+                depth_or_array_layers: layers,
             },
             mip_level_count: levels,
             sample_count: 1,
@@ -252,12 +290,38 @@ impl Device {
             width,
             height,
             levels,
-            initialized: (0..levels)
+            layers,
+            initialized: (0..levels * layers)
                 .map(|_| Arc::new(AtomicBool::new(false)))
                 .collect(),
         })
     }
     pub fn upload_texture(&self, texture: &mut Texture2D, level: u32, bytes: &[u8]) -> Result<()> {
+        if texture.is_cube() {
+            return Err("cube upload requires an explicit face".into());
+        }
+        self.upload_sampled_layer(texture, 0, level, bytes)
+    }
+    pub fn upload_cube_face(
+        &self,
+        texture: &mut SampledTexture,
+        face: u32,
+        level: u32,
+        bytes: &[u8],
+    ) -> Result<()> {
+        if !texture.is_cube() {
+            return Err("cube face upload requires cube storage".into());
+        }
+        self.upload_sampled_layer(texture, face, level, bytes)
+    }
+    fn upload_sampled_layer(
+        &self,
+        texture: &mut SampledTexture,
+        face: u32,
+        level: u32,
+        bytes: &[u8],
+    ) -> Result<()> {
+        let subresource = texture.subresource(level, face)?;
         let (width, height) = texture.dimensions(level)?;
         let (pitch, rows) = texture.format.block_layout(width, height)?;
         if bytes.len() != pitch as usize * rows as usize {
@@ -280,7 +344,11 @@ impl Device {
             wgpu::TexelCopyTextureInfo {
                 texture: &texture.texture,
                 mip_level: level,
-                origin: wgpu::Origin3d::ZERO,
+                origin: wgpu::Origin3d {
+                    x: 0,
+                    y: 0,
+                    z: face,
+                },
                 aspect: wgpu::TextureAspect::All,
             },
             bytes,
@@ -297,7 +365,7 @@ impl Device {
             .physical_size(texture.format.native()),
         );
         self.finish()?;
-        texture.initialized[level as usize].store(true, Ordering::Release);
+        texture.initialized[subresource].store(true, Ordering::Release);
         Ok(())
     }
 }

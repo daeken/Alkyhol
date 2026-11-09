@@ -24,7 +24,7 @@ const IID_RESOURCE: [u8; 16] = [
 const IID_BASE_TEXTURE: [u8; 16] = [
     0x7e, 0xa8, 0x0c, 0x58, 0x3c, 0x1d, 0x54, 0x4d, 0x99, 0x1d, 0xb7, 0xd3, 0xe3, 0xc2, 0x98, 0xce,
 ];
-const IIDS: [[u8; 16]; 10] = [
+const IIDS: [[u8; 16]; 11] = [
     [
         0xca, 0xcb, 0xbd, 0x81, 0xd4, 0x64, 0x6d, 0x42, 0xae, 0x8d, 0xad, 1, 0x47, 0xf4, 0x27, 0x5c,
     ],
@@ -64,6 +64,10 @@ const IIDS: [[u8; 16]; 10] = [
         0xf2, 0x50, 0x49, 0x79, 0xfc, 0xad, 0x8a, 0x45, 0x90, 0x5e, 0x10, 0xa1, 0x0b, 0x0b, 0x50,
         0x3b,
     ],
+    [
+        0x81, 0x2f, 0xf3, 0xff, 0x53, 0xd9, 0x3a, 0x47, 0x92, 0x23, 0x93, 0xd6, 0x52, 0xab, 0xa9,
+        0x3f,
+    ],
 ];
 struct Object {
     refs: u32,
@@ -81,6 +85,7 @@ struct TextureLevel {
 }
 enum Body {
     Texture {
+        cube: bool,
         parent: u32,
         gpu: Rc<RefCell<Texture2D>>,
         levels: Vec<TextureLevel>,
@@ -189,7 +194,13 @@ impl Body {
                 ..
             } => 5,
             Self::Declaration { .. } => 6,
-            Self::Texture { .. } => 7,
+            Self::Texture { cube, .. } => {
+                if *cube {
+                    10
+                } else {
+                    7
+                }
+            }
         }
     }
 }
@@ -337,7 +348,7 @@ pub(super) fn signature(id: u32) -> Option<(&'static str, u16)> {
             3 | 8 => 14,
             9 => 10,
             4..=6 => 5,
-            7 => 22,
+            7 | 10 => 22,
             _ => return None,
         }
     {
@@ -377,6 +388,13 @@ pub(super) fn signature(id: u32) -> Option<(&'static str, u16)> {
         (7, 18) => ("IDirect3DTexture9::GetSurfaceLevel", 12),
         (7, 19) => ("IDirect3DTexture9::LockRect", 20),
         (7, 20) => ("IDirect3DTexture9::UnlockRect", 8),
+        (10, 3) => ("IDirect3DCubeTexture9::GetDevice", 8),
+        (10, 10) => ("IDirect3DCubeTexture9::GetType", 4),
+        (10, 13) => ("IDirect3DCubeTexture9::GetLevelCount", 4),
+        (10, 17) => ("IDirect3DCubeTexture9::GetLevelDesc", 12),
+        (10, 18) => ("IDirect3DCubeTexture9::GetCubeMapSurface", 16),
+        (10, 19) => ("IDirect3DCubeTexture9::LockRect", 24),
+        (10, 20) => ("IDirect3DCubeTexture9::UnlockRect", 12),
         (4..=6, 3) => ("D3D9 shader/declaration GetDevice", 8),
         (4 | 5, 4) => ("D3D9 shader GetFunction", 12),
         (6, 4) => ("D3D9 declaration GetDeclaration", 12),
@@ -447,7 +465,7 @@ fn table(cpu: &Cpu32, state: &mut State, kind: u32) -> Result<u32> {
         3 | 8 => 14,
         9 => 10,
         4..=6 => 5,
-        7 => 22,
+        7 | 10 => 22,
         _ => 17,
     };
     let m = cpu.mapping(2 * PAGE, PAGE, 0)?;
@@ -2466,7 +2484,19 @@ fn sample_format(format: u32) -> Option<SampleFormat> {
         _ => None,
     }
 }
-fn create_texture(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
+fn cube_subresource(face: u32, level: u32, mips: u32) -> Option<u32> {
+    if face >= 6 || level >= mips {
+        return None;
+    }
+    face.checked_mul(mips)?.checked_add(level)
+}
+fn create_texture(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16], cube: bool) -> u32 {
+    let mut normalized = *a;
+    if cube {
+        normalized[2] = a[1];
+        normalized[3..9].copy_from_slice(&a[2..8]);
+    }
+    let a = &normalized;
     if a[7] == 0 {
         return INVALID;
     }
@@ -2479,13 +2509,35 @@ fn create_texture(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u3
         || ![0, 1].contains(&a[6])
         || a[8] != 0
         || a[4] == 1 && (a[3] != 1 || a[6] != 0)
+        || cube && a[4] != 0
     {
         return UNAVAILABLE;
     }
     let Body::Device { gpu, .. } = &s.objects[&a[0]].body else {
         unreachable!()
     };
-    let allocation = if a[4] == 1 {
+    let maximum = 32 - a[1].max(a[2]).leading_zeros();
+    let mips = if a[3] == 0 { maximum } else { a[3] };
+    if a[1] == 0 || a[2] == 0 || mips > maximum {
+        return INVALID;
+    }
+    let faces = if cube { 6 } else { 1 };
+    let mut cpu_bytes = 0u64;
+    for level in 0..mips {
+        let (pitch, rows) =
+            match format.block_layout((a[1] >> level).max(1), (a[2] >> level).max(1)) {
+                Ok(layout) => layout,
+                Err(_) => return UNAVAILABLE,
+            };
+        cpu_bytes += u64::from(pitch) * u64::from(rows) * faces;
+        if cpu_bytes > 64 * 1024 * 1024 {
+            return UNAVAILABLE;
+        }
+    }
+    let allocation = if cube {
+        gpu.create_cube_texture(a[1], a[3], format)
+            .map(|texture| (texture, None))
+    } else if a[4] == 1 {
         gpu.create_render_texture(a[1], a[2])
             .map(|(texture, target)| (texture, Some(target)))
     } else {
@@ -2499,36 +2551,35 @@ fn create_texture(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u3
             return UNAVAILABLE;
         }
     };
-    let mut total = 0usize;
     let mut levels = Vec::new();
-    for level in 0..texture.levels() {
-        let (width, height) = texture.dimensions(level).unwrap();
-        let (pitch, length) = texture.byte_layout(level).unwrap();
-        let bytes = length as usize;
-        total += bytes;
-        if total > 64 * 1024 * 1024 {
-            return UNAVAILABLE;
+    for _face in 0..faces {
+        for level in 0..texture.levels() {
+            let (width, height) = texture.dimensions(level).unwrap();
+            let (pitch, length) = texture.byte_layout(level).unwrap();
+            let bytes = length as usize;
+            levels.push(TextureLevel {
+                data: if a[4] == 1 {
+                    0
+                } else {
+                    memory(&image.cpu, &vec![0; bytes], true, false)
+                        .unwrap_or_else(|e| unsupported(&e))
+                },
+                width,
+                height,
+                pitch,
+                length,
+                surface: 0,
+                lock: None,
+                initialized: false,
+            });
         }
-        levels.push(TextureLevel {
-            data: if a[4] == 1 {
-                0
-            } else {
-                memory(&image.cpu, &vec![0; bytes], true, false).unwrap_or_else(|e| unsupported(&e))
-            },
-            width,
-            height,
-            pitch,
-            length,
-            surface: 0,
-            lock: None,
-            initialized: false,
-        });
     }
     addref(s, a[0]);
     let pointer = object(
         &image.cpu,
         s,
         Body::Texture {
+            cube,
             parent: a[0],
             gpu: Rc::new(RefCell::new(texture)),
             levels,
@@ -2665,7 +2716,7 @@ fn texture_operation(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16], sl
         unreachable!()
     };
     if slot == 13 {
-        return levels.len() as u32;
+        return gpu.borrow().levels();
     }
     let Some(level) = levels.get_mut(a[1] as usize) else {
         return INVALID;
@@ -2731,9 +2782,14 @@ fn texture_operation(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16], sl
                         pixel[3] = 255;
                     }
                 }
-                device
-                    .upload_texture(&mut gpu.borrow_mut(), a[1], &bytes)
-                    .unwrap_or_else(|e| unsupported(&e));
+                let mut texture = gpu.borrow_mut();
+                let mips = texture.levels();
+                let upload = if texture.is_cube() {
+                    device.upload_cube_face(&mut texture, a[1] / mips, a[1] % mips, &bytes)
+                } else {
+                    device.upload_texture(&mut texture, a[1], &bytes)
+                };
+                upload.unwrap_or_else(|e| unsupported(&e));
                 level.initialized = true;
             }
             0
@@ -2780,8 +2836,8 @@ fn dispatch_inner(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32 {
             let iid = unsafe { (a[1] as *const [u8; 16]).read_unaligned() };
             if iid != IID_UNKNOWN
                 && iid != IIDS[kind as usize]
-                && !((kind == 2 || kind == 3 || kind == 7 || kind == 8) && iid == IID_RESOURCE)
-                && !(kind == 7 && iid == IID_BASE_TEXTURE)
+                && !(matches!(kind, 2 | 3 | 7 | 8 | 10) && iid == IID_RESOURCE)
+                && !(matches!(kind, 7 | 10) && iid == IID_BASE_TEXTURE)
             {
                 return NO_INTERFACE;
             }
@@ -2940,7 +2996,7 @@ fn dispatch_inner(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32 {
                 }
             }
         }
-        (1, 6) | (2..=8, 3) => {
+        (1, 6) | (2..=8 | 10, 3) => {
             if a[1] == 0 {
                 return INVALID;
             }
@@ -3073,10 +3129,37 @@ fn dispatch_inner(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32 {
             }
             0
         }
-        (1, 23) => create_texture(image, &mut s, a),
+        (1, 23 | 25) => create_texture(image, &mut s, a, slot == 25),
         (1, 64 | 65) => texture_binding(image, &mut s, a, slot == 64),
         (1, 68 | 69) => sampler_state(image, &mut s, a, slot == 68),
         (7, 10) => 3,
+        (10, 10) => 5,
+        (10, 13 | 17) => {
+            let Body::Texture { gpu, .. } = &s.objects[&a[0]].body else {
+                unreachable!()
+            };
+            if slot == 17 && a[1] >= gpu.borrow().levels() {
+                return INVALID;
+            }
+            texture_operation(image, &mut s, a, slot)
+        }
+        (10, 18..=20) => {
+            let Body::Texture { gpu, .. } = &s.objects[&a[0]].body else {
+                unreachable!()
+            };
+            let mips = gpu.borrow().levels();
+            let Some(subresource) = cube_subresource(a[1], a[2], mips) else {
+                return INVALID;
+            };
+            let mut normalized = *a;
+            normalized[1] = subresource;
+            normalized[2..5].copy_from_slice(&a[3..6]);
+            if slot == 18 {
+                texture_surface(image, &mut s, &normalized)
+            } else {
+                texture_operation(image, &mut s, &normalized, slot)
+            }
+        }
         (7, 18) => texture_surface(image, &mut s, a),
         (1, 37 | 38) => render_binding(image, &mut s, a, slot == 38),
         (7, 13 | 17 | 19 | 20) => texture_operation(image, &mut s, a, slot),
@@ -3357,7 +3440,8 @@ fn dispatch_inner(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32 {
             }
             checked(image, a[1], 16, false);
             let requested = unsafe { (a[1] as *const [u8; 16]).read_unaligned() };
-            if ![IID_UNKNOWN, IID_RESOURCE, IID_BASE_TEXTURE, IIDS[7]].contains(&requested) {
+            let texture_iid = IIDS[s.objects[&container].body.kind() as usize];
+            if ![IID_UNKNOWN, IID_RESOURCE, IID_BASE_TEXTURE, texture_iid].contains(&requested) {
                 return NO_INTERFACE;
             }
             expose(&mut s, container);
@@ -3476,6 +3560,41 @@ fn dispatch_inner(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn cube_faces_address_distinct_mips_and_reject_overflow_and_invalid_faces() {
+        let mut seen = std::collections::BTreeSet::new();
+        for face in 0..6 {
+            for level in 0..14 {
+                assert!(seen.insert(cube_subresource(face, level, 14).unwrap()));
+            }
+        }
+        assert_eq!(seen.len(), 84);
+        assert_eq!(cube_subresource(5, 13, 14), Some(83));
+        for (face, level, mips) in [
+            (6, 0, 14),
+            (0, 14, 14),
+            (0, 0, 0),
+            (u32::MAX, 0, 1),
+            (5, 0, u32::MAX),
+        ] {
+            assert_eq!(cube_subresource(face, level, mips), None);
+        }
+        let cube = BASE + 10 * 256;
+        assert_eq!(
+            signature(cube + 19),
+            Some(("IDirect3DCubeTexture9::LockRect", 24))
+        );
+        assert_eq!(
+            signature(cube + 20),
+            Some(("IDirect3DCubeTexture9::UnlockRect", 12))
+        );
+        assert_eq!(
+            signature(cube + 18),
+            Some(("IDirect3DCubeTexture9::GetCubeMapSurface", 16))
+        );
+        assert!(signature(cube + 22).is_none());
+        assert_ne!(IIDS[7], IIDS[10]);
+    }
     #[test]
     fn subrectangle_locks_keep_full_pitch_and_checked_pixel_offsets() {
         for (format, pitch, offset) in [(21, 20, 24), (26, 10, 12), (28, 5, 6), (50, 5, 6)] {

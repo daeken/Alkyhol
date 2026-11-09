@@ -30,9 +30,13 @@ def check(directory):
   if sha(fixture/name)!=digest:raise ValueError('texture fixture identity differs: '+name)
  for name,digest in json.loads((fixture/'legacy-model2-provenance.json').read_text())['files'].items():
   if sha(fixture/name)!=digest:raise ValueError('SM2 fixture identity differs: '+name)
- for prefix in ['legacy-color.ps','legacy-color.vs','legacy-texture.ps','legacy-slots128.ps','legacy-model2.vs']:
+ cube_provenance=json.loads((fixture/'legacy-cube-provenance.json').read_text())
+ if cube_provenance['helper_source_sha256']!=manifest['helper_source_sha256']:raise ValueError('cube helper identity differs')
+ for name,digest in cube_provenance['files'].items():
+  if sha(fixture/name)!=digest:raise ValueError('cube fixture identity differs: '+name)
+ for prefix in ['legacy-color.ps','legacy-color.vs','legacy-texture.ps','legacy-slots128.ps','legacy-model2.vs','legacy-cube.ps']:
   stage=prefix.rsplit('.',1)[1]
-  profile='ps_2_a' if prefix=='legacy-slots128.ps' else stage+('_2_0' if prefix=='legacy-model2.vs' else '_3_0')
+  profile='ps_2_a' if prefix=='legacy-slots128.ps' else stage+('_2_0' if prefix in ['legacy-model2.vs','legacy-cube.ps'] else '_3_0')
   subprocess.run([manifest['hlsl_compiler'],'-x','hlsl','-b','d3dbc','-p',profile,str(fixture/(prefix+'.hlsl')),'-o',str(output/(prefix+'.bin'))],check=True)
   if prefix=='legacy-slots128.ps':normalize_owned_ps2_output(output/(prefix+'.bin'))
   following=[str(output/('legacy-slots128.ps.bin' if prefix=='legacy-model2.vs' else 'legacy-color.ps.bin'))] if stage=='vs' else []

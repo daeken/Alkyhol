@@ -21,7 +21,7 @@ mod texture;
 mod texture_stages;
 pub use legacy_gpu::{LegacyDraw, viewport_from_words};
 pub mod fixed_vertex;
-pub use texture::{SampleFormat, SamplerState, Texture2D, TextureBinding};
+pub use texture::{SampleFormat, SampledTexture, SamplerState, Texture2D, TextureBinding};
 pub use texture_stages::TextureStages;
 pub use wgpu::{VertexAttribute, VertexFormat};
 pub type Result<T> = std::result::Result<T, String>;
