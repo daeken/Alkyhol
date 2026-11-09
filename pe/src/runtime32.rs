@@ -34,6 +34,8 @@ mod cursor32;
 mod diagnostic32;
 #[path = "directory32.rs"]
 mod directory32;
+#[path = "disk32.rs"]
+mod disk32;
 #[path = "event32.rs"]
 mod event32;
 #[path = "exception_filter32.rs"]
@@ -125,7 +127,7 @@ unsafe extern "C" {
 }
 const PAGE: usize = 4096;
 const STACK: usize = 1024 * 1024;
-const APIS: [(&str, u16); 284] = [
+const APIS: [(&str, u16); 285] = [
     ("GetLastError", 0),
     ("SetLastError", 4),
     ("GetStdHandle", 4),
@@ -410,6 +412,7 @@ const APIS: [(&str, u16); 284] = [
     ("WSASetEvent", 4),
     ("WSAResetEvent", 4),
     ("WSACloseEvent", 4),
+    ("GetDiskFreeSpaceExA", 16),
 ];
 // The first 120 API slots retain their original offsets. The second bank
 // begins after both x87 bodies, leaving their machine code and failure gates
@@ -2379,6 +2382,7 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
             276 => com32::create(image, args),
             277 | 278 => wave32::count(image, id == 278),
             279..=283 => winsock32::event_api(image, id, args),
+            284 => disk32::query(image, args),
             input8_32::BASE.. => input8_32::dispatch(image, id, &words),
             d3d9_32::BASE.. => d3d9_32::dispatch(image, id, &words),
             215 => {

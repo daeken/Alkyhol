@@ -157,6 +157,15 @@ pub(super) fn get(image: &LoadedImage32<'_>, args: &[u32; 8]) -> u32 {
     }
     units.len() as u32
 }
+/// Return the current directory only while its backing identity is still live.
+pub(super) fn current_path(image: &LoadedImage32<'_>) -> Result<String> {
+    let state = image.cpu.current_directory.borrow();
+    let directory = state
+        .as_ref()
+        .ok_or("disk-space query requires a checked process current directory")?;
+    directory.check()?;
+    Ok(directory.windows.clone())
+}
 /// Ordinary file APIs use the process-owned directory for relative spellings.
 /// INI bare-name searching has different semantics and uses its own resolver.
 pub(super) fn ordinary_path(image: &LoadedImage32<'_>, text: &str) -> Result<String> {

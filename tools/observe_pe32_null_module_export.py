@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Identical PE32 NULL-module export balances, changed modes and actual worker isolation."""
+"""Identical PE32 NULL-module EXE export lookup reached by FMOD."""
 import argparse,hashlib,json,os,platform,shutil,struct,subprocess
 from pathlib import Path
 from build_pe_fixture import ROOT,rust_tool

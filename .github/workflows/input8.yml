@@ -20,6 +20,20 @@ jobs:
           cargo test --manifest-path pe/Cargo.toml --target x86_64-apple-darwin --locked --offline input
           python tools/observe_input8_lifecycle.py
           python tools/observe_input8_lifecycle.py --host
+      - name: Execute actual filesystem-space accounting reached by DAO
+        run: |
+          cargo test --manifest-path pe/Cargo.toml --target x86_64-apple-darwin --locked --offline disk32
+          python tools/observe_pe32_disk_space.py
+          python tools/observe_pe32_disk_space.py --host
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: disk-space-identical-pe
+          path: |
+            local/pe/disk-space-microtest/disk-space.exe
+            local/pe/disk-space-microtest/disk-space-inputs.json
+            local/pe/disk-space-microtest/disk-space-host.json
+          if-no-files-found: error
       - name: Execute the original network worker's single-event Winsock wait
         run: |
           python tools/observe_pe32_wsa_events.py
@@ -185,6 +199,19 @@ jobs:
         with:
           name: wsa-events-identical-pe
           path: local/pe/wsa-events-microtest
+      - uses: actions/download-artifact@v4
+        with:
+          name: disk-space-identical-pe
+          path: local/pe/disk-space-microtest
+      - name: Compare identical disk-space API and guard witness on native Windows
+        if: success() || failure()
+        run: python tools/observe_pe32_disk_space.py --native
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: disk-space-native-observation
+          path: local/pe/disk-space-microtest/native-disk-space.json
+          if-no-files-found: warn
       - name: Compare identical Winsock event PE on native Windows
         if: success() || failure()
         run: python tools/observe_pe32_wsa_events.py --native

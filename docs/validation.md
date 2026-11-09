@@ -5818,3 +5818,23 @@ ensures unsupported quantization cannot report success. Both pass locally.
 Earlier failed captures and their stricter reverse-copy criterion remain retained;
 they are not counted as complete conversion parity. New native comparison covers
 only admitted operations, not the excluded Windows quantizer.
+
+## DAO now queries actual available disk space
+
+GetDiskFreeSpaceExA now resolves the checked process current directory for NULL
+or the supplied ordinary directory, then gets actual statvfs user-available,
+total and free block counts through SDK C layouts. DWORD-wide guest addresses
+receive checked 64-bit byte values; optional outputs are supported and failure
+leaves them unchanged. Block multiplication is checked; no fixed free-space
+capacity or guessed quota is supplied. This is host filesystem accounting,
+not an observation of Windows disk capacities.
+
+The owned 14-word PE passes actual positive accounting, output guards, optional
+fields, real absent-parent error and stack cleanup on physical M4. Two units
+cover overflow/distinct accounting and actual native SDK execution. All 193 PE
+library tests, remaining targets and Clippy pass. Native finite API/guard
+comparison is pending; disk sizes themselves are deliberately not compared
+across machines. The original game passes its actual NULL-path space query and
+next requests a lowercased settings path. The strict exact-spelling filesystem
+profile stops there rather than fabricating file absence. No original frame or
+audio output is claimed.
