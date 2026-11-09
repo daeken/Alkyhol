@@ -129,7 +129,10 @@ impl Device {
                 && !(draw.vertices.len() / draw.stride as usize).is_multiple_of(3)
             || draw.vertices.len() > 64 * 1024 * 1024
         {
-            return Err("legacy draw extent/state outside bounded triangle profile".into());
+            return Err(format!(
+                "legacy draw extent/state outside bounded triangle profile: initialized={} bytes={} stride={} indexed={}",
+                target.initialized.load(Ordering::Acquire), draw.vertices.len(), draw.stride, draw.indices.is_some()
+            ));
         }
         if let Some(indices) = draw.indices
             && (indices.is_empty()

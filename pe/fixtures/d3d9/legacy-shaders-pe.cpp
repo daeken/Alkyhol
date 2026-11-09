@@ -23,7 +23,7 @@ static const DWORD pixel_code[]={
 #endif
 };
 #ifdef USER_DRAW
-static DWORD words[4500],used;
+static DWORD words[5500],used;
 #else
 static DWORD words[2300],used;
 #endif
@@ -175,7 +175,7 @@ static DWORD compressed_witness(){
 #endif
 #ifdef TRANSFORMS
 static DWORD transform_witness(){
- float identity[16]={1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1};
+ static float identity[16]={1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1};
  const UINT states[]={2,3,16,23,256};
  float observed[18];observed[0]=73;observed[17]=91;
  for(UINT n=0;n<5;n++){
@@ -322,6 +322,21 @@ static DWORD streams_witness(IDirect3DVertexBuffer9* positions){
 }
 #endif
 #ifdef USER_DRAW
+// No guest Clear: every color byte is overwritten before the native comparison.
+static DWORD fresh_target_witness(){
+ IDirect3DTexture9* texture=NULL;IDirect3DSurface9 *surface=NULL,*old=NULL,*copy=NULL;
+ if(g_pd3dDevice->CreateTexture(32,32,1,1,21,0,&texture,NULL)!=S_OK||!texture)return 1;
+ if(texture->GetSurfaceLevel(0,&surface)!=S_OK||!surface||g_pd3dDevice->GetRenderTarget(0,&old)!=S_OK||!old)return 2;
+ if(g_pd3dDevice->SetRenderTarget(0,surface)!=S_OK||g_pd3dDevice->CreateOffscreenPlainSurface(32,32,21,2,&copy,NULL)!=S_OK||!copy)return 3;
+ static float identity[16]={1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1};
+ static float quad[][8]={{-1,1,0,1,1,0,0,1},{1,1,0,1,1,0,0,1},{-1,-1,0,1,1,0,0,1},{1,1,0,1,1,0,0,1},{1,-1,0,1,1,0,0,1},{-1,-1,0,1,1,0,0,1}};
+ if(g_pd3dDevice->SetVertexShaderConstantF(0,identity,4)!=S_OK||g_pd3dDevice->BeginScene()!=S_OK||g_pd3dDevice->DrawPrimitiveUP(4,2,quad,32)!=S_OK||g_pd3dDevice->EndScene()!=S_OK)return 4;
+ if(g_pd3dDevice->GetRenderTargetData(surface,copy)!=S_OK)return 5;
+ D3DLOCKED_RECT lock={};if(copy->LockRect(&lock,NULL,16)!=S_OK||!lock.pBits)return 6;
+ for(UINT y=0;y<32;y++)for(UINT x=0;x<32;x++)put(((DWORD*)((unsigned char*)lock.pBits+y*lock.Pitch))[x]&0xffffff);
+ if(copy->UnlockRect()!=S_OK||g_pd3dDevice->SetRenderTarget(0,old)!=S_OK)return 7;
+ copy->Release();old->Release();surface->Release();texture->Release();return 0;
+}
 // Each UP path owns a complete frame, so an earlier draw cannot hide a bad fetch.
 static HRESULT user_draw(UINT frame,IDirect3DVertexBuffer9* vb){
  const UINT stride=sizeof(vertices[0]);
@@ -349,7 +364,7 @@ static HRESULT user_draw(UINT frame,IDirect3DVertexBuffer9* vb){
 extern "C" DWORD entry(){
  DWORD before=stack();put(0x39534844);
 #ifdef USER_DRAW
-put(22);
+put(23);
 #elif defined(OCCLUSION)
 put(21);
 #elif defined(BIAS)
@@ -444,6 +459,9 @@ put(1);
  #endif
  vs->Release();ps->Release();decl->Release();vb->Release();
  IDirect3DVertexShader9* bound=NULL;ok(g_pd3dDevice->GetVertexShader(&bound)==S_OK&&bound==vs);if(bound)bound->Release();
+ #ifdef USER_DRAW
+ DWORD fresh_stage=fresh_target_witness();ok(fresh_stage==0);if(fresh_stage)return fail(42,fresh_stage);
+ #endif
  #ifdef STREAMS
  DWORD streams_stage=streams_witness(vb);ok(streams_stage==0);if(streams_stage)return fail(34,streams_stage);
  #endif

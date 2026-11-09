@@ -53,9 +53,10 @@ def compare_triangle_pixels(first,second):
  for i,(a,b) in enumerate(zip(first,second)):
   if (a==0xff)!=(b==0xff) or any(abs(((a>>n)&255)-((b>>n)&255))>1 for n in [0,8,16]):raise ValueError(f'native triangle coverage or RGB tolerance 1 failed at {i%300},{i//300}')
 def shader_words(words,textured=False,model2=False,states=False):
- prefix=26 if OCCLUSION else 23 if FRESH_STENCIL else 23 if STREAMS else 23 if FONTS else 23 if STRETCH else 23 if TRANSFORMS else 37 if L8 else 37 if BC3 else 23 if INDEXED else 23 if DEPTH else 37 if TARGETS else 44 if states else 23 if model2 else 36 if textured else 22;checks=12 if TRANSFORMED else 14 if states else 10 if textured else 8
+ prefix=1047 if USER_DRAW else 26 if OCCLUSION else 23 if FRESH_STENCIL else 23 if STREAMS else 23 if FONTS else 23 if STRETCH else 23 if TRANSFORMS else 37 if L8 else 37 if BC3 else 23 if INDEXED else 23 if DEPTH else 37 if TARGETS else 44 if states else 23 if model2 else 36 if textured else 22;checks=12 if TRANSFORMED else 14 if states else 10 if textured else 8
  block=1+checks+1024+1;footer=prefix+(4 if USER_DRAW else 2)*block;length=footer+9
- expected_prefix=[0x39534844,22 if USER_DRAW else 21 if OCCLUSION else 20 if BIAS else 19 if FRESH_STENCIL else 18 if STREAMS else 17 if SHORT4 else 16 if HALF else 15 if FONTS else 14 if STENCIL else 13 if STRETCH else 12 if TRANSFORMS else 11 if TRANSFORMED else 10 if L8 else 9 if PACKED else 8 if BC3 else 7 if INDEXED else 6 if DEPTH else 5 if TARGETS else 4 if states else 3 if model2 else 2 if textured else 1]+[1]*(prefix-2)
+ expected_prefix=[0x39534844,23 if USER_DRAW else 21 if OCCLUSION else 20 if BIAS else 19 if FRESH_STENCIL else 18 if STREAMS else 17 if SHORT4 else 16 if HALF else 15 if FONTS else 14 if STENCIL else 13 if STRETCH else 12 if TRANSFORMS else 11 if TRANSFORMED else 10 if L8 else 9 if PACKED else 8 if BC3 else 7 if INDEXED else 6 if DEPTH else 5 if TARGETS else 4 if states else 3 if model2 else 2 if textured else 1]+[1]*(prefix-2)
+ if USER_DRAW:expected_prefix=[0x39534844,23]+[1]*18+[0xff0000]*1024+[1]*3
  if OCCLUSION:
   if len(words)<26 or not 0<words[22]<=1024 or words[21]!=2*words[22] or words[23]!=0:raise ValueError('actual occlusion samples, overlap or hidden geometry differ')
   expected_prefix=[0x39534844,21]+[1]*19+words[21:24]+[1]*2

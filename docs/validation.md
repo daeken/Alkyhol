@@ -6970,3 +6970,25 @@ The documented binding and caller-storage contracts are from Microsoft's
 and [DrawIndexedPrimitiveUP](https://learn.microsoft.com/en-us/windows/win32/api/d3d9/nf-d3d9-idirect3ddevice9-drawindexedprimitiveup)
 references. Complete original DAO scene/frame and native shaded parity remain
 unverified until the clean original replay passes this boundary.
+
+### Original UP draw progress and fresh color-target storage
+
+Clean 1983dbe passes original DAO query creation and DrawIndexedPrimitiveUP. It
+then reaches a later render-texture pass and stops in the backend's combined
+initialized-content/triangle-extent guard. Given the adapter's bounded nonempty
+packed float4 stride and primitive normalization, uninitialized target storage
+is the inferred remaining condition; that old combined error did not capture
+its individual values. The error now records initialization, byte size, stride
+and indexed state to distinguish any recurrence.
+
+The PE render-texture allocation path now performs a real GPU clear to zero,
+then returns the same shared render/sample allocation. This is an explicit
+Alkyhol initial-storage policy, not a claim that Windows allocations start at
+zero. Backend guards remain intact; no successful draw is fabricated. The
+extended --user-draw witness (version 23) draws a complete fullscreen quad into
+a fresh render texture with no guest Clear, reads every RGB word, then executes
+the prior four independent UP frames. All 5192 words pass physically on M4; 18
+comparator units and Clippy for both crates pass. The fullscreen frame overwrites
+every pixel, so its pending identical-PE native comparison does not depend on
+unspecified native allocation contents. Version-22's four-frame evidence remains
+reproducible at 1983dbe. Original character creation/gameplay is still unverified.

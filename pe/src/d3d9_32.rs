@@ -2793,7 +2793,14 @@ fn create_texture(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16], cube:
             .map(|texture| (texture, None))
     } else if a[4] == 1 {
         gpu.create_render_texture(a[1], a[2])
-            .map(|(texture, target)| (texture, Some(target)))
+            .and_then(|(texture, mut target)| {
+                // D3D9 permits drawing to newly allocated targets without a
+                // guest Clear. Establish real GPU storage, rather than bypass
+                // the backend's initialized-content guards. Initial zero is
+                // this implementation's policy, not a native-byte assertion.
+                gpu.clear(&mut target, 0)?;
+                Ok((texture, Some(target)))
+            })
     } else {
         gpu.create_sampled_texture(a[1], a[2], a[3], format)
             .map(|texture| (texture, None))

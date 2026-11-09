@@ -98,19 +98,21 @@ class LegacyShaderComparatorTests(unittest.TestCase):
                 with self.assertRaises(ValueError):shader_words(changed)
 
     def test_user_draw_requires_all_four_complete_frames_and_binding_assertions(self):
-        words=[0x39534844,22]+[1]*20
+        words=[0x39534844,23]+[1]*18+[0xff0000]*1024+[1]*3
         for frame in range(4):
             pixels=[0xff]*1024;pixels[20*32+22]=0xff0000
             pixels[20*32+10]=0xff0000 if frame==0 else 0xff
             words += [0xfeed0000+frame]+[1]*8+pixels+[1]
-        words += [0xfeedffff]+[1]*7+[4167]
+        words += [0xfeedffff]+[1]*7+[5192]
         with patch.object(observer,'USER_DRAW',True):
             self.assertEqual(shader_words(words),words)
             for frame in range(4):
-                for index,value in [(22+1034*frame+5,0),(22+1034*frame+9+20*32+22,0xff),(22+1034*frame+9+1023,0xdeadbeef)]:
+                for index,value in [(1047+1034*frame+5,0),(1047+1034*frame+9+20*32+22,0xff),(1047+1034*frame+9+1023,0xdeadbeef)]:
                     changed=words.copy();changed[index]=value
                     with self.assertRaises(ValueError):shader_words(changed)
-            for changed in [words[:-1],words+[0],words[:22]+words[22+1034:]]:
+            changed=words.copy();changed[20+1023]=0xff
+            with self.assertRaises(ValueError):shader_words(changed)
+            for changed in [words[:-1],words+[0],words[:1047]+words[1047+1034:]]:
                 with self.assertRaises(ValueError):shader_words(changed)
 
     def test_exact_frames_and_stack_extent(self):
