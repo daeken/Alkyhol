@@ -57,14 +57,14 @@ def compare_triangle_pixels(first,second):
   if (a==0xff)!=(b==0xff) or any(abs(((a>>n)&255)-((b>>n)&255))>1 for n in [0,8,16]):raise ValueError(f'native triangle coverage or RGB tolerance 1 failed at {i%300},{i//300}')
 def shader_words(words,textured=False,model2=False,states=False):
  prefix=23 if VOLUME else 1047 if USER_DRAW else 26 if OCCLUSION else 23 if FRESH_STENCIL else 23 if STREAMS else 23 if FONTS else 23 if STRETCH else 23 if TRANSFORMS else 37 if L8 else 37 if BC3 else 23 if INDEXED else 23 if DEPTH else 37 if TARGETS else 44 if states else 23 if model2 else 36 if textured else 22;checks=12 if TRANSFORMED else 14 if states else 10 if textured else 8
- block=1+checks+1024+1;footer=prefix+(4 if USER_DRAW else 2)*block;length=footer+9
- expected_prefix=[0x39534844,26 if VOLUME else 25 if XYZ_QUERY else 24 if ALPHA_TEST else 23 if USER_DRAW else 21 if OCCLUSION else 20 if BIAS else 19 if FRESH_STENCIL else 18 if STREAMS else 17 if SHORT4 else 16 if HALF else 15 if FONTS else 14 if STENCIL else 13 if STRETCH else 12 if TRANSFORMS else 11 if TRANSFORMED else 10 if L8 else 9 if PACKED else 8 if BC3 else 7 if INDEXED else 6 if DEPTH else 5 if TARGETS else 4 if states else 3 if model2 else 2 if textured else 1]+[1]*(prefix-2)
+ block=1+checks+1024+1;footer=prefix+(4 if USER_DRAW or VOLUME else 2)*block;length=footer+9
+ expected_prefix=[0x39534844,27 if VOLUME else 25 if XYZ_QUERY else 24 if ALPHA_TEST else 23 if USER_DRAW else 21 if OCCLUSION else 20 if BIAS else 19 if FRESH_STENCIL else 18 if STREAMS else 17 if SHORT4 else 16 if HALF else 15 if FONTS else 14 if STENCIL else 13 if STRETCH else 12 if TRANSFORMS else 11 if TRANSFORMED else 10 if L8 else 9 if PACKED else 8 if BC3 else 7 if INDEXED else 6 if DEPTH else 5 if TARGETS else 4 if states else 3 if model2 else 2 if textured else 1]+[1]*(prefix-2)
  if USER_DRAW:expected_prefix=[0x39534844,23]+[1]*18+[0xff0000]*1024+[1]*3
  if OCCLUSION:
   if len(words)<26 or not 0<words[22]<=1024 or words[21]!=2*words[22] or words[23]!=0:raise ValueError('actual occlusion samples, overlap or hidden geometry differ')
   expected_prefix=[0x39534844,25 if XYZ_QUERY else 21]+[1]*19+words[21:24]+[1]*2
  if len(words)!=length or words[:prefix]!=expected_prefix or words[footer:]!=[0xfeedffff]+[1]*7+[length]:raise ValueError('legacy shader COM/metadata/stack witness differs')
- for frame in range(4 if USER_DRAW else 2):
+ for frame in range(4 if USER_DRAW or VOLUME else 2):
   start=prefix+block*frame
   if words[start:start+checks+1]!=[0xfeed0000+frame]+[1]*checks or words[start+block-1]!=1:raise ValueError('legacy shader constant/draw/readback failed')
   pixels=words[start+checks+1:start+block-1]
@@ -88,7 +88,7 @@ def shader_words(words,textured=False,model2=False,states=False):
    at=lambda x,y:pixels[y*32+x]
    if at(0,0)!=0xff or at(10,8)!=0xff00 or at(22,20)!=0xffffff or at(6,8)!=(0xff0000 if frame==0 else 0xff) or at(26,8)!=(0xff00 if frame==0 else 0xff):raise ValueError('POSITIONT RHW/viewport/strip coverage differs')
    continue
-  color=([0xff0000,0xff00][frame] if VOLUME else 0x808080 if L8 else [0x848284,0x3b393b][frame] if BC3 else [0xff,0xff0000][frame] if DEPTH else [0x4040bf,0x1c00ff][frame] if states else [0x808080,0x373737][frame] if textured else 0xa347eb if model2 else 0xff0000)
+  color=([0xff0000,0xff00,0x404040,0xc0c0c0][frame] if VOLUME else 0x808080 if L8 else [0x848284,0x3b393b][frame] if BC3 else [0xff,0xff0000][frame] if DEPTH else [0x4040bf,0x1c00ff][frame] if states else [0x808080,0x373737][frame] if textured else 0xa347eb if model2 else 0xff0000)
   if any(v not in [0xff,color] for v in pixels):raise ValueError('legacy shader color differs')
   if pixels[0]!=0xff or pixels[20*32+22]!=color or pixels[20*32+10]!=(color if frame==0 else 0xff):raise ValueError('legacy shader matrix/coverage did not change as specified')
  return words

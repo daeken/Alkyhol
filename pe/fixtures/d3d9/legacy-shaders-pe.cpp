@@ -26,6 +26,8 @@ static const DWORD pixel_code[]={
 };
 #ifdef USER_DRAW
 static DWORD words[5500],used;
+#elif defined(VOLUME)
+static DWORD words[4500],used;
 #else
 static DWORD words[2300],used;
 #endif
@@ -409,7 +411,7 @@ static HRESULT user_draw(UINT frame,IDirect3DVertexBuffer9* vb){
 extern "C" DWORD entry(){
  DWORD before=stack();put(0x39534844);
 #ifdef VOLUME
-put(26);
+put(27);
 #elif defined(XYZ_QUERY)
 put(25);
 #elif defined(ALPHA_TEST)
@@ -611,7 +613,7 @@ put(1);
  DWORD index_stage=index_witness();ok(index_stage==0);if(index_stage)return fail(18,index_stage);
  #endif
  for(UINT frame=0;frame<
- #ifdef USER_DRAW
+ #if defined(USER_DRAW)||defined(VOLUME)
  4
  #else
  2
@@ -656,10 +658,11 @@ put(1);
   DWORD observed_bias=0;if(g_pd3dDevice->SetRenderState(195,bits)!=S_OK||g_pd3dDevice->GetRenderState(195,&observed_bias)!=S_OK||observed_bias!=bits)return 40;
   #endif
   #ifdef VOLUME
+  if(frame==2&&g_pd3dDevice->SetTexture(0,volume_luminance)!=S_OK)return 52;
   IDirect3DVertexBuffer9* volume_vb=NULL;UINT volume_offset=0,volume_stride=0;
   if(g_pd3dDevice->GetStreamSource(0,&volume_vb,&volume_offset,&volume_stride)!=S_OK||!volume_vb)return 48;
   void* volume_data=NULL;if(volume_vb->Lock(0,0,&volume_data,0)!=S_OK||!volume_data)return 49;
-  for(UINT n=0;n<3;n++)((float*)volume_data)[n*8+6]=frame?.875f:.125f;
+  for(UINT n=0;n<3;n++)((float*)volume_data)[n*8+6]=frame%2?.875f:.125f;
   if(volume_vb->Unlock()!=S_OK)return 50;volume_vb->Release();
   #endif
   #ifdef ALPHA_TEST
@@ -747,7 +750,7 @@ put(1);
  }
  copy->Release();back->Release();
  #ifdef VOLUME
- if(g_pd3dDevice->SetTexture(0,NULL)!=S_OK)return 51;
+ if(g_pd3dDevice->SetTexture(0,NULL)!=S_OK)return 51;volume_luminance->Release();
  #endif
  #ifdef USER_DRAW
  vb->Release();

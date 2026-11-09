@@ -7118,3 +7118,31 @@ CI 42700895627 on 0fd342b passes hosted Metal, software Vulkan, native alpha-tes
 and version-23 fresh-target/UP witnesses; the native job still fails earlier
 separate-stream, StretchRect and POSITIONT differences. These finite results do
 not imply game compatibility.
+
+### Original volume population and L8 extension
+
+Clean 5142eb4 reaches real original CreateVolumeTexture and writes/unlocks all
+eight mips of its color volume. The next observed request is 512x512x4, one mip,
+L8 (50), managed Usage=0. The BGRA-only constructor returns UNAVAILABLE, after
+which original DAO faults on a null pointer at EXE RVA 0x474ab7. No failure is
+reclassified as a passing scene.
+
+Linear L8 volumes now retain one-byte CPU rows/slices and mip lengths; actual
+GPU uploads expand all original voxel values into linear luminance RGB with
+opaque alpha. No sRGB L8 sampling is accepted. The volume PE is extended to
+version 27: 4168 words, original resource/alias checks, raw L8 mip checks and four
+complete BGRA/L8 slice frames pass physically. Both volume GPU tests pass,
+including L8 slices/interpolation and sRGB rejection. All 222 PE units, 21
+observer units and both Clippy checks pass. Native extended-volume and original
+L8 replay remain pending.
+
+CI 42703229672 on cd599a8 passes hosted Metal, software Vulkan and native XYZ
+comparison, including all 2103 words and actual 516/258/0 counters. The overall
+native job retains its prior independent mismatches.
+
+The user now requests larger coherent D3D9 implementation batches. The next
+batch groups resource creation, locks/staging and transfer operations across
+2D/cube/volume resources, with targeted tests and one original DAO replay at
+the batch boundary. Do not resume an individual-call replay loop or create
+unrelated sample/coverage projects. Existing finite profiles still fail
+unsupported operations explicitly.

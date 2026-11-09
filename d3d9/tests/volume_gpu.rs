@@ -147,3 +147,109 @@ fn actual_volume_slices_linear_z_and_mip_clamps_sample_distinct_storage() {
         );
     }
 }
+#[test]
+#[ignore = "requires an actual GPU"]
+fn linear_luminance_volumes_keep_raw_values_and_expand_only_for_gpu_sampling() {
+    use alkyhol_d3d9::SampleFormat;
+    let gpu = Device::new().unwrap();
+    assert!(
+        gpu.create_sampled_volume(2, 2, 2, 1, SampleFormat::Bc1)
+            .is_err()
+    );
+    let mut texture = gpu
+        .create_sampled_volume(2, 2, 2, 1, SampleFormat::Luminance8)
+        .unwrap();
+    assert_eq!(texture.byte_layout(0).unwrap(), (2, 8));
+    gpu.upload_volume(&mut texture, 0, &[64, 64, 64, 64, 192, 192, 192, 192])
+        .unwrap();
+    let constants: Vec<_> = [
+        1f32, 0., 0., 0., 0., 1., 0., 0., 0., 0., 1., 0., 0., 0., 0., 1.,
+    ]
+    .into_iter()
+    .flat_map(f32::to_le_bytes)
+    .collect();
+    let attributes = [
+        VertexAttribute {
+            format: VertexFormat::Float32x4,
+            offset: 0,
+            shader_location: 0,
+        },
+        VertexAttribute {
+            format: VertexFormat::Float32x4,
+            offset: 16,
+            shader_location: 1,
+        },
+    ];
+    let mut target = gpu.create_target(32, 32).unwrap();
+    for (z, linear, value) in [(0.25f32, false, 64u8), (0.75, false, 192), (0.5, true, 128)] {
+        let vertices: Vec<_> = [(0f32, 0.75f32), (0.75, -0.75), (-0.75, -0.75)]
+            .into_iter()
+            .flat_map(|(x, y)| {
+                [x, y, 0.5, 1., 0.5, 0.5, z, 1.]
+                    .into_iter()
+                    .flat_map(f32::to_le_bytes)
+            })
+            .collect();
+        let mut sampler = SamplerState::default();
+        sampler.set(5, if linear { 2 } else { 1 }).unwrap();
+        sampler.set(6, if linear { 2 } else { 1 }).unwrap();
+        gpu.clear(&mut target, 0xff00ffff).unwrap();
+        let draw = |sampler| {
+            gpu.draw_legacy(
+                &mut target,
+                &LegacyDraw {
+                    indices: None,
+                    vertex_spirv: VS,
+                    pixel_spirv: PS,
+                    vertices: &vertices,
+                    stride: 32,
+                    attributes: &attributes,
+                    vertex_constants: &constants,
+                    textures: &[TextureBinding {
+                        slot: 0,
+                        texture: &texture,
+                        sampler,
+                    }],
+                    pixel_constants: &[],
+                },
+            )
+        };
+        let mut draw = draw;
+        draw(sampler).unwrap();
+        let pixels = gpu.readback(&target).unwrap();
+        let mut visible = 0;
+        for p in pixels.as_chunks::<4>().0 {
+            if p == &[255, 255, 0, 255] {
+                continue;
+            }
+            visible += 1;
+            assert_eq!(p[3], 255);
+            for &channel in &p[..3] {
+                assert!(channel.abs_diff(value) <= u8::from(linear));
+            }
+        }
+        assert!(visible > 200);
+        sampler.set(11, 1).unwrap();
+        assert!(
+            gpu.draw_legacy(
+                &mut target,
+                &LegacyDraw {
+                    indices: None,
+                    vertex_spirv: VS,
+                    pixel_spirv: PS,
+                    vertices: &vertices,
+                    stride: 32,
+                    attributes: &attributes,
+                    vertex_constants: &constants,
+                    textures: &[TextureBinding {
+                        slot: 0,
+                        texture: &texture,
+                        sampler
+                    }],
+                    pixel_constants: &[]
+                }
+            )
+            .is_err()
+        );
+    }
+}

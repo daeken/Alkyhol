@@ -1,7 +1,18 @@
 //! Owned BGRA volume mip storage and shared texture/volume COM identities.
 use super::*;
-fn layout(width: u32, height: u32, depth: u32, levels: u32) -> Option<(Vec<TextureLevel>, u32)> {
-    if width == 0 || height == 0 || depth == 0 || width.max(height).max(depth) > 512 {
+fn layout(
+    width: u32,
+    height: u32,
+    depth: u32,
+    levels: u32,
+    format: u32,
+) -> Option<(Vec<TextureLevel>, u32)> {
+    if ![21, 22, 50].contains(&format)
+        || width == 0
+        || height == 0
+        || depth == 0
+        || width.max(height).max(depth) > 512
+    {
         return None;
     }
     let maximum = 32 - width.max(height).max(depth).leading_zeros();
@@ -17,7 +28,7 @@ fn layout(width: u32, height: u32, depth: u32, levels: u32) -> Option<(Vec<Textu
             (height >> level).max(1),
             (depth >> level).max(1),
         );
-        let pitch = w.checked_mul(4)?;
+        let pitch = w.checked_mul(if format == 50 { 1 } else { 4 })?;
         let length = pitch.checked_mul(h)?.checked_mul(d)?;
         let data = total;
         total = total.checked_add(length)?.checked_add(15)? & !15;
@@ -43,16 +54,26 @@ pub(super) fn create(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) ->
         return INVALID;
     }
     write(image, a[8], &[0]);
-    if a[5] != 0 || ![21, 22].contains(&a[6]) || ![0, 1].contains(&a[7]) || a[9] != 0 {
+    if a[5] != 0 || ![21, 22, 50].contains(&a[6]) || ![0, 1].contains(&a[7]) || a[9] != 0 {
         return UNAVAILABLE;
     }
-    let Some((mut levels, total)) = layout(a[1], a[2], a[3], a[4]) else {
+    let Some((mut levels, total)) = layout(a[1], a[2], a[3], a[4], a[6]) else {
         return UNAVAILABLE;
     };
     let Body::Device { gpu, .. } = &s.objects[&a[0]].body else {
         unreachable!()
     };
-    let texture = match gpu.create_volume_texture(a[1], a[2], a[3], a[4]) {
+    let texture = match gpu.create_sampled_volume(
+        a[1],
+        a[2],
+        a[3],
+        a[4],
+        if a[6] == 50 {
+            SampleFormat::Luminance8
+        } else {
+            SampleFormat::Bgra8
+        },
+    ) {
         Ok(v) => v,
         Err(e) => {
             eprintln!("D3D9 volume allocation: {e}");
@@ -99,7 +120,7 @@ fn box_offset(level: &TextureLevel, b: [u32; 6]) -> Option<u32> {
     b[4].checked_mul(level.pitch)?
         .checked_mul(level.height)?
         .checked_add(b[1].checked_mul(level.pitch)?)?
-        .checked_add(b[0].checked_mul(4)?)
+        .checked_add(b[0].checked_mul(level.pitch / level.width)?)
 }
 pub(super) fn operation(
     image: &LoadedImage32<'_>,
@@ -278,7 +299,7 @@ mod tests {
     use super::*;
     #[test]
     fn volume_layout_retains_all_axes_pitches_alignment_and_budget() {
-        let (levels, total) = layout(4, 2, 8, 0).unwrap();
+        let (levels, total) = layout(4, 2, 8, 0, 21).unwrap();
         assert_eq!(levels.len(), 4);
         assert_eq!(total, 320);
         assert_eq!(
@@ -311,8 +332,12 @@ mod tests {
             (512, 512, 512, 1),
             (4, 4, 4, 4),
         ] {
-            assert!(layout(extent.0, extent.1, extent.2, extent.3).is_none());
+            assert!(layout(extent.0, extent.1, extent.2, extent.3, 21).is_none());
         }
+        let (luminance, _) = layout(4, 2, 8, 0, 50).unwrap();
+        assert_eq!((luminance[0].pitch, luminance[0].length), (4, 64));
+        assert_eq!(box_offset(&luminance[0], [1, 1, 3, 2, 2, 4]), Some(21));
+        assert!(layout(4, 2, 8, 0, 100).is_none());
         assert_eq!(signature(BASE + 12 * 256 + 19).unwrap().1, 20);
         assert_eq!(signature(BASE + 13 * 256 + 9).unwrap().1, 16);
     }

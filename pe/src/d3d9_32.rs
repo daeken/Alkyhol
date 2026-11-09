@@ -3288,7 +3288,7 @@ fn dispatch_inner(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32 {
                 };
                 return if gpu.supports_bc() { 0 } else { UNAVAILABLE };
             }
-            if a[4] == 0 && a[5] == 4 && [21, 22].contains(&a[6]) {
+            if a[4] == 0 && a[5] == 4 && [21, 22, 50].contains(&a[6]) {
                 return 0;
             }
             // Linear L8 luminance textures are real storage; render targets,

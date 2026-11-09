@@ -1,5 +1,6 @@
 // Owned MIT volume ABI/storage witness. No original game code or assets.
 static IDirect3DVolumeTexture9* volume_texture;
+static IDirect3DVolumeTexture9* volume_luminance;
 static DWORD volume_value(UINT mip,UINT z){return mip?0xff0000ffu:(z<2?0xffff0000u:0xff00ff00u);}
 static DWORD volume_witness(){
  #define REQUIRE_VOLUME(test,stage) if(!(test))return stage
@@ -34,6 +35,15 @@ static DWORD volume_witness(){
  IDirect3DBaseTexture9* texture=NULL;REQUIRE_VOLUME(g_pd3dDevice->GetTexture(0,&texture)==S_OK&&texture==volume_texture&&texture->GetType()==4,22);texture->Release();
  identity=NULL;REQUIRE_VOLUME(retained->GetContainer(volume_iid,&identity)==S_OK&&identity==volume_texture,23);((IDirect3DVolumeTexture9*)identity)->Release();retained->Release();
  for(UINT axis=1;axis<=3;axis++)REQUIRE_VOLUME(g_pd3dDevice->SetSamplerState(0,axis,3)==S_OK,24);
+ REQUIRE_VOLUME(g_pd3dDevice->CreateVolumeTexture(2,2,2,0,0,50,1,&volume_luminance,NULL)==S_OK&&volume_luminance&&volume_luminance->GetLevelCount()==2,25);
+ for(UINT mip=0;mip<2;mip++){
+  D3DVOLUME_DESC desc={};REQUIRE_VOLUME(volume_luminance->GetLevelDesc(mip,&desc)==S_OK&&desc.Format==50&&desc.Depth==(mip?1u:2u),26);
+  REQUIRE_VOLUME(volume_luminance->LockBox(mip,&lock,NULL,0)==S_OK&&lock.pBits&&lock.RowPitch>=(INT)desc.Width&&lock.SlicePitch>=lock.RowPitch*(INT)desc.Height,27);
+  for(UINT z=0;z<desc.Depth;z++)for(UINT y=0;y<desc.Height;y++)for(UINT x=0;x<desc.Width;x++)((unsigned char*)lock.pBits)[z*lock.SlicePitch+y*lock.RowPitch+x]=(unsigned char)(mip?128:z?192:64);
+  REQUIRE_VOLUME(volume_luminance->UnlockBox(mip)==S_OK&&volume_luminance->LockBox(mip,&lock,NULL,16)==S_OK,28);
+  for(UINT z=0;z<desc.Depth;z++)for(UINT y=0;y<desc.Height;y++)for(UINT x=0;x<desc.Width;x++)REQUIRE_VOLUME(((unsigned char*)lock.pBits)[z*lock.SlicePitch+y*lock.RowPitch+x]==(mip?128:z?192:64),29);
+  REQUIRE_VOLUME(volume_luminance->UnlockBox(mip)==S_OK,30);
+ }
  #undef REQUIRE_VOLUME
  return 0;
 }

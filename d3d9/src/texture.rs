@@ -179,7 +179,16 @@ impl SampledTexture {
     pub fn byte_layout(&self, level: u32) -> Result<(u32, u32)> {
         let (width, height) = self.dimensions(level)?;
         let (pitch, rows) = self.format.block_layout(width, height)?;
-        Ok((pitch, pitch * rows))
+        let depth = if self.volume {
+            (self.depth >> level).max(1)
+        } else {
+            1
+        };
+        let bytes = pitch
+            .checked_mul(rows)
+            .and_then(|n| n.checked_mul(depth))
+            .ok_or("texture mip length overflow")?;
+        Ok((pitch, bytes))
     }
     pub fn levels(&self) -> u32 {
         self.levels
@@ -239,6 +248,20 @@ impl Device {
         depth: u32,
         levels: u32,
     ) -> Result<SampledTexture> {
+        self.create_sampled_volume(width, height, depth, levels, SampleFormat::Bgra8)
+    }
+    /// Real BGRA8 or linear L8 volume storage; no compressed-volume fallback.
+    pub fn create_sampled_volume(
+        &self,
+        width: u32,
+        height: u32,
+        depth: u32,
+        levels: u32,
+        format: SampleFormat,
+    ) -> Result<SampledTexture> {
+        if !matches!(format, SampleFormat::Bgra8 | SampleFormat::Luminance8) {
+            return Err("unsupported volume format".into());
+        }
         let limit = self.device.limits().max_texture_dimension_3d.min(512);
         extent(width, height, limit)?;
         if depth == 0 || depth > limit {
@@ -278,7 +301,7 @@ impl Device {
         self.finish()?;
         Ok(SampledTexture {
             texture,
-            format: SampleFormat::Bgra8,
+            format,
             width,
             height,
             depth,
@@ -298,10 +321,13 @@ impl Device {
         bytes: &[u8],
     ) -> Result<()> {
         let (width, height, depth) = texture.volume_dimensions(level)?;
-        let pitch = width * 4;
+        let (pitch, rows) = texture.format.block_layout(width, height)?;
         if bytes.len() as u64 != u64::from(pitch) * u64::from(height) * u64::from(depth) {
             return Err("volume upload byte extent differs".into());
         }
+        let expanded = expand_linear(texture.format, bytes);
+        let bytes = expanded.as_deref().unwrap_or(bytes);
+        let pitch = if expanded.is_some() { width * 4 } else { pitch };
         self.scope();
         self.queue.write_texture(
             wgpu::TexelCopyTextureInfo {
@@ -314,7 +340,7 @@ impl Device {
             wgpu::TexelCopyBufferLayout {
                 offset: 0,
                 bytes_per_row: Some(pitch),
-                rows_per_image: Some(height),
+                rows_per_image: Some(rows),
             },
             wgpu::Extent3d {
                 width,
