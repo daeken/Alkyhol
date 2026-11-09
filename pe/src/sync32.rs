@@ -1,5 +1,5 @@
-//! Recursive critical sections for the single admitted guest thread. The CPU
-//! lease excludes concurrent entries; guest thread creation remains unsupported.
+//! Recursive critical sections with actual guest-thread ownership and waits.
+//! Metadata transitions run under the CPU lease; contended waits release it.
 //! Track real ownership/depth rather than treating synchronization as a no-op.
 use super::{LoadedImage32, unsupported};
 use std::ptr;
@@ -90,24 +90,38 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
         sections.insert(address, section);
         return 1;
     }
-    let section = sections
-        .get_mut(&address)
-        .unwrap_or_else(|| unsupported("unknown/uninitialized PE32 critical section"));
+    drop(sections);
     let thread = alkyhol::ffi::GetCurrentThreadId();
-    match id {
-        34 | 37 => section.enter(thread).unwrap_or_else(|e| unsupported(&e)),
-        35 => section.leave(thread).unwrap_or_else(|e| unsupported(&e)),
-        36 => {
-            if section.depth != 0 {
-                unsupported("deleting an owned PE32 critical section");
+    loop {
+        let mut sections = image.cpu.critical_sections.borrow_mut();
+        let section = sections
+            .get_mut(&address)
+            .unwrap_or_else(|| unsupported("unknown/uninitialized PE32 critical section"));
+        if matches!(id, 34 | 37) && section.depth != 0 && section.owner != thread {
+            if id == 37 {
+                return 0;
             }
-            sections.remove(&address);
-            return 0;
+            drop(sections);
+            super::thread32::without_cpu(image, || {
+                std::thread::sleep(std::time::Duration::from_millis(1))
+            });
+            continue;
         }
-        _ => unreachable!(),
+        match id {
+            34 | 37 => section.enter(thread).unwrap_or_else(|e| unsupported(&e)),
+            35 => section.leave(thread).unwrap_or_else(|e| unsupported(&e)),
+            36 => {
+                if section.depth != 0 {
+                    unsupported("deleting an owned PE32 critical section");
+                }
+                sections.remove(&address);
+                return 0;
+            }
+            _ => unreachable!(),
+        }
+        section.write(address);
+        return 1;
     }
-    section.write(address);
-    1
 }
 fn compare_exchange(value: &std::sync::atomic::AtomicU32, exchange: u32, comparand: u32) -> u32 {
     match value.compare_exchange(

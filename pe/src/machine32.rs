@@ -102,6 +102,28 @@ pub(super) fn information(image: &LoadedImage32<'_>, output: u32) -> u32 {
     }
     0 // void: the complete backed 36-byte structure was written.
 }
+// The explicit host-machine profile numbers the actually available processors
+// 0..N. No guest affinity restrictions have been installed in this profile.
+pub(super) fn affinity(image: &LoadedImage32<'_>, args: &[u32; 8]) -> u32 {
+    if args[0] != u32::MAX {
+        alkyhol::ffi::SetLastError(6);
+        return 0;
+    }
+    let machine = image.cpu.machine.as_ref().unwrap_or_else(|| {
+        unsupported("affinity query requires the explicit host-machine profile")
+    });
+    for &out in &args[1..3] {
+        if !out.is_multiple_of(4) || !image.permits(out as usize, 4, true) {
+            unsupported("affinity mask outside checked writable guest storage");
+        }
+    }
+    unsafe {
+        (args[1] as *mut u32).write(machine.words[4]);
+        (args[2] as *mut u32).write(machine.words[4]);
+    }
+    1
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -153,26 +175,4 @@ mod tests {
         }
         assert!(Machine::observed(false, 4096, 10, [0, 0, 0, 0], 0x206c0).is_err());
     }
-}
-
-// The explicit host-machine profile numbers the actually available processors
-// 0..N. No guest affinity restrictions have been installed in this profile.
-pub(super) fn affinity(image: &LoadedImage32<'_>, args: &[u32; 8]) -> u32 {
-    if args[0] != u32::MAX {
-        alkyhol::ffi::SetLastError(6);
-        return 0;
-    }
-    let machine = image.cpu.machine.as_ref().unwrap_or_else(|| {
-        unsupported("affinity query requires the explicit host-machine profile")
-    });
-    for &out in &args[1..3] {
-        if !out.is_multiple_of(4) || !image.permits(out as usize, 4, true) {
-            unsupported("affinity mask outside checked writable guest storage");
-        }
-    }
-    unsafe {
-        (args[1] as *mut u32).write(machine.words[4]);
-        (args[2] as *mut u32).write(machine.words[4]);
-    }
-    1
 }

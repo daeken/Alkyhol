@@ -644,6 +644,7 @@ impl<'a> ProcessImage32<'a> {
                 size: mappings[index].image.len,
                 exports: mappings[index].exports.clone(),
                 thread_notifications: true,
+                entry: mappings[index].entry,
             })
             .collect();
         let mut result = Self {
@@ -672,7 +673,7 @@ impl<'a> ProcessImage32<'a> {
         // Reserved is opaque; expose only a valid owned non-NULL storage token,
         // not an invented Windows startup structure. Dereferencing is unsupported.
         let reserved = if non_null {
-            image.cpu.teb.base as u32
+            image.cpu.teb().base as u32
         } else {
             0
         };
@@ -841,6 +842,7 @@ mod tests {
                 exports: None,
                 origin: None,
                 thread_notifications: true,
+                entry: 0,
             },
             Module32 {
                 name: "leaf.dll".into(),
@@ -849,6 +851,7 @@ mod tests {
                 exports: Some(table.clone()),
                 origin: None,
                 thread_notifications: true,
+                entry: 0,
             },
         ];
         for phase in [Phase32::Preparing, Phase32::Running, Phase32::Detaching] {

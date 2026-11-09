@@ -5186,3 +5186,13 @@ families passed physically; their native comparison is pending. All 163 PE Rust
 library tests and PE Clippy passed after the software/process changes, and the
 root kernel integration tests passed. Original DAO now executes its thread-name
 handler and reaches CreateThread; threading remains the next integrated blocker.
+
+Physical M4 now passes the owned original-x86 worker family, including static and
+dynamic TLS/FLS isolation, real contention, callback destruction, suspended starts,
+non-returning ExitThread and joins. Original DAO workers execute their DLL startup
+and main startup reaches its window class and LoadBitmapW resource request. No
+DAO HWND/window or D3D9 initialization is claimed. Native worker comparison is
+pending. Software exception record/context equality remains unverified after a
+native combined-field mismatch; raw per-field capture was expanded rather than
+weakening a frozen fixture. Host worker scheduling serializes CPU entry and yields
+at APIs; it does not demonstrate unrestricted preemptive Windows threading.

@@ -71,6 +71,8 @@ mod shell_folder32;
 mod startup32;
 #[path = "sync32.rs"]
 mod sync32;
+#[path = "thread32.rs"]
+mod thread32;
 #[path = "time32.rs"]
 mod time32;
 #[path = "ui32.rs"]
@@ -101,7 +103,7 @@ unsafe extern "C" {
 }
 const PAGE: usize = 4096;
 const STACK: usize = 1024 * 1024;
-const APIS: [(&str, u16); 181] = [
+const APIS: [(&str, u16); 187] = [
     ("GetLastError", 0),
     ("SetLastError", 4),
     ("GetStdHandle", 4),
@@ -283,6 +285,12 @@ const APIS: [(&str, u16); 181] = [
     ("GetCurrentProcess", 0),
     ("GetProcessAffinityMask", 12),
     ("GetProcessId", 4),
+    ("CreateThread", 24),
+    ("GetExitCodeThread", 8),
+    ("GetThreadId", 4),
+    ("ResumeThread", 4),
+    ("ExitThread", 4),
+    ("SetThreadPriority", 8),
 ];
 // The first 120 API slots retain their original offsets. The second bank
 // begins after both x87 bodies, leaving their machine code and failure gates
@@ -381,9 +389,16 @@ struct TebLease {
 }
 impl TebLease {
     fn install(base: u32) -> Result<Self> {
-        let guard = FS_SLOT
-            .try_lock()
-            .map_err(|_| "another PE32 entry owns the FS slot")?;
+        Self::acquire(base, false)
+    }
+    fn acquire(base: u32, wait: bool) -> Result<Self> {
+        let guard = if wait {
+            FS_SLOT.lock().map_err(|_| "PE32 CPU lease was poisoned")?
+        } else {
+            FS_SLOT
+                .try_lock()
+                .map_err(|_| "another PE32 entry owns the FS slot")?
+        };
         let mut descriptor = 0u64;
         let count = unsafe { i386_get_ldt(514, &mut descriptor, 1) };
         if !(0..=8192).contains(&count) || (count > 514 && descriptor != 0) {
@@ -526,6 +541,8 @@ fn unsupported(reason: &str) -> ! {
 struct TlsBlock {
     mapping: LowMapping,
     size: usize,
+    initial: Vec<u8>,
+    alignment: usize,
 }
 // Linked images on one guest thread share one stack and FS/last-error state.
 // An Rc keeps them thread-bound; the exclusive FS lease still guards CPU entry.
@@ -547,6 +564,7 @@ struct Module32 {
     // Process images reject DLL static TLS before mapping. Future guest thread
     // dispatch must consult this per-module policy; process notifications remain.
     thread_notifications: bool,
+    entry: u32,
 }
 struct Cpu32 {
     stack: LowMapping,
@@ -590,8 +608,21 @@ struct Cpu32 {
     events: RefCell<event32::State>,
     ui: RefCell<ui32::State>,
     utc_timezone: bool,
+    threads: RefCell<thread32::State>,
 }
 impl Cpu32 {
+    fn stack(&self) -> &LowMapping {
+        thread32::stack(self).unwrap_or(&self.stack)
+    }
+    fn teb(&self) -> &LowMapping {
+        thread32::teb(self).unwrap_or(&self.teb)
+    }
+    fn callback_stack(&self) -> &Cell<u32> {
+        thread32::callback_stack(self).unwrap_or(&self.callback_stack)
+    }
+    fn callback_depth(&self) -> &Cell<u32> {
+        thread32::callback_depth(self).unwrap_or(&self.callback_depth)
+    }
     fn clear_heap(&self) {
         if self.fls.borrow().pending_callbacks() {
             unsupported("PE32 thread-exit FLS callbacks are unsupported; pending values remain");
@@ -685,11 +716,13 @@ impl Cpu32 {
             events: RefCell::new(Default::default()),
             ui: RefCell::new(Default::default()),
             utc_timezone: false,
+            threads: RefCell::new(Default::default()),
         })
     }
 }
 impl Drop for Cpu32 {
     fn drop(&mut self) {
+        self.threads.borrow_mut().shutdown();
         self.close_files();
         self.clear_heap();
     }
@@ -921,13 +954,15 @@ impl<'a> LoadedImage32<'a> {
             cpu.service_gates.set(gates.base as u32);
         }
         let teb = &cpu.teb;
-        let tls = tls_info
+        let mut tls = tls_info
             .as_ref()
             .map(|info| -> Result<TlsBlock> {
                 let size = (info.total_size + PAGE - 1) & !(PAGE - 1);
                 Ok(TlsBlock {
                     mapping: cpu.mapping(size, info.alignment.max(PAGE), 0)?,
                     size: info.total_size,
+                    initial: Vec::new(),
+                    alignment: info.alignment.max(PAGE),
                 })
             })
             .transpose()?;
@@ -1045,7 +1080,7 @@ impl<'a> LoadedImage32<'a> {
                 )?;
                 target.write_unaligned(value);
             }
-            if let (Some(info), Some(block)) = (&tls_info, &tls) {
+            if let (Some(info), Some(block)) = (&tls_info, &mut tls) {
                 // Copy the mapped template after relocations and import binding,
                 // including any pointer initializer's adjusted image address.
                 image
@@ -1058,6 +1093,7 @@ impl<'a> LoadedImage32<'a> {
                     block.mapping.base,
                     info.template_size,
                 );
+                block.initial = std::slice::from_raw_parts(block.mapping.base, block.size).to_vec();
                 teb.base
                     .add(0x2c)
                     .cast::<u32>()
@@ -1151,6 +1187,13 @@ impl<'a> LoadedImage32<'a> {
         let Some(end) = address.checked_add(len) else {
             return false;
         };
+        if self.cpu.threads.borrow().permits(address, len) {
+            return true;
+        }
+        let primary = self.cpu.stack.base as usize + PAGE;
+        if address >= primary && end <= primary + STACK {
+            return true;
+        }
         if startup32::permits(&self.cpu, address, len, write) {
             return true;
         }
@@ -1172,11 +1215,11 @@ impl<'a> LoadedImage32<'a> {
                 return true;
             }
         }
-        let teb = self.cpu.teb.base as usize;
-        if address >= teb && end <= teb + self.cpu.teb.len {
+        let teb = self.cpu.teb().base as usize;
+        if address >= teb && end <= teb + self.cpu.teb().len {
             return true;
         }
-        let first = self.cpu.stack.base as usize + PAGE;
+        let first = self.cpu.stack().base as usize + PAGE;
         if address >= first && end <= first + STACK {
             return true;
         }
@@ -1344,7 +1387,7 @@ impl<'a> LoadedImage32<'a> {
             return Err("PE32 synchronous callbacks support at most sixteen DWORDs".into());
         }
         let frame_bytes = (args.len() + 1) * 4;
-        if self.cpu.callback_depth.get() >= 16 {
+        if self.cpu.callback_depth().get() >= 16 {
             return Err("PE32 callback nesting limit".into());
         }
         if !self.regions.iter().any(|&(first, last, rights)| {
@@ -1352,13 +1395,13 @@ impl<'a> LoadedImage32<'a> {
         }) {
             return Err("PE32 callback outside executable guest storage".into());
         }
-        let top = self.cpu.callback_stack.get();
-        let limit = self.cpu.stack.base as usize + PAGE + STACK;
+        let top = self.cpu.callback_stack().get();
+        let limit = self.cpu.stack().base as usize + PAGE + STACK;
         let frame = top
             .checked_sub(32 + frame_bytes as u32)
             .and_then(|v| (v & !15).checked_sub(4))
             .filter(|&v| {
-                v >= self.cpu.stack.base as u32 + PAGE as u32 + 64
+                v >= self.cpu.stack().base as u32 + PAGE as u32 + 64
                     && (v as usize) + frame_bytes <= limit
                     && top as usize <= limit
             })
@@ -1367,8 +1410,10 @@ impl<'a> LoadedImage32<'a> {
             return Err("PE32 callback frame outside guest stack".into());
         }
         let before = segment_state();
-        if before[3] != 0 {
-            return Err("PE32 callback entered with unexpected host FS".into());
+        if !thread32::host_fs_valid(before[3]) {
+            return Err(format!(
+                "PE32 callback entered with unexpected host FS: {before:x?}"
+            ));
         }
         unsafe {
             (frame as *mut u32).write(self.gates.base as u32);
@@ -1376,25 +1421,25 @@ impl<'a> LoadedImage32<'a> {
                 ((frame + 4 + i as u32 * 4) as *mut u32).write(value);
             }
             self.cpu
-                .teb
+                .teb()
                 .base
                 .add(0x34)
                 .cast::<u32>()
                 .write_unaligned(alkyhol::ffi::GetLastError());
         }
         self.cpu
-            .callback_depth
-            .set(self.cpu.callback_depth.get() + 1);
+            .callback_depth()
+            .set(self.cpu.callback_depth().get() + 1);
         let result =
             unsafe { alkyhol_enter_pe32(entry, frame, u32::from(self.code), u32::from(self.data)) };
         self.cpu
-            .callback_depth
-            .set(self.cpu.callback_depth.get() - 1);
+            .callback_depth()
+            .set(self.cpu.callback_depth().get() - 1);
         if segment_state() != before {
             return Err("PE32 callback did not restore selectors".into());
         }
         alkyhol::ffi::SetLastError(unsafe {
-            self.cpu.teb.base.add(0x34).cast::<u32>().read_unaligned()
+            self.cpu.teb().base.add(0x34).cast::<u32>().read_unaligned()
         });
         let observed = (result >> 32) as u32;
         if observed == 0 && self.cpu.exit.get().is_some() {
@@ -1447,12 +1492,12 @@ impl<'a> LoadedImage32<'a> {
             } else {
                 None
             };
-            let _teb_lease = TebLease::install(self.cpu.teb.base as u32)?;
+            let _teb_lease = thread32::MainLease::install(self.cpu.teb().base as u32)?;
             slot.set(ptr::from_ref(self).cast());
             let _guard = ActiveGuard;
-            let sp = self.cpu.stack.base as u32 + offset as u32;
+            let sp = self.cpu.stack().base as u32 + offset as u32;
             unsafe {
-                let frame = self.cpu.stack.base.add(offset).cast::<u32>();
+                let frame = self.cpu.stack().base.add(offset).cast::<u32>();
                 frame.write_unaligned(self.gates.base as u32);
                 ptr::copy_nonoverlapping(args.as_ptr(), frame.add(1), args.len());
             }
@@ -1475,14 +1520,15 @@ impl<'a> LoadedImage32<'a> {
             let result = unsafe {
                 alkyhol_enter_pe32(entry, sp, u32::from(self.code), u32::from(self.data))
             };
+            self.cpu.threads.borrow().require_completed();
             if segment_state() != before {
                 unsupported("PE32 host segment selectors were not restored");
             }
             alkyhol::ffi::SetLastError(unsafe {
-                self.cpu.teb.base.add(0x34).cast::<u32>().read_unaligned()
+                self.cpu.teb().base.add(0x34).cast::<u32>().read_unaligned()
             });
             let returned_sp = (result >> 32) as u32;
-            let expected_sp = self.cpu.stack.base as u32 + expected_offset as u32;
+            let expected_sp = self.cpu.stack().base as u32 + expected_offset as u32;
             if returned_sp == 0 {
                 return match self.cpu.exit.get() {
                     Some(status) if status == result as u32 && !self.dll => Ok(status),
@@ -1698,12 +1744,17 @@ extern "C" fn dispatch(id: u32, arguments: *const u32) -> u64 {
         })
     };
     let before = exit_state();
+    let thread_before = thread32::exit_state();
     let result = dispatch_inner(id, arguments);
+    thread32::yield_cpu();
     // ExitProcess and CRT termination escapes are non-returning guest operations.
     // The assembly gate uses
     // a separate control bit, never a forged stdcall return-stack observation.
     u64::from(result)
-        | if id == EXIT_API || (before.is_none() && exit_state().is_some()) {
+        | if id == EXIT_API
+            || (before.is_none() && exit_state().is_some())
+            || (thread_before.is_none() && thread32::exit_state().is_some())
+        {
             1u64 << 32
         } else {
             0
@@ -1719,7 +1770,7 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
         };
         // Import calls observe direct guest FS writes. Reflect all host API
         // outcomes back into the same guest field, including early returns.
-        let error = unsafe { image.cpu.teb.base.add(0x34).cast::<u32>() };
+        let error = unsafe { image.cpu.teb().base.add(0x34).cast::<u32>() };
         alkyhol::ffi::SetLastError(unsafe { error.read_unaligned() });
         let _teb_error = TebError(error);
         struct Suspended<'a>(&'a Cell<u32>, u32);
@@ -1736,12 +1787,12 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
         {
             unsupported("argument stack outside checked storage");
         }
-        let saved_stack = image.cpu.callback_stack.replace(
+        let saved_stack = image.cpu.callback_stack().replace(
             (arguments as u32)
                 .checked_sub(4)
                 .unwrap_or_else(|| unsupported("missing guest return address")),
         );
-        let _suspended = Suspended(&image.cpu.callback_stack, saved_stack);
+        let _suspended = Suspended(image.cpu.callback_stack(), saved_stack);
         // Snapshot values rather than borrowing guest argument memory across a
         // host call: a valid output pointer may alias those stack words.
         let mut words = [0u32; 16];
@@ -1909,6 +1960,7 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
             109 => mutex32::create(image, args),
             111 => directory32::set(image, args[0]),
             112 => directory32::get(image, args),
+            113 if image.cpu.threads.borrow().contains(args[0]) => thread32::wait(image, args),
             113 if image.cpu.events.borrow().contains(args[0]) => {
                 event32::dispatch(image, id, args)
             }
@@ -1930,7 +1982,9 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
             133 => directory32::get_ansi(image, args),
             134 | 135 => bulk32::attributes(image, args[0], id == 135),
             136 => {
-                if image.cpu.events.borrow().contains(args[0]) {
+                if image.cpu.threads.borrow().contains(args[0]) {
+                    thread32::wait(image, args)
+                } else if image.cpu.events.borrow().contains(args[0]) {
                     event32::dispatch(image, 113, args)
                 } else {
                     mutex32::ownership(image, args, true)
@@ -1944,7 +1998,7 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
                 if args[0] > 60000 {
                     unsupported("Sleep exceeds the bounded non-alertable host wait profile");
                 }
-                alkyhol::ffi::Sleep(args[0]);
+                thread32::without_cpu(image, || alkyhol::ffi::Sleep(args[0]));
                 0
             }
             143 | 144 => fileio32::seek(image, args, id == 144),
@@ -1963,6 +2017,15 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
                     0
                 }
             }
+            181 => thread32::create(image, args),
+            182 => thread32::query(image, args, 0),
+            183 => thread32::query(image, args, 1),
+            184 => thread32::query(image, args, 2),
+            185 => thread32::exit_thread(args[0]),
+            186 => {
+                alkyhol::ffi::SetLastError(50);
+                0
+            } // Native priority mapping is not implemented.
             _ => unreachable!(),
         }
     })
@@ -2118,6 +2181,7 @@ mod tests {
                 events: RefCell::new(Default::default()),
                 ui: RefCell::new(Default::default()),
                 utc_timezone: false,
+                threads: RefCell::new(Default::default()),
             }),
             tls: None,
             tls_entered: Cell::new(false),
@@ -2278,6 +2342,8 @@ mod tests {
                 len: PAGE,
             },
             size: 28,
+            initial: vec![0; 28],
+            alignment: PAGE,
         });
         assert!(image.permits(0x700000, 28, false));
         assert!(image.permits(0x700018, 4, true));

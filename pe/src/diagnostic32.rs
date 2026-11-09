@@ -98,7 +98,7 @@ pub(super) fn fault(image: &LoadedImage32<'_>, exception: &[u8; 16], registers: 
             .is_some()
     {
         let sp = registers[7];
-        let first = image.cpu.stack.base as u64 + PAGE as u64;
+        let first = image.cpu.stack().base as u64 + PAGE as u64;
         if sp >= first
             && sp
                 .checked_add(4)

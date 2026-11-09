@@ -85,6 +85,7 @@ impl State {
         }
         Ok(1)
     }
+    #[cfg(test)]
     fn poll(&self, h: u32) -> Result<u32> {
         if !self.contains(h) {
             return Err("event wait requires an owned live event".into());
@@ -131,18 +132,15 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
         alkyhol::ffi::SetLastError(0);
         h
     } else if id == 113 {
-        if args[1] != 0 || args[2] != 0 {
-            if image.cpu.events.borrow().semaphores.contains(&args[0]) {
-                unsupported("semaphore waits require zero timeout and alertable FALSE");
-            }
-            unsupported("event waits require zero timeout and alertable FALSE");
+        if args[2] != 0 {
+            unsupported("alertable event/semaphore waits require APC delivery");
         }
-        image
-            .cpu
-            .events
-            .borrow()
-            .poll(args[0])
-            .unwrap_or_else(|e| unsupported(&e))
+        // No event registry borrow crosses the released CPU lease.
+        if !image.cpu.events.borrow().contains(args[0]) {
+            unsupported("wait requires an owned event/semaphore");
+        }
+        let h = args[0] as usize;
+        super::thread32::without_cpu(image, || alkyhol::ffi::WaitForSingleObject(h, args[1]))
     } else {
         image
             .cpu

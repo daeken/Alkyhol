@@ -485,6 +485,9 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
             base
         }
         9 => {
+            if image.cpu.threads.borrow_mut().close(args[0]) {
+                return 1;
+            }
             if image
                 .cpu
                 .events
@@ -515,6 +518,7 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
         11 => create_file(image, args, false),
         12 | 13 => convert(image, args, id == 13),
         14 => {
+            image.cpu.threads.borrow().require_completed();
             match image.cpu.phase.get() {
                 super::Phase32::Isolated if !image.dll => {
                     image.cpu.close_files();

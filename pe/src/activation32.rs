@@ -100,9 +100,14 @@ pub(super) struct State {
     templates: BTreeMap<u32, Result<Option<Template>>>,
     scopes: BTreeMap<u32, Result<u32>>,
     current: Result<u32>,
-    stack: Vec<(u32, Result<u32>, u32)>,
+    threads: BTreeMap<u32, ThreadState>,
     next_cookie: u32,
     bounds: Option<super::machine32::Bounds>,
+}
+struct ThreadState {
+    current: Result<u32>,
+    stack: Vec<(u32, Result<u32>, u32)>,
+    inherited: Option<u32>,
 }
 impl State {
     pub(super) fn new(
@@ -118,7 +123,7 @@ impl State {
             templates: BTreeMap::new(),
             scopes: BTreeMap::new(),
             current: Ok(0),
-            stack: Vec::new(),
+            threads: BTreeMap::new(),
             next_cookie: 1,
             bounds,
         };
@@ -146,6 +151,46 @@ impl State {
         }
         out.current = tokens[0].clone();
         Ok(out)
+    }
+    fn thread(&mut self) -> &mut ThreadState {
+        let initial = self.current.clone();
+        self.threads
+            .entry(alkyhol::ffi::GetCurrentThreadId())
+            .or_insert_with(|| ThreadState {
+                current: initial,
+                stack: Vec::new(),
+                inherited: None,
+            })
+    }
+    pub(super) fn inherit_thread(&mut self, id: u32) -> Result<()> {
+        if self.threads.contains_key(&id) {
+            return Err("activation thread identity already registered".into());
+        }
+        let current = self.thread().current.clone();
+        if let Ok(h) = current {
+            self.add_ref(h)?;
+        }
+        self.threads.insert(
+            id,
+            ThreadState {
+                current: current.clone(),
+                stack: Vec::new(),
+                inherited: current.ok(),
+            },
+        );
+        Ok(())
+    }
+    pub(super) fn exit_thread(&mut self) -> Result<()> {
+        let id = alkyhol::ffi::GetCurrentThreadId();
+        if let Some(s) = self.threads.remove(&id) {
+            if !s.stack.is_empty() {
+                return Err("worker exit with unbalanced activation frames".into());
+            }
+            if let Some(h) = s.inherited {
+                self.release(h)?;
+            }
+        }
+        Ok(())
     }
     fn create(&mut self, template: Template) -> Result<u32> {
         if !template.active {
@@ -236,9 +281,9 @@ pub(super) struct Scope {
 pub(super) fn enter_scope(cpu: &Rc<Cpu32>, base: u32) -> Option<Scope> {
     let mut optional = cpu.bound_activation.borrow_mut();
     let state = optional.as_mut()?;
-    let previous = state.current.clone();
-    let depth = state.stack.len();
-    state.current = state
+    let previous = state.thread().current.clone();
+    let depth = state.thread().stack.len();
+    state.thread().current = state
         .scopes
         .get(&base)
         .cloned()
@@ -253,10 +298,10 @@ impl Drop for Scope {
     fn drop(&mut self) {
         let mut state = self.cpu.bound_activation.borrow_mut();
         let state = state.as_mut().expect("owned activation state");
-        if state.stack.len() != self.depth {
+        if state.thread().stack.len() != self.depth {
             unsupported("unbalanced explicit activation across DLL initializer");
         }
-        state.current = self.previous.clone();
+        state.thread().current = self.previous.clone();
     }
 }
 fn checked(image: &LoadedImage32<'_>, address: u32, length: usize, write: bool) {
@@ -284,7 +329,7 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
     let result = (|| -> Result<u32> {
         match id {
             59 => {
-                let current = state.current.clone()?;
+                let current = state.thread().current.clone()?;
                 state.add_ref(current)?;
                 unsafe {
                     (args[0] as usize as *mut u32).write(current);
@@ -309,7 +354,7 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
                 state.create(t)
             }
             62 => {
-                if state.stack.len() >= 64 {
+                if state.thread().stack.len() >= 64 {
                     return Err("activation stack depth budget exceeded".into());
                 }
                 if args[0] == 0 {
@@ -320,8 +365,9 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
                     .checked_add(1)
                     .ok_or("activation cookie budget exhausted")?;
                 state.add_ref(args[0])?;
-                state.stack.push((cookie, state.current.clone(), args[0]));
-                state.current = Ok(args[0]);
+                let previous = state.thread().current.clone();
+                state.thread().stack.push((cookie, previous, args[0]));
+                state.thread().current = Ok(args[0]);
                 state.next_cookie = next;
                 unsafe {
                     (args[1] as usize as *mut u32).write(cookie);
@@ -333,6 +379,7 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
                     return Err("activation deactivation flags are unsupported".into());
                 }
                 let (cookie, previous, handle) = state
+                    .thread()
                     .stack
                     .last()
                     .ok_or("activation cookie stack is empty")?
@@ -341,8 +388,8 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
                     return Err("activation cookie is stale or not top of stack".into());
                 }
                 state.release(handle)?;
-                state.stack.pop();
-                state.current = previous;
+                state.thread().stack.pop();
+                state.thread().current = previous;
                 Ok(1)
             }
             _ => unreachable!(),
@@ -375,7 +422,11 @@ pub(super) fn find(image: &LoadedImage32<'_>, args: &[u32; 8]) -> u32 {
         );
     }
     if let Some(state) = image.cpu.bound_activation.borrow_mut().as_mut() {
-        let current = state.current.clone().unwrap_or_else(|e| unsupported(&e));
+        let current = state
+            .thread()
+            .current
+            .clone()
+            .unwrap_or_else(|e| unsupported(&e));
         if current != 0 {
             let name = String::from_utf16(&units[..units.len() - 1])
                 .unwrap_or_else(|_| unsupported("invalid activation key UTF-16"));

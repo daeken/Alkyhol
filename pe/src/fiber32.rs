@@ -3,10 +3,10 @@
 use super::{LoadedImage32, unsupported};
 use alkyhol::ffi;
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 struct Slot {
     callback: u32,
-    value: u32,
+    values: std::collections::BTreeMap<u32, u32>,
     freeing: bool,
 }
 #[derive(Default)]
@@ -24,7 +24,7 @@ impl Slots {
         }
         let slot = Some(Slot {
             callback,
-            value: 0,
+            values: Default::default(),
             freeing: false,
         });
         if index == self.0.len() {
@@ -44,7 +44,7 @@ impl Slots {
         self.0
             .iter()
             .flatten()
-            .any(|s| s.callback != 0 && s.value != 0)
+            .any(|s| s.callback != 0 && s.values.values().any(|&v| v != 0))
     }
     pub(super) fn clear(&mut self) {
         self.0.clear();
@@ -88,11 +88,13 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
                     return fail();
                 };
                 slot.freeing = true;
-                *slot
+                slot.clone()
             };
-            if slot.callback != 0 && slot.value != 0 {
-                unsafe { image.callback(slot.callback, slot.value) }
-                    .unwrap_or_else(|e| unsupported(&e));
+            if slot.callback != 0 {
+                for value in slot.values.values().copied().filter(|&v| v != 0) {
+                    unsafe { image.callback(slot.callback, value) }
+                        .unwrap_or_else(|e| unsupported(&e));
+                }
             }
             image.cpu.fls.borrow_mut().0[args[0] as usize] = None;
             1
@@ -103,14 +105,17 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
                 return fail();
             };
             ffi::SetLastError(0);
-            slot.value
+            slot.values
+                .get(&ffi::GetCurrentThreadId())
+                .copied()
+                .unwrap_or(0)
         }
         25 => {
             let mut slots = image.cpu.fls.borrow_mut();
             let Some(slot) = slots.get(args[0]) else {
                 return fail();
             };
-            slot.value = args[1];
+            slot.values.insert(ffi::GetCurrentThreadId(), args[1]);
             1
         }
         26 => {
@@ -120,15 +125,7 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
                 return u32::MAX;
             };
             slots[index] = true;
-            unsafe {
-                image
-                    .cpu
-                    .teb
-                    .base
-                    .add(0xe10 + index * 4)
-                    .cast::<u32>()
-                    .write(0);
-            }
+            super::thread32::clear_tls(image, index);
             index as u32
         }
         27..=29 => {
@@ -137,13 +134,11 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
             if index >= slots.len() || !slots[index] {
                 return fail();
             }
-            let value = unsafe { image.cpu.teb.base.add(0xe10 + index * 4).cast::<u32>() };
+            let value = unsafe { image.cpu.teb().base.add(0xe10 + index * 4).cast::<u32>() };
             match id {
                 27 => {
                     slots[index] = false;
-                    unsafe {
-                        value.write(0);
-                    }
+                    super::thread32::clear_tls(image, index);
                     1
                 }
                 28 => {
@@ -163,6 +158,38 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
     }
 }
 
+pub(super) fn thread_exit(image: &LoadedImage32<'_>) {
+    let id = ffi::GetCurrentThreadId();
+    let pending: Vec<_> = {
+        let mut slots = image.cpu.fls.borrow_mut();
+        slots
+            .0
+            .iter_mut()
+            .flatten()
+            .filter_map(|s| {
+                s.values
+                    .remove(&id)
+                    .filter(|&v| v != 0 && s.callback != 0)
+                    .map(|v| (s.callback, v))
+            })
+            .collect()
+    };
+    for (callback, value) in pending {
+        unsafe { image.callback(callback, value) }.unwrap_or_else(|e| unsupported(&e));
+    }
+    if image
+        .cpu
+        .fls
+        .borrow()
+        .0
+        .iter()
+        .flatten()
+        .any(|s| s.values.get(&id).is_some_and(|&v| v != 0))
+    {
+        unsupported("FLS callbacks rearmed values during worker exit");
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -171,12 +198,12 @@ mod tests {
         let mut slots = Slots::default();
         for index in 0..128 {
             assert_eq!(slots.allocate(42), index);
-            assert_eq!(slots.get(index).unwrap().value, 0);
+            assert!(slots.get(index).unwrap().values.is_empty());
         }
         assert_eq!(slots.allocate(0), u32::MAX);
         assert_eq!(ffi::GetLastError(), 8);
         assert!(slots.get(128).is_none());
-        slots.get(19).unwrap().value = 33;
+        slots.get(19).unwrap().values.insert(7, 33);
         assert!(slots.pending_callbacks());
         slots.0[19] = None;
         assert_eq!(slots.allocate(0), 19);

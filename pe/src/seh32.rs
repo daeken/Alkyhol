@@ -425,7 +425,7 @@ fn code(image: &LoadedImage32<'_>, address: u32, len: usize) -> bool {
     })
 }
 fn stack(image: &LoadedImage32<'_>, address: u32, len: usize) -> bool {
-    let first = image.cpu.stack.base as usize + PAGE;
+    let first = image.cpu.stack().base as usize + PAGE;
     let start = address as usize;
     start >= first
         && start
@@ -527,7 +527,7 @@ unsafe fn dispatch_exception(
         context.write(original);
         ptr::copy_nonoverlapping(record.as_ptr(), record_at as usize as *mut u32, 20);
     }
-    let original_head = unsafe { image.cpu.teb.base.cast::<u32>().read_unaligned() };
+    let original_head = unsafe { image.cpu.teb().base.cast::<u32>().read_unaligned() };
     let mut registration = original_head;
     for _ in 0..128 {
         if registration == u32::MAX {
@@ -575,7 +575,7 @@ unsafe fn dispatch_exception(
             || unsafe { std::slice::from_raw_parts(record_at as usize as *const u32, 20) } != record
             || unsafe { p.read_unaligned() } != next
             || unsafe { p.add(1).read_unaligned() } != handler
-            || unsafe { image.cpu.teb.base.cast::<u32>().read_unaligned() } != original_head
+            || unsafe { image.cpu.teb().base.cast::<u32>().read_unaligned() } != original_head
         {
             return Err(b"Alkyhol PE32 unsupported: exception handler changed unsupported context or registration state\n");
         }

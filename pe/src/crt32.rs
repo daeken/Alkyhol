@@ -8,7 +8,7 @@ pub(super) struct State {
     terminate: u32,
     unexpected: u32,
     app_type: u32,
-    errno: Option<u32>,
+    errno: std::collections::BTreeMap<u32, u32>,
     locks: std::collections::BTreeMap<u32, super::sync32::Section>,
 }
 impl State {
@@ -198,7 +198,7 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
         return 0; // void: the owned lock mutation, not this register, is the operation.
     }
     if id == 91
-        && let Some(pointer) = state.errno
+        && let Some(&pointer) = state.errno.get(&alkyhol::ffi::GetCurrentThreadId())
     {
         return pointer;
     }
@@ -261,7 +261,9 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
         unsupported("CRT malloc exhausted backed storage; errno/new-handler policy is unsupported");
     }
     if id == 91 {
-        state.errno = Some(pointer);
+        state
+            .errno
+            .insert(alkyhol::ffi::GetCurrentThreadId(), pointer);
     }
     pointer
 }

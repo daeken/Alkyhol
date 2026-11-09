@@ -17,7 +17,7 @@ def build(d):
  (d/'software-exception-inputs.json').write_text(json.dumps(inputs(d),indent=2)+'\n')
 def decode(data):
  if len(data)%4:raise ValueError('truncated software exception report')
- words=list(struct.unpack('<'+'I'*(len(data)//4),data));expected=[0x53454832,4,1,1,1,1,7]
+ words=list(struct.unpack('<'+'I'*(len(data)//4),data));expected=[0x53454832,4,1,1,1,1,0x715e7a11,0,2,0x12345678,0xfedcba98,0x10007,1,1,15]
  if words!=expected:raise ValueError('software SEH order, parameters, context or stack differ: '+repr(words))
  return words
 def execute(d,native=False):

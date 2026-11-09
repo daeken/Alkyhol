@@ -355,3 +355,26 @@ fn companion_handle_reservations_never_alias_kernel_objects() {
     assert_eq!(a.wait(event, 0).unwrap(), WAIT_OBJECT_0);
     a.close_handle(event).unwrap();
 }
+
+#[test]
+fn duplicate_handle_retains_event_and_file_state_after_original_close() {
+    let k = Kernel::default();
+    let h = k.create_event(true, false);
+    let other = k.duplicate_handle(h).unwrap();
+    k.set_event(h).unwrap();
+    k.close_handle(h).unwrap();
+    assert_eq!(k.wait(other, 0).unwrap(), WAIT_OBJECT_0);
+    assert_eq!(k.duplicate_handle(h), Err(WinError(ERROR_INVALID_HANDLE)));
+    k.close_handle(other).unwrap();
+    let p = path();
+    let first = open(&k, &p, GENERIC_READ | GENERIC_WRITE, CREATE_NEW).unwrap();
+    let second = k.duplicate_handle(first).unwrap();
+    k.write_file(first, b"abcd").unwrap();
+    k.seek(second, 1, 0).unwrap();
+    k.close_handle(first).unwrap();
+    let mut out = [0; 3];
+    assert_eq!(k.read_file(second, &mut out).unwrap(), 3);
+    assert_eq!(&out, b"bcd");
+    k.close_handle(second).unwrap();
+    std::fs::remove_file(p).unwrap();
+}

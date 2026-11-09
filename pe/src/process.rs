@@ -144,6 +144,51 @@ impl ProcessContext {
         })
     }
 }
+/// Immutable configured process view and duplicated inherited stream descriptions.
+/// PE32 workers do not share this module's separate PE64 allocation registries.
+pub(crate) struct ChildSnapshot(State);
+pub(crate) fn child_snapshot() -> Result<ChildSnapshot> {
+    PROCESS.with(|slot| {
+        let borrowed = slot.borrow();
+        let parent = borrowed.as_ref().ok_or("missing parent process context")?;
+        let mut objects = BTreeMap::new();
+        for &handle in &parent.standard {
+            if let Some(Object::Stream(stream)) = parent.objects.get(&handle) {
+                objects.insert(
+                    handle,
+                    Object::Stream(Stream {
+                        file: stream.file.try_clone().map_err(|e| e.to_string())?,
+                        input: stream.input,
+                    }),
+                );
+            }
+        }
+        Ok(ChildSnapshot(State {
+            command: parent.command.clone(),
+            executable: parent.executable.clone(),
+            environment: parent.environment.clone(),
+            standard: parent.standard,
+            objects,
+            functions: Default::default(),
+            mappings: Vec::new(),
+            locals: BTreeMap::new(),
+        }))
+    })
+}
+impl ProcessContext {
+    pub(crate) fn install_snapshot(snapshot: ChildSnapshot) -> Result<Self> {
+        PROCESS.with(|slot| {
+            let mut slot = slot.borrow_mut();
+            if slot.is_some() {
+                return Err("worker process view already installed".into());
+            }
+            *slot = Some(snapshot.0);
+            Ok(Self {
+                _thread_bound: std::marker::PhantomData,
+            })
+        })
+    }
+}
 impl Drop for ProcessContext {
     fn drop(&mut self) {
         PROCESS.with(|p| {

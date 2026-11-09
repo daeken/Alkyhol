@@ -135,9 +135,9 @@ pub(super) fn deliver(image: &LoadedImage32<'_>, a: &[u32; 8]) -> u32 {
         std::ptr::copy_nonoverlapping(record.as_ptr(), at as *mut u32, 20);
         std::ptr::copy_nonoverlapping(context.as_ptr(), context_at as *mut u32, 179);
     }
-    let head = unsafe { image.cpu.teb.base.cast::<u32>().read_unaligned() };
+    let head = unsafe { image.cpu.teb().base.cast::<u32>().read_unaligned() };
     let mut frame = head;
-    let first = image.cpu.stack.base as usize + PAGE;
+    let first = image.cpu.stack().base as usize + PAGE;
     let last = first + STACK;
     for _ in 0..128 {
         if frame == u32::MAX {
@@ -170,7 +170,7 @@ pub(super) fn deliver(image: &LoadedImage32<'_>, a: &[u32; 8]) -> u32 {
         if load::<179>(image, context_at) != context
             || load::<20>(image, at) != record
             || load::<2>(image, frame) != [next, handler]
-            || unsafe { image.cpu.teb.base.cast::<u32>().read_unaligned() } != head
+            || unsafe { image.cpu.teb().base.cast::<u32>().read_unaligned() } != head
         {
             unsupported(
                 "software SEH mutated context/record/chain requires further dispatch support",

@@ -226,6 +226,13 @@ impl Kernel {
             .cloned()
             .ok_or(WinError(ERROR_INVALID_HANDLE))
     }
+    /// Add an independently owned handle to the same live kernel object.
+    pub fn duplicate_handle(&self, handle: Handle) -> WinResult<Handle> {
+        let object = self.object(handle)?;
+        let duplicate = reserve_handle_token()?;
+        self.objects.lock().unwrap().insert(duplicate, object);
+        Ok(duplicate)
+    }
     pub fn close_handle(&self, handle: Handle) -> WinResult<()> {
         self.objects
             .lock()
