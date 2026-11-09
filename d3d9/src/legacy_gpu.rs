@@ -172,7 +172,10 @@ impl Device {
             if input.texture.shares_target(target) {
                 return Err("D3D9 draw cannot sample its current render target".into());
             }
-            input.texture.view(input.sampler.srgb())?;
+            input
+                .texture
+                .view(input.sampler.srgb())
+                .map_err(|e| format!("pixel texture slot {slot}: {e}"))?;
         }
         self.scope();
         let texture_resources: Vec<_> = textures

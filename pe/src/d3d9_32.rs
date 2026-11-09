@@ -948,15 +948,9 @@ fn offscreen(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
     0
 }
 fn stretch(s: &State, a: &[u32; 16]) -> u32 {
-    let Body::Device {
-        gpu, target, scene, ..
-    } = &s.objects[&a[0]].body
-    else {
+    let Body::Device { gpu, target, .. } = &s.objects[&a[0]].body else {
         unreachable!()
     };
-    if *scene {
-        return INVALID;
-    }
     if a[2] != 0 || a[4] != 0 || a[5] != 0 {
         return UNAVAILABLE;
     }

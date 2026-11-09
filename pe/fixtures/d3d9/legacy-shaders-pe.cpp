@@ -180,7 +180,9 @@ static DWORD stretch_witness(IDirect3DSurface9* back,IDirect3DSurface9* backcopy
  for(UINT phase=0;phase<3;phase++){
   IDirect3DSurface9 *source=phase==0?surfaces[0]:phase==1?back:surfaces[1],*destination=phase==0?surfaces[1]:phase==1?surfaces[0]:back,*output=phase==2?backcopy:copy;
   if(phase==1 && (g_pd3dDevice->SetRenderTarget(0,back)!=S_OK||g_pd3dDevice->Clear(0,NULL,1,0x40345678,1,0)!=S_OK))return 4;
+  if(g_pd3dDevice->BeginScene()!=S_OK)return 11;
   if(g_pd3dDevice->StretchRect(source,NULL,destination,NULL,0)!=S_OK)return 5;
+  if(g_pd3dDevice->EndScene()!=S_OK)return 12;
   if(g_pd3dDevice->GetRenderTargetData(destination,output)!=S_OK)return 6;
   D3DLOCKED_RECT lock={};if(output->LockRect(&lock,NULL,16)!=S_OK||!lock.pBits)return 7;
   DWORD expected=phase==1?0xff345678:0x80332211,mask=phase==2?0xffffff:0xffffffff;

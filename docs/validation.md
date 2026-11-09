@@ -6318,3 +6318,22 @@ copy directions, all 1,024 pixels for each phase, A8 alpha and X8 RGB, then both
 unchanged programmable shader frames and stack. It passes physical M4; native
 and hosted comparisons are added and pending. Backend and PE Clippy pass.
 Integrated original-game retry is pending.
+
+## Color StretchRect within original scenes
+
+The first integrated StretchRect retry reveals that DAO calls this color copy
+inside its BeginScene/EndScene pair. The initial implementation rejected that
+case; the following original postprocess draw then stopped on an uninitialized
+texture. The [documented in-scene restriction](https://learn.microsoft.com/en-us/windows/win32/api/d3d9/nf-d3d9-idirect3ddevice9-stretchrect)
+is under the additional restrictions for depth/stencil copies, not ordinary
+color copies. Color attachment copies now execute within the scene too. The
+owned three-direction copy witness wraps each copy in actual Begin/EndScene and
+passes physically. Depth/stencil copying remains unimplemented. This supersedes
+the earlier blanket in-scene exclusion. New native comparison remains pending.
+
+Startup/API CI 42625398706 on 91d0016 passes both jobs, including the corrected
+artifact transfers. Both 13-word registry and instruction-feature PEs have now
+also run as the literal native-CI-produced binaries on physical M4: source/PE
+identities and every output word agree with native Windows. These finite API
+observations do not resolve the separately retained native texture-threshold
+rendering differences.
