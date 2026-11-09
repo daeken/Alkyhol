@@ -10,8 +10,10 @@ use std::{
 };
 use wgpu::util::DeviceExt;
 pub mod compiler;
+mod depth;
 pub mod legacy;
 mod legacy_gpu;
+pub use depth::Depth;
 mod render_state;
 pub use render_state::RenderState;
 mod texture;
@@ -202,7 +204,20 @@ impl Device {
         bytes: &[u8],
         state: &RenderState,
     ) -> Result<()> {
+        self.draw_transformed_depth_state(target, bytes, state, None)
+    }
+    pub fn draw_transformed_depth_state(
+        &self,
+        target: &mut Target,
+        bytes: &[u8],
+        state: &RenderState,
+        depth: Option<&Depth>,
+    ) -> Result<()> {
         validate_vertices(bytes)?;
+        let depth = if state.get(7)? != 0 { depth } else { None };
+        depth::validate_depth(target, depth)?;
+        let depth_state = state.depth_state(depth)?;
+        let depth_view = depth.map(Depth::attachment);
         if !target.initialized.load(Ordering::Acquire) {
             return Err("draw requires an initialized backbuffer".into());
         }
@@ -258,7 +273,7 @@ impl Device {
                     }],
                 },
                 primitive: state.primitive(),
-                depth_stencil: None,
+                depth_stencil: depth_state,
                 multisample: state.multisample(),
                 fragment: Some(wgpu::FragmentState {
                     module: &shader,
@@ -289,6 +304,16 @@ impl Device {
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("D3D9 DrawPrimitive"),
+                depth_stencil_attachment: depth_view.as_ref().map(|view| {
+                    wgpu::RenderPassDepthStencilAttachment {
+                        view,
+                        depth_ops: Some(wgpu::Operations {
+                            load: wgpu::LoadOp::Load,
+                            store: wgpu::StoreOp::Store,
+                        }),
+                        stencil_ops: None,
+                    }
+                }),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: &view,
                     depth_slice: None,

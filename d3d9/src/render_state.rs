@@ -170,8 +170,8 @@ impl RenderState {
             24 => value <= 255,
             168 | 190..=192 => value & !15 == 0,
             171 | 209 => operation(value).is_ok(),
-            // No depth/stencil attachment is supported yet, so its state cannot
-            // affect our target. Any future depth attachment must consume it.
+            // D16 consumes depth test/write/compare. Stencil enable is rejected;
+            // disabled stencil state is retained without pretending to apply it.
             53..=55 | 186..=189 => (1..=8).contains(&value),
             57..=60 => true,
             // Fog/lighting and point parameters are retained; those paths are

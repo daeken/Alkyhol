@@ -81,7 +81,7 @@ struct IDirect3DDevice9 {
  virtual HRESULT __stdcall CreateVertexBuffer(UINT,DWORD,DWORD,UINT,IDirect3DVertexBuffer9**,void*)=0;
  virtual void __stdcall UnsupportedSlot27()=0;
  virtual void __stdcall UnsupportedSlot28()=0;
- virtual void __stdcall UnsupportedSlot29()=0;
+ virtual HRESULT __stdcall CreateDepthStencilSurface(UINT,UINT,UINT,UINT,DWORD,BOOL,IDirect3DSurface9**,void*)=0;
  virtual void __stdcall UnsupportedSlot30()=0;
  virtual void __stdcall UnsupportedSlot31()=0;
  virtual HRESULT __stdcall GetRenderTargetData(IDirect3DSurface9*,IDirect3DSurface9*)=0;
@@ -91,7 +91,7 @@ struct IDirect3DDevice9 {
  virtual HRESULT __stdcall CreateOffscreenPlainSurface(UINT,UINT,UINT,UINT,IDirect3DSurface9**,void*)=0;
  virtual HRESULT __stdcall SetRenderTarget(DWORD,IDirect3DSurface9*)=0;
  virtual HRESULT __stdcall GetRenderTarget(DWORD,IDirect3DSurface9**)=0;
- virtual void __stdcall UnsupportedSlot39()=0;
+ virtual HRESULT __stdcall SetDepthStencilSurface(IDirect3DSurface9*)=0;
  virtual HRESULT __stdcall GetDepthStencilSurface(IDirect3DSurface9**)=0;
  virtual HRESULT __stdcall BeginScene()=0;
  virtual HRESULT __stdcall EndScene()=0;

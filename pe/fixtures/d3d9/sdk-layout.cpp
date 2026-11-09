@@ -82,3 +82,7 @@ static_assert(offsetof(IDirect3DDevice9Vtbl,SetRenderTarget)==37*4);
 static_assert(offsetof(IDirect3DDevice9Vtbl,GetRenderTarget)==38*4);
 static_assert(offsetof(IDirect3DSurface9Vtbl,GetContainer)==11*4);
 static_assert(offsetof(IDirect3DTexture9Vtbl,GetSurfaceLevel)==18*4);
+
+static_assert(D3DFMT_D16==80);
+static_assert(offsetof(IDirect3DDevice9Vtbl,CreateDepthStencilSurface)==29*4);
+static_assert(offsetof(IDirect3DDevice9Vtbl,SetDepthStencilSurface)==39*4);

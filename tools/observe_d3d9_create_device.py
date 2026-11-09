@@ -14,6 +14,7 @@ TEXTURES=False
 MODEL2=False
 STATES=False
 TARGETS=False
+DEPTH=False
 SYMBOLS={'kernel32.dll':[('GetModuleHandleW',4),('GetStdHandle',4),('WriteFile',20)],'user32.dll':[('RegisterClassExW',4),('CreateWindowExW',48),('DefWindowProcW',16),('PostQuitMessage',4),('ValidateRect',8),('ShowWindow',8),('UpdateWindow',4),('GetMessageW',16),('TranslateMessage',4),('DispatchMessageW',4),('UnregisterClassW',8),('DestroyWindow',4),('PeekMessageW',20),('GetWindowInfo',8),('GetWindowRect',8),('GetClientRect',8),('ClientToScreen',8),('GetWindowLongW',8),('SetWindowPos',28),('SetWindowLongW',12)],'d3d9.dll':[('Direct3DCreate9',4)]}
 def sha(p):return hashlib.sha256(p.read_bytes()).hexdigest()
 def identity(d):return {'source':{p.relative_to(ROOT).as_posix():sha(p) for p in [SOURCE/'create-device-pe.cpp',SOURCE/'include/d3d9.h',SOURCE/'include/strsafe.h',ROOT/'samples/d3d9/create_device/CreateDevice.cpp',ROOT/'samples/d3d9/vertices/Vertices.cpp',ROOT/'samples/d3d9/provenance.json',*([SOURCE/'legacy-shaders-pe.cpp',SOURCE/'legacy-color.vs.inc',SOURCE/'legacy-color.ps.inc',ROOT/'d3d9/tests/fixtures/legacy-color.vs.bin',ROOT/'d3d9/tests/fixtures/legacy-color.ps.bin',*([SOURCE/'legacy-texture.ps.inc',ROOT/'d3d9/tests/fixtures/legacy-texture.ps.bin'] if TEXTURES else []),*([SOURCE/'legacy-model2.vs.inc',SOURCE/'legacy-slots128.ps.inc',ROOT/'d3d9/tests/fixtures/legacy-model2.vs.bin',ROOT/'d3d9/tests/fixtures/legacy-slots128.ps.bin'] if MODEL2 else [])] if SHADERS else [])]},'pe':sha(d/FILES[0])}
@@ -25,7 +26,7 @@ def build(d):
  lld=rust_tool('rust-lld');libs=[]
  for module,entries in SYMBOLS.items():
   deffile=d/(module+'.def');deffile.write_text('LIBRARY '+module+'\nEXPORTS\n'+'\n'.join(name for name,_ in entries)+'\n');lib=d/(module+'.lib');libs.append(str(lib));subprocess.run([lld,'-flavor','link','/lib','/machine:x86','/def:'+str(deffile),'/out:'+str(lib)],check=True)
- obj=d/(PREFIX+'.obj');subprocess.run([shutil.which('clang++'),'--target=i686-pc-windows-msvc','-std=c++17','-O1','-ffreestanding','-fno-builtin','-fno-stack-protector','-fno-exceptions','-fno-rtti','-ffunction-sections','-Wall','-Wextra','-Werror','-Wno-unknown-pragmas',*(['-DVERTICES'] if VERTICES else []),*(['-DQUERIES'] if QUERIES else []),*(['-DTEXTURES'] if TEXTURES else []),*(['-DMODEL2'] if MODEL2 else []),*(['-DSTATES'] if STATES else []),*(['-DTARGETS'] if TARGETS else []),'-I'+str(SOURCE/'include'),'-c',str(SOURCE/('legacy-shaders-pe.cpp' if SHADERS else 'create-device-pe.cpp')),'-o',str(obj)],check=True)
+ obj=d/(PREFIX+'.obj');subprocess.run([shutil.which('clang++'),'--target=i686-pc-windows-msvc','-std=c++17','-O1','-ffreestanding','-fno-builtin','-fno-stack-protector','-fno-exceptions','-fno-rtti','-ffunction-sections','-Wall','-Wextra','-Werror','-Wno-unknown-pragmas',*(['-DVERTICES'] if VERTICES else []),*(['-DQUERIES'] if QUERIES else []),*(['-DTEXTURES'] if TEXTURES else []),*(['-DMODEL2'] if MODEL2 else []),*(['-DSTATES'] if STATES else []),*(['-DTARGETS'] if TARGETS else []),*(['-DDEPTH'] if DEPTH else []),'-I'+str(SOURCE/'include'),'-c',str(SOURCE/('legacy-shaders-pe.cpp' if SHADERS else 'create-device-pe.cpp')),'-o',str(obj)],check=True)
  subprocess.run([lld,'-flavor','link','/nodefaultlib','/subsystem:console','/machine:x86','/dynamicbase','/fixed:no','/timestamp:0','/safeseh:no','/manifest:no','/opt:ref','/entry:entry',str(obj),*libs,*[f'/alternatename:__imp__{n}@{s}=__imp__{n}' for entries in SYMBOLS.values() for n,s in entries],'/out:'+str(d/FILES[0])],check=True)
  (d/(PREFIX+'-inputs.json')).write_text(json.dumps(identity(d),indent=2)+'\n')
 def triangle_pixels(words):
@@ -36,14 +37,14 @@ def compare_triangle_pixels(first,second):
  for i,(a,b) in enumerate(zip(first,second)):
   if (a==0xff)!=(b==0xff) or any(abs(((a>>n)&255)-((b>>n)&255))>1 for n in [0,8,16]):raise ValueError(f'native triangle coverage or RGB tolerance 1 failed at {i%300},{i//300}')
 def shader_words(words,textured=False,model2=False,states=False):
- prefix=37 if TARGETS else 44 if states else 23 if model2 else 36 if textured else 22;checks=14 if states else 10 if textured else 8
+ prefix=23 if DEPTH else 37 if TARGETS else 44 if states else 23 if model2 else 36 if textured else 22;checks=14 if states else 10 if textured else 8
  block=1+checks+1024+1;footer=prefix+2*block;length=footer+9
- if len(words)!=length or words[:prefix]!=[0x39534844,5 if TARGETS else 4 if states else 3 if model2 else 2 if textured else 1]+[1]*(prefix-2) or words[footer:]!=[0xfeedffff]+[1]*7+[length]:raise ValueError('legacy shader COM/metadata/stack witness differs')
+ if len(words)!=length or words[:prefix]!=[0x39534844,6 if DEPTH else 5 if TARGETS else 4 if states else 3 if model2 else 2 if textured else 1]+[1]*(prefix-2) or words[footer:]!=[0xfeedffff]+[1]*7+[length]:raise ValueError('legacy shader COM/metadata/stack witness differs')
  for frame in range(2):
   start=prefix+block*frame
   if words[start:start+checks+1]!=[0xfeed0000+frame]+[1]*checks or words[start+block-1]!=1:raise ValueError('legacy shader constant/draw/readback failed')
   pixels=words[start+checks+1:start+block-1]
-  color=([0x4040bf,0x1c00ff][frame] if states else [0x808080,0x373737][frame] if textured else 0xa347eb if model2 else 0xff0000)
+  color=([0xff,0xff0000][frame] if DEPTH else [0x4040bf,0x1c00ff][frame] if states else [0x808080,0x373737][frame] if textured else 0xa347eb if model2 else 0xff0000)
   if any(v not in [0xff,color] for v in pixels):raise ValueError('legacy shader color differs')
   if pixels[0]!=0xff or pixels[20*32+22]!=color or pixels[20*32+10]!=(color if frame==0 else 0xff):raise ValueError('legacy shader matrix/coverage did not change as specified')
  return words
@@ -87,9 +88,9 @@ def execute(d,native):
    report['comparison']='all 90000 coverage decisions exact; RGB channel error <= 1'
  path.write_text(json.dumps(report,indent=2)+'\n');print(('Owned legacy bytecode shaders' if SHADERS else 'Original Tutorial 02 vertex buffers/DrawPrimitive' if VERTICES else 'Original Tutorial 01 clear/present')+' executes; GPU pixels and finite COM witness pass')
 if __name__=='__main__':
- p=argparse.ArgumentParser(description=__doc__);p.add_argument('--output',type=Path,default=ROOT/'local/pe/d3d9-microtests');g=p.add_mutually_exclusive_group();g.add_argument('--host',action='store_true');g.add_argument('--native',action='store_true');p.add_argument('--vertices',action='store_true');p.add_argument('--queries',action='store_true');p.add_argument('--shaders',action='store_true');p.add_argument('--textures',action='store_true');p.add_argument('--model2',action='store_true');p.add_argument('--states',action='store_true');p.add_argument('--targets',action='store_true');a=p.parse_args();d=a.output.resolve()
- if sum([a.vertices,a.queries,a.shaders,a.textures,a.model2,a.states,a.targets])>1:p.error('choose one witness variant')
- VERTICES=a.vertices;QUERIES=a.queries;SHADERS=a.shaders or a.textures or a.model2 or a.states or a.targets;TEXTURES=a.textures or a.states or a.targets;MODEL2=a.model2;STATES=a.states;TARGETS=a.targets
+ p=argparse.ArgumentParser(description=__doc__);p.add_argument('--output',type=Path,default=ROOT/'local/pe/d3d9-microtests');g=p.add_mutually_exclusive_group();g.add_argument('--host',action='store_true');g.add_argument('--native',action='store_true');p.add_argument('--vertices',action='store_true');p.add_argument('--queries',action='store_true');p.add_argument('--shaders',action='store_true');p.add_argument('--textures',action='store_true');p.add_argument('--model2',action='store_true');p.add_argument('--states',action='store_true');p.add_argument('--targets',action='store_true');p.add_argument('--depth',action='store_true');a=p.parse_args();d=a.output.resolve()
+ if sum([a.vertices,a.queries,a.shaders,a.textures,a.model2,a.states,a.targets,a.depth])>1:p.error('choose one witness variant')
+ VERTICES=a.vertices;QUERIES=a.queries;SHADERS=a.shaders or a.textures or a.model2 or a.states or a.targets or a.depth;TEXTURES=a.textures or a.states or a.targets;MODEL2=a.model2;STATES=a.states;TARGETS=a.targets;DEPTH=a.depth
  if VERTICES:PREFIX='d3d9-vertices';FILES=[PREFIX+'.exe']
  if QUERIES:PREFIX='d3d9-queries';FILES=[PREFIX+'.exe']
  if SHADERS:PREFIX='d3d9-shaders';FILES=[PREFIX+'.exe']
@@ -97,4 +98,5 @@ if __name__=='__main__':
  if MODEL2:PREFIX='d3d9-model2';FILES=[PREFIX+'.exe']
  if STATES:PREFIX='d3d9-states';FILES=[PREFIX+'.exe']
  if TARGETS:PREFIX='d3d9-targets';FILES=[PREFIX+'.exe']
+ if DEPTH:PREFIX='d3d9-depth';FILES=[PREFIX+'.exe']
  execute(d,a.native) if a.host or a.native else build(d)

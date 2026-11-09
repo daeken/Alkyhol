@@ -3,7 +3,7 @@
 use super::{Cpu32, LoadedImage32, PAGE, unsupported};
 use crate::Result;
 use alkyhol_d3d9::{
-    Device as Gpu, LegacyDraw, RenderState, SamplerState, Target, Texture2D, TextureBinding,
+    Depth, Device as Gpu, LegacyDraw, RenderState, SamplerState, Target, Texture2D, TextureBinding,
     TextureStages, VertexAttribute, VertexFormat,
     compiler::{self, Compiled, Compiler},
     legacy::Stage,
@@ -95,6 +95,8 @@ enum Body {
         gpu: Rc<Gpu>,
         target: Box<Target>,
         render_target: u32,
+        depth_surface: u32,
+        auto_depth: u32,
         hwnd: u32,
         scene: bool,
         parameters: [u32; 14],
@@ -116,6 +118,8 @@ enum Body {
         parent: u32,
         back: bool,
         attachment: Option<Target>,
+        depth: Option<Depth>,
+        implicit_depth: bool,
         container: u32,
         bindings: u32,
         data: u32,
@@ -432,7 +436,7 @@ fn table(cpu: &Cpu32, state: &mut State, kind: u32) -> Result<u32> {
     Ok(base)
 }
 fn object(cpu: &Cpu32, state: &mut State, body: Body, refs: u32) -> u32 {
-    if state.objects.len() >= 128 {
+    if state.objects.len() >= 4096 {
         unsupported("D3D9 object budget exhausted");
     }
     let t = table(cpu, state, body.kind()).unwrap_or_else(|e| unsupported(&e));
@@ -479,6 +483,10 @@ fn release(s: &mut State, p: u32) -> u32 {
     let cached = matches!(
         o.body,
         Body::Surface { back: true, .. }
+            | Body::Surface {
+                implicit_depth: true,
+                ..
+            }
             | Body::Surface { container: 1.., .. }
             | Body::Surface { bindings: 1.., .. }
             | Body::VertexBuffer { bindings: 1.., .. }
@@ -499,6 +507,8 @@ fn release(s: &mut State, p: u32) -> u32 {
         let removed = remove_object(s, p);
         if let Body::Device {
             render_target,
+            depth_surface,
+            auto_depth,
             back,
             stream,
             vertex_shader,
@@ -518,6 +528,12 @@ fn release(s: &mut State, p: u32) -> u32 {
             }
             if render_target != 0 {
                 unbind(s, render_target);
+            }
+            if depth_surface != 0 {
+                unbind(s, depth_surface);
+            }
+            if auto_depth != 0 {
+                s.objects.remove(&auto_depth);
             }
             if back != 0 {
                 s.objects.remove(&back);
@@ -643,6 +659,8 @@ fn capabilities(programmable: bool) -> [u32; 76] {
     caps[47] = 1; // stream zero
     caps[48] = 20; // implemented XYZRHW|DIFFUSE stride
     caps[58] = 1; // one adapter in this adapter group
+    caps[9] |= 0x10; // real depth testing
+    caps[10] = 0xff; // all eight real D16 comparisons
     caps[60] = 1; // one color target
     if programmable {
         // Bounded open SM2 compiler/draw profile, not a generic SM3 promise.
@@ -682,7 +700,8 @@ fn device(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
         || p[5] != 0
         || p[6] != 1
         || p[8] != 1
-        || p[9] != 0
+        || p[9] > 1
+        || p[9] != 0 && p[10] != 80
         || p[11] != 0
         || p[12] != 0
         || ![0, 0x80000000].contains(&p[13])
@@ -719,6 +738,10 @@ fn device(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
         }
     };
     addref(s, a[0]);
+    let mut initial_state = RenderState::default();
+    if p[9] != 0 {
+        initial_state.set(7, 1).unwrap();
+    }
     let o = object(
         &image.cpu,
         s,
@@ -727,11 +750,13 @@ fn device(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
             gpu,
             target: Box::new(target),
             render_target: 0,
+            depth_surface: 0,
+            auto_depth: 0,
             hwnd,
             scene: false,
             parameters: p,
             creation_flags: a[4],
-            render_state: RenderState::default(),
+            render_state: initial_state,
             texture_stages: TextureStages::default(),
             back: 0,
             fvf: 0,
@@ -746,6 +771,21 @@ fn device(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
         },
         1,
     );
+    if p[9] != 0 {
+        let depth =
+            allocate_depth(image, s, o, p[0], p[1], true).unwrap_or_else(|e| unsupported(&e));
+        bind(s, depth);
+        let Body::Device {
+            depth_surface,
+            auto_depth,
+            ..
+        } = &mut s.objects.get_mut(&o).unwrap().body
+        else {
+            unreachable!()
+        };
+        *depth_surface = depth;
+        *auto_depth = depth;
+    }
     write(image, a[5], &p);
     write(image, a[6], &[o]);
     0
@@ -774,6 +814,8 @@ fn backbuffer(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
                 parent: a[0],
                 back: true,
                 attachment: None,
+                depth: None,
+                implicit_depth: false,
                 container: 0,
                 bindings: 0,
                 data: 0,
@@ -824,6 +866,8 @@ fn offscreen(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
             parent: a[0],
             back: false,
             attachment: None,
+            depth: None,
+            implicit_depth: false,
             container: 0,
             bindings: 0,
             data,
@@ -876,6 +920,7 @@ fn transfer(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
                 parent,
                 back: false,
                 attachment: None,
+                depth: None,
                 data,
                 width: w,
                 height: h,
@@ -1003,8 +1048,13 @@ fn unbind(s: &mut State, p: u32) {
             bindings,
             container,
             back,
+            implicit_depth,
             ..
-        } => (bindings, *container, *back || *container != 0),
+        } => (
+            bindings,
+            *container,
+            *back || *implicit_depth || *container != 0,
+        ),
         _ => unreachable!(),
     };
     *bindings = bindings
@@ -1153,6 +1203,8 @@ fn texture_surface(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u
                 parent,
                 back: false,
                 attachment: Some(target),
+                depth: None,
+                implicit_depth: false,
                 container: a[0],
                 bindings: 0,
                 data: 0,
@@ -1171,6 +1223,121 @@ fn texture_surface(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u
     }
     expose(s, pointer);
     write(image, a[2], &[pointer]);
+    0
+}
+fn depth_target(s: &State, device: u32) -> Option<Depth> {
+    let Body::Device { depth_surface, .. } = &s.objects[&device].body else {
+        unreachable!()
+    };
+    if *depth_surface == 0 {
+        return None;
+    }
+    let Body::Surface { depth, .. } = &s.objects[depth_surface].body else {
+        unreachable!()
+    };
+    depth.clone()
+}
+fn allocate_depth(
+    image: &LoadedImage32<'_>,
+    s: &mut State,
+    parent: u32,
+    width: u32,
+    height: u32,
+    implicit: bool,
+) -> Result<u32> {
+    let Body::Device { gpu, .. } = &s.objects[&parent].body else {
+        unreachable!()
+    };
+    let depth = gpu.create_depth16(width, height)?;
+    if !implicit {
+        addref(s, parent);
+    }
+    Ok(object(
+        &image.cpu,
+        s,
+        Body::Surface {
+            parent,
+            back: false,
+            attachment: None,
+            depth: Some(depth),
+            implicit_depth: implicit,
+            container: 0,
+            bindings: 0,
+            data: 0,
+            width,
+            height,
+            format: 80,
+            initialized: false,
+            locked: false,
+        },
+        if implicit { 0 } else { 1 },
+    ))
+}
+fn create_depth(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
+    if a[7] == 0 {
+        return INVALID;
+    }
+    write(image, a[7], &[0]);
+    if a[3] != 80 || a[4] != 0 || a[5] != 0 || a[6] > 1 || a[8] != 0 {
+        return UNAVAILABLE;
+    }
+    match allocate_depth(image, s, a[0], a[1], a[2], false) {
+        Ok(p) => {
+            write(image, a[7], &[p]);
+            0
+        }
+        Err(e) => {
+            eprintln!("D3D9 depth allocation: {e}");
+            UNAVAILABLE
+        }
+    }
+}
+fn depth_binding(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16], get: bool) -> u32 {
+    let Body::Device { depth_surface, .. } = &s.objects[&a[0]].body else {
+        unreachable!()
+    };
+    let old = *depth_surface;
+    if get {
+        if a[1] == 0 {
+            return INVALID;
+        }
+        write(image, a[1], &[0]);
+        if old == 0 {
+            return 0x88760866;
+        }
+        expose(s, old);
+        write(image, a[1], &[old]);
+        return 0;
+    }
+    if a[1] != 0 {
+        let Some(Object {
+            refs: 1..,
+            body:
+                Body::Surface {
+                    parent,
+                    depth: Some(_),
+                    ..
+                },
+        }) = s.objects.get(&a[1])
+        else {
+            return INVALID;
+        };
+        if *parent != a[0] {
+            return INVALID;
+        }
+    }
+    if old != a[1] {
+        if a[1] != 0 {
+            bind(s, a[1]);
+        }
+        let Body::Device { depth_surface, .. } = &mut s.objects.get_mut(&a[0]).unwrap().body else {
+            unreachable!()
+        };
+        *depth_surface = a[1];
+        if old != 0 {
+            unbind(s, old);
+        }
+    }
     0
 }
 fn stream_source(s: &mut State, a: &[u32; 16]) -> u32 {
@@ -1363,6 +1530,7 @@ fn draw(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
         })
         .collect();
     let (mut active, _) = color_target(s, a[0]);
+    let depth = depth_target(s, a[0]);
     let program = s.programs.get(&(programmable.0, programmable.1));
     let pixel_spirv = if fixed {
         Vec::new()
@@ -1386,10 +1554,10 @@ fn draw(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
         if stride != 20 {
             return INVALID;
         }
-        gpu.draw_transformed_state(&mut active, bytes, render_state)
+        gpu.draw_transformed_depth_state(&mut active, bytes, render_state, depth.as_ref())
             .unwrap_or_else(|e| unsupported(&e));
     } else {
-        gpu.draw_legacy_state(
+        gpu.draw_legacy_depth_state(
             &mut active,
             &LegacyDraw {
                 textures: &textures,
@@ -1402,6 +1570,7 @@ fn draw(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
                 pixel_constants,
             },
             render_state,
+            depth.as_ref(),
         )
         .unwrap_or_else(|e| unsupported(&e));
     }
@@ -2021,8 +2190,11 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32
             if a[1] != 0 || a[2] != 1 || a[3] != 22 {
                 return INVALID;
             }
-            // Actual BGRA8 system-memory surfaces and sampled texture/sRGB reads.
-            // Depth, render targets, vertex textures and other queries remain unavailable.
+            // Real BGRA8 color/sample storage and non-lockable D16 surfaces.
+            if a[4] == 2 && a[5] == 1 && a[6] == 80 {
+                return 0;
+            }
+            // Vertex textures and other formats remain unavailable.
             if (a[4] == 0 && a[5] == 1 || a[5] == 3 && a[4] & !0x80000 == 0)
                 && [21, 22].contains(&a[6])
             {
@@ -2035,7 +2207,7 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32
             if a[1] != 0 || a[2] != 1 {
                 return INVALID;
             }
-            if ![21, 22].contains(&a[3]) || a[4] != 1 || a[5] != 0 {
+            if ![21, 22, 80].contains(&a[3]) || a[4] != 1 || a[5] != 0 {
                 return UNAVAILABLE;
             }
             if a[6] != 0 {
@@ -2043,7 +2215,14 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32
             }
             0
         }
-        (0, 12) | (0, 13) => UNAVAILABLE,
+        (0, 12) => {
+            if a[1] == 0 && a[2] == 1 && a[3] == 22 && [21, 22].contains(&a[4]) && a[5] == 80 {
+                0
+            } else {
+                UNAVAILABLE
+            }
+        }
+        (0, 13) => UNAVAILABLE,
         (0, 14) => {
             if a[1] != 0 || a[2] != 1 {
                 return UNAVAILABLE;
@@ -2316,15 +2495,8 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32
             }
             0
         }
-        (1, 40) => {
-            // Devices currently reject automatic depth creation and cannot bind
-            // a depth surface. The attachment is genuinely absent.
-            if a[1] == 0 {
-                return INVALID;
-            }
-            write(image, a[1], &[0]);
-            0x88760866 // D3DERR_NOTFOUND
-        }
+        (1, 29) => create_depth(image, &mut s, a),
+        (1, 39 | 40) => depth_binding(image, &mut s, a, slot == 40),
         (1, 32) => transfer(image, &mut s, a),
         (1, 41) | (1, 42) => {
             let Body::Device { scene, .. } = &mut s.objects.get_mut(&a[0]).unwrap().body else {
@@ -2338,23 +2510,40 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32
             0
         }
         (1, 43) => {
-            if a[1] != 0 || a[2] != 0 || a[3] != 1 {
+            if a[1] != 0 || a[2] != 0 || a[3] == 0 || a[3] & !3 != 0 {
                 return UNAVAILABLE;
             }
             let (mut active, format) = color_target(&s, a[0]);
+            let depth = depth_target(&s, a[0]);
             let Body::Device {
                 gpu, render_state, ..
-            } = &mut s.objects.get_mut(&a[0]).unwrap().body
+            } = &s.objects[&a[0]].body
             else {
                 unreachable!()
             };
-            let color = if format == 22 {
-                a[4] | 0xff000000
-            } else {
-                a[4]
-            };
-            gpu.clear_state(&mut active, color, render_state)
-                .unwrap_or_else(|e| unsupported(&e));
+            if a[3] & 2 != 0 {
+                let Some(depth) = &depth else {
+                    return INVALID;
+                };
+                if depth.dimensions() != active.dimensions() {
+                    return UNAVAILABLE;
+                }
+                let value = f32::from_bits(a[5]);
+                if !value.is_finite() || !(0.0..=1.0).contains(&value) {
+                    return INVALID;
+                }
+                gpu.clear_depth(depth, value)
+                    .unwrap_or_else(|e| unsupported(&e));
+            }
+            if a[3] & 1 != 0 {
+                let color = if format == 22 {
+                    a[4] | 0xff000000
+                } else {
+                    a[4]
+                };
+                gpu.clear_state(&mut active, color, render_state)
+                    .unwrap_or_else(|e| unsupported(&e));
+            }
             0
         }
         (1, 17) => {
@@ -2413,6 +2602,7 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32
             let Body::Surface {
                 back,
                 attachment,
+                depth,
                 width,
                 height,
                 format,
@@ -2427,8 +2617,16 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32
                 &[
                     *format,
                     1,
-                    u32::from(*back || attachment.is_some()),
-                    if *back || attachment.is_some() { 0 } else { 2 },
+                    if depth.is_some() {
+                        2
+                    } else {
+                        u32::from(*back || attachment.is_some())
+                    },
+                    if *back || attachment.is_some() || depth.is_some() {
+                        0
+                    } else {
+                        2
+                    },
                     0,
                     0,
                     *width,
@@ -2444,6 +2642,7 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32
             let Body::Surface {
                 back,
                 attachment,
+                depth,
                 data,
                 width,
                 initialized,
@@ -2453,7 +2652,7 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32
             else {
                 unreachable!()
             };
-            if *back || attachment.is_some() {
+            if *back || attachment.is_some() || depth.is_some() {
                 return INVALID;
             }
             if *locked {

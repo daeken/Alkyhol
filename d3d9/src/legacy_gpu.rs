@@ -1,6 +1,6 @@
 //! Real programmable draws over translated legacy bytecode. Initial binding
 //! profile: float constants, triangle lists and explicit float vertex attributes.
-use super::{Device, RenderState, Result, Target, TextureBinding, legacy};
+use super::{Depth, Device, RenderState, Result, Target, TextureBinding, depth, legacy};
 use std::{collections::BTreeSet, sync::atomic::Ordering};
 use wgpu::util::DeviceExt;
 pub struct LegacyDraw<'a> {
@@ -55,6 +55,19 @@ impl Device {
         draw: &LegacyDraw<'_>,
         state: &RenderState,
     ) -> Result<()> {
+        self.draw_legacy_depth_state(target, draw, state, None)
+    }
+    pub fn draw_legacy_depth_state(
+        &self,
+        target: &mut Target,
+        draw: &LegacyDraw<'_>,
+        state: &RenderState,
+        depth: Option<&Depth>,
+    ) -> Result<()> {
+        let depth = if state.get(7)? != 0 { depth } else { None };
+        depth::validate_depth(target, depth)?;
+        let depth_state = state.depth_state(depth)?;
+        let depth_view = depth.map(Depth::attachment);
         if !target.initialized.load(Ordering::Acquire)
             || draw.stride == 0
             || draw.stride > 2048
@@ -148,7 +161,7 @@ impl Device {
                     }],
                 },
                 primitive: state.primitive(),
-                depth_stencil: None,
+                depth_stencil: depth_state,
                 multisample: state.multisample(),
                 fragment: Some(wgpu::FragmentState {
                     module: &pixel,
@@ -221,6 +234,16 @@ impl Device {
         let mut encoder = self.device.create_command_encoder(&Default::default());
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                depth_stencil_attachment: depth_view.as_ref().map(|view| {
+                    wgpu::RenderPassDepthStencilAttachment {
+                        view,
+                        depth_ops: Some(wgpu::Operations {
+                            load: wgpu::LoadOp::Load,
+                            store: wgpu::StoreOp::Store,
+                        }),
+                        stencil_ops: None,
+                    }
+                }),
                 label: Some("D3D9 legacy shader draw"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: &view,

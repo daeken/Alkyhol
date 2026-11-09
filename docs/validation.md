@@ -5549,3 +5549,24 @@ and D3DX constant-table calls, but no original draw is observed. It eventually
 expects a depth surface after our format queries reject all candidates; the
 resulting null dereference is the next actual blocker. A depth attachment must
 be implemented and negotiated, not fabricated in GetDepthStencilSurface.
+
+## Native render targets/CRT agree; real DAO D16 negotiation
+
+D3D9 CI 42581978233 passes all three jobs on 199279f, including the exact
+2,118-word render-target witness. Subsequent 42583172076 also passes. Input/CRT
+CI 42583171880 passes both jobs on 632b227; all 121 raw CRT words match independent
+native MSVCRT. The physical M4 has the same CRT PE SHA and exact complete output.
+These observations do not establish original shader drawing or live game input.
+
+The actual original depth failure came after rejecting every offered depth format.
+Real D16 storage, capabilities, depth matching, automatic device attachment and
+explicit attachment APIs are now implemented. The original EXE negotiates and
+creates D16 and passes the earlier null dereference. Only that actual format is
+advertised; no D24/stencil substitution is hidden. The 128-object prototype bound
+then stopped its real shader batch; it is raised to a still-bounded 4,096, without
+dropping shader calls. It now reaches dynamic vertex/index buffer allocation.
+
+Physical M4 passes the 2,100-word owned depth PE and all seven GPU tests, including
+real D16 clear/occlusion/write/compare and lifetime behavior. PE library (183),
+integration/doctest and Clippy checks pass. New native Windows/software Vulkan
+depth comparisons are pending. No original DAO draw, menu or gameplay is claimed.

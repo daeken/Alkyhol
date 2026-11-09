@@ -64,9 +64,31 @@ static DWORD render_target_witness(IDirect3DSurface9* back){
  return 0;
 }
 #endif
+#ifdef DEPTH
+static DWORD depth_witness(){
+ IDirect3DSurface9 *automatic=NULL,*surface=NULL,*again=NULL;D3DSURFACE_DESC desc={};
+ #define REQUIRE_DEPTH(test,stage) if(!(test))return stage
+ REQUIRE_DEPTH(g_pD3D->CheckDeviceFormat(0,1,22,2,1,80)==S_OK,1);
+ REQUIRE_DEPTH(g_pd3dDevice->GetDepthStencilSurface(&automatic)==S_OK&&automatic,2);
+ REQUIRE_DEPTH(automatic->GetDesc(&desc)==S_OK&&desc.Format==80&&desc.Usage==2&&desc.Pool==0&&desc.Width==32&&desc.Height==32,3);
+ REQUIRE_DEPTH(g_pd3dDevice->CreateDepthStencilSurface(32,32,80,0,0,TRUE,&surface,NULL)==S_OK&&surface,4);
+ REQUIRE_DEPTH(g_pd3dDevice->SetDepthStencilSurface(surface)==S_OK,5);
+ automatic->Release();surface->Release();
+ REQUIRE_DEPTH(g_pd3dDevice->GetDepthStencilSurface(&again)==S_OK&&again==surface,6);
+ REQUIRE_DEPTH(g_pd3dDevice->SetDepthStencilSurface(NULL)==S_OK,7);
+ IDirect3DSurface9* absent=(IDirect3DSurface9*)1;REQUIRE_DEPTH(g_pd3dDevice->GetDepthStencilSurface(&absent)==(HRESULT)0x88760866&&absent==NULL,8);
+ REQUIRE_DEPTH(g_pd3dDevice->SetDepthStencilSurface(again)==S_OK,9);again->Release();
+ DWORD enabled=0;REQUIRE_DEPTH(g_pd3dDevice->GetRenderState(7,&enabled)==S_OK&&enabled==1,10);
+ REQUIRE_DEPTH(g_pd3dDevice->SetRenderState(23,4)==S_OK,11);
+ #undef REQUIRE_DEPTH
+ return 0;
+}
+#endif
 extern "C" DWORD entry(){
  DWORD before=stack();put(0x39534844);
-#ifdef TARGETS
+#ifdef DEPTH
+put(6);
+#elif defined(TARGETS)
 put(5);
 #elif defined(STATES)
 put(4);
@@ -81,9 +103,12 @@ put(1);
  if(!RegisterClassExW(&wc))return 2;
  HWND window=CreateWindowExW(0,wc.lpszClassName,L"Original legacy shader execution",0x80000000,80,80,32,32,NULL,NULL,wc.hInstance,NULL);
  if(!window)return 3;
- #ifdef MODEL2
+ #if defined(MODEL2)||defined(DEPTH)
  g_pD3D=Direct3DCreate9(32);if(!g_pD3D)return 4;
  D3DPRESENT_PARAMETERS present={};present.BackBufferWidth=32;present.BackBufferHeight=32;present.BackBufferFormat=21;present.BackBufferCount=1;present.SwapEffect=1;present.hDeviceWindow=window;present.Windowed=TRUE;present.PresentationInterval=0x80000000;
+ #ifdef DEPTH
+ present.EnableAutoDepthStencil=TRUE;present.AutoDepthStencilFormat=80;
+ #endif
  if(g_pD3D->CreateDevice(0,1,window,0x24,&present,&g_pd3dDevice)!=S_OK)return 4;
  #else
  if(InitD3D(window)!=S_OK)return 4;
@@ -110,7 +135,7 @@ put(1);
  vs->Release();ps->Release();decl->Release();vb->Release();
  IDirect3DVertexShader9* bound=NULL;ok(g_pd3dDevice->GetVertexShader(&bound)==S_OK&&bound==vs);if(bound)bound->Release();
  IDirect3DSurface9 *back=NULL,*copy=NULL;ok(g_pd3dDevice->GetBackBuffer(0,0,0,&back)==S_OK);ok(g_pd3dDevice->CreateOffscreenPlainSurface(32,32,
-#ifdef MODEL2
+#if defined(MODEL2)||defined(DEPTH)
 21,
 #else
 22,
@@ -140,6 +165,9 @@ put(1);
  ok(g_pd3dDevice->GetTextureStageState(0,1,&operation)==S_OK&&operation==1);
  DWORD blend=0;ok(g_pd3dDevice->GetRenderState(7,&blend)==S_OK&&blend==0&&g_pd3dDevice->GetRenderState(27,&blend)==S_OK&&blend==1);
  #endif
+ #ifdef DEPTH
+ DWORD depth_stage=depth_witness();ok(depth_stage==0);if(depth_stage)return fail(17,depth_stage);
+ #endif
  for(UINT frame=0;frame<2;frame++){
   matrix[3]=frame?.75f:0;
   put(0xfeed0000+frame);
@@ -152,7 +180,13 @@ put(1);
   #endif
   ok(g_pd3dDevice->SetVertexShaderConstantF(0,matrix,4)==S_OK);
   static float actual[16];ok(g_pd3dDevice->GetVertexShaderConstantF(0,actual,4)==S_OK&&actual[3]==matrix[3]);
-  ok(g_pd3dDevice->Clear(0,NULL,1,0xff0000ff,1,0)==S_OK);ok(g_pd3dDevice->BeginScene()==S_OK);ok(g_pd3dDevice->DrawPrimitive(4,0,1)==S_OK);ok(g_pd3dDevice->EndScene()==S_OK);
+  ok(g_pd3dDevice->Clear(0,NULL,
+ #ifdef DEPTH
+ 3,0xff0000ff,frame?1.f:0.f,
+ #else
+ 1,0xff0000ff,1,
+ #endif
+ 0)==S_OK);ok(g_pd3dDevice->BeginScene()==S_OK);ok(g_pd3dDevice->DrawPrimitive(4,0,1)==S_OK);ok(g_pd3dDevice->EndScene()==S_OK);
   ok(g_pd3dDevice->GetRenderTargetData(back,copy)==S_OK);
   D3DLOCKED_RECT lock={};ok(copy->LockRect(&lock,NULL,D3DLOCK_READONLY)==S_OK);if(!lock.pBits)return 11;
   for(UINT y=0;y<32;y++)for(UINT x=0;x<32;x++)put(((DWORD*)((unsigned char*)lock.pBits+y*lock.Pitch))[x]&0xffffff);
