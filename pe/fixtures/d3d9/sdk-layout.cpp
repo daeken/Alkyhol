@@ -86,3 +86,10 @@ static_assert(offsetof(IDirect3DTexture9Vtbl,GetSurfaceLevel)==18*4);
 static_assert(D3DFMT_D16==80);
 static_assert(offsetof(IDirect3DDevice9Vtbl,CreateDepthStencilSurface)==29*4);
 static_assert(offsetof(IDirect3DDevice9Vtbl,SetDepthStencilSurface)==39*4);
+
+static_assert(sizeof(D3DINDEXBUFFER_DESC)==20);
+static_assert(offsetof(IDirect3DDevice9Vtbl,CreateIndexBuffer)==27*4);
+static_assert(offsetof(IDirect3DDevice9Vtbl,DrawIndexedPrimitive)==82*4);
+static_assert(offsetof(IDirect3DIndexBuffer9Vtbl,Lock)==11*4);
+static_assert(offsetof(IDirect3DIndexBuffer9Vtbl,Unlock)==12*4);
+static_assert(offsetof(IDirect3DIndexBuffer9Vtbl,GetDesc)==13*4);

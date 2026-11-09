@@ -52,6 +52,7 @@ fn gpu_executes_legacy_shader_matrix_math_and_runtime_constant_changes() {
             .draw_legacy(
                 &mut target,
                 &LegacyDraw {
+                    indices: None,
                     textures: &[],
                     vertex_spirv: VS,
                     pixel_spirv: PS,
@@ -120,6 +121,7 @@ fn real_legacy_texture_sampling_applies_srgb_to_rgb_and_preserves_alpha() {
         device.draw_legacy(
             target,
             &LegacyDraw {
+                indices: None,
                 vertex_spirv: VS,
                 pixel_spirv: pixel,
                 vertices: &vertices,
@@ -210,6 +212,7 @@ fn real_legacy_texture_sampling_applies_srgb_to_rgb_and_preserves_alpha() {
         .draw_legacy(
             &mut target,
             &LegacyDraw {
+                indices: None,
                 vertex_spirv: VS,
                 pixel_spirv: pixel,
                 vertices: &centered,
@@ -273,6 +276,7 @@ fn shader_model2_executes_all_128_arithmetic_slots() {
         .draw_legacy(
             &mut target,
             &LegacyDraw {
+                indices: None,
                 vertex_spirv: include_bytes!("fixtures/legacy-model2.vs.spv"),
                 pixel_spirv: include_bytes!("fixtures/legacy-slots128.ps.spv"),
                 vertices: &vertices,
@@ -289,4 +293,69 @@ fn shader_model2_executes_all_128_arithmetic_slots() {
         &pixels[(20 * 32 + 22) * 4..(20 * 32 + 22) * 4 + 4],
         &[235, 71, 163, 143]
     );
+}
+
+#[test]
+#[ignore = "requires an actual GPU"]
+fn indexed_gpu_quad_uses_four_vertices_and_checked_index_ranges() {
+    let device = Device::new().unwrap();
+    let mut target = device.create_target(32, 32).unwrap();
+    let mut vertices = Vec::new();
+    for (x, y) in [
+        (-0.75f32, 0.75f32),
+        (0.75, 0.75),
+        (0.75, -0.75),
+        (-0.75, -0.75),
+    ] {
+        for f in [x, y, 0.5, 1., 1., 0., 0., 1.] {
+            vertices.extend(f.to_le_bytes());
+        }
+    }
+    let constants: Vec<_> = [
+        1f32, 0., 0., 0., 0., 1., 0., 0., 0., 0., 1., 0., 0., 0., 0., 1.,
+    ]
+    .iter()
+    .flat_map(|f| f.to_le_bytes())
+    .collect();
+    let attributes = [
+        wgpu::VertexAttribute {
+            format: wgpu::VertexFormat::Float32x4,
+            offset: 0,
+            shader_location: 0,
+        },
+        wgpu::VertexAttribute {
+            format: wgpu::VertexFormat::Float32x4,
+            offset: 16,
+            shader_location: 1,
+        },
+    ];
+    device.clear(&mut target, 0xff0000ff).unwrap();
+    let draw = |target: &mut _, indices: &[u32]| {
+        device.draw_legacy(
+            target,
+            &LegacyDraw {
+                indices: Some(indices),
+                vertex_spirv: VS,
+                pixel_spirv: PS,
+                vertices: &vertices,
+                stride: 32,
+                attributes: &attributes,
+                vertex_constants: &constants,
+                pixel_constants: &[],
+                textures: &[],
+            },
+        )
+    };
+    for invalid in [&[][..], &[0, 1][..], &[0, 1, 4][..]] {
+        assert!(draw(&mut target, invalid).is_err());
+    }
+    draw(&mut target, &[0, 1, 2, 0, 2, 3]).unwrap();
+    let pixels = device.readback(&target).unwrap();
+    for (x, y) in [(8, 8), (24, 8), (8, 24), (24, 24)] {
+        assert_eq!(
+            &pixels[(y * 32 + x) * 4..(y * 32 + x) * 4 + 4],
+            &[0, 0, 255, 255]
+        );
+    }
+    assert_eq!(&pixels[..4], &[255, 0, 0, 255]);
 }

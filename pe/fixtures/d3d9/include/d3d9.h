@@ -79,7 +79,7 @@ struct IDirect3DDevice9 {
  virtual void __stdcall UnsupportedSlot24()=0;
  virtual void __stdcall UnsupportedSlot25()=0;
  virtual HRESULT __stdcall CreateVertexBuffer(UINT,DWORD,DWORD,UINT,IDirect3DVertexBuffer9**,void*)=0;
- virtual void __stdcall UnsupportedSlot27()=0;
+ virtual HRESULT __stdcall CreateIndexBuffer(UINT,DWORD,UINT,UINT,IDirect3DIndexBuffer9**,void*)=0;
  virtual void __stdcall UnsupportedSlot28()=0;
  virtual HRESULT __stdcall CreateDepthStencilSurface(UINT,UINT,UINT,UINT,DWORD,BOOL,IDirect3DSurface9**,void*)=0;
  virtual void __stdcall UnsupportedSlot30()=0;
@@ -134,7 +134,7 @@ struct IDirect3DDevice9 {
  virtual void __stdcall UnsupportedSlot79()=0;
  virtual void __stdcall UnsupportedSlot80()=0;
  virtual HRESULT __stdcall DrawPrimitive(UINT,UINT,UINT)=0;
- virtual void __stdcall UnsupportedSlot82()=0;
+ virtual HRESULT __stdcall DrawIndexedPrimitive(UINT,INT,UINT,UINT,UINT,UINT)=0;
  virtual void __stdcall UnsupportedSlot83()=0;
  virtual void __stdcall UnsupportedSlot84()=0;
  virtual void __stdcall UnsupportedSlot85()=0;
@@ -308,4 +308,22 @@ struct IDirect3DTexture9 : IDirect3DBaseTexture9 {
  virtual HRESULT __stdcall LockRect(UINT,D3DLOCKED_RECT*,const void*,DWORD)=0;
  virtual HRESULT __stdcall UnlockRect(UINT)=0;
  virtual void __stdcall UnsupportedSlot21()=0;
+};
+
+struct D3DINDEXBUFFER_DESC {UINT Format,Type,Usage,Pool,Size;};
+struct IDirect3DIndexBuffer9 {
+ virtual HRESULT __stdcall QueryInterface(const GUID&,void**)=0;
+ virtual ULONG __stdcall AddRef()=0;
+ virtual ULONG __stdcall Release()=0;
+ virtual HRESULT __stdcall GetDevice(IDirect3DDevice9**)=0;
+ virtual void __stdcall UnsupportedSlot4()=0;
+ virtual void __stdcall UnsupportedSlot5()=0;
+ virtual void __stdcall UnsupportedSlot6()=0;
+ virtual void __stdcall UnsupportedSlot7()=0;
+ virtual void __stdcall UnsupportedSlot8()=0;
+ virtual void __stdcall UnsupportedSlot9()=0;
+ virtual UINT __stdcall GetType()=0;
+ virtual HRESULT __stdcall Lock(UINT,UINT,void**,DWORD)=0;
+ virtual HRESULT __stdcall Unlock()=0;
+ virtual HRESULT __stdcall GetDesc(D3DINDEXBUFFER_DESC*)=0;
 };

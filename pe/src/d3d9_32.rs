@@ -21,7 +21,7 @@ const IID_RESOURCE: [u8; 16] = [
 const IID_BASE_TEXTURE: [u8; 16] = [
     0x7e, 0xa8, 0x0c, 0x58, 0x3c, 0x1d, 0x54, 0x4d, 0x99, 0x1d, 0xb7, 0xd3, 0xe3, 0xc2, 0x98, 0xce,
 ];
-const IIDS: [[u8; 16]; 8] = [
+const IIDS: [[u8; 16]; 9] = [
     [
         0xca, 0xcb, 0xbd, 0x81, 0xd4, 0x64, 0x6d, 0x42, 0xae, 0x8d, 0xad, 1, 0x47, 0xf4, 0x27, 0x5c,
     ],
@@ -52,6 +52,10 @@ const IIDS: [[u8; 16]; 8] = [
     [
         0x27, 0x12, 0xc3, 0x85, 0xe5, 0x3d, 0x00, 0x4f, 0x9b, 0x3a, 0xf1, 0x1a, 0xc3, 0x8c, 0x18,
         0xb5,
+    ],
+    [
+        0x5e, 0xd6, 0x9d, 0x7c, 0xf7, 0xd3, 0x29, 0x45, 0xac, 0xee, 0x78, 0x58, 0x30, 0xac, 0xde,
+        0x35,
     ],
 ];
 struct Object {
@@ -106,6 +110,7 @@ enum Body {
         back: u32,
         fvf: u32,
         stream: Option<(u32, u32, u32)>,
+        indices: u32,
         textures: Box<[u32; 16]>,
         samplers: Box<[SamplerState; 16]>,
         vertex_shader: u32,
@@ -129,6 +134,16 @@ enum Body {
         initialized: bool,
         locked: bool,
     },
+    IndexBuffer {
+        parent: u32,
+        data: u32,
+        length: u32,
+        usage: u32,
+        format: u32,
+        lock: Option<(u32, u32)>,
+        initialized: Vec<(u32, u32)>,
+        bindings: u32,
+    },
     VertexBuffer {
         parent: u32,
         data: u32,
@@ -147,6 +162,7 @@ impl Body {
             Self::Device { .. } => 1,
             Self::Surface { .. } => 2,
             Self::VertexBuffer { .. } => 3,
+            Self::IndexBuffer { .. } => 8,
             Self::Shader {
                 stage: Stage::Vertex,
                 ..
@@ -301,7 +317,7 @@ pub(super) fn signature(id: u32) -> Option<(&'static str, u16)> {
             0 => 17,
             1 => 119,
             2 => 17,
-            3 => 14,
+            3 | 8 => 14,
             4..=6 => 5,
             7 => 22,
             _ => return None,
@@ -351,6 +367,11 @@ pub(super) fn signature(id: u32) -> Option<(&'static str, u16)> {
         (3, 11) => ("IDirect3DVertexBuffer9::Lock", 20),
         (3, 12) => ("IDirect3DVertexBuffer9::Unlock", 4),
         (3, 13) => ("IDirect3DVertexBuffer9::GetDesc", 8),
+        (8, 3) => ("IDirect3DIndexBuffer9::GetDevice", 8),
+        (8, 10) => ("IDirect3DIndexBuffer9::GetType", 4),
+        (8, 11) => ("IDirect3DIndexBuffer9::Lock", 20),
+        (8, 12) => ("IDirect3DIndexBuffer9::Unlock", 4),
+        (8, 13) => ("IDirect3DIndexBuffer9::GetDesc", 8),
         (2, 3) => ("IDirect3DSurface9::GetDevice", 8),
         (2, 10) => ("IDirect3DSurface9::GetType", 4),
         (2, 11) => ("IDirect3DSurface9::GetContainer", 12),
@@ -398,7 +419,7 @@ fn table(cpu: &Cpu32, state: &mut State, kind: u32) -> Result<u32> {
     }
     let count = match kind {
         1 => 119,
-        3 => 14,
+        3 | 8 => 14,
         4..=6 => 5,
         7 => 22,
         _ => 17,
@@ -476,6 +497,7 @@ fn release(s: &mut State, p: u32) -> u32 {
         Body::Device { parent, .. }
         | Body::Surface { parent, .. }
         | Body::VertexBuffer { parent, .. }
+        | Body::IndexBuffer { parent, .. }
         | Body::Shader { parent, .. }
         | Body::Declaration { parent, .. }
         | Body::Texture { parent, .. } => Some(*parent),
@@ -490,6 +512,7 @@ fn release(s: &mut State, p: u32) -> u32 {
             | Body::Surface { container: 1.., .. }
             | Body::Surface { bindings: 1.., .. }
             | Body::VertexBuffer { bindings: 1.., .. }
+            | Body::IndexBuffer { bindings: 1.., .. }
             | Body::Shader { bindings: 1.., .. }
             | Body::Declaration { bindings: 1.., .. }
             | Body::Texture { bindings: 1.., .. }
@@ -511,6 +534,7 @@ fn release(s: &mut State, p: u32) -> u32 {
             auto_depth,
             back,
             stream,
+            indices,
             vertex_shader,
             pixel_shader,
             declaration,
@@ -540,6 +564,9 @@ fn release(s: &mut State, p: u32) -> u32 {
             }
             if let Some((buffer, _, _)) = stream {
                 unbind(s, buffer);
+            }
+            if indices != 0 {
+                unbind(s, indices);
             }
         }
     }
@@ -761,6 +788,7 @@ fn device(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
             back: 0,
             fvf: 0,
             stream: None,
+            indices: 0,
             textures: Box::new([0; 16]),
             samplers: Box::new([SamplerState::default(); 16]),
             vertex_shader: 0,
@@ -963,8 +991,8 @@ fn vertex_buffer(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32
     }
     write(image, a[5], &[0]);
     if a[1] == 0
-        || a[1] > 1024 * 1024
-        || ![0, 8].contains(&a[2])
+        || a[1] > 64 * 1024 * 1024
+        || ![0, 8, 0x200, 0x208].contains(&a[2])
         || ![0, 0x44].contains(&a[3])
         || a[4] != 0
         || a[6] != 0
@@ -1009,7 +1037,7 @@ fn bind(s: &mut State, p: u32) {
                 .unwrap_or_else(|| unsupported("surface binding overflow"));
             if first { *container } else { 0 }
         }
-        Body::Texture { bindings, .. } => {
+        Body::Texture { bindings, .. } | Body::IndexBuffer { bindings, .. } => {
             *bindings = bindings
                 .checked_add(1)
                 .unwrap_or_else(|| unsupported("texture binding overflow"));
@@ -1041,6 +1069,7 @@ fn unbind(s: &mut State, p: u32) {
     let refs = o.refs;
     let (bindings, container, cached) = match &mut o.body {
         Body::VertexBuffer { bindings, .. }
+        | Body::IndexBuffer { bindings, .. }
         | Body::Shader { bindings, .. }
         | Body::Declaration { bindings, .. }
         | Body::Texture { bindings, .. } => (bindings, 0, false),
@@ -1082,7 +1111,7 @@ fn expose(s: &mut State, p: u32) {
             bindings,
             ..
         } => (*parent, if *bindings == 0 { *container } else { 0 }),
-        Body::Texture { parent, .. } => (*parent, 0),
+        Body::Texture { parent, .. } | Body::IndexBuffer { parent, .. } => (*parent, 0),
         _ => unsupported("unsupported retained interface exposure"),
     };
     o.refs = 1;
@@ -1340,6 +1369,232 @@ fn depth_binding(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16], get: b
     }
     0
 }
+fn index_buffer(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
+    if a[5] == 0 {
+        return INVALID;
+    }
+    write(image, a[5], &[0]);
+    if a[1] == 0
+        || a[1] > 64 * 1024 * 1024
+        || ![0, 8, 0x200, 0x208].contains(&a[2])
+        || ![101, 102].contains(&a[3])
+        || a[4] != 0
+        || a[6] != 0
+    {
+        return UNAVAILABLE;
+    }
+    let data = memory(&image.cpu, &vec![0; a[1] as usize], true, false)
+        .unwrap_or_else(|e| unsupported(&e));
+    addref(s, a[0]);
+    let p = object(
+        &image.cpu,
+        s,
+        Body::IndexBuffer {
+            parent: a[0],
+            data,
+            length: a[1],
+            usage: a[2],
+            format: a[3],
+            lock: None,
+            initialized: Vec::new(),
+            bindings: 0,
+        },
+        1,
+    );
+    write(image, a[5], &[p]);
+    0
+}
+fn index_binding(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16], get: bool) -> u32 {
+    let Body::Device { indices, .. } = &s.objects[&a[0]].body else {
+        unreachable!()
+    };
+    let old = *indices;
+    if get {
+        if a[1] == 0 {
+            return INVALID;
+        }
+        if old != 0 {
+            expose(s, old);
+        }
+        write(image, a[1], &[old]);
+        return 0;
+    }
+    if a[1] != 0 {
+        let Some(Object {
+            refs: 1..,
+            body: Body::IndexBuffer { parent, .. },
+        }) = s.objects.get(&a[1])
+        else {
+            return INVALID;
+        };
+        if *parent != a[0] {
+            return INVALID;
+        }
+    }
+    if old != a[1] {
+        if a[1] != 0 {
+            bind(s, a[1]);
+        }
+        let Body::Device { indices, .. } = &mut s.objects.get_mut(&a[0]).unwrap().body else {
+            unreachable!()
+        };
+        *indices = a[1];
+        if old != 0 {
+            unbind(s, old);
+        }
+    }
+    0
+}
+fn buffer_lock(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16], unlock: bool) -> u32 {
+    let (data, length, usage, lock, initialized) = match &mut s.objects.get_mut(&a[0]).unwrap().body
+    {
+        Body::VertexBuffer {
+            data,
+            length,
+            usage,
+            lock,
+            initialized,
+            ..
+        }
+        | Body::IndexBuffer {
+            data,
+            length,
+            usage,
+            lock,
+            initialized,
+            ..
+        } => (*data, *length, *usage, lock, initialized),
+        _ => unreachable!(),
+    };
+    if unlock {
+        let Some((first, n)) = lock.take() else {
+            return INVALID;
+        };
+        initialized.push((first, first + n));
+        initialized.sort_unstable();
+        let mut joined: Vec<(u32, u32)> = Vec::new();
+        for &(a, b) in initialized.iter() {
+            if let Some(last) = joined.last_mut()
+                && a <= last.1
+            {
+                last.1 = last.1.max(b);
+            } else {
+                joined.push((a, b));
+            }
+        }
+        *initialized = joined;
+        return 0;
+    }
+    if a[3] == 0 {
+        return INVALID;
+    }
+    write(image, a[3], &[0]);
+    if a[4] & !0x3810 != 0 {
+        return UNAVAILABLE;
+    }
+    let readonly = a[4] & 16 != 0;
+    let discard = a[4] & 0x2000 != 0;
+    let nooverwrite = a[4] & 0x1000 != 0;
+    if lock.is_some()
+        || readonly && (usage & 8 != 0 || discard || nooverwrite)
+        || (discard || nooverwrite) && usage & 0x200 == 0
+        || discard && nooverwrite
+    {
+        return INVALID;
+    }
+    let Some(n) = lock_length(length, a[1], a[2]) else {
+        return INVALID;
+    };
+    if readonly
+        && !initialized
+            .iter()
+            .any(|&(first, last)| a[1] >= first && a[1] + n <= last)
+    {
+        unsupported("D3D9 READONLY lock of uninitialized buffer storage");
+    }
+    if discard {
+        initialized.clear();
+    }
+    *lock = Some((a[1], n));
+    write(image, a[3], &[data + a[1]]);
+    0
+}
+fn draw_indexed(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
+    if a[1] != 4 || a[4] == 0 || a[6] == 0 {
+        return UNAVAILABLE;
+    }
+    let Body::Device { indices, .. } = &s.objects[&a[0]].body else {
+        unreachable!()
+    };
+    if *indices == 0 {
+        return INVALID;
+    }
+    let Body::IndexBuffer {
+        data,
+        length,
+        format,
+        lock,
+        initialized,
+        ..
+    } = &s.objects[indices].body
+    else {
+        unreachable!()
+    };
+    if lock.is_some() {
+        return INVALID;
+    }
+    let width = if *format == 101 { 2 } else { 4 };
+    let Some(first) = a[5].checked_mul(width) else {
+        return INVALID;
+    };
+    let Some(n) = a[6].checked_mul(3).and_then(|v| v.checked_mul(width)) else {
+        return INVALID;
+    };
+    let Some(end) = first.checked_add(n) else {
+        return INVALID;
+    };
+    if n > 12 * 1024 * 1024
+        || end > *length
+        || !initialized.iter().any(|&(a, b)| first >= a && end <= b)
+    {
+        return INVALID;
+    }
+    let Some(last) = a[3].checked_add(a[4]) else {
+        return INVALID;
+    };
+    let base = a[2] as i32 as i64 + a[3] as i64;
+    if !(0..=u32::MAX as i64).contains(&base) {
+        return INVALID;
+    }
+    let address = *data + first;
+    checked(image, address, n as usize, false);
+    let bytes = unsafe { std::slice::from_raw_parts(address as *const u8, n as usize) };
+    let values: Vec<u32> = if width == 2 {
+        bytes
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|b| u16::from_le_bytes(*b) as u32)
+            .collect()
+    } else {
+        bytes
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|b| u32::from_le_bytes(*b))
+            .collect()
+    };
+    if values.iter().any(|&v| v < a[3] || v >= last) {
+        return INVALID;
+    }
+    let normalized = values.into_iter().map(|v| v - a[3]).collect();
+    let mut args = [0; 16];
+    args[0] = a[0];
+    args[1] = a[1];
+    args[2] = base as u32;
+    args[3] = a[6];
+    draw_buffer(image, s, &args, Some((a[4], normalized)))
+}
 fn stream_source(s: &mut State, a: &[u32; 16]) -> u32 {
     if a[1] != 0 {
         return UNAVAILABLE;
@@ -1391,7 +1646,12 @@ fn stream_source(s: &mut State, a: &[u32; 16]) -> u32 {
     };
     0
 }
-fn draw(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
+fn draw_buffer(
+    image: &LoadedImage32<'_>,
+    s: &mut State,
+    a: &[u32; 16],
+    indexed: Option<(u32, Vec<u32>)>,
+) -> u32 {
     if a[1] != 4 || a[3] == 0 {
         return UNAVAILABLE;
     }
@@ -1414,6 +1674,9 @@ fn draw(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
     }
     let programmable = (*vertex_shader, *pixel_shader, *declaration);
     let fixed = *fvf == 0x44 && programmable.0 == 0 && programmable.1 == 0;
+    if fixed && indexed.is_some() {
+        return UNAVAILABLE;
+    }
     if fixed {
         texture_stages
             .validate_transformed_color(textures[0] != 0)
@@ -1441,16 +1704,32 @@ fn draw(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
     let Some(first) = a[2].checked_mul(stride).and_then(|n| n.checked_add(offset)) else {
         return INVALID;
     };
-    let Some(n) = a[3].checked_mul(3).and_then(|v| v.checked_mul(stride)) else {
+    let vertices = if let Some((count, _)) = &indexed {
+        Some(*count)
+    } else {
+        a[3].checked_mul(3)
+    };
+    let Some(n) = vertices.and_then(|v| v.checked_mul(stride)) else {
         return INVALID;
     };
     let Some(end) = first.checked_add(n) else {
         return INVALID;
     };
-    if n > 1024 * 1024 || end > *length || !initialized.iter().any(|&(a, b)| first >= a && end <= b)
-    {
+    if n > 64 * 1024 * 1024 || end > *length {
         return INVALID;
     }
+    let written = |first: u32, end: u32| initialized.iter().any(|&(a, b)| first >= a && end <= b);
+    if let Some((_, indices)) = &indexed {
+        if indices.iter().any(|&index| {
+            let at = first + index * stride;
+            !written(at, at + stride)
+        }) {
+            return INVALID;
+        }
+    } else if !written(first, end) {
+        return INVALID;
+    }
+
     let address = *data + first;
     checked(image, address, n as usize, false);
     let bytes = unsafe { std::slice::from_raw_parts(address as *const u8, n as usize) };
@@ -1560,6 +1839,7 @@ fn draw(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
         gpu.draw_legacy_depth_state(
             &mut active,
             &LegacyDraw {
+                indices: indexed.as_ref().map(|(_, indices)| indices.as_slice()),
                 textures: &textures,
                 vertex_spirv: &program.unwrap().spirv,
                 pixel_spirv: &pixel_spirv,
@@ -2101,6 +2381,16 @@ fn texture_operation(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16], sl
 }
 
 pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32 {
+    let result = dispatch_inner(image, id, a);
+    if (result as i32) < 0 {
+        eprintln!(
+            "PE32 D3D9 failure: {} -> {result:08x}",
+            signature(id).unwrap().0
+        );
+    }
+    result
+}
+fn dispatch_inner(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32 {
     let kind = (id - BASE) / 256;
     let slot = (id - BASE) % 256;
     let mut s = image.cpu.d3d9.borrow_mut();
@@ -2128,7 +2418,7 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32
             let iid = unsafe { (a[1] as *const [u8; 16]).read_unaligned() };
             if iid != IID_UNKNOWN
                 && iid != IIDS[kind as usize]
-                && !((kind == 2 || kind == 3 || kind == 7) && iid == IID_RESOURCE)
+                && !((kind == 2 || kind == 3 || kind == 7 || kind == 8) && iid == IID_RESOURCE)
                 && !(kind == 7 && iid == IID_BASE_TEXTURE)
             {
                 return NO_INTERFACE;
@@ -2253,7 +2543,7 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32
                 }
             }
         }
-        (1, 6) | (2..=7, 3) => {
+        (1, 6) | (2..=8, 3) => {
             if a[1] == 0 {
                 return INVALID;
             }
@@ -2261,6 +2551,7 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32
                 Body::Device { parent, .. }
                 | Body::Surface { parent, .. }
                 | Body::VertexBuffer { parent, .. }
+                | Body::IndexBuffer { parent, .. }
                 | Body::Shader { parent, .. }
                 | Body::Declaration { parent, .. }
                 | Body::Texture { parent, .. } => parent,
@@ -2328,6 +2619,7 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32
         (1, 37 | 38) => render_binding(image, &mut s, a, slot == 38),
         (7, 13 | 17 | 19 | 20) => texture_operation(image, &mut s, a, slot),
         (1, 26) => vertex_buffer(image, &mut s, a),
+        (1, 27) => index_buffer(image, &mut s, a),
         (1, 86) => create_declaration(image, &mut s, a),
         (1, 91 | 106) => create_shader(
             image,
@@ -2404,69 +2696,23 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32
             write(image, a[2], &[1]);
             0
         }
-        (1, 104) => {
-            if a[1] == 0 {
-                0
-            } else {
-                UNAVAILABLE
-            }
-        }
-        (1, 105) => {
-            if a[1] == 0 {
-                return INVALID;
-            }
-            write(image, a[1], &[0]);
-            0
-        }
-        (1, 81) => draw(image, &mut s, a),
+        (1, 104 | 105) => index_binding(image, &mut s, a, slot == 105),
+        (1, 81) => draw_buffer(image, &mut s, a, None),
+        (1, 82) => draw_indexed(image, &mut s, a),
         (3, 10) => 6,
-        (3, 11) => {
-            if a[3] == 0 {
-                return INVALID;
-            }
-            write(image, a[3], &[0]);
-            if a[4] != 0 {
-                return UNAVAILABLE;
-            }
-            let Body::VertexBuffer {
-                data, length, lock, ..
-            } = &mut s.objects.get_mut(&a[0]).unwrap().body
+        (8, 10) => 7,
+        (3 | 8, 11 | 12) => buffer_lock(image, &mut s, a, slot == 12),
+        (8, 13) => {
+            let Body::IndexBuffer {
+                length,
+                usage,
+                format,
+                ..
+            } = &s.objects[&a[0]].body
             else {
                 unreachable!()
             };
-            let Some(n) = lock_length(*length, a[1], a[2]) else {
-                return INVALID;
-            };
-            if lock.is_some() {
-                return INVALID;
-            }
-            *lock = Some((a[1], n));
-            write(image, a[3], &[*data + a[1]]);
-            0
-        }
-        (3, 12) => {
-            let Body::VertexBuffer {
-                lock, initialized, ..
-            } = &mut s.objects.get_mut(&a[0]).unwrap().body
-            else {
-                unreachable!()
-            };
-            let Some((first, n)) = lock.take() else {
-                return INVALID;
-            };
-            initialized.push((first, first + n));
-            initialized.sort_unstable();
-            let mut joined: Vec<(u32, u32)> = Vec::new();
-            for &(a, b) in initialized.iter() {
-                if let Some(last) = joined.last_mut()
-                    && a <= last.1
-                {
-                    last.1 = last.1.max(b);
-                } else {
-                    joined.push((a, b));
-                }
-            }
-            *initialized = joined;
+            write(image, a[1], &[*format, 7, *usage, 0, *length]);
             0
         }
         (3, 13) => {

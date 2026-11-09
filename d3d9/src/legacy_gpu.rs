@@ -4,6 +4,8 @@ use super::{Depth, Device, RenderState, Result, Target, TextureBinding, depth, l
 use std::{collections::BTreeSet, sync::atomic::Ordering};
 use wgpu::util::DeviceExt;
 pub struct LegacyDraw<'a> {
+    /// Normalized indices into this draw's vertex slice; uploaded as a GPU INDEX buffer.
+    pub indices: Option<&'a [u32]>,
     pub vertex_spirv: &'a [u8],
     pub pixel_spirv: &'a [u8],
     pub vertices: &'a [u8],
@@ -73,17 +75,21 @@ impl Device {
             || draw.stride > 2048
             || draw.vertices.is_empty()
             || !draw.vertices.len().is_multiple_of(draw.stride as usize)
-            || !(draw.vertices.len() / draw.stride as usize).is_multiple_of(3)
-            || draw.vertices.len() > 1024 * 1024
+            || draw.indices.is_none()
+                && !(draw.vertices.len() / draw.stride as usize).is_multiple_of(3)
+            || draw.vertices.len() > 64 * 1024 * 1024
         {
             return Err("legacy draw extent/state outside bounded triangle profile".into());
         }
-        if draw
-            .textures
-            .iter()
-            .any(|binding| binding.texture.shares_target(target))
+        if let Some(indices) = draw.indices
+            && (indices.is_empty()
+                || !indices.len().is_multiple_of(3)
+                || indices.len() > 3 * 1024 * 1024
+                || indices
+                    .iter()
+                    .any(|&index| index as usize >= draw.vertices.len() / draw.stride as usize))
         {
-            return Err("D3D9 draw cannot sample the current render target".into());
+            return Err("indexed draw range outside vertex storage or triangle budget".into());
         }
         let mut vs = legacy::lower_spirv(draw.vertex_spirv, legacy::Stage::Vertex)?;
         legacy::vertex_pixel_centers(&mut vs)?;
@@ -117,6 +123,9 @@ impl Device {
                 .iter()
                 .find(|t| t.slot == slot)
                 .ok_or("pixel shader texture slot is not bound")?;
+            if input.texture.shares_target(target) {
+                return Err("D3D9 draw cannot sample its current render target".into());
+            }
             input.texture.view(input.sampler.srgb())?;
         }
         self.scope();
@@ -231,6 +240,17 @@ impl Device {
             format: Some(state.format()),
             ..Default::default()
         });
+        let indices = draw.indices.map(|indices| {
+            self.device
+                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("D3D9 actual normalized index buffer"),
+                    contents: &indices
+                        .iter()
+                        .flat_map(|n| n.to_le_bytes())
+                        .collect::<Vec<_>>(),
+                    usage: wgpu::BufferUsages::INDEX,
+                })
+        });
         let mut encoder = self.device.create_command_encoder(&Default::default());
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -262,7 +282,12 @@ impl Device {
                 pass.set_bind_group(n as u32, group, &[]);
             }
             pass.set_vertex_buffer(0, vertices.slice(..));
-            pass.draw(0..(draw.vertices.len() / draw.stride as usize) as u32, 0..1);
+            if let Some(indices) = &indices {
+                pass.set_index_buffer(indices.slice(..), wgpu::IndexFormat::Uint32);
+                pass.draw_indexed(0..draw.indices.unwrap().len() as u32, 0, 0..1);
+            } else {
+                pass.draw(0..(draw.vertices.len() / draw.stride as usize) as u32, 0..1);
+            }
         }
         self.queue.submit([encoder.finish()]);
         self.finish()

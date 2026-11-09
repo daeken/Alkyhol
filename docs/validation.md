@@ -5570,3 +5570,20 @@ Physical M4 passes the 2,100-word owned depth PE and all seven GPU tests, includ
 real D16 clear/occlusion/write/compare and lifetime behavior. PE library (183),
 integration/doctest and Clippy checks pass. New native Windows/software Vulkan
 depth comparisons are pending. No original DAO draw, menu or gameplay is claimed.
+
+## D16 comparison passes; original DAO reaches swapchain queries
+
+D3D9 CI 42584925886 passes all three jobs on 2803e76. All 2,100 D16 witness words
+agree on native Windows, hosted Metal and the physical M4 with identical PE SHA;
+Linux software Vulkan also passes its real depth/GPU tests. This is finite D16
+occlusion evidence, not full scene/depth precision or game-frame parity.
+
+Original DAO now creates and initializes actual dynamic vertex and 16-bit index
+buffers and reaches GetSwapChain. New default-pool buffer storage supports 64 MiB
+bounded allocations, real metadata/parent ownership and appropriate dynamic lock
+flags. Programmable indexed draws use actual GPU INDEX buffers with checked
+signed-base/minimum/stream/start-index translation. Physical M4 passes a shared
+four-vertex quad GPU test and all 2,100 words of an owned indexed PE, including
+both source index widths, DISCARD/NOOVERWRITE and storage after external Release.
+Native indexed comparison is pending. All 183 PE library tests, remaining targets
+and Clippy pass; no original game draw, frame or live input event is claimed.

@@ -84,9 +84,37 @@ static DWORD depth_witness(){
  return 0;
 }
 #endif
+#ifdef INDEXED
+static DWORD index_witness(){
+ IDirect3DIndexBuffer9 *buffer=NULL,*again=NULL;void* data=NULL;D3DINDEXBUFFER_DESC desc={};
+ #define REQUIRE_INDEX(test,stage) if(!(test))return stage
+ REQUIRE_INDEX(g_pd3dDevice->CreateIndexBuffer(8,8,101,0,&buffer,NULL)==S_OK&&buffer,1);
+ REQUIRE_INDEX(buffer->GetDesc(&desc)==S_OK&&desc.Format==101&&desc.Type==7&&desc.Usage==8&&desc.Pool==0&&desc.Size==8&&buffer->GetType()==7,2);
+ IDirect3DDevice9* owner=NULL;REQUIRE_INDEX(buffer->GetDevice(&owner)==S_OK&&owner==g_pd3dDevice,3);owner->Release();
+ REQUIRE_INDEX(buffer->Lock(0,0,&data,0)==S_OK&&data,4);unsigned short values[4]={0xdead,2,3,4};for(UINT i=0;i<4;i++)((unsigned short*)data)[i]=values[i];
+ REQUIRE_INDEX(buffer->Unlock()==S_OK,5);REQUIRE_INDEX(g_pd3dDevice->SetIndices(buffer)==S_OK,6);buffer->Release();
+ REQUIRE_INDEX(g_pd3dDevice->GetIndices(&again)==S_OK&&again==buffer,7);again->Release();
+ IDirect3DVertexBuffer9* stream=NULL;DWORD offset=0,stride=0;REQUIRE_INDEX(g_pd3dDevice->GetStreamSource(0,&stream,&offset,&stride)==S_OK&&stream&&offset==32&&stride==32,8);stream->Release();
+ #undef REQUIRE_INDEX
+ return 0;
+}
+static DWORD wide_index_witness(){
+ IDirect3DIndexBuffer9* buffer=NULL;void* data=NULL;D3DINDEXBUFFER_DESC desc={};
+ #define REQUIRE_WIDE(test,stage) if(!(test))return stage
+ REQUIRE_WIDE(g_pd3dDevice->CreateIndexBuffer(16,0x208,102,0,&buffer,NULL)==S_OK&&buffer,1);
+ REQUIRE_WIDE(buffer->GetDesc(&desc)==S_OK&&desc.Format==102&&desc.Size==16&&desc.Usage==0x208,2);
+ REQUIRE_WIDE(buffer->Lock(0,0,&data,0x2000)==S_OK&&data,3);DWORD values[4]={0xdeadbeef,2,3,4};for(UINT i=0;i<4;i++)((DWORD*)data)[i]=values[i];REQUIRE_WIDE(buffer->Unlock()==S_OK,4);
+ REQUIRE_WIDE(buffer->Lock(0,4,&data,0x1000)==S_OK&&data,5);*(DWORD*)data=0xdeadbeee;REQUIRE_WIDE(buffer->Unlock()==S_OK,6);
+ REQUIRE_WIDE(g_pd3dDevice->SetIndices(buffer)==S_OK,7);buffer->Release();
+ #undef REQUIRE_WIDE
+ return 0;
+}
+#endif
 extern "C" DWORD entry(){
  DWORD before=stack();put(0x39534844);
-#ifdef DEPTH
+#ifdef INDEXED
+put(7);
+#elif defined(DEPTH)
 put(6);
 #elif defined(TARGETS)
 put(5);
@@ -127,10 +155,15 @@ put(1);
  UINT count=0;ok(decl->GetDeclaration(NULL,&count)==S_OK&&count==3);
  static D3DVERTEXELEMENT9 returned[3];ok(decl->GetDeclaration(returned,&count)==S_OK);exact=TRUE;for(UINT i=0;i<sizeof(elements);i++)if(((unsigned char*)returned)[i]!=((const unsigned char*)elements)[i])exact=FALSE;ok(exact);
  ok(g_pd3dDevice->SetVertexDeclaration(decl)==S_OK);ok(g_pd3dDevice->SetVertexShader(vs)==S_OK);ok(g_pd3dDevice->SetPixelShader(ps)==S_OK);
- D3DVERTEXBUFFER_DESC vb_desc={};ok(g_pd3dDevice->CreateVertexBuffer(sizeof(vertices),8,0,0,&vb,NULL)==S_OK&&vb&&vb->GetDesc(&vb_desc)==S_OK&&vb_desc.Usage==8&&vb_desc.Size==sizeof(vertices));if(!vb)return 8;
- void* storage=NULL;ok(vb->Lock(0,sizeof(vertices),&storage,0)==S_OK);if(!storage)return 9;
- for(UINT i=0;i<sizeof(vertices);i++)((unsigned char*)storage)[i]=((const unsigned char*)vertices)[i];ok(vb->Unlock()==S_OK);
- ok(g_pd3dDevice->SetStreamSource(0,vb,0,32)==S_OK);
+ #ifdef INDEXED
+ const DWORD vb_size=sizeof(vertices)+64,vb_usage=0x208,vb_offset=64,stream_offset=32,lock_flags=0x2000;
+ #else
+ const DWORD vb_size=sizeof(vertices),vb_usage=8,vb_offset=0,stream_offset=0,lock_flags=0;
+ #endif
+ D3DVERTEXBUFFER_DESC vb_desc={};ok(g_pd3dDevice->CreateVertexBuffer(vb_size,vb_usage,0,0,&vb,NULL)==S_OK&&vb&&vb->GetDesc(&vb_desc)==S_OK&&vb_desc.Usage==vb_usage&&vb_desc.Size==vb_size);if(!vb)return 8;
+ void* storage=NULL;ok(vb->Lock(0,0,&storage,lock_flags)==S_OK);if(!storage)return 9;
+ for(UINT i=0;i<vb_size;i++)((unsigned char*)storage)[i]=0;for(UINT i=0;i<sizeof(vertices);i++)((unsigned char*)storage)[i+vb_offset]=((const unsigned char*)vertices)[i];ok(vb->Unlock()==S_OK);
+ ok(g_pd3dDevice->SetStreamSource(0,vb,stream_offset,32)==S_OK);
  // Internal bindings retain resources, including shader bytecode and declaration.
  vs->Release();ps->Release();decl->Release();vb->Release();
  IDirect3DVertexShader9* bound=NULL;ok(g_pd3dDevice->GetVertexShader(&bound)==S_OK&&bound==vs);if(bound)bound->Release();
@@ -168,7 +201,13 @@ put(1);
  #ifdef DEPTH
  DWORD depth_stage=depth_witness();ok(depth_stage==0);if(depth_stage)return fail(17,depth_stage);
  #endif
+ #ifdef INDEXED
+ DWORD index_stage=index_witness();ok(index_stage==0);if(index_stage)return fail(18,index_stage);
+ #endif
  for(UINT frame=0;frame<2;frame++){
+  #ifdef INDEXED
+  if(frame){DWORD stage=wide_index_witness();if(stage)return fail(19,stage);}
+  #endif
   matrix[3]=frame?.75f:0;
   put(0xfeed0000+frame);
   #ifdef STATES
@@ -186,7 +225,13 @@ put(1);
  #else
  1,0xff0000ff,1,
  #endif
- 0)==S_OK);ok(g_pd3dDevice->BeginScene()==S_OK);ok(g_pd3dDevice->DrawPrimitive(4,0,1)==S_OK);ok(g_pd3dDevice->EndScene()==S_OK);
+ 0)==S_OK);ok(g_pd3dDevice->BeginScene()==S_OK);ok(
+ #ifdef INDEXED
+ g_pd3dDevice->DrawIndexedPrimitive(4,-1,2,3,1,1)
+ #else
+ g_pd3dDevice->DrawPrimitive(4,0,1)
+ #endif
+ ==S_OK);ok(g_pd3dDevice->EndScene()==S_OK);
   ok(g_pd3dDevice->GetRenderTargetData(back,copy)==S_OK);
   D3DLOCKED_RECT lock={};ok(copy->LockRect(&lock,NULL,D3DLOCK_READONLY)==S_OK);if(!lock.pBits)return 11;
   for(UINT y=0;y<32;y++)for(UINT x=0;x<32;x++)put(((DWORD*)((unsigned char*)lock.pBits+y*lock.Pitch))[x]&0xffffff);
