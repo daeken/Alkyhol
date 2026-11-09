@@ -6438,3 +6438,27 @@ on 443a41e passes Metal and software Vulkan; its native A8/A4R4G4B4 full-RGBA,
 subrectangle, stencil and transform comparisons pass. The overall native job
 still fails the preserved POSITIONT and StretchRect assertions. No acceptance
 criteria or frozen observations were changed for this clock correction.
+
+## DAO native mouse messages reach the original window procedure
+
+AppKit client mouse move/drag and button events now enter the owned Win32 message
+queue with observed client/screen coordinates and timestamps. PeekMessage filters,
+PM_NOREMOVE and owner-thread DispatchMessage retain their normal paths; no guest
+callback runs inside AppKit. Modifier/button transitions and registered
+CS_DBLCLKS handling are explicit. Nonclient handling and capture remain outside
+this first milestone. Queue overflow fails rather than dropping input silently.
+
+On the physical M4, the owned window probe's optional `--mouse` posts a real move,
+down and up through WindowServer, then observes all three through AppKit: exact
+75,90 client coordinates, actual global coordinates, button masks and nonzero
+timestamps agree. Three targeted units cover signed packing, button/modifier
+transitions, invalid coordinates and class-dependent double clicks. The other
+209 PE units passed before the final message-packing unit was added; the three
+mouse units and PE Clippy pass afterward. This is host input-routing evidence,
+not an identical-input native Windows message-order comparison.
+
+In the original DAO run, an actual host click now dispatches WM_LBUTTONDOWN to
+the original game procedure and stops honestly at its SetCapture import. The
+menu has not yet activated New Game: native mouse capture/release is the next
+observed blocker. No original instruction or UI state was patched to reach it;
+captures and game-derived disassembly stay local.

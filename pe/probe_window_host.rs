@@ -6,6 +6,24 @@ fn unsupported(message: &str) -> ! {
 type Result<T> = std::result::Result<T, String>;
 #[path = "src/window_host32.rs"]
 mod host;
+#[link(name = "CoreGraphics", kind = "framework")]
+unsafe extern "C" {
+    fn CGEventCreateMouseEvent(
+        source: host::Id,
+        kind: u32,
+        point: host::Point,
+        button: u32,
+    ) -> host::Id;
+    fn CGEventPost(tap: u32, event: host::Id);
+}
+#[link(name = "CoreFoundation", kind = "framework")]
+unsafe extern "C" {
+    fn CFRelease(value: host::Id);
+}
+#[link(name = "ApplicationServices", kind = "framework")]
+unsafe extern "C" {
+    fn AXIsProcessTrusted() -> bool;
+}
 fn main() -> Result<()> {
     let app = host::App::new()?;
     let style = 15;
@@ -53,6 +71,56 @@ fn main() -> Result<()> {
     assert!(window.visible() && onscreen && window.number() > 0);
     assert_eq!((frame.origin.x, frame.origin.y), (110., 120.));
     assert_eq!((client.size.width, client.size.height), (640., 480.));
+    if std::env::args().any(|arg| arg == "--mouse") {
+        if !unsafe { AXIsProcessTrusted() } {
+            return Err("native mouse probe requires Accessibility access".into());
+        }
+        let content = window.client_frame()?;
+        let point = host::Point {
+            x: content.origin.x + 75.,
+            y: content.origin.y + 90.,
+        };
+        app.take_mouse();
+        // Post through WindowServer, then consume AppKit's real event queue.
+        // No direct call to the conversion function or guest event injection.
+        for kind in [5, 1, 2] {
+            let event = unsafe { CGEventCreateMouseEvent(std::ptr::null_mut(), kind, point, 0) };
+            if event.is_null() {
+                return Err("native mouse event creation failed".into());
+            }
+            unsafe {
+                CGEventPost(0, event);
+                CFRelease(event);
+            }
+        }
+        let mut events = Vec::new();
+        for _ in 0..100 {
+            app.pump()?;
+            events.extend(app.take_mouse());
+            if events
+                .iter()
+                .any(|e| e.window == window.number() && e.message == 0x202)
+            {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        let events: Vec<_> = events
+            .into_iter()
+            .filter(|e| e.window == window.number())
+            .collect();
+        for (message, buttons) in [(0x200, 0), (0x201, 1), (0x202, 0)] {
+            let event = events
+                .iter()
+                .find(|e| e.message == message)
+                .ok_or("posted native mouse event was not delivered")?;
+            assert_eq!(event.client, [75, 90]);
+            assert_eq!(event.screen, [point.x as i32, point.y as i32]);
+            assert_eq!(event.keys & 3, buttons);
+            assert!(event.timestamp_ns != 0);
+        }
+        println!("WindowServer/AppKit mouse move/down/up: {events:?}");
+    }
     window.show(false);
     app.pump()?;
     assert!(!window.visible());

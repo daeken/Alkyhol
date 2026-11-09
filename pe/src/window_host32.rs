@@ -54,6 +54,7 @@ unsafe extern "C" {
     fn CGWindowLevelForKey(key: i32) -> i32;
     fn CGDisplayBounds(display: u32) -> Rect;
     fn CGWindowListCopyWindowInfo(options: u32, window: u32) -> Id;
+    fn CGEventSourceButtonState(state: i32, button: u32) -> bool;
     static kCGWindowIsOnscreen: Id;
 }
 #[link(name = "CoreFoundation", kind = "framework")]
@@ -313,6 +314,63 @@ pub(super) struct App {
     pool: Id,
     app: Id,
     pub desktop: Rect,
+    mouse: Mutex<MouseQueue>,
+}
+#[derive(Clone, Copy, Debug)]
+pub(super) struct MouseEvent {
+    pub window: i64,
+    pub message: u32,
+    pub keys: u32,
+    pub client: [i32; 2],
+    pub screen: [i32; 2],
+    pub timestamp_ns: u64,
+    pub clicks: u64,
+}
+#[derive(Default)]
+struct MouseQueue {
+    buttons: u32,
+    events: VecDeque<MouseEvent>,
+}
+fn mouse_message(kind: u64, button: u64, buttons: &mut u32, modifiers: u64) -> Option<(u32, u32)> {
+    let (message, xbutton) = match kind {
+        5..=7 | 27 => (0x200, 0),
+        1..=4 | 25 | 26 => {
+            if button > 4 {
+                return None;
+            }
+            let down = matches!(kind, 1 | 3 | 25);
+            if down {
+                *buttons |= 1 << button;
+            } else {
+                *buttons &= !(1 << button);
+            }
+            let base = match button {
+                0 => 0x201,
+                1 => 0x204,
+                2 => 0x207,
+                _ => 0x20b,
+            };
+            (
+                base + u32::from(!down),
+                if button >= 3 { (button - 2) as u32 } else { 0 },
+            )
+        }
+        _ => return None,
+    };
+    let keys = (*buttons & 3)
+        | ((*buttons & 0x1c) << 2)
+        | if modifiers & (1 << 17) != 0 { 4 } else { 0 }
+        | if modifiers & (1 << 18) != 0 { 8 } else { 0 };
+    Some((message, keys | (xbutton << 16)))
+}
+fn mouse_point(point: Point) -> crate::Result<[i32; 2]> {
+    if [point.x, point.y]
+        .iter()
+        .any(|n| !n.is_finite() || n.floor() < i32::MIN as f64 || n.floor() > i32::MAX as f64)
+    {
+        return Err("native mouse coordinates exceed Win32 LONG bounds".into());
+    }
+    Ok([point.x.floor() as i32, point.y.floor() as i32])
 }
 // SAFETY: opaque AppKit tokens are only used on main_exec; metadata is immutable.
 unsafe impl Send for App {}
@@ -341,7 +399,18 @@ impl App {
             {
                 return Err("actual host desktop geometry is unavailable".into());
             }
-            Ok(Self { pool, app, desktop })
+            let mut mouse = MouseQueue::default();
+            for button in 0..5 {
+                if unsafe { CGEventSourceButtonState(1, button) } {
+                    mouse.buttons |= 1 << button;
+                }
+            }
+            Ok(Self {
+                pool,
+                app,
+                desktop,
+                mouse: Mutex::new(mouse),
+            })
         })
     }
     pub(super) fn frame_for_client(&self, rect: Rect, style: u64) -> crate::Result<Rect> {
@@ -389,6 +458,7 @@ impl App {
             }
             unsafe {
                 send1::<_, ()>(window, "setReleasedWhenClosed:", 0i8);
+                send1::<_, ()>(window, "setAcceptsMouseMovedEvents:", 1i8);
                 send1::<_, ()>(window, "setTitle:", string(title)?)
             };
             Ok(Window {
@@ -417,11 +487,88 @@ impl App {
                 if event.is_null() {
                     break;
                 }
+                self.capture_mouse(event)?;
                 unsafe { send1::<_, ()>(self.app, "sendEvent:", event) };
             }
             unsafe { send0::<()>(self.app, "updateWindows") };
             Ok(())
         })
+    }
+    // Copy native event values while their autorelease pool is alive. Guest
+    // callbacks run only through the owner's ordinary Win32 message dispatcher.
+    fn capture_mouse(&self, event: Id) -> crate::Result<()> {
+        let kind = unsafe { send0::<u64>(event, "type") };
+        if !matches!(kind, 1..=7 | 25..=27) {
+            return Ok(());
+        }
+        let window = unsafe { send0::<Id>(event, "window") };
+        if window.is_null() {
+            return Ok(());
+        }
+        let location = unsafe { send0::<Point>(event, "locationInWindow") };
+        let view = unsafe { send0::<Id>(window, "contentView") };
+        if view.is_null() {
+            return Ok(());
+        }
+        let convert: unsafe extern "C" fn(Id, Sel, Point, Id) -> Point =
+            unsafe { std::mem::transmute(objc_msgSend as *const ()) };
+        let local = unsafe {
+            convert(
+                view,
+                selector("convertPoint:fromView:"),
+                location,
+                ptr::null_mut(),
+            )
+        };
+        let bounds = unsafe { rectangle(view, "bounds") };
+        let x = local.x - bounds.origin.x;
+        let y = local.y - bounds.origin.y;
+        if x < 0.0 || y < 0.0 || x >= bounds.size.width || y >= bounds.size.height {
+            return Ok(()); // AppKit owns the unimplemented nonclient/capture path.
+        }
+        let flipped = unsafe { send0::<i8>(view, "isFlipped") } != 0;
+        let client = mouse_point(Point {
+            x,
+            y: if flipped { y } else { bounds.size.height - y },
+        })?;
+        let screen = unsafe { send1::<Point, Point>(window, "convertPointToScreen:", location) };
+        let screen = mouse_point(Point {
+            x: screen.x,
+            y: self.desktop.size.height - screen.y,
+        })?;
+        let seconds = unsafe { send0::<f64>(event, "timestamp") };
+        if !seconds.is_finite() || seconds < 0.0 || seconds * 1e9 >= u64::MAX as f64 {
+            return Err("native mouse timestamp exceeds bounds".into());
+        }
+        let button = if matches!(kind, 1..=4 | 25 | 26) {
+            unsafe { send0::<u64>(event, "buttonNumber") }
+        } else {
+            0
+        };
+        let modifiers = unsafe { send0::<u64>(event, "modifierFlags") };
+        let mut queue = self.mouse.lock().unwrap();
+        if let Some((message, keys)) = mouse_message(kind, button, &mut queue.buttons, modifiers) {
+            if queue.events.len() >= 4096 {
+                return Err("native mouse queue exceeds bounds".into());
+            }
+            queue.events.push_back(MouseEvent {
+                window: unsafe { send0(event, "windowNumber") },
+                message,
+                keys,
+                client,
+                screen,
+                timestamp_ns: (seconds * 1e9) as u64,
+                clicks: if matches!(kind, 1..=4 | 25 | 26) {
+                    unsafe { send0(event, "clickCount") }
+                } else {
+                    0
+                },
+            });
+        }
+        Ok(())
+    }
+    pub(super) fn take_mouse(&self) -> Vec<MouseEvent> {
+        self.mouse.lock().unwrap().events.drain(..).collect()
     }
     pub(super) fn screen_geometry(&self) -> crate::Result<(Rect, u32)> {
         main_exec(move || {
@@ -952,6 +1099,56 @@ mod capture_tests {
 
 #[cfg(test)]
 mod handoff_tests {
+    #[test]
+    fn native_mouse_buttons_retain_transitions_and_win32_modifier_bits() {
+        use super::mouse_message;
+        let mut buttons = 0;
+        assert_eq!(mouse_message(1, 0, &mut buttons, 1 << 17), Some((0x201, 5)));
+        assert_eq!(
+            mouse_message(3, 1, &mut buttons, 1 << 18),
+            Some((0x204, 11))
+        );
+        assert_eq!(mouse_message(6, 0, &mut buttons, 0), Some((0x200, 3)));
+        assert_eq!(mouse_message(2, 0, &mut buttons, 0), Some((0x202, 2)));
+        assert_eq!(mouse_message(4, 1, &mut buttons, 0), Some((0x205, 0)));
+        for (button, base, mask) in [(2, 0x207, 16), (3, 0x20b, 0x10020), (4, 0x20b, 0x20040)] {
+            assert_eq!(
+                mouse_message(25, button, &mut buttons, 0),
+                Some((base, mask))
+            );
+            assert_eq!(
+                mouse_message(26, button, &mut buttons, 0),
+                Some((base + 1, mask & 0xffff0000))
+            );
+        }
+        assert_eq!(buttons, 0);
+        assert_eq!(mouse_message(25, 5, &mut buttons, 0), None);
+        assert_eq!(mouse_message(10, 0, &mut buttons, 0), None);
+        assert_eq!(buttons, 0);
+    }
+    #[test]
+    fn native_mouse_points_floor_signed_logical_cells_and_reject_invalid_coordinates() {
+        use super::{Point, mouse_point};
+        assert_eq!(mouse_point(Point { x: -0.2, y: 37.9 }).unwrap(), [-1, 37]);
+        assert_eq!(
+            mouse_point(Point {
+                x: i32::MIN as f64,
+                y: i32::MAX as f64 + 0.25
+            })
+            .unwrap(),
+            [i32::MIN, i32::MAX]
+        );
+        for x in [
+            f64::NAN,
+            f64::INFINITY,
+            f64::NEG_INFINITY,
+            i32::MAX as f64 + 1.,
+            i32::MIN as f64 - 0.25,
+        ] {
+            assert!(mouse_point(Point { x, y: 0. }).is_err());
+            assert!(mouse_point(Point { x: 0., y: x }).is_err());
+        }
+    }
     #[test]
     fn message_box_button_ids_and_default_selection_are_bounded() {
         assert_eq!(super::alert_buttons(0).unwrap(), vec![(1, "OK")]);

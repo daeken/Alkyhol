@@ -44,6 +44,7 @@ pub(super) struct State {
     desktop: u32,
     active: BTreeMap<u32, u32>,
     messages: BTreeMap<u32, VecDeque<[u32; 7]>>,
+    mouse_traced: usize,
 }
 impl State {
     pub(super) fn input_window(&self, hwnd: u32) -> bool {
@@ -646,11 +647,44 @@ fn peek_message(image: &LoadedImage32<'_>, a: &[u32; 16]) -> u32 {
     if !a[0].is_multiple_of(4) || !image.permits(a[0] as usize, 28, true) {
         unsupported("MSG outside writable checked guest storage");
     }
-    {
+    let native = {
         let ui = image.cpu.ui.borrow();
         if let Some(app) = &ui.app {
             stop(app.pump());
+            app.take_mouse()
+        } else {
+            Vec::new()
         }
+    };
+    for event in native {
+        let mut ui = image.cpu.ui.borrow_mut();
+        let Some((&hwnd, window)) = ui
+            .windows
+            .iter()
+            .find(|(_, w)| w.native.number() == event.window)
+        else {
+            continue;
+        };
+        let owner = window.owner;
+        let style = ui.classes[&window.class].style;
+        let words = mouse_words(
+            hwnd,
+            event,
+            style,
+            stop(super::time32::input_tick_count(event.timestamp_ns)),
+        );
+        if std::env::var_os("ALKYHOL_PE32_TRACE_INPUT").is_some() && ui.mouse_traced < 256 {
+            ui.mouse_traced += 1;
+            eprintln!(
+                "PE32 native mouse message: hwnd={hwnd:x} message={:x} keys={:x} client={:?} screen={:?} time={}",
+                words[1], words[2], event.client, event.screen, words[4]
+            );
+        }
+        let queue = ui.messages.entry(owner).or_default();
+        if queue.len() >= 4096 {
+            unsupported("owned Win32 message queue exceeds bounds on native mouse input");
+        }
+        queue.push_back(words);
     }
     let thread = alkyhol::ffi::GetCurrentThreadId();
     let point = super::cursor32::observed();
@@ -689,6 +723,21 @@ fn peek_message(image: &LoadedImage32<'_>, a: &[u32; 16]) -> u32 {
         return 1;
     }
     0
+}
+fn mouse_words(hwnd: u32, event: host::MouseEvent, class_style: u32, time: u32) -> [u32; 7] {
+    let double = class_style & 8 != 0
+        && event.clicks != 0
+        && event.clicks.is_multiple_of(2)
+        && matches!(event.message, 0x201 | 0x204 | 0x207 | 0x20b);
+    [
+        hwnd,
+        event.message + if double { 2 } else { 0 },
+        event.keys,
+        (event.client[0] as u32 & 0xffff) | ((event.client[1] as u32 & 0xffff) << 16),
+        time,
+        event.screen[0] as u32,
+        event.screen[1] as u32,
+    ]
 }
 pub(super) fn client_size(image: &LoadedImage32<'_>, hwnd: u32) -> Option<(u32, u32)> {
     let ui = image.cpu.ui.borrow();
@@ -1150,4 +1199,37 @@ pub(super) fn ensure_app(image: &LoadedImage32<'_>) {
         .borrow_mut()
         .app()
         .unwrap_or_else(|e| unsupported(&e));
+}
+
+#[cfg(test)]
+mod mouse_tests {
+    use super::*;
+    #[test]
+    fn queued_mouse_coordinates_and_double_clicks_follow_the_registered_class() {
+        let mut event = host::MouseEvent {
+            window: 700,
+            message: 0x201,
+            keys: 5,
+            client: [-1, 32768],
+            screen: [-500, 72],
+            timestamp_ns: 123,
+            clicks: 2,
+        };
+        assert_eq!(
+            mouse_words(42, event, 0, 456),
+            [42, 0x201, 5, 0x8000ffff, 456, (-500i32) as u32, 72]
+        );
+        assert_eq!(mouse_words(42, event, 8, 456)[1], 0x203);
+        event.clicks = 3;
+        assert_eq!(mouse_words(42, event, 8, 456)[1], 0x201);
+        for message in [0x200, 0x202, 0x205, 0x208, 0x20c] {
+            event.message = message;
+            event.clicks = 2;
+            assert_eq!(mouse_words(42, event, 8, 456)[1], message);
+        }
+        for message in [0x204, 0x207, 0x20b] {
+            event.message = message;
+            assert_eq!(mouse_words(42, event, 8, 456)[1], message + 2);
+        }
+    }
 }
