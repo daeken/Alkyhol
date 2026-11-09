@@ -18,7 +18,7 @@ extern "C" DWORD entry(){
  if(!window)return 3;
  HRESULT hr=InitD3D(window);put(hr);if(FAILED(hr))return 4;
  put(g_pD3D->GetAdapterCount()>0);
- DWORD adapter[277]={};adapter[0]=adapter[276]=0x715e7a11;put(g_pD3D->GetAdapterIdentifier(0,0,adapter+1)==S_OK&&adapter[0]==0x715e7a11&&adapter[276]==0x715e7a11&&adapter[1]!=0);
+ static DWORD adapter[277];adapter[0]=adapter[276]=0x715e7a11;put(g_pD3D->GetAdapterIdentifier(0,0,adapter+1)==S_OK&&adapter[0]==0x715e7a11&&adapter[276]==0x715e7a11&&adapter[1]!=0);
  const GUID unknown={0,0,0,{0xc0,0,0,0,0,0,0,0x46}};void* identity=NULL;
  put(g_pD3D->QueryInterface(unknown,&identity)==S_OK&&identity==g_pD3D);if(identity)((IDirect3D9*)identity)->Release();
  IDirect3D9* parent=NULL;put(g_pd3dDevice->GetDirect3D(&parent)==S_OK&&parent==g_pD3D);if(parent)parent->Release();
