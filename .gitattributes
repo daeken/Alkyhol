@@ -191,3 +191,7 @@ pe/fixtures/pe32-startup/full-path.c text eol=lf
 pe/fixtures/pe32-startup/full-path.def text eol=lf
 pe/fixtures/pe32-startup/search-family.c text eol=lf
 pe/fixtures/pe32-startup/search-family.def text eol=lf
+
+# D3D9 tutorial provenance and owned PE inputs are byte-identical across hosts.
+pe/fixtures/d3d9/** text eol=lf
+samples/d3d9/** -text whitespace=cr-at-eol,-blank-at-eol,-blank-at-eof

@@ -25,7 +25,7 @@ struct D3DPRESENT_PARAMETERS{UINT BackBufferWidth,BackBufferHeight,BackBufferFor
 struct D3DSURFACE_DESC{UINT Format,Type,Usage,Pool,MultiSampleType,MultiSampleQuality,Width,Height;};
 struct D3DLOCKED_RECT{INT Pitch;void* pBits;};
 
-struct IDirect3D9; struct IDirect3DDevice9; struct IDirect3DSurface9;
+struct IDirect3D9; struct IDirect3DDevice9; struct IDirect3DSurface9; struct IDirect3DVertexBuffer9;
 struct IDirect3D9 {
  virtual HRESULT __stdcall QueryInterface(const GUID&,void**)=0;
  virtual ULONG __stdcall AddRef()=0;
@@ -72,7 +72,7 @@ struct IDirect3DDevice9 {
  virtual void __stdcall UnsupportedSlot23()=0;
  virtual void __stdcall UnsupportedSlot24()=0;
  virtual void __stdcall UnsupportedSlot25()=0;
- virtual void __stdcall UnsupportedSlot26()=0;
+ virtual HRESULT __stdcall CreateVertexBuffer(UINT,DWORD,DWORD,UINT,IDirect3DVertexBuffer9**,void*)=0;
  virtual void __stdcall UnsupportedSlot27()=0;
  virtual void __stdcall UnsupportedSlot28()=0;
  virtual void __stdcall UnsupportedSlot29()=0;
@@ -127,7 +127,7 @@ struct IDirect3DDevice9 {
  virtual void __stdcall UnsupportedSlot78()=0;
  virtual void __stdcall UnsupportedSlot79()=0;
  virtual void __stdcall UnsupportedSlot80()=0;
- virtual void __stdcall UnsupportedSlot81()=0;
+ virtual HRESULT __stdcall DrawPrimitive(UINT,UINT,UINT)=0;
  virtual void __stdcall UnsupportedSlot82()=0;
  virtual void __stdcall UnsupportedSlot83()=0;
  virtual void __stdcall UnsupportedSlot84()=0;
@@ -135,7 +135,7 @@ struct IDirect3DDevice9 {
  virtual void __stdcall UnsupportedSlot86()=0;
  virtual void __stdcall UnsupportedSlot87()=0;
  virtual void __stdcall UnsupportedSlot88()=0;
- virtual void __stdcall UnsupportedSlot89()=0;
+ virtual HRESULT __stdcall SetFVF(DWORD)=0;
  virtual void __stdcall UnsupportedSlot90()=0;
  virtual void __stdcall UnsupportedSlot91()=0;
  virtual void __stdcall UnsupportedSlot92()=0;
@@ -146,7 +146,7 @@ struct IDirect3DDevice9 {
  virtual void __stdcall UnsupportedSlot97()=0;
  virtual void __stdcall UnsupportedSlot98()=0;
  virtual void __stdcall UnsupportedSlot99()=0;
- virtual void __stdcall UnsupportedSlot100()=0;
+ virtual HRESULT __stdcall SetStreamSource(UINT,IDirect3DVertexBuffer9*,UINT,UINT)=0;
  virtual void __stdcall UnsupportedSlot101()=0;
  virtual void __stdcall UnsupportedSlot102()=0;
  virtual void __stdcall UnsupportedSlot103()=0;
@@ -220,3 +220,30 @@ __declspec(dllimport) BOOL __stdcall DestroyWindow(HWND);
 #define D3DBACKBUFFER_TYPE_MONO 0
 #define D3DPOOL_SYSTEMMEM 2
 #define D3DLOCK_READONLY 0x10
+
+typedef float FLOAT;typedef IDirect3DVertexBuffer9* LPDIRECT3DVERTEXBUFFER9;
+#define D3DFVF_XYZRHW 4
+#define D3DFVF_DIFFUSE 0x40
+#define D3DPOOL_DEFAULT 0
+#define D3DPT_TRIANGLELIST 4
+#define WM_QUIT 18
+#define PM_REMOVE 1
+extern "C" __declspec(dllimport) BOOL __stdcall PeekMessageW(MSG*,HWND,UINT,UINT,UINT);
+#define PeekMessage PeekMessageW
+extern "C" void* memcpy(void*,const void*,UINT);
+struct IDirect3DVertexBuffer9 {
+ virtual HRESULT __stdcall QueryInterface(const GUID&,void**)=0;
+ virtual ULONG __stdcall AddRef()=0;
+ virtual ULONG __stdcall Release()=0;
+ virtual HRESULT __stdcall GetDevice(IDirect3DDevice9**)=0;
+ virtual void __stdcall UnsupportedSlot4()=0;
+ virtual void __stdcall UnsupportedSlot5()=0;
+ virtual void __stdcall UnsupportedSlot6()=0;
+ virtual void __stdcall UnsupportedSlot7()=0;
+ virtual void __stdcall UnsupportedSlot8()=0;
+ virtual void __stdcall UnsupportedSlot9()=0;
+ virtual UINT __stdcall GetType()=0;
+ virtual HRESULT __stdcall Lock(UINT,UINT,void**,DWORD)=0;
+ virtual HRESULT __stdcall Unlock()=0;
+ virtual HRESULT __stdcall GetDesc(void*)=0;
+};

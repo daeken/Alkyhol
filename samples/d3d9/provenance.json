@@ -6,6 +6,10 @@
     "create_device/CreateDevice.cpp": {
       "upstream_path": "C++/Direct3D/Tutorials/Tut01_CreateDevice/CreateDevice.cpp",
       "sha256": "98f4342fd0668f5671df05b4c3be9e69da53addb5d301b53c4b4a1ccf221af0f"
+    },
+    "vertices/Vertices.cpp": {
+      "upstream_path": "C++/Direct3D/Tutorials/Tut02_Vertices/Vertices.cpp",
+      "sha256": "eafd032bbe86e1269b7756341998438badf56aeeca10fad190cbf48f2ff67731"
     }
   }
 }

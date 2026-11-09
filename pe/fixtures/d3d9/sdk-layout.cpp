@@ -19,3 +19,11 @@ static_assert(offsetof(IDirect3DDevice9Vtbl,CreateOffscreenPlainSurface)==36*4);
 static_assert(offsetof(IDirect3DDevice9Vtbl,BeginScene)==41*4);
 static_assert(offsetof(IDirect3DDevice9Vtbl,Clear)==43*4);
 static_assert(offsetof(IDirect3DSurface9Vtbl,LockRect)==13*4);
+
+static_assert(sizeof(D3DVERTEXBUFFER_DESC)==24);
+static_assert(offsetof(IDirect3DDevice9Vtbl,CreateVertexBuffer)==26*4);
+static_assert(offsetof(IDirect3DDevice9Vtbl,DrawPrimitive)==81*4);
+static_assert(offsetof(IDirect3DDevice9Vtbl,SetFVF)==89*4);
+static_assert(offsetof(IDirect3DDevice9Vtbl,SetStreamSource)==100*4);
+static_assert(offsetof(IDirect3DVertexBuffer9Vtbl,Lock)==11*4);
+static_assert(offsetof(IDirect3DVertexBuffer9Vtbl,Unlock)==12*4);

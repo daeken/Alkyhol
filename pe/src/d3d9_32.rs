@@ -13,7 +13,7 @@ const IID_UNKNOWN: [u8; 16] = [0, 0, 0, 0, 0, 0, 0, 0, 0xc0, 0, 0, 0, 0, 0, 0, 0
 const IID_RESOURCE: [u8; 16] = [
     0x5d, 0xc0, 0xee, 0x05, 0x7d, 0x8f, 0x62, 0x43, 0xb9, 0x99, 0xd1, 0xba, 0xf3, 0x57, 0xc7, 0x04,
 ];
-const IIDS: [[u8; 16]; 3] = [
+const IIDS: [[u8; 16]; 4] = [
     [
         0xca, 0xcb, 0xbd, 0x81, 0xd4, 0x64, 0x6d, 0x42, 0xae, 0x8d, 0xad, 1, 0x47, 0xf4, 0x27, 0x5c,
     ],
@@ -24,6 +24,10 @@ const IIDS: [[u8; 16]; 3] = [
     [
         0x3a, 0xaf, 0xfb, 0x0c, 0xf6, 0x9f, 0x9a, 0x42, 0x99, 0xb3, 0xa2, 0x79, 0x6a, 0xf8, 0xb8,
         0x9b,
+    ],
+    [
+        0xb5, 0xb1, 0x4b, 0xb6, 0x70, 0xfd, 0xf6, 0x4d, 0xbf, 0x91, 0x19, 0xd0, 0xa1, 0x24, 0x55,
+        0xe3,
     ],
 ];
 struct Object {
@@ -40,6 +44,8 @@ enum Body {
         scene: bool,
         parameters: [u32; 14],
         back: u32,
+        fvf: u32,
+        stream: Option<(u32, u32, u32)>,
     },
     Surface {
         parent: u32,
@@ -51,6 +57,15 @@ enum Body {
         initialized: bool,
         locked: bool,
     },
+    VertexBuffer {
+        parent: u32,
+        data: u32,
+        length: u32,
+        fvf: u32,
+        lock: Option<(u32, u32)>,
+        initialized: Vec<(u32, u32)>,
+        bindings: u32,
+    },
 }
 impl Body {
     fn kind(&self) -> u32 {
@@ -58,6 +73,7 @@ impl Body {
             Self::Factory(_) => 0,
             Self::Device { .. } => 1,
             Self::Surface { .. } => 2,
+            Self::VertexBuffer { .. } => 3,
         }
     }
 }
@@ -77,6 +93,7 @@ pub(super) fn signature(id: u32) -> Option<(&'static str, u16)> {
             0 => 17,
             1 => 119,
             2 => 17,
+            3 => 14,
             _ => return None,
         }
     {
@@ -107,6 +124,15 @@ pub(super) fn signature(id: u32) -> Option<(&'static str, u16)> {
         (0, 5) => ("IDirect3D9::GetAdapterIdentifier", 16),
         (0, 16) => ("IDirect3D9::CreateDevice", 28),
         (1, 3) => ("IDirect3DDevice9::TestCooperativeLevel", 4),
+        (1, 26) => ("IDirect3DDevice9::CreateVertexBuffer", 28),
+        (1, 81) => ("IDirect3DDevice9::DrawPrimitive", 16),
+        (1, 89) => ("IDirect3DDevice9::SetFVF", 8),
+        (1, 100) => ("IDirect3DDevice9::SetStreamSource", 20),
+        (3, 3) => ("IDirect3DVertexBuffer9::GetDevice", 8),
+        (3, 10) => ("IDirect3DVertexBuffer9::GetType", 4),
+        (3, 11) => ("IDirect3DVertexBuffer9::Lock", 20),
+        (3, 12) => ("IDirect3DVertexBuffer9::Unlock", 4),
+        (3, 13) => ("IDirect3DVertexBuffer9::GetDesc", 8),
         (1, 6) => ("IDirect3DDevice9::GetDirect3D", 8),
         (1, 9) => ("IDirect3DDevice9::GetCreationParameters", 8),
         (1, 17) => ("IDirect3DDevice9::Present", 20),
@@ -160,7 +186,11 @@ fn table(cpu: &Cpu32, state: &mut State, kind: u32) -> Result<u32> {
     if let Some(t) = state.tables.get(&kind) {
         return Ok(*t);
     }
-    let count = if kind == 1 { 119 } else { 17 };
+    let count = match kind {
+        1 => 119,
+        3 => 14,
+        _ => 17,
+    };
     let m = cpu.mapping(2 * PAGE, PAGE, 0)?;
     let base = m.base as u32;
     let mut bytes = vec![0u8; 2 * PAGE];
@@ -231,15 +261,23 @@ fn release(s: &mut State, p: u32) -> u32 {
     }
     let parent = match &o.body {
         Body::Factory(_) => None,
-        Body::Device { parent, .. } | Body::Surface { parent, .. } => Some(*parent),
+        Body::Device { parent, .. }
+        | Body::Surface { parent, .. }
+        | Body::VertexBuffer { parent, .. } => Some(*parent),
     };
-    let cached = matches!(o.body, Body::Surface { back: true, .. });
+    let cached = matches!(
+        o.body,
+        Body::Surface { back: true, .. } | Body::VertexBuffer { bindings: 1.., .. }
+    );
     if !cached {
         let removed = s.objects.remove(&p).unwrap();
-        if let Body::Device { back, .. } = removed.body
-            && back != 0
-        {
-            s.objects.remove(&back);
+        if let Body::Device { back, stream, .. } = removed.body {
+            if back != 0 {
+                s.objects.remove(&back);
+            }
+            if let Some((buffer, _, _)) = stream {
+                unbind(s, buffer);
+            }
         }
     }
     if let Some(parent) = parent {
@@ -364,6 +402,8 @@ fn device(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
             scene: false,
             parameters: p,
             back: 0,
+            fvf: 0,
+            stream: None,
         },
         1,
     );
@@ -516,6 +556,148 @@ fn transfer(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
     *initialized = true;
     0
 }
+fn vertex_buffer(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
+    if a[5] == 0 {
+        return INVALID;
+    }
+    write(image, a[5], &[0]);
+    if a[1] == 0 || a[1] > 1024 * 1024 || a[2] != 0 || a[3] != 0x44 || a[4] != 0 || a[6] != 0 {
+        return UNAVAILABLE;
+    }
+    let data = memory(&image.cpu, &vec![0u8; a[1] as usize], true, false)
+        .unwrap_or_else(|e| unsupported(&e));
+    addref(s, a[0]);
+    let p = object(
+        &image.cpu,
+        s,
+        Body::VertexBuffer {
+            parent: a[0],
+            data,
+            length: a[1],
+            fvf: a[3],
+            lock: None,
+            initialized: Vec::new(),
+            bindings: 0,
+        },
+        1,
+    );
+    write(image, a[5], &[p]);
+    0
+}
+fn unbind(s: &mut State, p: u32) {
+    let Some(o) = s.objects.get_mut(&p) else {
+        unsupported("missing bound vertex buffer");
+    };
+    let Body::VertexBuffer { bindings, .. } = &mut o.body else {
+        unreachable!()
+    };
+    *bindings = bindings
+        .checked_sub(1)
+        .unwrap_or_else(|| unsupported("vertex binding count underflow"));
+    if *bindings == 0 && o.refs == 0 {
+        s.objects.remove(&p);
+    }
+}
+fn stream_source(s: &mut State, a: &[u32; 16]) -> u32 {
+    if a[1] != 0 {
+        return UNAVAILABLE;
+    }
+    if a[2] != 0 {
+        let Some(Object {
+            refs: 1..,
+            body:
+                Body::VertexBuffer {
+                    parent,
+                    length,
+                    lock: None,
+                    ..
+                },
+        }) = s.objects.get(&a[2])
+        else {
+            return INVALID;
+        };
+        if *parent != a[0] || a[3] > *length || a[4] != 20 {
+            return INVALID;
+        }
+    }
+    let Body::Device { stream, .. } = &s.objects[&a[0]].body else {
+        unreachable!()
+    };
+    let old = *stream;
+    if old.map(|v| v.0) != Some(a[2]) {
+        if a[2] != 0 {
+            let Body::VertexBuffer { bindings, .. } = &mut s.objects.get_mut(&a[2]).unwrap().body
+            else {
+                unreachable!()
+            };
+            *bindings += 1;
+        }
+        if let Some((buffer, _, _)) = old {
+            unbind(s, buffer);
+        }
+    }
+    let Body::Device { stream, .. } = &mut s.objects.get_mut(&a[0]).unwrap().body else {
+        unreachable!()
+    };
+    *stream = if a[2] == 0 {
+        None
+    } else {
+        Some((a[2], a[3], a[4]))
+    };
+    0
+}
+fn draw(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
+    if a[1] != 4 || a[3] == 0 {
+        return UNAVAILABLE;
+    }
+    let Body::Device {
+        scene, fvf, stream, ..
+    } = &s.objects[&a[0]].body
+    else {
+        unreachable!()
+    };
+    if !*scene || *fvf != 0x44 {
+        return INVALID;
+    }
+    let Some((p, offset, stride)) = *stream else {
+        return INVALID;
+    };
+    let Body::VertexBuffer {
+        data,
+        length,
+        lock,
+        initialized,
+        ..
+    } = &s.objects[&p].body
+    else {
+        unreachable!()
+    };
+    if lock.is_some() {
+        return INVALID;
+    }
+    let Some(first) = a[2].checked_mul(stride).and_then(|n| n.checked_add(offset)) else {
+        return INVALID;
+    };
+    let Some(n) = a[3].checked_mul(60) else {
+        return INVALID;
+    };
+    let Some(end) = first.checked_add(n) else {
+        return INVALID;
+    };
+    if n > 1024 * 1024 || end > *length || !initialized.iter().any(|&(a, b)| first >= a && end <= b)
+    {
+        return INVALID;
+    }
+    let address = *data + first;
+    checked(image, address, n as usize, false);
+    let bytes = unsafe { std::slice::from_raw_parts(address as *const u8, n as usize) };
+    let Body::Device { gpu, target, .. } = &mut s.objects.get_mut(&a[0]).unwrap().body else {
+        unreachable!()
+    };
+    gpu.draw_transformed(target, bytes)
+        .unwrap_or_else(|e| unsupported(&e));
+    0
+}
 pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32 {
     let kind = (id - BASE) / 256;
     let slot = (id - BASE) % 256;
@@ -544,7 +726,7 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32
             let iid = unsafe { (a[1] as *const [u8; 16]).read_unaligned() };
             if iid != IID_UNKNOWN
                 && iid != IIDS[kind as usize]
-                && !(kind == 2 && iid == IID_RESOURCE)
+                && !((kind == 2 || kind == 3) && iid == IID_RESOURCE)
             {
                 return NO_INTERFACE;
             }
@@ -572,12 +754,14 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32
                 }
             }
         }
-        (1, 6) | (2, 3) => {
+        (1, 6) | (2, 3) | (3, 3) => {
             if a[1] == 0 {
                 return INVALID;
             }
             let parent = match s.objects[&a[0]].body {
-                Body::Device { parent, .. } | Body::Surface { parent, .. } => parent,
+                Body::Device { parent, .. }
+                | Body::Surface { parent, .. }
+                | Body::VertexBuffer { parent, .. } => parent,
                 _ => unreachable!(),
             };
             addref(&mut s, parent);
@@ -589,6 +773,78 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32
                 unreachable!()
             };
             write(image, a[1], &[0, 1, *hwnd, 0x20]);
+            0
+        }
+        (1, 26) => vertex_buffer(image, &mut s, a),
+        (1, 89) => {
+            if a[1] != 0x44 {
+                return UNAVAILABLE;
+            }
+            let Body::Device { fvf, .. } = &mut s.objects.get_mut(&a[0]).unwrap().body else {
+                unreachable!()
+            };
+            *fvf = a[1];
+            0
+        }
+        (1, 100) => stream_source(&mut s, a),
+        (1, 81) => draw(image, &mut s, a),
+        (3, 10) => 6,
+        (3, 11) => {
+            if a[3] == 0 {
+                return INVALID;
+            }
+            write(image, a[3], &[0]);
+            if a[4] != 0 {
+                return UNAVAILABLE;
+            }
+            let Body::VertexBuffer {
+                data, length, lock, ..
+            } = &mut s.objects.get_mut(&a[0]).unwrap().body
+            else {
+                unreachable!()
+            };
+            let n = if a[2] == 0 {
+                length.saturating_sub(a[1])
+            } else {
+                a[2]
+            };
+            if lock.is_some() || n == 0 || a[1].checked_add(n).is_none_or(|end| end > *length) {
+                return INVALID;
+            }
+            *lock = Some((a[1], n));
+            write(image, a[3], &[*data + a[1]]);
+            0
+        }
+        (3, 12) => {
+            let Body::VertexBuffer {
+                lock, initialized, ..
+            } = &mut s.objects.get_mut(&a[0]).unwrap().body
+            else {
+                unreachable!()
+            };
+            let Some((first, n)) = lock.take() else {
+                return INVALID;
+            };
+            initialized.push((first, first + n));
+            initialized.sort_unstable();
+            let mut joined: Vec<(u32, u32)> = Vec::new();
+            for &(a, b) in initialized.iter() {
+                if let Some(last) = joined.last_mut()
+                    && a <= last.1
+                {
+                    last.1 = last.1.max(b);
+                } else {
+                    joined.push((a, b));
+                }
+            }
+            *initialized = joined;
+            0
+        }
+        (3, 13) => {
+            let Body::VertexBuffer { length, fvf, .. } = &s.objects[&a[0]].body else {
+                unreachable!()
+            };
+            write(image, a[1], &[100, 6, 0, 0, *length, *fvf]);
             0
         }
         (1, 18) => backbuffer(image, &mut s, a),
@@ -746,7 +1002,7 @@ mod tests {
             BASE + 17,
             BASE + 256 + 119,
             BASE + 512 + 17,
-            BASE + 768,
+            BASE + 768 + 14,
         ] {
             assert!(signature(id).is_none());
         }

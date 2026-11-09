@@ -5301,3 +5301,17 @@ size: PE32 D3DADAPTER_IDENTIFIER9 is 1100 bytes, not the initially assumed 1104.
 All checked member offsets passed. The runtime write and assertion are corrected,
 and the PE witness now guards both ends of the exact 1100-byte output. The initial
 failed native job remains recorded; the native pixel step did not run in it.
+
+
+The next physical milestone runs unchanged Microsoft Tutorial 02 vertex-buffer
+and rendering bodies through PE32 COM/wgpu, producing the original colored
+triangle. Its witness checks lock bounds, ownership and drawing after external
+vertex-buffer Release, and records all 90,000 RGB pixels. The native contract
+requires exact coverage and per-channel RGB error at most one, declared before
+the native triangle observation. All 177 PE library tests, five backend tests
+(including two explicit physical GPU tests) and Clippy pass. This remains a
+restricted transformed/diffuse fixed-function profile, not legacy shader support
+or DAO rendering. CI 42559416643 passes corrected SDK layout checks but stops
+before native pixels at a platform-dependent identity-key mismatch. Canonical
+source keys and byte-preserving Git attributes correct the observer; failed runs
+remain failed evidence. See d3d9.md for precise supported/unsupported operations.

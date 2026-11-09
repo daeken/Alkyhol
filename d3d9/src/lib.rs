@@ -1,6 +1,7 @@
 //! D3D9 GPU work. Guest COM pointers and Windows handles stay in the ABI layer.
 //! Initial contract: single-sample BGRA8 render targets, clear and real readback.
 use std::{sync::mpsc, time::Duration};
+use wgpu::util::DeviceExt;
 pub type Result<T> = std::result::Result<T, String>;
 
 pub struct Device {
@@ -27,6 +28,23 @@ pub fn argb_channels(color: u32) -> [u8; 4] {
         color as u8,
         (color >> 24) as u8,
     ]
+}
+fn validate_vertices(bytes: &[u8]) -> Result<()> {
+    if bytes.is_empty() || !bytes.len().is_multiple_of(60) || bytes.len() > 1024 * 1024 {
+        return Err("transformed draw requires bounded complete triangles".into());
+    }
+    for vertex in bytes.as_chunks::<20>().0 {
+        let p: Vec<f32> = vertex[..16]
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|b| f32::from_le_bytes(*b))
+            .collect();
+        if p.iter().any(|v| !v.is_finite()) || p[3] <= 0.0 {
+            return Err("transformed position/rhw outside the finite positive-rhw profile".into());
+        }
+    }
+    Ok(())
 }
 impl Device {
     /// Select a real native adapter. No backend or adapter identity is fabricated.
@@ -145,6 +163,116 @@ impl Device {
         target.initialized = true;
         Ok(())
     }
+    /// XYZRHW|DIFFUSE triangle-list vertex bytes (20 bytes/vertex). D3D9's
+    /// default clockwise faces are front-facing; no depth attachment is enabled.
+    pub fn draw_transformed(&self, target: &mut Target, bytes: &[u8]) -> Result<()> {
+        validate_vertices(bytes)?;
+        if !target.initialized {
+            return Err("draw requires an initialized backbuffer".into());
+        }
+        self.scope();
+        let vertices = self
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("D3D9 transformed vertex stream"),
+                contents: bytes,
+                usage: wgpu::BufferUsages::VERTEX,
+            });
+        let uniform: Vec<u8> = [target.width as f32, target.height as f32, 0.0, 0.0]
+            .iter()
+            .flat_map(|v| v.to_le_bytes())
+            .collect();
+        let uniform = self
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("D3D9 viewport"),
+                contents: &uniform,
+                usage: wgpu::BufferUsages::UNIFORM,
+            });
+        let shader = self
+            .device
+            .create_shader_module(wgpu::ShaderModuleDescriptor {
+                label: Some("D3D9 fixed-function XYZRHW diffuse"),
+                source: wgpu::ShaderSource::Wgsl(include_str!("transformed.wgsl").into()),
+            });
+        let pipeline = self
+            .device
+            .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some("D3D9 transformed triangle list"),
+                layout: None,
+                vertex: wgpu::VertexState {
+                    module: &shader,
+                    entry_point: Some("vs"),
+                    compilation_options: Default::default(),
+                    buffers: &[wgpu::VertexBufferLayout {
+                        array_stride: 20,
+                        step_mode: wgpu::VertexStepMode::Vertex,
+                        attributes: &[
+                            wgpu::VertexAttribute {
+                                format: wgpu::VertexFormat::Float32x4,
+                                offset: 0,
+                                shader_location: 0,
+                            },
+                            wgpu::VertexAttribute {
+                                format: wgpu::VertexFormat::Unorm8x4,
+                                offset: 16,
+                                shader_location: 1,
+                            },
+                        ],
+                    }],
+                },
+                primitive: wgpu::PrimitiveState {
+                    front_face: wgpu::FrontFace::Cw,
+                    cull_mode: Some(wgpu::Face::Back),
+                    ..Default::default()
+                },
+                depth_stencil: None,
+                multisample: Default::default(),
+                fragment: Some(wgpu::FragmentState {
+                    module: &shader,
+                    entry_point: Some("fs"),
+                    compilation_options: Default::default(),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: wgpu::TextureFormat::Bgra8Unorm,
+                        blend: None,
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                }),
+                multiview: None,
+                cache: None,
+            });
+        let bind = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("D3D9 viewport"),
+            layout: &pipeline.get_bind_group_layout(0),
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: uniform.as_entire_binding(),
+            }],
+        });
+        let view = target.texture.create_view(&Default::default());
+        let mut encoder = self.device.create_command_encoder(&Default::default());
+        {
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("D3D9 DrawPrimitive"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    depth_slice: None,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                ..Default::default()
+            });
+            pass.set_pipeline(&pipeline);
+            pass.set_bind_group(0, &bind, &[]);
+            pass.set_vertex_buffer(0, vertices.slice(..));
+            pass.draw(0..(bytes.len() / 20) as u32, 0..1);
+        }
+        self.queue.submit([encoder.finish()]);
+        self.finish()
+    }
     /// Returns tightly packed actual GPU BGRA8 bytes, never a CPU clear substitute.
     pub fn readback(&self, target: &Target) -> Result<Vec<u8>> {
         if !target.initialized {
@@ -222,6 +350,48 @@ mod tests {
             assert!(extent(w, h, 8192).is_err());
         }
         assert!(extent(8192, 8192, 8192).is_ok());
+    }
+    #[test]
+    fn reject_incomplete_nonfinite_and_zero_rhw_vertices() {
+        assert!(validate_vertices(&[]).is_err());
+        assert!(validate_vertices(&[0; 59]).is_err());
+        let mut bytes = Vec::new();
+        for _ in 0..3 {
+            for f in [1f32, 1., 0.5, 1.] {
+                bytes.extend(f.to_le_bytes());
+            }
+            bytes.extend(0xffabcdefu32.to_le_bytes());
+        }
+        assert!(validate_vertices(&bytes).is_ok());
+        bytes[..4].copy_from_slice(&f32::NAN.to_le_bytes());
+        assert!(validate_vertices(&bytes).is_err());
+        bytes[..4].copy_from_slice(&1f32.to_le_bytes());
+        bytes[12..16].fill(0);
+        assert!(validate_vertices(&bytes).is_err());
+    }
+    #[test]
+    #[ignore = "requires a real native GPU; run explicitly"]
+    fn gpu_transformed_triangle_preserves_background_and_culls_reverse_winding() {
+        let d = Device::new().unwrap();
+        let mut t = d.create_target(32, 32).unwrap();
+        let mut data = Vec::new();
+        for (x, y) in [(16f32, 4f32), (28., 28.), (4., 28.)] {
+            for f in [x, y, 0.5, 1.] {
+                data.extend(f.to_le_bytes());
+            }
+            data.extend(0xffff0000u32.to_le_bytes());
+        }
+        d.clear(&mut t, 0xff0000ff).unwrap();
+        d.draw_transformed(&mut t, &data).unwrap();
+        let pixels = d.readback(&t).unwrap();
+        let pixel = |x: usize, y: usize| &pixels[(y * 32 + x) * 4..(y * 32 + x) * 4 + 4];
+        assert_eq!(pixel(16, 16), [0, 0, 255, 255]);
+        assert_eq!(pixel(0, 0), [255, 0, 0, 255]);
+        d.clear(&mut t, 0xff0000ff).unwrap();
+        let (a, b) = data[20..].split_at_mut(20);
+        a.swap_with_slice(b);
+        d.draw_transformed(&mut t, &data).unwrap();
+        assert_eq!(d.readback(&t).unwrap(), [255, 0, 0, 255].repeat(32 * 32));
     }
     #[test]
     #[ignore = "requires a real native GPU; run explicitly"]

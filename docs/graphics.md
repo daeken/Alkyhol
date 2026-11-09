@@ -57,3 +57,6 @@ upstream meshes, textures, instances and shading, native Metal acceleration
 structures and ray intersectors, then an interactive window. Explicit SER support
 is a separate capability. No D3D feature level, general DXR compatibility or game
 compatibility is advertised. Allocation/device/command failures remain failures.
+
+A separate [D3D9 implementation](d3d9.md) now uses wgpu by the user's later
+choice for that API. This does not replace the direct Metal D3D12 backend above.
