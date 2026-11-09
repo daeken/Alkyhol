@@ -7263,3 +7263,31 @@ this new larger live-object witness is wired into existing CI and pending.
 Original Quick Play after this change is pending; character creation on the
 preceding revision remains the observed scene milestone. Game captures/data stay
 local, and no DAODecomp sources were changed.
+
+### Save-slot prefix lookup after the expanded-handle build
+
+The next clean original run, 0c71617, stops after 98.70 seconds while enumerating
+save-slot directories with a literal stem followed by '*'. The fatal trace is
+`wildcard search pattern is outside the measured all/extension profile`, status
+78. The user also reports accidentally closing the app; no causal assumption
+about that input is needed to identify the captured API boundary. The prior
+128-event-budget diagnostic is absent from this run; Quick Play completion is
+still not established.
+
+The search gateway now admits ASCII literal stem prefixes followed by one '*',
+with case-insensitive prefix matching, real file/directory metadata and existing
+handle iteration/close behavior. Empty suffixes are included. Literal parent
+paths, reparse/special-entry exclusions, budgets and existing all/extension
+profiles remain checked. Question marks, interior/repeated stars, DOS dot/8.3
+aliases and Unicode pattern case rules are not silently approximated.
+
+Five filesystem host units pass, including actual prefix enumeration, extension
+regression, nonmatches, missing-file versus missing-parent errors and symlink
+rejection. The new identical owned 16-word PE passes A/W enumeration over four
+real matching entries, exclusions, attributes, file sizes, exhaustion error 18,
+missing errors 2/3 and stack cleanup. The two literal frozen exact-file runs
+still match their native Windows observations; frozen source/PE/reference inputs
+are untouched. Comparator transport rejection tests and Clippy pass. The new
+prefix native comparison is wired into existing CI and pending. Original
+save-slot progression after this change is pending; all game/profile captures
+remain local.

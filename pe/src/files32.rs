@@ -155,6 +155,48 @@ fn fail(error: u32, value: u32) -> u32 {
     alkyhol::ffi::SetLastError(error);
     value
 }
+// Deliberately bounded long-name masks: all, an ASCII extension, or a literal
+// ASCII stem prefix followed by one '*'. DOS question/dot/8.3 alias matching
+// remains outside this profile; unsupported masks never become empty results.
+#[derive(Clone, Copy)]
+enum SearchMask<'a> {
+    All,
+    Extension(&'a str),
+    Prefix(&'a str),
+}
+impl<'a> SearchMask<'a> {
+    fn parse(mask: &'a str) -> Result<Self> {
+        let literal = |v: &str| {
+            !v.is_empty()
+                && v.bytes()
+                    .all(|c| c.is_ascii_alphanumeric() || c == b'_' || c == b'-')
+        };
+        if mask == "*" || mask == "*.*" {
+            return Ok(Self::All);
+        }
+        if let Some(extension) = mask
+            .strip_prefix("*.")
+            .filter(|v| !v.is_empty() && v.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'_'))
+        {
+            return Ok(Self::Extension(extension));
+        }
+        if let Some(prefix) = mask.strip_suffix('*').filter(|v| literal(v)) {
+            return Ok(Self::Prefix(prefix));
+        }
+        Err("wildcard search pattern is outside the all/extension/literal-prefix profile".into())
+    }
+    fn matches(self, name: &str) -> bool {
+        match self {
+            Self::All => true,
+            Self::Extension(extension) => name
+                .rsplit_once('.')
+                .is_some_and(|(_, suffix)| suffix.eq_ignore_ascii_case(extension)),
+            Self::Prefix(prefix) => name
+                .get(..prefix.len())
+                .is_some_and(|stem| stem.eq_ignore_ascii_case(prefix)),
+        }
+    }
+}
 fn records(pattern: &str) -> Result<std::result::Result<Vec<(String, Metadata)>, u32>> {
     if !pattern.contains(['*', '?']) {
         return match query(pattern)? {
@@ -165,17 +207,10 @@ fn records(pattern: &str) -> Result<std::result::Result<Vec<(String, Metadata)>,
     let (parent, mask) = pattern
         .rsplit_once('\\')
         .ok_or("wildcard search requires a checked parent directory")?;
-    if parent.contains(['*', '?'])
-        || !(mask == "*"
-            || mask == "*.*"
-            || mask.strip_prefix("*.").is_some_and(|v| {
-                !v.is_empty()
-                    && v.is_ascii()
-                    && v.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'_')
-            }))
-    {
-        return Err("wildcard search pattern is outside the measured all/extension profile".into());
+    if parent.contains(['*', '?']) {
+        return Err("wildcard search requires a literal checked parent directory".into());
     }
+    let matcher = SearchMask::parse(mask)?;
     let (directory, metadata) = match existing(parent)? {
         Ok(value) => value,
         Err(2 | 3) => return Ok(Err(3)),
@@ -205,12 +240,7 @@ fn records(pattern: &str) -> Result<std::result::Result<Vec<(String, Metadata)>,
             .file_name()
             .into_string()
             .map_err(|_| "wildcard search encountered a non-Unicode filename")?;
-        let matches = mask == "*"
-            || mask == "*.*"
-            || name
-                .to_ascii_lowercase()
-                .ends_with(&mask[1..].to_ascii_lowercase());
-        if !matches {
+        if !matcher.matches(&name) {
             continue;
         }
         let meta = std::fs::symlink_metadata(entry.path()).map_err(|e| e.to_string())?;
@@ -334,6 +364,71 @@ pub(super) fn close(image: &LoadedImage32<'_>, handle: u32) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn literal_prefix_masks_preserve_case_insensitive_stems_and_reject_unknown_patterns() {
+        let prefix = SearchMask::parse("Slot_*").unwrap();
+        for name in ["Slot_", "slot_001", "SLOT_save.dat", "Slot_桜"] {
+            assert!(prefix.matches(name));
+        }
+        for name in ["Slot", "Slot-001", "XSlot_001", "桜Slot_001", "SloT"] {
+            assert!(!prefix.matches(name));
+        }
+        for mask in [
+            "Slot_?", "Slot_**", "Sl*ot_", "*Slot_*", "Slot.*", "Slot_*.*", "桜*", "..*", "foo\\*",
+        ] {
+            assert!(SearchMask::parse(mask).is_err());
+        }
+        assert!(SearchMask::parse("*.DAT").unwrap().matches("probe.dat"));
+        assert!(!SearchMask::parse("*.dat").unwrap().matches("dat"));
+        for mask in ["*", "*.*"] {
+            assert!(SearchMask::parse(mask).unwrap().matches("no_extension"));
+        }
+    }
+    #[test]
+    fn prefix_enumeration_uses_real_entries_metadata_and_distinct_missing_errors() {
+        let root = std::fs::canonicalize(std::env::temp_dir())
+            .unwrap()
+            .join(format!(
+                "alkyhol-prefix-{}-{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos()
+            ));
+        std::fs::create_dir(&root).unwrap();
+        for name in ["Slot_", "Slot_001", "slot_002", "Other_001", "XSlot_003"] {
+            std::fs::create_dir(root.join(name)).unwrap();
+        }
+        std::fs::write(root.join("Slot_data.dat"), b"abc").unwrap();
+        let guest = format!("Z:{}", root.to_str().unwrap().replace('/', "\\"));
+        let entries = records(&format!("{guest}\\Slot_*")).unwrap().unwrap();
+        assert_eq!(
+            entries
+                .iter()
+                .map(|(name, _)| name.as_str())
+                .collect::<Vec<_>>(),
+            ["Slot_", "Slot_001", "Slot_data.dat", "slot_002"]
+        );
+        for (name, meta) in entries {
+            assert_eq!(meta.is_dir(), name != "Slot_data.dat");
+            if meta.is_file() {
+                assert_eq!(meta.len(), 3);
+            }
+        }
+        assert_eq!(
+            records(&format!("{guest}\\Missing_*")).unwrap().err(),
+            Some(2)
+        );
+        assert_eq!(
+            records(&format!("{guest}\\absent\\Slot_*")).unwrap().err(),
+            Some(3)
+        );
+        assert!(records(&format!("{guest}\\*\\Slot_*")).is_err());
+        std::os::unix::fs::symlink(root.join("Slot_data.dat"), root.join("Slot_link")).unwrap();
+        assert!(records(&format!("{guest}\\Slot_*")).is_err());
+        std::fs::remove_dir_all(root).unwrap();
+    }
     #[test]
     fn real_search_snapshots_keep_dots_extension_case_and_absence_distinct() {
         let root = std::env::temp_dir().join(format!("alkyhol-search-{}", std::process::id()));
