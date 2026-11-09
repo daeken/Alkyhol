@@ -68,9 +68,9 @@ def check(output,native=False):
         if r.returncode!=(0 if mode==0 else 78) or r.stdout!=expected:raise ValueError(f'NLS host microtest {mode}: {r.returncode}, {r.stdout.hex()}, {r.stderr!r}')
         if mode and b'unsupported' not in r.stderr and b'outside measured repertoire' not in r.stderr:raise ValueError('missing explicit NLS restriction')
         observations.append({'case':f'nls{mode}','status':r.returncode,'stdout_hex':r.stdout.hex(),'stderr_hex':r.stderr.hex()})
-    for name,expected in [('nls3.exe',lcmap_expected())]+[(f'map{mode}.exe',map_expected() if mode==0 else struct.pack('<I',0x53543332)) for mode in range(5)]:
+    for name,expected in [('nls3.exe',lcmap_expected())]+[(f'map{mode}.exe',map_expected() if mode==0 else struct.pack('<II',0x53543332,0x53543332) if mode==4 else struct.pack('<I',0x53543332)) for mode in range(5)]:
         r=subprocess.run([str(probe),str(output/name)],input=b'',capture_output=True,timeout=15)
-        status=78 if name.startswith('map') and name!='map0.exe' else 0
+        status=78 if name.startswith('map') and name not in ['map0.exe','map4.exe'] else 0
         if r.returncode!=status or r.stdout!=expected:raise ValueError(f'LCMap host microtest {name}: {r.returncode}, {r.stdout.hex()}, {r.stderr!r}')
         if status and b'unsupported' not in r.stderr and b'outside measured repertoire' not in r.stderr:raise ValueError('missing explicit mapping/feature restriction')
         observations.append({'case':name,'status':r.returncode,'stdout_hex':r.stdout.hex(),'stderr_hex':r.stderr.hex()})

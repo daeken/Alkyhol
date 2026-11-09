@@ -6229,3 +6229,27 @@ remain explicitly unsupported; no default write permission is fabricated. The
 owned 13-word PE checks absence, both same-hive forms, output guards, LastError
 and guest stack. It passes physical M4; native comparison is added and pending.
 201 PE units and Clippy pass. The next integrated retry is pending.
+
+## Original D3DX instruction discovery
+
+The next integrated run passes both original D3DX RegOpenKeyA requests and stops
+at IsProcessorFeaturePresent(7), the optional 3DNow facility (not SSE2). The
+reached instruction-discovery family now reads actual CPUID: MMX and SSE/SSE2
+from leaf 1, 3DNow from extended leaf 0x80000001 only when supported. The admitted
+x86-64 host supplies OS XMM state support. Unknown feature meanings still stop
+explicitly; an absent extended leaf means that instruction facility is absent,
+not that unknown API operations return zero. See the [Microsoft feature identifiers](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-isprocessorfeaturepresent).
+
+The owned 13-word PE compares each reported feature to its independently executed
+CPUID, preserves LastError and guest stack, and executes an XMM operation when
+SSE2 is actually reported. It passes on physical M4; separate bit-selection units
+cover missing extended leaves, basic/extended bit independence and unsupported
+identifiers. Native identical-PE comparison is added and pending. The old literal
+map4 startup PE now legitimately returns from its MMX query and emits its second
+marker; its source/PE identities are unchanged. Its former unsupported boundary
+remains historical, with the other locale/flag/character exclusions preserved.
+
+The 80MiB owned read comparison now also uses the literal CI-produced PE on the
+physical M4: source, PE and generated-data identities and all 14 output words
+agree with native Windows from 42618857208. The independently compiled local PE
+has a different identity and was not used to claim identical-binary agreement.

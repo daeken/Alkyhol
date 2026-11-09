@@ -14,6 +14,25 @@ impl Bounds {
                 .is_some_and(|end| end <= self.end)
     }
 }
+// These instruction facilities use real Rosetta/x86 CPUID, including the
+// separate extended leaf for AMD 3DNow. No general feature catalog is invented.
+fn instruction_feature(feature: u32, basic: u32, extended: Option<u32>) -> Result<u32> {
+    let bit = match feature {
+        0 if basic & (1 << 26) != 0 => return Ok(0), // Historical Pentium FDIV erratum excluded by SSE2 domain.
+        3 => basic & (1 << 23),                      // MMX
+        6 => basic & (1 << 25), // SSE, with OS XMM state support in the admitted x86-64 host.
+        7 => extended.unwrap_or(0) & (1 << 31), // 3DNow, never confused with SSE2.
+        10 => basic & (1 << 26),
+        _ => return Err(format!("PE32 processor feature {feature} is unsupported")),
+    };
+    Ok(u32::from(bit != 0))
+}
+pub(super) fn processor_feature(feature: u32) -> Result<u32> {
+    let basic = std::arch::x86_64::__cpuid(1).edx;
+    let max = std::arch::x86_64::__cpuid(0x80000000).eax;
+    let extended = (max >= 0x80000001).then(|| std::arch::x86_64::__cpuid(0x80000001).edx);
+    instruction_feature(feature, basic, extended)
+}
 pub(super) struct Machine {
     pub bounds: Bounds,
     words: [u32; 9],
@@ -150,6 +169,20 @@ pub(super) fn set_affinity(image: &LoadedImage32<'_>, args: &[u32; 8], thread: b
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn legacy_instruction_features_keep_basic_and_extended_leaves_separate() {
+        for (feature, bit) in [(3, 23), (6, 25), (10, 26)] {
+            assert_eq!(instruction_feature(feature, 0, Some(u32::MAX)).unwrap(), 0);
+            assert_eq!(instruction_feature(feature, 1 << bit, None).unwrap(), 1);
+        }
+        assert_eq!(instruction_feature(7, u32::MAX, None).unwrap(), 0);
+        assert_eq!(instruction_feature(7, u32::MAX, Some(0)).unwrap(), 0);
+        assert_eq!(instruction_feature(7, 0, Some(1 << 31)).unwrap(), 1);
+        assert_eq!(instruction_feature(0, 1 << 26, None).unwrap(), 0);
+        for feature in [0, 1, 2, 4, 8, 9, 11, u32::MAX] {
+            assert!(instruction_feature(feature, 0, None).is_err());
+        }
+    }
     const INTEL: [u32; 4] = [13, 0x756e6547, 0x6c65746e, 0x49656e69];
     #[test]
     fn observed_cpu_fields_and_laa_memory_ranges_use_defined_widths() {

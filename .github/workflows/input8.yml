@@ -133,6 +133,19 @@ jobs:
             local/pe/null-module-export-microtest/null-module-export-inputs.json
             local/pe/null-module-export-microtest/null-module-export-host.json
           if-no-files-found: error
+      - name: Execute instruction feature discovery reached by original D3DX
+        run: |
+          python tools/observe_pe32_cpu_features.py
+          python tools/observe_pe32_cpu_features.py --host
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cpu-features-identical-pe
+          path: |
+            local/pe/cpu-features-microtest/cpu-features.exe
+            local/pe/cpu-features-microtest/cpu-features-inputs.json
+            local/pe/cpu-features-microtest/cpu-features-host.json
+          if-no-files-found: error
       - name: Execute legacy registry calls reached by original D3DX
         run: |
           python tools/observe_pe32_registry_legacy.py
@@ -300,6 +313,15 @@ jobs:
         with:
           name: large-read-identical-pe
           path: local/pe/large-read-80-microtest
+      - name: Compare identical CPU feature-discovery PE on native Windows
+        if: success() || failure()
+        run: python tools/observe_pe32_cpu_features.py --native
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cpu-features-native-observation
+          path: local/pe/cpu-features-microtest/native-cpu-features.json
+          if-no-files-found: warn
       - name: Compare identical legacy registry PE on native Windows
         if: success() || failure()
         run: python tools/observe_pe32_registry_legacy.py --native
