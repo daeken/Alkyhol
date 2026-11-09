@@ -7291,3 +7291,43 @@ are untouched. Comparator transport rejection tests and Clippy pass. The new
 prefix native comparison is wired into existing CI and pending. Original
 save-slot progression after this change is pending; all game/profile captures
 remain local.
+
+### Further scene loading: shared low-address CPU storage
+
+Clean a858431 passes the earlier save-slot search boundary and continues loading
+more original graphics resources. After 160.79 seconds it stops at
+`D3D9 low-storage budget exhausted` during a further declaration creation. The
+allocator counted every retained COM/texture/input mapping against an early
+512-mapping bound. No missing geometry, substituted textures or completed
+in-game frame is inferred from this loading progression.
+
+Small writable, nonexecutable CPU allocations (up to 1 MiB) now occupy disjoint
+16-byte-aligned slots in real 4 MiB low-address arenas. Larger allocations keep
+separate mappings, as do immutable records and executable storage with their
+existing independent OS protections. All guest-visible bytes/pointers stay
+stable until process teardown; slots are not recycled, and this change does not
+claim CPU shadow reclamation. The explicit ceiling is now 4096 actual mappings,
+with checked low-address-space placement, lengths and protection failures. It is
+not an unlimited-memory or Windows quota claim. No pixel, mip or resource payload
+is clipped to meet that ceiling.
+
+On physical M4/Rosetta the new eight-word --texture-storage PE passes 768 live
+managed textures, every mip/texel, metadata and raw lock pitches, followed by
+external releases, 128 later allocations, retained texture binding and a shared
+surface alias retaining unchanged bytes. The existing 4094-vertex plus
+4094-index-buffer rollover/lifetime PE also passes after rebuilding its checked
+header identity. The new identical-texture-PE native Windows comparison is wired
+into existing CI and pending.
+
+The actual allocator test is linked with the required small PAGEZERO through
+`cargo rustc --manifest-path pe/Cargo.toml --target x86_64-apple-darwin --lib
+--profile test -- -C link-arg=-Wl,-pagezero_size,0x1000`, then run with the exact
+ignored test name `runtime32::d3d9_32::tests::actual_small_guest_allocations_pack_disjoint_bytes_and_keep_protection_classes`.
+It passes 1100 actual writable allocations crossing arena boundaries (two
+mappings), checks all unchanged bytes/alignment, read-only/write admission and a
+separate large mapping. A first ordinary test-host attempt failed low-address
+allocation because that host reserved PAGEZERO; the specifically linked run is
+the physical allocation evidence. The normal suite explicitly skips this one
+link-dependent test: 229 other PE units pass. Eighteen observer units, including
+new strict transport rejection checks, and Clippy pass. Original scene loading
+after the allocator change remains pending; user game/profile data stays local.

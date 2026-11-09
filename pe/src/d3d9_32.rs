@@ -495,11 +495,54 @@ fn write(image: &LoadedImage32<'_>, at: u32, words: &[u32]) {
         unsafe { (at as *mut u32).add(i).write_unaligned(*w) }
     }
 }
-pub(super) fn memory(cpu: &Cpu32, bytes: &[u8], writable: bool, executable: bool) -> Result<u32> {
-    if cpu.com_storage.borrow().len() >= 512 {
-        return Err("D3D9 low-storage budget exhausted".into());
+const STORAGE_ARENA: u32 = 4 * 1024 * 1024;
+const MAX_STORAGE_MAPPINGS: usize = 4096;
+fn storage_slot(used: u32, length: u32) -> Option<(u32, u32)> {
+    if length == 0 {
+        return None;
     }
-    let m = cpu.mapping(bytes.len().div_ceil(PAGE) * PAGE, PAGE, 0)?;
+    let start = used.checked_add(15)? & !15;
+    let end = start.checked_add(length)?;
+    (end <= STORAGE_ARENA).then_some((start, end))
+}
+pub(super) fn memory(cpu: &Cpu32, bytes: &[u8], writable: bool, executable: bool) -> Result<u32> {
+    let length = u32::try_from(bytes.len()).map_err(|_| "D3D9 storage size exceeds PE32 extent")?;
+    if length == 0 {
+        return Err("D3D9 storage requires nonempty bytes".into());
+    }
+    // Only RW, nonexecutable allocations share pages. Immutable callback records
+    // and executable allocations keep independent OS protections. Slots never
+    // move or overlap and are retained until process teardown, like prior maps.
+    let packed = writable && !executable && length <= STORAGE_ARENA / 4;
+    if packed {
+        let mut arenas = cpu.com_arenas.borrow_mut();
+        if let Some((base, used)) = arenas.last_mut()
+            && let Some((offset, end)) = storage_slot(*used, length)
+        {
+            let address = base
+                .checked_add(offset)
+                .ok_or("D3D9 arena address overflow")?;
+            unsafe {
+                std::ptr::copy_nonoverlapping(bytes.as_ptr(), address as *mut u8, bytes.len());
+            }
+            *used = end;
+            return Ok(address);
+        }
+    }
+    if cpu.com_storage.borrow().len() >= MAX_STORAGE_MAPPINGS {
+        return Err("D3D9 low-storage mapping budget exhausted (4096 actual mappings)".into());
+    }
+    let size = if packed {
+        STORAGE_ARENA as usize
+    } else {
+        bytes
+            .len()
+            .checked_add(PAGE - 1)
+            .ok_or("D3D9 storage page extent overflow")?
+            / PAGE
+            * PAGE
+    };
+    let m = cpu.mapping(size, PAGE, 0)?;
     unsafe {
         std::ptr::copy_nonoverlapping(bytes.as_ptr(), m.base, bytes.len());
     }
@@ -510,8 +553,12 @@ pub(super) fn memory(cpu: &Cpu32, bytes: &[u8], writable: bool, executable: bool
     )?;
     let address = m.base as u32;
     cpu.com_storage.borrow_mut().push((m, writable));
+    if packed {
+        cpu.com_arenas.borrow_mut().push((address, length));
+    }
     Ok(address)
 }
+
 fn table(cpu: &Cpu32, state: &mut State, kind: u32) -> Result<u32> {
     if let Some(t) = state.tables.get(&kind) {
         return Ok(*t);
@@ -4003,6 +4050,68 @@ fn dispatch_inner(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn storage_slots_align_without_overflow_or_reusing_tail_bytes() {
+        let mut used = 0;
+        for length in [1, 15, 16, 17, 65536, 1_048_576, 1_048_575] {
+            let (offset, end) = storage_slot(used, length).unwrap();
+            assert_eq!(offset % 16, 0);
+            assert!(offset >= used);
+            assert_eq!(end - offset, length);
+            used = end;
+        }
+        assert_eq!(storage_slot(0, STORAGE_ARENA), Some((0, STORAGE_ARENA)));
+        for (used, length) in [
+            (0, 0),
+            (STORAGE_ARENA, 1),
+            (STORAGE_ARENA - 1, 2),
+            (u32::MAX, 1),
+            (16, u32::MAX),
+        ] {
+            assert!(storage_slot(used, length).is_none());
+        }
+    }
+    #[test]
+    #[ignore = "requires the PE32 host small-PAGEZERO link; run cargo rustc --lib --profile test with -C link-arg=-Wl,-pagezero_size,0x1000"]
+    fn actual_small_guest_allocations_pack_disjoint_bytes_and_keep_protection_classes() {
+        let image = super::super::tests::layout();
+        let cpu = &image.cpu;
+        let mut allocations = Vec::new();
+        for index in 0..1100u32 {
+            let length = 4093 + (index % 7);
+            let bytes = vec![(index % 251) as u8; length as usize];
+            let p = memory(cpu, &bytes, true, false).unwrap();
+            assert_eq!(p % 16, 0);
+            assert!(image.permits(p as usize, length as usize, true));
+            allocations.push((p, bytes));
+        }
+        assert_eq!(cpu.com_storage.borrow().len(), 2);
+        for (p, bytes) in &allocations {
+            assert_eq!(
+                unsafe { std::slice::from_raw_parts(*p as *const u8, bytes.len()) },
+                bytes
+            );
+        }
+        let immutable = memory(cpu, b"immutable record", false, false).unwrap();
+        assert!(image.permits(immutable as usize, 16, false));
+        assert!(!image.permits(immutable as usize, 16, true));
+        let large = memory(
+            cpu,
+            &vec![0x7b; STORAGE_ARENA as usize / 4 + 1],
+            true,
+            false,
+        )
+        .unwrap();
+        assert!(image.permits(large as usize, STORAGE_ARENA as usize / 4 + 1, true));
+        assert_eq!(
+            unsafe { (large as *const u8).add(STORAGE_ARENA as usize / 4).read() },
+            0x7b
+        );
+        assert_eq!(cpu.com_storage.borrow().len(), 4);
+        assert!(memory(cpu, &[], true, false).is_err());
+        cpu.com_arenas.borrow_mut().clear();
+        cpu.com_storage.borrow_mut().clear();
+    }
     #[test]
     fn packed_texture_mips_keep_aligned_disjoint_faces_and_exact_block_layouts() {
         let (layout, total) = texture_cpu_layout(4, 4, 3, 6, SampleFormat::Bgra8).unwrap();

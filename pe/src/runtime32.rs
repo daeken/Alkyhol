@@ -942,6 +942,7 @@ struct Cpu32 {
     com: RefCell<com32::State>,
     wave: RefCell<wave32::State>,
     com_storage: RefCell<Vec<(LowMapping, bool)>>,
+    com_arenas: RefCell<Vec<(u32, u32)>>,
 }
 impl Cpu32 {
     fn stack(&self) -> &LowMapping {
@@ -1073,6 +1074,7 @@ impl Cpu32 {
             com: RefCell::new(Default::default()),
             wave: RefCell::new(Default::default()),
             com_storage: RefCell::new(Default::default()),
+            com_arenas: RefCell::new(Default::default()),
         })
     }
 }
@@ -2795,6 +2797,7 @@ mod tests {
                 com: RefCell::new(Default::default()),
                 wave: RefCell::new(Default::default()),
                 com_storage: RefCell::new(Default::default()),
+                com_arenas: RefCell::new(Default::default()),
             }),
             tls: None,
             tls_entered: Cell::new(false),

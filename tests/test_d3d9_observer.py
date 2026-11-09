@@ -151,6 +151,16 @@ class LegacyShaderComparatorTests(unittest.TestCase):
                 changed=words.copy();changed[index]=value
                 with self.assertRaises(ValueError):shader_words(changed)
 
+    def test_texture_storage_witness_requires_all_lifetime_and_stack_results(self):
+        from observe_d3d9_cube import decode
+        import struct
+        words=[0x54455841,1,0,1,1,1,768,8]
+        self.assertEqual(decode(struct.pack('<8I',*words),texture_storage=True),words)
+        for index in range(8):
+            bad=words.copy();bad[index]^=1
+            with self.assertRaises(ValueError):decode(struct.pack('<8I',*bad),texture_storage=True)
+        with self.assertRaises(ValueError):decode(struct.pack('<7I',*words[:-1]),texture_storage=True)
+
     def test_exact_frames_and_stack_extent(self):
         words=self.record();self.assertEqual(shader_words(words),words)
         for changed in [words[:-1],words+[0]]:
