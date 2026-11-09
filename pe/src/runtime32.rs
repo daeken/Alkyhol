@@ -116,6 +116,13 @@ unsafe extern "C" {
         fd: i32,
         offset: i64,
     ) -> *mut c_void;
+    fn alkyhol_pe32_allocate_hole(
+        minimum: u64,
+        end: u64,
+        len: u64,
+        alignment: u64,
+        output: *mut u64,
+    ) -> i32;
     fn mprotect(address: *mut c_void, len: usize, prot: i32) -> i32;
     fn munmap(address: *mut c_void, len: usize) -> i32;
     fn getpagesize() -> i32;
@@ -732,10 +739,48 @@ impl LowMapping {
         } else {
             alignment
         };
-        let mapping = Self::new(len, alignment, hint)?;
-        if bounds.is_some_and(|b| !b.contains(mapping.base as usize, mapping.len)) {
-            return Err("mapping outside the admitted PE32 application address interval".into());
+        let first = Self::new(len, alignment, hint);
+        let Some(bounds) = bounds else {
+            return first;
+        };
+        match first {
+            Ok(mapping) if bounds.contains(mapping.base as usize, mapping.len) => {
+                return Ok(mapping);
+            }
+            Ok(mapping) => {
+                eprintln!(
+                    "PE32 bounded mapping retry: len={len:#x} alignment={alignment:#x} rejected={:#x} interval={:#x}..{:#x}",
+                    mapping.base as usize, bounds.minimum, bounds.end
+                );
+                drop(mapping);
+            }
+            Err(error) => eprintln!("PE32 bounded mapping retry: len={len:#x} first_error={error}"),
         }
+        let mut address = 0u64;
+        let status = unsafe {
+            alkyhol_pe32_allocate_hole(
+                bounds.minimum as u64,
+                bounds.end,
+                len as u64,
+                alignment as u64,
+                &mut address,
+            )
+        };
+        if status != 0 {
+            return Err(format!(
+                "no admitted PE32 address hole: len={len:#x} alignment={alignment:#x} interval={:#x}..{:#x} Mach status={status}",
+                bounds.minimum, bounds.end
+            ));
+        }
+        let mapping = Self {
+            base: address as *mut u8,
+            len,
+        };
+        if !bounds.contains(address as usize, len) || !(address as usize).is_multiple_of(alignment)
+        {
+            return Err("native hole allocator violated the PE32 bounds/alignment contract".into());
+        }
+        eprintln!("PE32 bounded mapping placed: address={address:#x} len={len:#x}");
         Ok(mapping)
     }
     fn new(len: usize, alignment: usize, hint: usize) -> Result<Self> {

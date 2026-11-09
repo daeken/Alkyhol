@@ -1,0 +1,51 @@
+/* Bounded PE32 address-hole allocation. mmap is deliberately used WITHOUT
+ * MAP_FIXED: racing host allocations must never be replaced.
+ * The SDK supplies the real Mach region layouts and port types. */
+#include <mach/mach.h>
+#include <mach/mach_vm.h>
+#include <stdint.h>
+#include <sys/mman.h>
+
+int alkyhol_pe32_allocate_hole(uint64_t minimum, uint64_t end, uint64_t size,
+                             uint64_t alignment, uint64_t *output) {
+    if (!output || minimum < 65536 || end > UINT64_C(0x100000000) ||
+        minimum >= end || !size || size % 4096 || alignment < 4096 ||
+        (alignment & (alignment - 1)) || alignment > UINT64_C(0x100000000))
+        return KERN_INVALID_ARGUMENT;
+    mach_vm_address_t candidate = (minimum + alignment - 1) & ~(alignment - 1);
+    for (unsigned attempts = 0; attempts < 100000; ++attempts) {
+        if (candidate >= end || size > end - candidate) return KERN_NO_SPACE;
+        mach_vm_address_t region = candidate;
+        mach_vm_size_t length = 0;
+        vm_region_basic_info_data_64_t info;
+        mach_msg_type_number_t count = VM_REGION_BASIC_INFO_COUNT_64;
+        mach_port_t object = MACH_PORT_NULL;
+        kern_return_t status = mach_vm_region(mach_task_self(), &region, &length,
+            VM_REGION_BASIC_INFO_64, (vm_region_info_t)&info, &count, &object);
+        if (object != MACH_PORT_NULL) mach_port_deallocate(mach_task_self(), object);
+        if (status != KERN_SUCCESS && status != KERN_INVALID_ADDRESS) return status;
+        uint64_t gap_end = status == KERN_INVALID_ADDRESS || region > end ? end : region;
+        if (candidate < gap_end && size <= gap_end - candidate) {
+            // mmap without MAP_FIXED is also safe against a racing allocation.
+            // Rosetta's MAP_32BIT path admits low mappings that the ordinary
+            // mach_vm_allocate entry point can reject as INVALID_ADDRESS.
+            void *mapped = mmap((void *)(uintptr_t)candidate, size, PROT_READ | PROT_WRITE,
+                               MAP_PRIVATE | MAP_ANON | 0x8000 /* MAP_32BIT */, -1, 0);
+            if (mapped == MAP_FAILED) return KERN_RESOURCE_SHORTAGE;
+            uint64_t chosen = (uint64_t)(uintptr_t)mapped;
+            if (chosen >= minimum && chosen < end && size <= end - chosen && !(chosen & (alignment - 1))) {
+                *output = chosen;
+                return KERN_SUCCESS;
+            }
+            munmap(mapped, size);
+            candidate += alignment;
+            continue;
+        }
+        if (status == KERN_INVALID_ADDRESS) return KERN_NO_SPACE;
+        if (!length || region > UINT64_MAX - length) return KERN_FAILURE;
+        uint64_t next = region + length;
+        if (next <= candidate || next > UINT64_MAX - (alignment - 1)) return KERN_FAILURE;
+        candidate = (next + alignment - 1) & ~(alignment - 1);
+    }
+    return KERN_ABORTED; // Explicit bounded retry exhaustion, never success/OOM inference.
+}

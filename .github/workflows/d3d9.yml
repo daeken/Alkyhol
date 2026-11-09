@@ -17,6 +17,11 @@ jobs:
         run: |
           cargo fetch --manifest-path pe/Cargo.toml --locked
           cargo fetch --manifest-path d3d9/Cargo.toml --locked
+      - name: Validate bounded Rosetta address-hole allocation
+        run: |
+          mkdir -p local/pe
+          xcrun clang -arch x86_64 -mmacosx-version-min=14.0 -Wall -Wextra -Werror -Wl,-pagezero_size,0x1000 pe/probe_low_memory.c pe/src/memory_host32.c -o local/pe/probe-low-memory
+          arch -x86_64 local/pe/probe-low-memory
       - name: Validate portable renderer and execute actual Metal pixels
         run: |
           python -m unittest discover -s tests -p test_d3d9_observer.py -v

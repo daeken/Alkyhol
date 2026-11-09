@@ -6157,3 +6157,27 @@ CI 42618856909 passes all three D3D9 jobs on 775b18a; startup/API comparison
 42618857208 and conformance 42618857330 also pass. The separate broad PE workflow
 42618857300 still has earlier native discrepancy failures; no all-CI-green claim
 is made.
+
+## Bounded PE32 low-address hole retry
+
+The initial mmap path could choose memory above the non-LAA guest boundary and
+immediately stop, without searching reusable holes below it. A fallback now
+queries actual host mappings and attempts non-overwriting anonymous mmap hints
+inside the unchanged admitted interval. Every resulting extent and alignment is
+checked before guest use; rejected mappings are released. MAP_FIXED is never
+used. Errors, actual exhausted address space and bounded retry exhaustion remain
+explicit failures. GetSystemInfo's original ordinary/LAA ranges are unchanged.
+
+The physical x86_64/Rosetta host probe allocates three adjacent low regions,
+releases the middle one, finds and reuses that exact hole, checks neighboring
+sentinels survive, checks occupied-range failure leaves output untouched,
+checks real zero-fill and invalid bounds/alignment/size, then protects/unmaps
+those real mappings. It passes with the SDK C compiler; 200 PE units and PE
+Clippy pass. The probe is added to hosted macOS CI. This is host allocation
+implementation evidence, not another native Windows API observation.
+
+An attempted direct mach_vm_allocate(FIXED without OVERWRITE) returned
+KERN_INVALID_ADDRESS for an otherwise free low-address region under this
+Rosetta host; the retained implementation instead uses the working MAP_32BIT
+mmap path with actual extent checks. No fixed overwrite or fabricated allocation
+success is used. Integrated original-game retry is pending.
