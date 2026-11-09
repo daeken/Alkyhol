@@ -1,0 +1,8 @@
+LIBRARY GDI32.dll
+EXPORTS
+GetObjectW
+CreateCompatibleDC
+DeleteDC
+SelectObject
+DeleteObject
+GetDIBits

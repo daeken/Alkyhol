@@ -1,0 +1,10 @@
+LIBRARY GDI32.dll
+EXPORTS
+CreateCompatibleDC
+SelectObject
+DeleteObject
+DeleteDC
+BitBlt
+GetPixel
+CreateDIBSection
+GetObjectW

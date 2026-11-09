@@ -1,0 +1,9 @@
+LIBRARY KERNEL32.dll
+EXPORTS
+GetModuleHandleW
+GetStdHandle
+WriteFile
+CreateThread
+WaitForSingleObject
+GetExitCodeThread
+CloseHandle

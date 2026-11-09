@@ -102,7 +102,8 @@ impl State {
             let mut out = Vec::new();
             let mut total = 0usize;
             for r in image.resources()? {
-                if let (ResourceName::Id(kind @ (3 | 14)), ResourceName::Id(id)) = (r.kind, r.name)
+                if let (ResourceName::Id(kind @ (2 | 3 | 14)), ResourceName::Id(id)) =
+                    (r.kind, r.name)
                 {
                     if image.sections.iter().any(|s| {
                         r.data_rva >= s.rva
@@ -128,6 +129,22 @@ impl State {
             Ok(out)
         })();
         self.modules.insert(base, resources);
+    }
+    pub(super) fn bitmap_resource(&self, module: u32, id: u16) -> Result<Option<Vec<u8>>> {
+        let resources = self
+            .modules
+            .get(&module)
+            .ok_or("LoadBitmapW requires a registered guest module")?
+            .as_ref()
+            .map_err(Clone::clone)?;
+        let selected: Vec<_> = resources
+            .iter()
+            .filter(|r| r.kind == 2 && r.id == id)
+            .collect();
+        if selected.len() > 1 {
+            return Err("bitmap language selection requires a unique resource language".into());
+        }
+        Ok(selected.first().map(|r| r.bytes.clone()))
     }
     fn load(&mut self, module: u32, id: u16) -> Result<Option<u32>> {
         if let Some(image) = self.loaded.get(&(module, id)) {

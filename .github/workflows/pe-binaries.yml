@@ -157,6 +157,22 @@ jobs:
         run: |
           python tools/observe_pe32_search_family.py
           python tools/observe_pe32_search_family.py --host
+      - name: Execute real queue filters, owner-thread dispatch and paint lifetimes
+        run: |
+          python tools/observe_pe32_message_family.py
+          python tools/observe_pe32_message_family.py --host
+      - name: Execute owned resource bitmap RGB readback
+        run: |
+          python tools/observe_pe32_bitmap_family.py
+          python tools/observe_pe32_bitmap_family.py --host
+      - name: Execute worker window creation through host main delivery
+        run: |
+          python tools/observe_pe32_worker_window.py
+          python tools/observe_pe32_worker_window.py --host
+      - name: Execute GDI device copies and guest-addressable DIB sections
+        run: |
+          python tools/observe_pe32_gdi_window.py
+          python tools/observe_pe32_gdi_window.py --host
       - name: Execute original worker threads with distinct TEB and TLS state
         run: |
           python tools/observe_pe32_thread_family.py
@@ -271,6 +287,14 @@ jobs:
             local/pe/startup-microtests/full-path-host.json
             local/pe/startup-microtests/search-family-inputs.json
             local/pe/startup-microtests/search-family-host.json
+            local/pe/startup-microtests/message-family-inputs.json
+            local/pe/startup-microtests/message-family-host.json
+            local/pe/startup-microtests/bitmap-family-inputs.json
+            local/pe/startup-microtests/bitmap-family-host.json
+            local/pe/startup-microtests/worker-window-inputs.json
+            local/pe/startup-microtests/worker-window-host.json
+            local/pe/startup-microtests/gdi-window-inputs.json
+            local/pe/startup-microtests/gdi-window-*-host.json
             local/pe/startup-microtests/thread-family-inputs.json
             local/pe/startup-microtests/thread-family-host.json
             local/pe/startup-microtests/process-family-inputs.json
@@ -422,6 +446,21 @@ jobs:
       - name: Compare actual wildcard entries and A/W layouts on native Windows
         if: ${{ success() || failure() }}
         run: python tools/observe_pe32_search_family.py --native
+      - name: Check GUI layouts against the independent Windows SDK
+        if: ${{ success() || failure() }}
+        run: cl /nologo /c /W4 /WX /std:c++17 pe/fixtures/pe32-startup/gui-layout.cpp /Folocal/pe/startup-microtests/gui-layout.obj
+      - name: Compare identical message queue and paint lifetime PE on native Windows
+        if: ${{ success() || failure() }}
+        run: python tools/observe_pe32_message_family.py --native
+      - name: Compare identical PE bitmap RGB data on native Windows
+        if: ${{ success() || failure() }}
+        run: python tools/observe_pe32_bitmap_family.py --native
+      - name: Compare identical PE guest-worker window callbacks on native Windows
+        if: ${{ success() || failure() }}
+        run: python tools/observe_pe32_worker_window.py --native
+      - name: Compare identical PE GDI copy and DIB pointer aliasing on native Windows
+        if: ${{ success() || failure() }}
+        run: python tools/observe_pe32_gdi_window.py --native
       - name: Compare identical original-worker PE on native Windows
         if: ${{ success() || failure() }}
         run: python tools/observe_pe32_thread_family.py --native

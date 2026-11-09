@@ -33,6 +33,14 @@ pub(super) fn position(image: &LoadedImage32<'_>, output: u32) -> u32 {
     if !output.is_multiple_of(4) || !image.permits(output as usize, 8, true) {
         unsupported("cursor POINT outside aligned writable guest storage");
     }
+    let point = observed();
+    unsafe {
+        std::ptr::copy_nonoverlapping(point.as_ptr(), output as *mut i32, 2);
+    }
+    1 // Actual host query completed and both guest LONG fields were written.
+}
+
+pub(super) fn observed() -> [i32; 2] {
     let event = unsafe { CGEventCreate(std::ptr::null()) };
     if event.is_null() {
         unsupported("actual host desktop cursor query is unavailable");
@@ -41,11 +49,7 @@ pub(super) fn position(image: &LoadedImage32<'_>, output: u32) -> u32 {
     unsafe {
         CFRelease(event);
     }
-    let point = integer_point(point).unwrap_or_else(|e| unsupported(&e));
-    unsafe {
-        std::ptr::copy_nonoverlapping(point.as_ptr(), output as *mut i32, 2);
-    }
-    1 // Actual host query completed and both guest LONG fields were written.
+    integer_point(point).unwrap_or_else(|e| unsupported(&e))
 }
 
 #[cfg(test)]

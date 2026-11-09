@@ -19,6 +19,7 @@ use std::{
 thread_local! {
     static CURRENT: Cell<*const Record> = const { Cell::new(ptr::null()) };
     static LEASE: RefCell<Option<TebLease>> = const { RefCell::new(None) };
+    static QUANTUM: RefCell<Option<(u32,std::time::Instant)>> = const { RefCell::new(None) };
 }
 struct Record {
     cpu: *const Cpu32,
@@ -49,6 +50,9 @@ pub(super) struct State {
     notification_owner: Option<u32>,
 }
 impl State {
+    pub(super) fn has_workers(&self) -> bool {
+        !self.records.is_empty()
+    }
     pub(super) fn contains(&self, h: u32) -> bool {
         self.records.get(&h).is_some_and(|r| !r.closed)
     }
@@ -151,9 +155,12 @@ pub(super) fn without_cpu<T>(image: &LoadedImage32<'_>, call: impl FnOnce() -> T
         .with(|slot| slot.borrow_mut().take())
         .unwrap_or_else(|| unsupported("guest wait without an exclusive CPU lease"));
     drop(lease);
+    super::window_host32::pump_tasks();
     let value = call();
+    super::window_host32::pump_tasks();
     let lease = TebLease::acquire(teb, true).unwrap_or_else(|e| unsupported(&e));
     LEASE.with(|slot| *slot.borrow_mut() = Some(lease));
+    QUANTUM.with(|q| *q.borrow_mut() = Some((0, std::time::Instant::now())));
     alkyhol::ffi::SetLastError(saved);
     value
 }
@@ -170,7 +177,15 @@ pub(super) fn yield_cpu() {
             .values()
             .any(|r| r.control.done.load(Ordering::Acquire) == 0);
         if running {
-            without_cpu(image, std::thread::yield_now);
+            let due = QUANTUM.with(|q| {
+                let mut q = q.borrow_mut();
+                let (count, start) = q.get_or_insert_with(|| (0, std::time::Instant::now()));
+                *count += 1;
+                *count >= 64 || start.elapsed() >= std::time::Duration::from_millis(2)
+            });
+            if due {
+                without_cpu(image, std::thread::yield_now);
+            }
         }
     });
 }
@@ -449,7 +464,8 @@ fn notify(image: &LoadedImage32<'_>, reason: u32) {
 pub(super) fn query(image: &LoadedImage32<'_>, a: &[u32; 8], kind: u32) -> u32 {
     let state = image.cpu.threads.borrow();
     let Some(record) = state.records.get(&a[0]).filter(|r| !r.closed) else {
-        return fail(6);
+        alkyhol::ffi::SetLastError(6);
+        return if kind == 2 { u32::MAX } else { 0 };
     };
     match kind {
         0 => {
@@ -484,8 +500,7 @@ pub(super) fn wait(image: &LoadedImage32<'_>, a: &[u32; 8]) -> u32 {
     if a[2] != 0 {
         unsupported("alertable thread waits require APC delivery");
     }
-    let h = a[0] as usize;
-    without_cpu(image, || alkyhol::ffi::WaitForSingleObject(h, a[1]))
+    wait_handle(image, a[0], a[1])
 }
 
 pub(super) fn clear_tls(image: &LoadedImage32<'_>, index: usize) {
@@ -509,4 +524,32 @@ pub(super) fn host_fs_valid(fs: u16) -> bool {
     CURRENT
         .with(|p| unsafe { p.get().as_ref() })
         .map_or(fs == 0, |r| r.host_fs.get() == fs)
+}
+
+pub(super) fn wait_handle(image: &LoadedImage32<'_>, handle: u32, milliseconds: u32) -> u32 {
+    without_cpu(image, || {
+        if !super::window_host32::is_main_thread() || milliseconds == 0 {
+            return alkyhol::ffi::WaitForSingleObject(handle as usize, milliseconds);
+        }
+        let start = std::time::Instant::now();
+        loop {
+            super::window_host32::pump_tasks();
+            let slice = if milliseconds == u32::MAX {
+                1
+            } else {
+                milliseconds
+                    .saturating_sub(start.elapsed().as_millis().min(u32::MAX as u128) as u32)
+                    .min(1)
+            };
+            let result = alkyhol::ffi::WaitForSingleObject(handle as usize, slice);
+            if result != 258 {
+                return result;
+            }
+            if milliseconds != u32::MAX
+                && start.elapsed() >= std::time::Duration::from_millis(milliseconds as u64)
+            {
+                return 258;
+            }
+        }
+    })
 }

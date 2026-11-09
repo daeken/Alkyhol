@@ -9,7 +9,7 @@ use std::{
     marker::PhantomData,
     ptr,
     rc::Rc,
-    sync::{Mutex, MutexGuard, OnceLock},
+    sync::{Condvar, Mutex, MutexGuard, OnceLock},
 };
 #[path = "raise32.rs"]
 mod raise32;
@@ -40,6 +40,8 @@ mod fiber32;
 mod fileio32;
 #[path = "files32.rs"]
 mod files32;
+#[path = "gdi32.rs"]
+mod gdi32;
 #[path = "heap32.rs"]
 mod heap32;
 #[path = "icon32.rs"]
@@ -103,7 +105,7 @@ unsafe extern "C" {
 }
 const PAGE: usize = 4096;
 const STACK: usize = 1024 * 1024;
-const APIS: [(&str, u16); 187] = [
+const APIS: [(&str, u16); 212] = [
     ("GetLastError", 0),
     ("SetLastError", 4),
     ("GetStdHandle", 4),
@@ -291,6 +293,31 @@ const APIS: [(&str, u16); 187] = [
     ("ResumeThread", 4),
     ("ExitThread", 4),
     ("SetThreadPriority", 8),
+    ("LoadBitmapW", 8),
+    ("GetObjectW", 12),
+    ("DeleteObject", 4),
+    ("CreateCompatibleDC", 4),
+    ("DeleteDC", 4),
+    ("SelectObject", 8),
+    ("GetDIBits", 28),
+    ("CreateCompatibleBitmap", 12),
+    ("BitBlt", 36),
+    ("GetPixel", 12),
+    ("GetCurrentObject", 8),
+    ("GetDC", 4),
+    ("ReleaseDC", 8),
+    ("BeginPaint", 8),
+    ("EndPaint", 8),
+    ("CreateDIBSection", 24),
+    ("PeekMessageW", 20),
+    ("PeekMessageA", 20),
+    ("DispatchMessageW", 4),
+    ("TranslateMessage", 4),
+    ("PostQuitMessage", 4),
+    ("PostMessageW", 16),
+    ("PostMessageA", 16),
+    ("InvalidateRect", 12),
+    ("ValidateRect", 8),
 ];
 // The first 120 API slots retain their original offsets. The second bank
 // begins after both x87 bodies, leaving their machine code and failure gates
@@ -326,7 +353,13 @@ fn api_id(module: &str, symbol: &ImportSymbol) -> Option<usize> {
                     "msvcrt.dll"
                 } else if matches!(*id, 8 | 120) {
                     "shell32.dll"
-                } else if matches!(*id, 100 | 115) || (148..177).contains(id) {
+                } else if (188..=197).contains(id) || *id == 202 {
+                    "gdi32.dll"
+                } else if matches!(*id, 100 | 115 | 187)
+                    || (148..177).contains(id)
+                    || (198..=201).contains(id)
+                    || (203..=211).contains(id)
+                {
                     "user32.dll"
                 } else if matches!(*id, 107 | 108) {
                     "advapi32.dll"
@@ -378,6 +411,20 @@ fn selectors() -> Result<(u16, u16)> {
 // LDT entries belong to the process, while FS state belongs to a thread.
 // Serialize CPU entries so a second thread cannot retarget the active TEB slot.
 static FS_SLOT: Mutex<()> = Mutex::new(());
+// FIFO admission prevents a polling main thread from starving behind workers.
+static CPU_TICKETS: Mutex<(u64, u64)> = Mutex::new((0, 0));
+static CPU_READY: Condvar = Condvar::new();
+fn finish_cpu_ticket(ticket: u64) {
+    let mut queue = CPU_TICKETS.lock().unwrap();
+    if queue.1 != ticket {
+        unsupported("CPU lease ticket completed out of order");
+    }
+    queue.1 = queue
+        .1
+        .checked_add(1)
+        .unwrap_or_else(|| unsupported("CPU ticket namespace exhausted"));
+    CPU_READY.notify_all();
+}
 fn teb_descriptor(base: u32) -> u64 {
     0x0040f20000000fff
         | (u64::from(base & 0xffff) << 16)
@@ -385,30 +432,76 @@ fn teb_descriptor(base: u32) -> u64 {
         | (u64::from(base >> 24) << 56)
 }
 struct TebLease {
-    _guard: MutexGuard<'static, ()>,
+    guard: Option<MutexGuard<'static, ()>>,
+    ticket: u64,
 }
 impl TebLease {
     fn install(base: u32) -> Result<Self> {
         Self::acquire(base, false)
     }
     fn acquire(base: u32, wait: bool) -> Result<Self> {
-        let guard = if wait {
-            FS_SLOT.lock().map_err(|_| "PE32 CPU lease was poisoned")?
-        } else {
-            FS_SLOT
+        let (guard, ticket) = if !wait {
+            let mut queue = CPU_TICKETS
+                .lock()
+                .map_err(|_| "CPU admission queue poisoned")?;
+            if queue.0 != queue.1 {
+                return Err("another PE32 entry owns the FS slot".into());
+            }
+            let guard = FS_SLOT
                 .try_lock()
-                .map_err(|_| "another PE32 entry owns the FS slot")?
+                .map_err(|_| "another PE32 entry owns the FS slot")?;
+            let ticket = queue.0;
+            queue.0 = queue
+                .0
+                .checked_add(1)
+                .ok_or("CPU ticket namespace exhausted")?;
+            (guard, ticket)
+        } else {
+            let mut queue = CPU_TICKETS
+                .lock()
+                .map_err(|_| "CPU admission queue poisoned")?;
+            let ticket = queue.0;
+            queue.0 = queue
+                .0
+                .checked_add(1)
+                .ok_or("CPU ticket namespace exhausted")?;
+            while queue.1 != ticket {
+                if window_host32::is_main_thread() {
+                    drop(queue);
+                    window_host32::pump_tasks();
+                    std::thread::sleep(std::time::Duration::from_micros(100));
+                    queue = CPU_TICKETS
+                        .lock()
+                        .map_err(|_| "CPU admission queue poisoned")?;
+                } else {
+                    queue = CPU_READY
+                        .wait(queue)
+                        .map_err(|_| "CPU admission queue poisoned")?;
+                }
+            }
+            drop(queue);
+            let guard = FS_SLOT
+                .lock()
+                .unwrap_or_else(|_| unsupported("exclusive CPU lease poisoned"));
+            (guard, ticket)
         };
         let mut descriptor = 0u64;
         let count = unsafe { i386_get_ldt(514, &mut descriptor, 1) };
         if !(0..=8192).contains(&count) || (count > 514 && descriptor != 0) {
+            drop(guard);
+            finish_cpu_ticket(ticket);
             return Err("PE32 FS slot 514 is already occupied or cannot be inspected".into());
         }
         descriptor = teb_descriptor(base);
         if unsafe { i386_set_ldt(514, &descriptor, 1) } != 514 {
+            drop(guard);
+            finish_cpu_ticket(ticket);
             return Err("cannot install bounded PE32 TEB descriptor".into());
         }
-        Ok(Self { _guard: guard })
+        Ok(Self {
+            guard: Some(guard),
+            ticket,
+        })
     }
 }
 impl Drop for TebLease {
@@ -420,6 +513,8 @@ impl Drop for TebLease {
             eprintln!("Alkyhol PE32 unsupported: cannot clear owned FS descriptor");
             std::process::abort();
         }
+        drop(self.guard.take());
+        finish_cpu_ticket(self.ticket);
     }
 }
 fn segment_state() -> [u16; 5] {
@@ -607,6 +702,7 @@ struct Cpu32 {
     icons: RefCell<icon32::State>,
     events: RefCell<event32::State>,
     ui: RefCell<ui32::State>,
+    gdi: RefCell<gdi32::State>,
     utc_timezone: bool,
     threads: RefCell<thread32::State>,
 }
@@ -715,6 +811,7 @@ impl Cpu32 {
             icons: RefCell::new(Default::default()),
             events: RefCell::new(Default::default()),
             ui: RefCell::new(Default::default()),
+            gdi: RefCell::new(Default::default()),
             utc_timezone: false,
             threads: RefCell::new(Default::default()),
         })
@@ -1187,6 +1284,9 @@ impl<'a> LoadedImage32<'a> {
         let Some(end) = address.checked_add(len) else {
             return false;
         };
+        if self.cpu.gdi.borrow().permits(address, len) {
+            return true;
+        }
         if self.cpu.threads.borrow().permits(address, len) {
             return true;
         }
@@ -2026,6 +2126,11 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
                 alkyhol::ffi::SetLastError(50);
                 0
             } // Native priority mapping is not implemented.
+            187 => gdi32::load(image, args),
+            188..=197 => gdi32::dispatch(image, id - 188, &words),
+            198..=201 => ui32::dispatch(image, id - 198 + 29, &words),
+            202 => gdi32::dib_section(image, args),
+            203..=211 => ui32::dispatch(image, id - 203 + 33, &words),
             _ => unreachable!(),
         }
     })
@@ -2180,6 +2285,7 @@ mod tests {
                 icons: RefCell::new(Default::default()),
                 events: RefCell::new(Default::default()),
                 ui: RefCell::new(Default::default()),
+                gdi: RefCell::new(Default::default()),
                 utc_timezone: false,
                 threads: RefCell::new(Default::default()),
             }),

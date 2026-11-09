@@ -5196,3 +5196,11 @@ pending. Software exception record/context equality remains unverified after a
 native combined-field mismatch; raw per-field capture was expanded rather than
 weakening a frozen fixture. Host worker scheduling serializes CPU entry and yields
 at APIs; it does not demonstrate unrestricted preemptive Windows threading.
+
+The latest local GUI batch passes 167 PE Rust library tests (including an actual
+CoreGraphics row/color round trip), PE Clippy across all targets, and physical
+owned bitmap, primary/worker GDI-DIB, worker-window and message-queue PEs. Original
+DAO's splash bitmap was captured from its actual on-screen native window; image
+and traces remain ignored local. Its next resource-manager run hit the execution
+budget, so reaching D3D9 or complete startup is not claimed. Native Windows GUI/
+SDK comparisons are scheduled in the existing workflow and remain pending.

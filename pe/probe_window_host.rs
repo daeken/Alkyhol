@@ -1,4 +1,8 @@
 //! Physical GUI capability probe; this is an owned window, not DAO execution.
+fn unsupported(message: &str) -> ! {
+    eprintln!("Alkyhol native window probe unsupported: {message}");
+    std::process::exit(78)
+}
 type Result<T> = std::result::Result<T, String>;
 #[path = "src/window_host32.rs"]
 mod host;

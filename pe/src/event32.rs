@@ -132,6 +132,12 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
         alkyhol::ffi::SetLastError(0);
         h
     } else if id == 113 {
+        if (args[1] != 0 || args[2] != 0) && !image.cpu.threads.borrow().has_workers() {
+            if image.cpu.events.borrow().semaphores.contains(&args[0]) {
+                unsupported("semaphore waits require zero timeout and alertable FALSE");
+            }
+            unsupported("event waits require zero timeout and alertable FALSE");
+        }
         if args[2] != 0 {
             unsupported("alertable event/semaphore waits require APC delivery");
         }
@@ -139,8 +145,7 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
         if !image.cpu.events.borrow().contains(args[0]) {
             unsupported("wait requires an owned event/semaphore");
         }
-        let h = args[0] as usize;
-        super::thread32::without_cpu(image, || alkyhol::ffi::WaitForSingleObject(h, args[1]))
+        super::thread32::wait_handle(image, args[0], args[1])
     } else {
         image
             .cpu

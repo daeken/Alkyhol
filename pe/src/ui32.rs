@@ -4,7 +4,7 @@ use super::{
     window_host32 as host,
 };
 use crate::Result;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, VecDeque};
 const VISIBLE: u32 = 0x10000000;
 #[derive(Clone)]
 struct Class {
@@ -29,6 +29,10 @@ struct Window {
     id: u32,
     title: Vec<u16>,
     extra: Vec<u8>,
+    owner: u32,
+    dirty: Option<[u32; 4]>,
+    erase: bool,
+    painting: Option<u32>,
 }
 #[derive(Default)]
 pub(super) struct State {
@@ -37,7 +41,8 @@ pub(super) struct State {
     windows: BTreeMap<u32, Window>,
     next_atom: u32,
     desktop: u32,
-    active: u32,
+    active: BTreeMap<u32, u32>,
+    messages: BTreeMap<u32, VecDeque<[u32; 7]>>,
 }
 impl State {
     fn app(&mut self) -> Result<&host::App> {
@@ -212,7 +217,7 @@ fn create(image: &LoadedImage32<'_>, a: &[u32; 16], ansi: bool) -> u32 {
     if a[8] != 0 || a[9] != 0 || a[3] & 0x40000000 != 0 {
         unsupported("only owned top-level windows without menus are supported");
     }
-    if a[0] & !0x00040000 != 0 {
+    if a[0] & !0x00040088 != 0 {
         unsupported("window extended styles outside the native bootstrap profile");
     }
     let name = if a[1] <= 0xffff {
@@ -257,6 +262,11 @@ fn create(image: &LoadedImage32<'_>, a: &[u32; 16], ansi: bool) -> u32 {
         let x = if a[4] == 0x80000000 { 40 } else { a[4] as i32 };
         let y = if a[5] == 0x80000000 { 40 } else { a[5] as i32 };
         let native = stop(app.create(x, y, width, height, mask(a[3]), &title));
+        native.disabled(a[3] & 0x08000000 != 0);
+        if a[0] & 8 != 0 {
+            native.topmost(true);
+        }
+        let native_client = native.client();
         let hwnd = alkyhol::kernel::reserve_handle_token()
             .unwrap_or_else(|_| unsupported("window handle namespace exhausted"))
             as u32;
@@ -273,6 +283,15 @@ fn create(image: &LoadedImage32<'_>, a: &[u32; 16], ansi: bool) -> u32 {
                 id: a[9],
                 title,
                 extra: vec![0; class.extra],
+                owner: alkyhol::ffi::GetCurrentThreadId(),
+                dirty: Some([
+                    0,
+                    0,
+                    native_client.size.width as u32,
+                    native_client.size.height as u32,
+                ]),
+                erase: true,
+                painting: None,
             },
         );
         (class, hwnd)
@@ -339,16 +358,25 @@ fn show(image: &LoadedImage32<'_>, hwnd: u32, command: u32) -> u32 {
             return error(1400);
         };
         let previous = (w.style & VISIBLE != 0) as u32;
-        w.native.show(command != 0);
+        let activate = !matches!(command, 4 | 8) && w.style & 0x08000000 == 0;
+        if activate {
+            w.native.show(command != 0);
+        } else {
+            w.native.show_unactivated(command != 0);
+        }
         if command == 0 {
             w.style &= !VISIBLE;
         } else {
             w.style |= VISIBLE;
         }
         if command != 0 {
-            ui.active = hwnd;
+            if activate {
+                ui.active.insert(alkyhol::ffi::GetCurrentThreadId(), hwnd);
+            }
             if let Some(app) = &ui.app {
-                app.activate();
+                if activate {
+                    app.activate();
+                }
                 stop(app.pump());
             }
         }
@@ -367,8 +395,11 @@ fn show(image: &LoadedImage32<'_>, hwnd: u32, command: u32) -> u32 {
             0,
             (r.size.width as u32 & 0xffff) | ((r.size.height as u32 & 0xffff) << 16),
         );
-        call(image, hwnd, 6, 1, 0);
-        call(image, hwnd, 7, 0, 0);
+        if !matches!(command, 4 | 8) && image.cpu.ui.borrow().windows[&hwnd].style & 0x08000000 == 0
+        {
+            call(image, hwnd, 6, 1, 0);
+            call(image, hwnd, 7, 0, 0);
+        }
     }
     previous
 }
@@ -380,9 +411,7 @@ fn destroy(image: &LoadedImage32<'_>, hwnd: u32) -> u32 {
     call(image, hwnd, 0x82, 0, 0);
     let mut ui = image.cpu.ui.borrow_mut();
     ui.windows.remove(&hwnd);
-    if ui.active == hwnd {
-        ui.active = 0;
-    }
+    ui.active.retain(|_, active| *active != hwnd);
     1
 }
 fn default_proc(image: &LoadedImage32<'_>, a: &[u32; 16]) -> u32 {
@@ -432,8 +461,26 @@ fn default_proc(image: &LoadedImage32<'_>, a: &[u32; 16]) -> u32 {
             write(image, a[3], &output);
             0
         }
-        0 | 1 | 2 | 3 | 5 | 6 | 7 | 8 | 0xf | 0x14 | 0x18 | 0x1c | 0x46 | 0x47 | 0x7c | 0x7d
-        | 0x82 | 0x85 | 0x86 | 0x215 => 0,
+        0xf => {
+            let scratch = Scratch::new(&image.cpu, &[0u32; 16]);
+            if begin_paint(image, a[0], scratch.address) != 0 {
+                end_paint(image, a[0], scratch.address);
+            }
+            0
+        }
+        0x14 => {
+            let ui = image.cpu.ui.borrow();
+            let Some(w) = ui.windows.get(&a[0]) else {
+                return error(1400);
+            };
+            let class = &ui.classes[&w.class];
+            if class.background != 0 {
+                unsupported("default background brush erasure requires a supported GDI brush");
+            }
+            0
+        }
+        0 | 1 | 2 | 3 | 5 | 6 | 7 | 8 | 0x18 | 0x1c | 0x46 | 0x47 | 0x7c | 0x7d | 0x82 | 0x85
+        | 0x86 | 0x215 => 0,
         0xe => image
             .cpu
             .ui
@@ -446,6 +493,187 @@ fn default_proc(image: &LoadedImage32<'_>, a: &[u32; 16]) -> u32 {
             a[1]
         )),
     }
+}
+
+fn begin_paint(image: &LoadedImage32<'_>, hwnd: u32, at: u32) -> u32 {
+    if !at.is_multiple_of(4) || !image.permits(at as usize, 64, true) {
+        unsupported("PAINTSTRUCT outside writable guest storage");
+    }
+    let (rect, erase) = {
+        let mut ui = image.cpu.ui.borrow_mut();
+        let Some(w) = ui.windows.get_mut(&hwnd) else {
+            return error(1400);
+        };
+        if w.owner != alkyhol::ffi::GetCurrentThreadId() {
+            unsupported("BeginPaint requires the window's owner thread");
+        }
+        if w.painting.is_some() {
+            unsupported("nested BeginPaint requires an independent paint lifecycle");
+        }
+        (
+            w.dirty.take().unwrap_or([0; 4]),
+            std::mem::take(&mut w.erase),
+        )
+    };
+    let hdc = super::gdi32::get_dc(image, hwnd, true);
+    if hdc == 0 {
+        return 0;
+    }
+    image
+        .cpu
+        .ui
+        .borrow_mut()
+        .windows
+        .get_mut(&hwnd)
+        .unwrap()
+        .painting = Some(hdc);
+    let remaining_erase = erase && call(image, hwnd, 0x14, hdc, 0) == 0;
+    let mut out = [0u32; 16];
+    out[0] = hdc;
+    out[1] = remaining_erase as u32;
+    out[2..6].copy_from_slice(&rect);
+    write(image, at, &out);
+    hdc
+}
+fn end_paint(image: &LoadedImage32<'_>, hwnd: u32, at: u32) -> u32 {
+    let paint = read::<16>(image, at);
+    {
+        let mut ui = image.cpu.ui.borrow_mut();
+        let Some(w) = ui.windows.get_mut(&hwnd) else {
+            return error(1400);
+        };
+        if w.owner != alkyhol::ffi::GetCurrentThreadId() || w.painting != Some(paint[0]) {
+            unsupported("EndPaint requires the owned active paint DC");
+        }
+        w.painting = None;
+    }
+    super::gdi32::release_dc(image, hwnd, paint[0], true)
+}
+fn invalidate(image: &LoadedImage32<'_>, hwnd: u32, at: u32, erase: bool) -> u32 {
+    let rect = if at == 0 {
+        let Some((w, h)) = client_size(image, hwnd) else {
+            return error(1400);
+        };
+        [0, 0, w, h]
+    } else {
+        read::<4>(image, at)
+    };
+    if (rect[0] as i32) < 0 || (rect[1] as i32) < 0 || rect[2] < rect[0] || rect[3] < rect[1] {
+        unsupported("invalid update rectangle");
+    }
+    let mut ui = image.cpu.ui.borrow_mut();
+    let Some(w) = ui.windows.get_mut(&hwnd) else {
+        return error(1400);
+    };
+    w.dirty = Some(if let Some(old) = w.dirty {
+        [
+            old[0].min(rect[0]),
+            old[1].min(rect[1]),
+            old[2].max(rect[2]),
+            old[3].max(rect[3]),
+        ]
+    } else {
+        rect
+    });
+    w.erase |= erase;
+    1
+}
+fn post(image: &LoadedImage32<'_>, hwnd: u32, message: u32, wparam: u32, lparam: u32) -> u32 {
+    let point = super::cursor32::observed();
+    let mut ui = image.cpu.ui.borrow_mut();
+    let owner = if hwnd == 0 {
+        alkyhol::ffi::GetCurrentThreadId()
+    } else {
+        let Some(w) = ui.windows.get(&hwnd) else {
+            return error(1400);
+        };
+        w.owner
+    };
+    let queue = ui.messages.entry(owner).or_default();
+    if queue.len() >= 4096 {
+        return error(1816);
+    }
+    queue.push_back([
+        hwnd,
+        message,
+        wparam,
+        lparam,
+        super::time32::tick_count(),
+        point[0] as u32,
+        point[1] as u32,
+    ]);
+    1
+}
+fn peek_message(image: &LoadedImage32<'_>, a: &[u32; 16]) -> u32 {
+    if a[4] & !1 != 0 {
+        unsupported("PeekMessage flags outside PM_NOREMOVE/PM_REMOVE");
+    }
+    if !a[0].is_multiple_of(4) || !image.permits(a[0] as usize, 28, true) {
+        unsupported("MSG outside writable checked guest storage");
+    }
+    {
+        let ui = image.cpu.ui.borrow();
+        if let Some(app) = &ui.app {
+            stop(app.pump());
+        }
+    }
+    let thread = alkyhol::ffi::GetCurrentThreadId();
+    let point = super::cursor32::observed();
+    let matches = |message: &[u32; 7]| {
+        message[1] == 0x12
+            || ((a[1] == 0 || (a[1] == u32::MAX && message[0] == 0) || message[0] == a[1])
+                && ((a[2] == 0 && a[3] == 0) || (message[1] >= a[2] && message[1] <= a[3])))
+    };
+    let mut ui = image.cpu.ui.borrow_mut();
+    let queue = ui.messages.entry(thread).or_default();
+    if let Some(index) = queue.iter().position(matches) {
+        let message = if a[4] & 1 != 0 {
+            queue.remove(index).unwrap()
+        } else {
+            queue[index]
+        };
+        write(image, a[0], &message);
+        return 1;
+    }
+    if let Some((&hwnd, _)) = ui.windows.iter().find(|(hwnd, w)| {
+        w.owner == thread
+            && w.style & VISIBLE != 0
+            && w.dirty.is_some()
+            && matches(&[**hwnd, 0xf, 0, 0, 0, 0, 0])
+    }) {
+        let message = [
+            hwnd,
+            0xf,
+            0,
+            0,
+            super::time32::tick_count(),
+            point[0] as u32,
+            point[1] as u32,
+        ];
+        write(image, a[0], &message);
+        return 1;
+    }
+    0
+}
+pub(super) fn client_size(image: &LoadedImage32<'_>, hwnd: u32) -> Option<(u32, u32)> {
+    let ui = image.cpu.ui.borrow();
+    let window = ui.windows.get(&hwnd)?;
+    let rect = window.native.client();
+    Some((rect.size.width as u32, rect.size.height as u32))
+}
+pub(super) fn present(
+    image: &LoadedImage32<'_>,
+    hwnd: u32,
+    width: u32,
+    height: u32,
+    pixels: &[u8],
+) -> Result<()> {
+    let ui = image.cpu.ui.borrow();
+    let window = ui
+        .windows
+        .get(&hwnd)
+        .ok_or("GDI output window was destroyed")?;
+    window.native.present(width, height, pixels)
 }
 pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32 {
     match id {
@@ -506,7 +734,9 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32
             if !image.cpu.ui.borrow().windows.contains_key(&a[0]) {
                 return error(1400);
             }
-            call(image, a[0], 0xf, 0, 0);
+            if image.cpu.ui.borrow().windows[&a[0]].dirty.is_some() {
+                call(image, a[0], 0xf, 0, 0);
+            }
             1
         }
         11 | 12 => {
@@ -531,11 +761,11 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32
             1
         }
         13 => {
-            let ui = image.cpu.ui.borrow();
-            let Some(w) = ui.windows.get(&a[0]) else {
+            let mut ui = image.cpu.ui.borrow_mut();
+            let Some(w) = ui.windows.get_mut(&a[0]) else {
                 return error(1400);
             };
-            if a[1] != 0 || a[6] & !0x737 != 0 {
+            if ![0, 0xffffffff, 0xfffffffe].contains(&a[1]) || a[6] & !0x7f7 != 0 {
                 unsupported(
                     "window position ordering/flags are outside the native bootstrap profile",
                 );
@@ -564,8 +794,19 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32
             if width <= 0 || height <= 0 {
                 unsupported("native window position requires positive dimensions");
             }
+            if a[6] & 4 == 0 && [0xffffffff, 0xfffffffe].contains(&a[1]) {
+                w.native.topmost(a[1] == 0xffffffff);
+                if a[1] == 0xffffffff {
+                    w.ex_style |= 8;
+                } else {
+                    w.ex_style &= !8;
+                }
+            }
             w.native.position(x, y, width, height);
             drop(ui);
+            if a[6] & 0x80 != 0 {
+                show(image, a[0], 0);
+            }
             if a[6] & 0x40 != 0 {
                 show(image, a[0], 1);
             }
@@ -634,7 +875,14 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32
                 )),
             }
         }
-        18 => image.cpu.ui.borrow().active,
+        18 => image
+            .cpu
+            .ui
+            .borrow()
+            .active
+            .get(&alkyhol::ffi::GetCurrentThreadId())
+            .copied()
+            .unwrap_or(0),
         19..=21 => {
             let mut ui = image.cpu.ui.borrow_mut();
             let Some(w) = ui.windows.get_mut(&a[0]) else {
@@ -720,7 +968,7 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32
             if a[1] != 0 {
                 write(image, a[1], &[std::process::id()]);
             }
-            alkyhol::ffi::GetCurrentThreadId()
+            image.cpu.ui.borrow().windows[&a[0]].owner
         }
         28 => {
             let ui = image.cpu.ui.borrow();
@@ -737,6 +985,46 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32
                 -10 => c.background,
                 _ => unsupported("class-long index is outside the registered metadata profile"),
             }
+        }
+        29 => super::gdi32::get_dc(image, a[0], false),
+        30 => super::gdi32::release_dc(image, a[0], a[1], false),
+        31 => begin_paint(image, a[0], a[1]),
+        32 => end_paint(image, a[0], a[1]),
+        33 | 34 => peek_message(image, a),
+        35 => {
+            let message = read::<7>(image, a[0]);
+            if message[0] == 0 {
+                return 0;
+            }
+            call(image, message[0], message[1], message[2], message[3])
+        }
+        36 => {
+            let message = read::<7>(image, a[0]);
+            match message[1] {
+                0x100 | 0x104 => {
+                    unsupported("keyboard translation requires a measured input-layout binding")
+                }
+                0x101 | 0x105 => 1,
+                _ => 0,
+            }
+        }
+        37 => {
+            post(image, 0, 0x12, a[0], 0);
+            0
+        }
+        38 | 39 => post(image, a[0], a[1], a[2], a[3]),
+        40 => invalidate(image, a[0], a[1], a[2] != 0),
+        41 => {
+            if a[1] != 0 {
+                unsupported("partial update-region validation is unsupported");
+            }
+            let mut ui = image.cpu.ui.borrow_mut();
+            let Some(w) = ui.windows.get_mut(&a[0]) else {
+                return error(1400);
+            };
+            w.dirty = None;
+            w.erase = false;
+            1
         }
         _ => unreachable!(),
     }
