@@ -187,6 +187,12 @@ const KEYS: &[(u16, u16)] = &[
     (125, 0xd0),
     (126, 0xc8),
 ];
+pub(super) fn key_components() -> Vec<u16> {
+    let mut keys: Vec<_> = KEYS.iter().map(|&(_, dik)| dik).collect();
+    keys.sort_unstable();
+    keys.dedup();
+    keys
+}
 static SEQUENCE: AtomicU32 = AtomicU32::new(0);
 struct Data {
     bytes: Vec<u8>,

@@ -37,7 +37,7 @@ def execute(d,native):
  expected=[0x38494441,1]
  for _ in range(2):
   expected += [0,1,1,1]
-  for _ in range(2):expected += [1]*5+[0,0xffffffff]+[1]*5
+  for m in range(2):expected += [1]*5+([0x80070002,1] if m==0 else [])+[0,0xffffffff]+[1]*5
  expected += [1,len(expected)+2]
  path.write_text(json.dumps(report,indent=2)+'\n')
  if native:

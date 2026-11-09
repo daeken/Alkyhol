@@ -260,7 +260,7 @@ fn device_info(kind: Kind, wide: bool) -> Vec<u8> {
 }
 fn components(kind: Kind) -> Vec<u16> {
     if kind == Kind::Keyboard {
-        (0..256).collect()
+        host::key_components()
     } else {
         (256..259).chain(512..520).collect()
     }
@@ -486,7 +486,7 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32
                 return INVALID;
             }
             let (axes, buttons) = if device.kind == Kind::Keyboard {
-                (0, 256)
+                (0, host::key_components().len() as u32)
             } else {
                 (3, 8)
             };
@@ -868,7 +868,9 @@ mod tests {
         assert_eq!(device_info(Kind::Mouse, false).len(), 580);
         assert_eq!(object_info(30, 0, true).len(), 576);
         assert_eq!(object_info(256, 0, false).len(), 316);
-        assert_eq!(components(Kind::Keyboard).len(), 256);
+        assert!(components(Kind::Keyboard).contains(&30));
+        assert!(!components(Kind::Keyboard).contains(&0));
+        assert!(components(Kind::Keyboard).iter().all(|&key| key < 256));
         assert_eq!(components(Kind::Mouse).len(), 11);
     }
 }

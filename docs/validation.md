@@ -5488,3 +5488,15 @@ can keep process threads alive. The owned console witness now explicitly calls
 ExitProcess after flushing output, and timeouts retain partial raw captures.
 This changes the witness process lifecycle, not the input expectations or game.
 The timed-out run is not counted as native input parity.
+
+Native input run 42581056533 exits successfully and retains all 60 raw words,
+but exact comparison fails. The witness incorrectly equated an interface pointer
+with its IUnknown pointer; it now checks the actual COM canonical-IUnknown law.
+The keyboard object's requested offset zero is reserved, and native Windows
+returns 0x80070002 leaving the property sentinel unchanged. The virtual keyboard
+now exposes only its actual mapped physical scan positions. The same reserved
+query remains an explicit negative observation in the witness; valid keyboard
+APPDATA/object queries use DIK_A (30), while mouse queries retain X offset zero.
+Native mouse APPDATA's observed default is 0xffffffff. These corrections preserve
+failures and add valid requests; they do not discard unknown native outputs.
+New keyboard-positive and complete input comparisons remain pending.

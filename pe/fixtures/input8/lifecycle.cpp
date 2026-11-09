@@ -21,7 +21,7 @@ static DWORD flush(DWORD status){DWORD done=0;WriteFile(GetStdHandle((DWORD)-11)
 extern "C" DWORD entry(){DWORD before=stack();put(0x38494441);put(1);
  for(UINT wide=0;wide<2;wide++){
   void* factory=NULL;HRESULT hr=DirectInput8Create(GetModuleHandleW(NULL),0x800,wide?&input_w:&input_a,&factory,NULL);put(hr);if(FAILED(hr)||!factory)return flush(2);
-  void* identity=NULL;put(invoke(factory,0,&unknown,&identity)==0&&identity==factory);if(identity)invoke<ULONG>(identity,2);
+  void* identity=NULL;HRESULT identity_hr=invoke(factory,0,&unknown,&identity);void* canonical=NULL;put(identity_hr==0&&identity&&invoke(identity,0,&unknown,&canonical)==0&&canonical==identity);if(canonical)invoke<ULONG>(canonical,2);if(identity)invoke<ULONG>(identity,2);
   void* devices[2]={};put(invoke(factory,3,&keyboard,&devices[0],(void*)NULL)==0&&devices[0]);put(invoke(factory,3,&mouse,&devices[1],(void*)NULL)==0&&devices[1]);
   if(!devices[0]||!devices[1])return flush(3);
   invoke<ULONG>(factory,2); // Devices must retain the factory without a client reference.
@@ -35,10 +35,12 @@ extern "C" DWORD entry(){DWORD before=stack();put(0x38494441);put(1);
    Format format={24,16,2,m?20u:256u,count,objects};put(invoke(device,11,&format)==0);
    DWORD property[5]={20,16,0,0,32};put(invoke(device,6,(void*)1,property)==0);property[4]=0x715e7a11;put(invoke(device,5,(void*)1,property)==0&&property[4]==32);
    property[2]=0;property[3]=1;property[4]=0x715e7a11;
+   if(!m){hr=invoke(device,5,(void*)22,property);put(hr);put(property[4]==0x715e7a11);}
+   property[2]=m?0:30;
    hr=invoke(device,5,(void*)22,property);put(hr);put(property[4]); // Retain raw native default, including a possible failure.
    property[4]=0x312578ab;put(invoke(device,6,(void*)22,property)==0);property[4]=0;put(invoke(device,5,(void*)22,property)==0&&property[4]==0x312578ab);
    static DWORD object_info[146];for(UINT i=0;i<146;i++)object_info[i]=0x715e7a11;n=wide?576:316;object_info[1]=n;
-   put(invoke(device,14,object_info+1,0u,1u)==0&&object_info[0]==0x715e7a11&&object_info[1+n/4]==0x715e7a11&&object_info[1]==n&&object_info[6]==0);
+   put(invoke(device,14,object_info+1,m?0u:30u,1u)==0&&object_info[0]==0x715e7a11&&object_info[1+n/4]==0x715e7a11&&object_info[1]==n&&object_info[6]==(m?0u:30u));
    static unsigned char state[256];for(UINT i=0;i<256;i++)state[i]=0x5a;hr=invoke(device,9,m?20u:256u,state);BOOL untouched=TRUE;for(UINT i=0;i<256;i++)if(state[i]!=0x5a)untouched=FALSE;put(hr==((HRESULT)0x8007000c)&&untouched);
    put(invoke(device,8)==1);invoke<ULONG>(device,2);
   }
