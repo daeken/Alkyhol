@@ -1,7 +1,7 @@
 //! Real programmable draws over translated legacy bytecode. Initial binding
 //! profile: float constants, triangle lists and explicit float vertex attributes.
 use super::{Device, RenderState, Result, Target, TextureBinding, legacy};
-use std::collections::BTreeSet;
+use std::{collections::BTreeSet, sync::atomic::Ordering};
 use wgpu::util::DeviceExt;
 pub struct LegacyDraw<'a> {
     pub vertex_spirv: &'a [u8],
@@ -55,7 +55,7 @@ impl Device {
         draw: &LegacyDraw<'_>,
         state: &RenderState,
     ) -> Result<()> {
-        if !target.initialized
+        if !target.initialized.load(Ordering::Acquire)
             || draw.stride == 0
             || draw.stride > 2048
             || draw.vertices.is_empty()
@@ -64,6 +64,13 @@ impl Device {
             || draw.vertices.len() > 1024 * 1024
         {
             return Err("legacy draw extent/state outside bounded triangle profile".into());
+        }
+        if draw
+            .textures
+            .iter()
+            .any(|binding| binding.texture.shares_target(target))
+        {
+            return Err("D3D9 draw cannot sample the current render target".into());
         }
         let mut vs = legacy::lower_spirv(draw.vertex_spirv, legacy::Stage::Vertex)?;
         legacy::vertex_pixel_centers(&mut vs)?;

@@ -1,5 +1,9 @@
 //! Actual BGRA8 mip storage and D3D9 sampling state. Unknown state fails.
-use crate::{Device, Result, extent};
+use crate::{Device, Result, Target, extent};
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
 #[derive(Clone, Copy, Debug)]
 pub struct SamplerState {
     values: [u32; 14],
@@ -76,7 +80,7 @@ pub struct Texture2D {
     width: u32,
     height: u32,
     levels: u32,
-    initialized: Vec<bool>,
+    initialized: Vec<Arc<AtomicBool>>,
 }
 impl Texture2D {
     pub fn dimensions(&self, level: u32) -> Result<(u32, u32)> {
@@ -85,11 +89,16 @@ impl Texture2D {
         }
         Ok(((self.width >> level).max(1), (self.height >> level).max(1)))
     }
+    pub fn shares_target(&self, target: &Target) -> bool {
+        self.initialized
+            .first()
+            .is_some_and(|v| Arc::ptr_eq(v, &target.initialized))
+    }
     pub fn levels(&self) -> u32 {
         self.levels
     }
     pub(crate) fn view(&self, srgb: bool) -> Result<wgpu::TextureView> {
-        if self.initialized.iter().any(|v| !*v) {
+        if self.initialized.iter().any(|v| !v.load(Ordering::Acquire)) {
             return Err("sampling an uninitialized texture mip".into());
         }
         Ok(self.texture.create_view(&wgpu::TextureViewDescriptor {
@@ -108,6 +117,19 @@ pub struct TextureBinding<'a> {
     pub sampler: SamplerState,
 }
 impl Device {
+    /// The render attachment and sampled texture are two views of the same
+    /// allocation; clear/draw initialization is shared without a CPU copy.
+    pub fn create_render_texture(&self, width: u32, height: u32) -> Result<(Texture2D, Target)> {
+        let target = self.create_target(width, height)?;
+        let sampled = Texture2D {
+            texture: target.texture.clone(),
+            width,
+            height,
+            levels: 1,
+            initialized: vec![target.initialized.clone()],
+        };
+        Ok((sampled, target))
+    }
     pub fn create_texture(&self, width: u32, height: u32, levels: u32) -> Result<Texture2D> {
         extent(
             width,
@@ -140,7 +162,9 @@ impl Device {
             width,
             height,
             levels,
-            initialized: vec![false; levels as usize],
+            initialized: (0..levels)
+                .map(|_| Arc::new(AtomicBool::new(false)))
+                .collect(),
         })
     }
     pub fn upload_texture(&self, texture: &mut Texture2D, level: u32, bytes: &[u8]) -> Result<()> {
@@ -169,7 +193,7 @@ impl Device {
             },
         );
         self.finish()?;
-        texture.initialized[level as usize] = true;
+        texture.initialized[level as usize].store(true, Ordering::Release);
         Ok(())
     }
 }

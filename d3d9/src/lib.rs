@@ -1,6 +1,13 @@
 //! D3D9 GPU work. Guest COM pointers and Windows handles stay in the ABI layer.
 //! Initial contract: single-sample BGRA8 render targets, clear and real readback.
-use std::{sync::mpsc, time::Duration};
+use std::{
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+        mpsc,
+    },
+    time::Duration,
+};
 use wgpu::util::DeviceExt;
 pub mod compiler;
 pub mod legacy;
@@ -20,11 +27,12 @@ pub struct Device {
     queue: wgpu::Queue,
     info: wgpu::AdapterInfo,
 }
+#[derive(Clone)]
 pub struct Target {
     texture: wgpu::Texture,
     width: u32,
     height: u32,
-    initialized: bool,
+    initialized: Arc<AtomicBool>,
 }
 fn extent(width: u32, height: u32, max: u32) -> Result<()> {
     if width == 0 || height == 0 || width > max || height > max {
@@ -133,7 +141,10 @@ impl Device {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: wgpu::TextureFormat::Bgra8Unorm,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                | wgpu::TextureUsages::COPY_SRC
+                | wgpu::TextureUsages::COPY_DST
+                | wgpu::TextureUsages::TEXTURE_BINDING,
             view_formats: &[wgpu::TextureFormat::Bgra8UnormSrgb],
         });
         self.finish()?;
@@ -141,7 +152,7 @@ impl Device {
             texture,
             width,
             height,
-            initialized: false,
+            initialized: Arc::new(AtomicBool::new(false)),
         })
     }
     pub fn clear(&self, target: &mut Target, argb: u32) -> Result<()> {
@@ -177,7 +188,7 @@ impl Device {
         }
         self.queue.submit([encoder.finish()]);
         self.finish()?;
-        target.initialized = true;
+        target.initialized.store(true, Ordering::Release);
         Ok(())
     }
     /// XYZRHW|DIFFUSE triangle-list vertex bytes (20 bytes/vertex). D3D9's
@@ -192,7 +203,7 @@ impl Device {
         state: &RenderState,
     ) -> Result<()> {
         validate_vertices(bytes)?;
-        if !target.initialized {
+        if !target.initialized.load(Ordering::Acquire) {
             return Err("draw requires an initialized backbuffer".into());
         }
         self.scope();
@@ -300,7 +311,7 @@ impl Device {
     }
     /// Returns tightly packed actual GPU BGRA8 bytes, never a CPU clear substitute.
     pub fn readback(&self, target: &Target) -> Result<Vec<u8>> {
-        if !target.initialized {
+        if !target.initialized.load(Ordering::Acquire) {
             return Err("backbuffer has not been initialized by rendering".into());
         }
         let pitch = (target.width * 4).div_ceil(256) * 256;

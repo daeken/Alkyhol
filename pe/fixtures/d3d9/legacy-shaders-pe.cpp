@@ -31,9 +31,44 @@ static LRESULT __stdcall proc(HWND w,UINT m,WPARAM a,LPARAM b){return DefWindowP
 static const float vertices[][8]={{0,.75f,.5f,1,1,0,0,1},{.75f,-.75f,.5f,1,1,0,0,1},{-.75f,-.75f,.5f,1,1,0,0,1}};
 static float matrix[16]={1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1};
 static const D3DVERTEXELEMENT9 elements[]={{0,0,3,0,0,0},{0,16,3,0,10,0},{255,0,17,0,0,0}};
+#ifdef TARGETS
+// Render, read back and sample one allocation. External texture/surface release
+// must not destroy bound storage or its cached COM identities.
+static DWORD render_target_witness(IDirect3DSurface9* back){
+ IDirect3DTexture9* texture=NULL;IDirect3DSurface9 *surface=NULL,*again=NULL,*copy=NULL;
+ const GUID texture_iid={0x85c31227,0x3de5,0x4f00,{0x9b,0x3a,0xf1,0x1a,0xc3,0x8c,0x18,0xb5}};
+ #define REQUIRE_TARGET(test,stage) if(!(test))return stage
+ REQUIRE_TARGET(g_pd3dDevice->CreateTexture(8,8,1,1,21,0,&texture,NULL)==S_OK&&texture,1);
+ D3DSURFACE_DESC desc={};REQUIRE_TARGET(texture->GetLevelDesc(0,&desc)==S_OK&&desc.Usage==1&&desc.Pool==0&&desc.Width==8&&desc.Height==8,2);
+ REQUIRE_TARGET(texture->GetSurfaceLevel(0,&surface)==S_OK&&surface,3);
+ REQUIRE_TARGET(texture->GetSurfaceLevel(0,&again)==S_OK&&again==surface,4);again->Release();
+ REQUIRE_TARGET(g_pd3dDevice->SetRenderTarget(0,surface)==S_OK,5);
+ REQUIRE_TARGET(g_pd3dDevice->GetRenderTarget(0,&again)==S_OK&&again==surface,6);again->Release();
+ DWORD viewport[6]={};REQUIRE_TARGET(g_pd3dDevice->GetViewport(viewport)==S_OK&&viewport[2]==8&&viewport[3]==8,7);
+ REQUIRE_TARGET(g_pd3dDevice->Clear(0,NULL,1,0x80808080,1,0)==S_OK,8);
+ REQUIRE_TARGET(g_pd3dDevice->CreateOffscreenPlainSurface(8,8,21,2,&copy,NULL)==S_OK&&copy,9);
+ REQUIRE_TARGET(g_pd3dDevice->GetRenderTargetData(surface,copy)==S_OK,10);
+ D3DLOCKED_RECT lock={};REQUIRE_TARGET(copy->LockRect(&lock,NULL,16)==S_OK&&lock.pBits,11);
+ for(UINT y=0;y<8;y++)for(UINT x=0;x<8;x++)REQUIRE_TARGET(((DWORD*)((unsigned char*)lock.pBits+y*lock.Pitch))[x]==0x80808080,12);
+ REQUIRE_TARGET(copy->UnlockRect()==S_OK,13);copy->Release();
+ texture->Release(); // Only the external surface and binding remain.
+ void* container=NULL;REQUIRE_TARGET(surface->GetContainer(texture_iid,&container)==S_OK&&container==texture,14);
+ REQUIRE_TARGET(g_pd3dDevice->SetTexture(0,(IDirect3DTexture9*)container)==S_OK,15);((IDirect3DTexture9*)container)->Release();
+ surface->Release(); // Only internal render/sampler bindings remain.
+ REQUIRE_TARGET(g_pd3dDevice->GetRenderTarget(0,&again)==S_OK&&again==surface,16);
+ REQUIRE_TARGET(g_pd3dDevice->SetRenderTarget(0,back)==S_OK,17);again->Release();
+ REQUIRE_TARGET(g_pd3dDevice->GetViewport(viewport)==S_OK&&viewport[2]==32&&viewport[3]==32,18);
+ IDirect3DBaseTexture9* retained=NULL;REQUIRE_TARGET(g_pd3dDevice->GetTexture(0,&retained)==S_OK&&retained==texture,19);
+ REQUIRE_TARGET(((IDirect3DTexture9*)retained)->GetSurfaceLevel(0,&again)==S_OK&&again==surface,20);again->Release();retained->Release();
+ #undef REQUIRE_TARGET
+ return 0;
+}
+#endif
 extern "C" DWORD entry(){
  DWORD before=stack();put(0x39534844);
-#ifdef STATES
+#ifdef TARGETS
+put(5);
+#elif defined(STATES)
 put(4);
 #elif defined(MODEL2)
 put(3);
@@ -67,7 +102,7 @@ put(1);
  UINT count=0;ok(decl->GetDeclaration(NULL,&count)==S_OK&&count==3);
  static D3DVERTEXELEMENT9 returned[3];ok(decl->GetDeclaration(returned,&count)==S_OK);exact=TRUE;for(UINT i=0;i<sizeof(elements);i++)if(((unsigned char*)returned)[i]!=((const unsigned char*)elements)[i])exact=FALSE;ok(exact);
  ok(g_pd3dDevice->SetVertexDeclaration(decl)==S_OK);ok(g_pd3dDevice->SetVertexShader(vs)==S_OK);ok(g_pd3dDevice->SetPixelShader(ps)==S_OK);
- ok(g_pd3dDevice->CreateVertexBuffer(sizeof(vertices),0,0,0,&vb,NULL)==S_OK);if(!vb)return 8;
+ D3DVERTEXBUFFER_DESC vb_desc={};ok(g_pd3dDevice->CreateVertexBuffer(sizeof(vertices),8,0,0,&vb,NULL)==S_OK&&vb&&vb->GetDesc(&vb_desc)==S_OK&&vb_desc.Usage==8&&vb_desc.Size==sizeof(vertices));if(!vb)return 8;
  void* storage=NULL;ok(vb->Lock(0,sizeof(vertices),&storage,0)==S_OK);if(!storage)return 9;
  for(UINT i=0;i<sizeof(vertices);i++)((unsigned char*)storage)[i]=((const unsigned char*)vertices)[i];ok(vb->Unlock()==S_OK);
  ok(g_pd3dDevice->SetStreamSource(0,vb,0,32)==S_OK);
@@ -93,6 +128,9 @@ put(1);
  const GUID base_texture={0x580ca87e,0x1d3c,0x4d54,{0x99,0x1d,0xb7,0xd3,0xe3,0xc2,0x98,0xce}};void* texture_identity=NULL;
  ok(texture->QueryInterface(base_texture,&texture_identity)==S_OK&&texture_identity==texture);if(texture_identity)((IDirect3DBaseTexture9*)texture_identity)->Release();
  texture->Release();
+ #ifdef TARGETS
+ DWORD target_stage=render_target_witness(back);ok(target_stage==0);if(target_stage)return fail(16,target_stage);
+ #endif
  #endif
  #ifdef STATES
  ok(g_pd3dDevice->SetRenderState(27,1)==S_OK);ok(g_pd3dDevice->SetRenderState(19,5)==S_OK);ok(g_pd3dDevice->SetRenderState(20,6)==S_OK);

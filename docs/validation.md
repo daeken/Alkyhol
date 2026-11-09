@@ -5500,3 +5500,22 @@ APPDATA/object queries use DIK_A (30), while mouse queries retain X offset zero.
 Native mouse APPDATA's observed default is 0xffffffff. These corrections preserve
 failures and add valid requests; they do not discard unknown native outputs.
 New keyboard-positive and complete input comparisons remain pending.
+
+## DAO render-target allocation through first shader creation
+
+Original DAO successfully creates a real full-size BGRA8 render texture, obtains
+its cached surface, queries actual dimensions/viewport, uploads a WRITEONLY vertex
+buffer and a 256x1 texture and reaches first vertex-shader creation. The original
+D3DX DLL's C++ operator new import is the next actual stop. Game bytes/shaders
+remain local and no DAO draw, frame or live input event is claimed.
+
+Physical M4 passes the 2,118-word owned --targets PE: real target clear/readback
+and sampled frames, guarded resource metadata, 20 target/storage/lifetime checks,
+container recovery and target-sized viewport reset. Shared render/sample views
+use one actual GPU texture and shared initialization. Storage remains available
+after external references and surface handles go away; feedback/uninitialized
+reads fail. The independent GPU test now renders into the texture and samples its
+real colored interior in a subsequent draw. All 183 PE library tests and remaining
+integration/doctest targets pass; PE/backend Clippy pass. Native Windows and Linux
+software Vulkan comparisons for this new milestone are pending. CI 42579539633
+and 42580016729 passed all three earlier D3D9 jobs, before these render targets.

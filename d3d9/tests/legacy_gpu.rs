@@ -170,6 +170,65 @@ fn real_legacy_texture_sampling_applies_srgb_to_rgb_and_preserves_alpha() {
             }
         );
     }
+    let (sampled, mut rendered) = device.create_render_texture(32, 32).unwrap();
+    assert!(sampled.shares_target(&rendered));
+    assert!(!texture.shares_target(&rendered));
+    assert!(device.readback(&rendered).is_err());
+    assert!(draw(&sampled, alkyhol_d3d9::SamplerState::default(), &mut target).is_err());
+    device.clear(&mut rendered, 0xff0000ff).unwrap();
+    draw(
+        &texture,
+        alkyhol_d3d9::SamplerState::default(),
+        &mut rendered,
+    )
+    .unwrap();
+    let pixels = device.readback(&rendered).unwrap();
+    let at = (20 * 32 + 22) * 4;
+    assert_eq!(&pixels[at..at + 4], &[10, 60, 120, 200]);
+    assert_eq!(&pixels[..4], &[255, 0, 0, 255]);
+    assert!(
+        draw(
+            &sampled,
+            alkyhol_d3d9::SamplerState::default(),
+            &mut rendered
+        )
+        .is_err()
+    );
+    let alias = rendered.clone();
+    drop(rendered);
+    assert_eq!(
+        &device.readback(&alias).unwrap()[at..at + 4],
+        &[10, 60, 120, 200]
+    );
+    drop(alias); // Sampled storage survives every render-surface handle.
+    let mut centered = vertices.clone();
+    for vertex in centered.as_chunks_mut::<32>().0 {
+        vertex[16..20].copy_from_slice(&0.5f32.to_le_bytes());
+        vertex[20..24].copy_from_slice(&0.5f32.to_le_bytes());
+    }
+    device
+        .draw_legacy(
+            &mut target,
+            &LegacyDraw {
+                vertex_spirv: VS,
+                pixel_spirv: pixel,
+                vertices: &centered,
+                stride: 32,
+                attributes: &attributes,
+                vertex_constants: &constants,
+                pixel_constants: &[],
+                textures: &[TextureBinding {
+                    slot: 0,
+                    texture: &sampled,
+                    sampler: alkyhol_d3d9::SamplerState::default(),
+                }],
+            },
+        )
+        .unwrap();
+    assert_eq!(
+        &device.readback(&target).unwrap()[at..at + 4],
+        &[10, 60, 120, 200]
+    );
     let mut mips = device.create_texture(4, 4, 0).unwrap();
     assert_eq!(mips.levels(), 3);
     assert!(device.create_texture(4, 4, 4).is_err());

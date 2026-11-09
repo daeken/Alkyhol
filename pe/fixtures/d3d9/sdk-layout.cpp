@@ -77,3 +77,8 @@ static_assert(offsetof(IDirect3DDevice9Vtbl,GetDepthStencilSurface)==40*4);
 static_assert(sizeof(D3DVIEWPORT9)==24);
 static_assert(offsetof(IDirect3DDevice9Vtbl,SetViewport)==47*4);
 static_assert(offsetof(IDirect3DDevice9Vtbl,GetViewport)==48*4);
+
+static_assert(offsetof(IDirect3DDevice9Vtbl,SetRenderTarget)==37*4);
+static_assert(offsetof(IDirect3DDevice9Vtbl,GetRenderTarget)==38*4);
+static_assert(offsetof(IDirect3DSurface9Vtbl,GetContainer)==11*4);
+static_assert(offsetof(IDirect3DTexture9Vtbl,GetSurfaceLevel)==18*4);

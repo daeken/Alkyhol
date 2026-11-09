@@ -73,6 +73,9 @@ enum Body {
         format: u32,
         pool: u32,
         bindings: u32,
+        usage: u32,
+        attachment: Option<Target>,
+        surface: u32,
     },
     Shader {
         parent: u32,
@@ -91,6 +94,7 @@ enum Body {
         parent: u32,
         gpu: Rc<Gpu>,
         target: Box<Target>,
+        render_target: u32,
         hwnd: u32,
         scene: bool,
         parameters: [u32; 14],
@@ -111,6 +115,9 @@ enum Body {
     Surface {
         parent: u32,
         back: bool,
+        attachment: Option<Target>,
+        container: u32,
+        bindings: u32,
         data: u32,
         width: u32,
         height: u32,
@@ -122,6 +129,7 @@ enum Body {
         parent: u32,
         data: u32,
         length: u32,
+        usage: u32,
         fvf: u32,
         lock: Option<(u32, u32)>,
         initialized: Vec<(u32, u32)>,
@@ -328,6 +336,7 @@ pub(super) fn signature(id: u32) -> Option<(&'static str, u16)> {
         (7, 10) => ("IDirect3DTexture9::GetType", 4),
         (7, 13) => ("IDirect3DTexture9::GetLevelCount", 4),
         (7, 17) => ("IDirect3DTexture9::GetLevelDesc", 12),
+        (7, 18) => ("IDirect3DTexture9::GetSurfaceLevel", 12),
         (7, 19) => ("IDirect3DTexture9::LockRect", 20),
         (7, 20) => ("IDirect3DTexture9::UnlockRect", 8),
         (4..=6, 3) => ("D3D9 shader/declaration GetDevice", 8),
@@ -340,6 +349,7 @@ pub(super) fn signature(id: u32) -> Option<(&'static str, u16)> {
         (3, 13) => ("IDirect3DVertexBuffer9::GetDesc", 8),
         (2, 3) => ("IDirect3DSurface9::GetDevice", 8),
         (2, 10) => ("IDirect3DSurface9::GetType", 4),
+        (2, 11) => ("IDirect3DSurface9::GetContainer", 12),
         (2, 12) => ("IDirect3DSurface9::GetDesc", 8),
         (2, 13) => ("IDirect3DSurface9::LockRect", 16),
         (2, 14) => ("IDirect3DSurface9::UnlockRect", 4),
@@ -469,15 +479,26 @@ fn release(s: &mut State, p: u32) -> u32 {
     let cached = matches!(
         o.body,
         Body::Surface { back: true, .. }
+            | Body::Surface { container: 1.., .. }
+            | Body::Surface { bindings: 1.., .. }
             | Body::VertexBuffer { bindings: 1.., .. }
             | Body::Shader { bindings: 1.., .. }
             | Body::Declaration { bindings: 1.., .. }
             | Body::Texture { bindings: 1.., .. }
     );
+    let container = match &o.body {
+        Body::Surface {
+            container,
+            bindings: 0,
+            ..
+        } => *container,
+        _ => 0,
+    };
     if !cached {
         s.programs.retain(|&(vs, ps), _| vs != p && ps != p);
-        let removed = s.objects.remove(&p).unwrap();
+        let removed = remove_object(s, p);
         if let Body::Device {
+            render_target,
             back,
             stream,
             vertex_shader,
@@ -495,6 +516,9 @@ fn release(s: &mut State, p: u32) -> u32 {
                     unbind(s, bound);
                 }
             }
+            if render_target != 0 {
+                unbind(s, render_target);
+            }
             if back != 0 {
                 s.objects.remove(&back);
             }
@@ -502,6 +526,9 @@ fn release(s: &mut State, p: u32) -> u32 {
                 unbind(s, buffer);
             }
         }
+    }
+    if container != 0 {
+        unbind(s, container);
     }
     if let Some(parent) = parent {
         release(s, parent);
@@ -699,6 +726,7 @@ fn device(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
             parent: a[0],
             gpu,
             target: Box::new(target),
+            render_target: 0,
             hwnd,
             scene: false,
             parameters: p,
@@ -745,6 +773,9 @@ fn backbuffer(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
             Body::Surface {
                 parent: a[0],
                 back: true,
+                attachment: None,
+                container: 0,
+                bindings: 0,
                 data: 0,
                 width: p[0],
                 height: p[1],
@@ -759,13 +790,7 @@ fn backbuffer(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
         };
         *back = b;
     }
-    let surface = s.objects.get_mut(&b).unwrap();
-    if surface.refs == 0 {
-        surface.refs = 1;
-        addref(s, a[0]);
-    } else {
-        surface.refs += 1;
-    }
+    expose(s, b);
     write(image, a[4], &[b]);
     0
 }
@@ -798,6 +823,9 @@ fn offscreen(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
         Body::Surface {
             parent: a[0],
             back: false,
+            attachment: None,
+            container: 0,
+            bindings: 0,
             data,
             width: a[1],
             height: a[2],
@@ -813,9 +841,16 @@ fn offscreen(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
 fn transfer(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
     let Some(Object {
         refs: 1..,
-        body: Body::Surface {
-            parent, back: true, ..
-        },
+        body:
+            Body::Surface {
+                parent,
+                back,
+                attachment,
+                width,
+                height,
+                format,
+                ..
+            },
     }) = s.objects.get(&a[1])
     else {
         return INVALID;
@@ -823,16 +858,28 @@ fn transfer(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
     if *parent != a[0] {
         return INVALID;
     }
+    let (width, height, format) = (*width, *height, *format);
+    let Body::Device { gpu, target, .. } = &s.objects[&a[0]].body else {
+        unreachable!()
+    };
+    let source = if *back {
+        (**target).clone()
+    } else if let Some(target) = attachment {
+        target.clone()
+    } else {
+        return INVALID;
+    };
     let Some(Object {
         refs: 1..,
         body:
             Body::Surface {
                 parent,
                 back: false,
+                attachment: None,
                 data,
-                width,
-                height,
-                format,
+                width: w,
+                height: h,
+                format: f,
                 locked: false,
                 ..
             },
@@ -840,23 +887,11 @@ fn transfer(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
     else {
         return INVALID;
     };
-    if *parent != a[0] {
+    if *parent != a[0] || (width, height, format) != (*w, *h, *f) {
         return INVALID;
     }
-    let (data, w, h, f) = (*data, *width, *height, *format);
-    let Body::Device {
-        gpu,
-        target,
-        parameters,
-        ..
-    } = &s.objects[&a[0]].body
-    else {
-        unreachable!()
-    };
-    if (w, h, f) != (parameters[0], parameters[1], parameters[2]) {
-        return INVALID;
-    }
-    let bytes = gpu.readback(target).unwrap_or_else(|e| unsupported(&e));
+    let data = *data;
+    let bytes = gpu.readback(&source).unwrap_or_else(|e| unsupported(&e));
     checked(image, data, bytes.len(), true);
     unsafe {
         std::ptr::copy_nonoverlapping(bytes.as_ptr(), data as *mut u8, bytes.len());
@@ -884,7 +919,7 @@ fn vertex_buffer(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32
     write(image, a[5], &[0]);
     if a[1] == 0
         || a[1] > 1024 * 1024
-        || a[2] != 0
+        || ![0, 8].contains(&a[2])
         || ![0, 0x44].contains(&a[3])
         || a[4] != 0
         || a[6] != 0
@@ -901,6 +936,7 @@ fn vertex_buffer(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32
             parent: a[0],
             data,
             length: a[1],
+            usage: a[2],
             fvf: a[3],
             lock: None,
             initialized: Vec::new(),
@@ -911,24 +947,231 @@ fn vertex_buffer(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32
     write(image, a[5], &[p]);
     0
 }
+// Child bindings retain storage without retaining their device, avoiding a
+// device -> attachment -> texture -> device reference cycle.
+fn bind(s: &mut State, p: u32) {
+    let o = s.objects.get_mut(&p).unwrap();
+    let external = o.refs;
+    let container = match &mut o.body {
+        Body::Surface {
+            bindings,
+            container,
+            ..
+        } => {
+            let first = *bindings == 0 && external == 0;
+            *bindings = bindings
+                .checked_add(1)
+                .unwrap_or_else(|| unsupported("surface binding overflow"));
+            if first { *container } else { 0 }
+        }
+        Body::Texture { bindings, .. } => {
+            *bindings = bindings
+                .checked_add(1)
+                .unwrap_or_else(|| unsupported("texture binding overflow"));
+            0
+        }
+        _ => unsupported("unsupported internal resource binding"),
+    };
+    if container != 0 {
+        bind(s, container);
+    }
+}
+fn remove_object(s: &mut State, p: u32) -> Object {
+    let removed = s.objects.remove(&p).unwrap();
+    if let Body::Texture { surface, .. } = &removed.body
+        && *surface != 0
+    {
+        let o = &s.objects[surface];
+        if !matches!(o.body, Body::Surface { bindings: 0, .. }) || o.refs != 0 {
+            unsupported("live surface lost its texture storage");
+        }
+        s.objects.remove(surface);
+    }
+    removed
+}
 fn unbind(s: &mut State, p: u32) {
     let Some(o) = s.objects.get_mut(&p) else {
-        unsupported("missing bound vertex buffer");
+        unsupported("missing bound resource");
     };
-    let bindings = match &mut o.body {
+    let refs = o.refs;
+    let (bindings, container, cached) = match &mut o.body {
         Body::VertexBuffer { bindings, .. }
         | Body::Shader { bindings, .. }
         | Body::Declaration { bindings, .. }
-        | Body::Texture { bindings, .. } => bindings,
+        | Body::Texture { bindings, .. } => (bindings, 0, false),
+        Body::Surface {
+            bindings,
+            container,
+            back,
+            ..
+        } => (bindings, *container, *back || *container != 0),
         _ => unreachable!(),
     };
     *bindings = bindings
         .checked_sub(1)
-        .unwrap_or_else(|| unsupported("vertex binding count underflow"));
-    if *bindings == 0 && o.refs == 0 {
-        s.programs.retain(|&(vs, ps), _| vs != p && ps != p);
-        s.objects.remove(&p);
+        .unwrap_or_else(|| unsupported("resource binding count underflow"));
+    if *bindings == 0 && refs == 0 {
+        if container != 0 {
+            unbind(s, container);
+        } else if !cached {
+            s.programs.retain(|&(vs, ps), _| vs != p && ps != p);
+            remove_object(s, p);
+        }
     }
+}
+fn expose(s: &mut State, p: u32) {
+    let o = s.objects.get_mut(&p).unwrap();
+    if o.refs != 0 {
+        addref(s, p);
+        return;
+    }
+    let (parent, container) = match &o.body {
+        Body::Surface {
+            parent,
+            container,
+            bindings,
+            ..
+        } => (*parent, if *bindings == 0 { *container } else { 0 }),
+        Body::Texture { parent, .. } => (*parent, 0),
+        _ => unsupported("unsupported retained interface exposure"),
+    };
+    o.refs = 1;
+    addref(s, parent);
+    if container != 0 {
+        bind(s, container);
+    }
+}
+fn color_target(s: &State, p: u32) -> (Target, u32) {
+    let Body::Device {
+        target,
+        render_target,
+        parameters,
+        ..
+    } = &s.objects[&p].body
+    else {
+        unreachable!()
+    };
+    if *render_target == 0 {
+        return ((**target).clone(), parameters[2]);
+    }
+    let Body::Surface {
+        attachment: Some(target),
+        format,
+        ..
+    } = &s.objects[render_target].body
+    else {
+        unreachable!()
+    };
+    (target.clone(), *format)
+}
+fn render_binding(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16], get: bool) -> u32 {
+    if a[1] != 0 {
+        return UNAVAILABLE;
+    }
+    if a[2] == 0 {
+        return INVALID;
+    }
+    if get {
+        let Body::Device { render_target, .. } = &s.objects[&a[0]].body else {
+            unreachable!()
+        };
+        let pointer = *render_target;
+        if pointer == 0 {
+            let mut arguments = [0; 16];
+            arguments[0] = a[0];
+            arguments[4] = a[2];
+            return backbuffer(image, s, &arguments);
+        }
+        expose(s, pointer);
+        write(image, a[2], &[pointer]);
+        return 0;
+    }
+    let Some(Object {
+        refs: 1..,
+        body:
+            Body::Surface {
+                parent,
+                back,
+                attachment,
+                locked: false,
+                ..
+            },
+    }) = s.objects.get(&a[2])
+    else {
+        return INVALID;
+    };
+    if *parent != a[0] || (!*back && attachment.is_none()) {
+        return INVALID;
+    }
+    let next = if *back { 0 } else { a[2] };
+    let Body::Device { render_target, .. } = &s.objects[&a[0]].body else {
+        unreachable!()
+    };
+    let previous = *render_target;
+    if previous != next {
+        if next != 0 {
+            bind(s, next);
+        }
+        let Body::Device { render_target, .. } = &mut s.objects.get_mut(&a[0]).unwrap().body else {
+            unreachable!()
+        };
+        *render_target = next;
+        if previous != 0 {
+            unbind(s, previous);
+        }
+    }
+    0
+}
+fn texture_surface(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
+    if a[2] == 0 {
+        return INVALID;
+    }
+    write(image, a[2], &[0]);
+    let Body::Texture {
+        parent,
+        attachment,
+        surface,
+        format,
+        ..
+    } = &s.objects[&a[0]].body
+    else {
+        unreachable!()
+    };
+    if a[1] != 0 {
+        return INVALID;
+    }
+    let Some(target) = attachment.clone() else {
+        return UNAVAILABLE;
+    };
+    let (parent, format, mut pointer) = (*parent, *format, *surface);
+    if pointer == 0 {
+        let (width, height) = target.dimensions();
+        pointer = object(
+            &image.cpu,
+            s,
+            Body::Surface {
+                parent,
+                back: false,
+                attachment: Some(target),
+                container: a[0],
+                bindings: 0,
+                data: 0,
+                width,
+                height,
+                format,
+                initialized: false,
+                locked: false,
+            },
+            0,
+        );
+        let Body::Texture { surface, .. } = &mut s.objects.get_mut(&a[0]).unwrap().body else {
+            unreachable!()
+        };
+        *surface = pointer;
+    }
+    expose(s, pointer);
+    write(image, a[2], &[pointer]);
+    0
 }
 fn stream_source(s: &mut State, a: &[u32; 16]) -> u32 {
     if a[1] != 0 {
@@ -1119,6 +1362,7 @@ fn draw(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
             sampler: *sampler,
         })
         .collect();
+    let (mut active, _) = color_target(s, a[0]);
     let program = s.programs.get(&(programmable.0, programmable.1));
     let pixel_spirv = if fixed {
         Vec::new()
@@ -1130,7 +1374,6 @@ fn draw(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
     };
     let Body::Device {
         gpu,
-        target,
         vertex_constants,
         pixel_constants,
         render_state,
@@ -1143,11 +1386,11 @@ fn draw(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
         if stride != 20 {
             return INVALID;
         }
-        gpu.draw_transformed_state(target, bytes, render_state)
+        gpu.draw_transformed_state(&mut active, bytes, render_state)
             .unwrap_or_else(|e| unsupported(&e));
     } else {
         gpu.draw_legacy_state(
-            target,
+            &mut active,
             &LegacyDraw {
                 textures: &textures,
                 vertex_spirv: &program.unwrap().spirv,
@@ -1452,13 +1695,25 @@ fn create_texture(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u3
         return INVALID;
     }
     write(image, a[7], &[0]);
-    if a[4] != 0 || ![21, 22].contains(&a[5]) || ![0, 1].contains(&a[6]) || a[8] != 0 {
+    if a[4] > 1
+        || ![21, 22].contains(&a[5])
+        || ![0, 1].contains(&a[6])
+        || a[8] != 0
+        || a[4] == 1 && (a[3] != 1 || a[6] != 0)
+    {
         return UNAVAILABLE;
     }
     let Body::Device { gpu, .. } = &s.objects[&a[0]].body else {
         unreachable!()
     };
-    let texture = match gpu.create_texture(a[1], a[2], a[3]) {
+    let allocation = if a[4] == 1 {
+        gpu.create_render_texture(a[1], a[2])
+            .map(|(texture, target)| (texture, Some(target)))
+    } else {
+        gpu.create_texture(a[1], a[2], a[3])
+            .map(|texture| (texture, None))
+    };
+    let (texture, attachment) = match allocation {
         Ok(v) => v,
         Err(e) => {
             eprintln!("D3D9 texture allocation: {e}");
@@ -1475,8 +1730,11 @@ fn create_texture(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u3
             return UNAVAILABLE;
         }
         levels.push(TextureLevel {
-            data: memory(&image.cpu, &vec![0; bytes], true, false)
-                .unwrap_or_else(|e| unsupported(&e)),
+            data: if a[4] == 1 {
+                0
+            } else {
+                memory(&image.cpu, &vec![0; bytes], true, false).unwrap_or_else(|e| unsupported(&e))
+            },
             width,
             height,
             lock: None,
@@ -1494,6 +1752,9 @@ fn create_texture(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u3
             format: a[5],
             pool: a[6],
             bindings: 0,
+            usage: a[4],
+            attachment,
+            surface: 0,
         },
         1,
     );
@@ -1593,6 +1854,7 @@ fn texture_operation(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16], sl
         levels,
         format,
         pool,
+        usage,
         ..
     } = &mut s.objects.get_mut(&a[0]).unwrap().body
     else {
@@ -1612,11 +1874,14 @@ fn texture_operation(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16], sl
             write(
                 image,
                 a[2],
-                &[*format, 1, 0, *pool, 0, 0, level.width, level.height],
+                &[*format, 1, *usage, *pool, 0, 0, level.width, level.height],
             );
             0
         }
         19 => {
+            if *usage != 0 {
+                return INVALID;
+            }
             if a[2] == 0 || level.lock.is_some() {
                 return INVALID;
             }
@@ -1880,6 +2145,8 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32
         (1, 64 | 65) => texture_binding(image, &mut s, a, slot == 64),
         (1, 68 | 69) => sampler_state(image, &mut s, a, slot == 68),
         (7, 10) => 3,
+        (7, 18) => texture_surface(image, &mut s, a),
+        (1, 37 | 38) => render_binding(image, &mut s, a, slot == 38),
         (7, 13 | 17 | 19 | 20) => texture_operation(image, &mut s, a, slot),
         (1, 26) => vertex_buffer(image, &mut s, a),
         (1, 86) => create_declaration(image, &mut s, a),
@@ -2024,10 +2291,13 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32
             0
         }
         (3, 13) => {
-            let Body::VertexBuffer { length, fvf, .. } = &s.objects[&a[0]].body else {
+            let Body::VertexBuffer {
+                length, usage, fvf, ..
+            } = &s.objects[&a[0]].body
+            else {
                 unreachable!()
             };
-            write(image, a[1], &[100, 6, 0, 0, *length, *fvf]);
+            write(image, a[1], &[100, 6, *usage, 0, *length, *fvf]);
             0
         }
         (1, 18) => backbuffer(image, &mut s, a),
@@ -2036,10 +2306,9 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32
             if a[1] == 0 {
                 return INVALID;
             }
-            let Body::Device { parameters, .. } = &s.objects[&a[0]].body else {
-                unreachable!()
-            };
-            let viewport = [0, 0, parameters[0], parameters[1], 0, 1f32.to_bits()];
+            let (target, _) = color_target(&s, a[0]);
+            let (width, height) = target.dimensions();
+            let viewport = [0, 0, width, height, 0, 1f32.to_bits()];
             if slot == 48 {
                 write(image, a[1], &viewport);
             } else if read::<6>(image, a[1]) != viewport {
@@ -2072,22 +2341,19 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32
             if a[1] != 0 || a[2] != 0 || a[3] != 1 {
                 return UNAVAILABLE;
             }
+            let (mut active, format) = color_target(&s, a[0]);
             let Body::Device {
-                gpu,
-                target,
-                parameters,
-                render_state,
-                ..
+                gpu, render_state, ..
             } = &mut s.objects.get_mut(&a[0]).unwrap().body
             else {
                 unreachable!()
             };
-            let color = if parameters[2] == 22 {
+            let color = if format == 22 {
                 a[4] | 0xff000000
             } else {
                 a[4]
             };
-            gpu.clear_state(target, color, render_state)
+            gpu.clear_state(&mut active, color, render_state)
                 .unwrap_or_else(|e| unsupported(&e));
             0
         }
@@ -2122,9 +2388,31 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32
             0
         }
         (2, 10) => 1,
+        (2, 11) => {
+            if a[2] == 0 {
+                return POINTER;
+            }
+            write(image, a[2], &[0]);
+            let Body::Surface { container, .. } = &s.objects[&a[0]].body else {
+                unreachable!()
+            };
+            let container = *container;
+            if container == 0 {
+                return NO_INTERFACE;
+            }
+            checked(image, a[1], 16, false);
+            let requested = unsafe { (a[1] as *const [u8; 16]).read_unaligned() };
+            if ![IID_UNKNOWN, IID_RESOURCE, IID_BASE_TEXTURE, IIDS[7]].contains(&requested) {
+                return NO_INTERFACE;
+            }
+            expose(&mut s, container);
+            write(image, a[2], &[container]);
+            0
+        }
         (2, 12) => {
             let Body::Surface {
                 back,
+                attachment,
                 width,
                 height,
                 format,
@@ -2139,8 +2427,8 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32
                 &[
                     *format,
                     1,
-                    u32::from(*back),
-                    if *back { 0 } else { 2 },
+                    u32::from(*back || attachment.is_some()),
+                    if *back || attachment.is_some() { 0 } else { 2 },
                     0,
                     0,
                     *width,
@@ -2155,6 +2443,7 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32
             }
             let Body::Surface {
                 back,
+                attachment,
                 data,
                 width,
                 initialized,
@@ -2164,7 +2453,7 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32
             else {
                 unreachable!()
             };
-            if *back {
+            if *back || attachment.is_some() {
                 return INVALID;
             }
             if *locked {

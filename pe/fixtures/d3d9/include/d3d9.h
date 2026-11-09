@@ -89,8 +89,8 @@ struct IDirect3DDevice9 {
  virtual void __stdcall UnsupportedSlot34()=0;
  virtual void __stdcall UnsupportedSlot35()=0;
  virtual HRESULT __stdcall CreateOffscreenPlainSurface(UINT,UINT,UINT,UINT,IDirect3DSurface9**,void*)=0;
- virtual void __stdcall UnsupportedSlot37()=0;
- virtual void __stdcall UnsupportedSlot38()=0;
+ virtual HRESULT __stdcall SetRenderTarget(DWORD,IDirect3DSurface9*)=0;
+ virtual HRESULT __stdcall GetRenderTarget(DWORD,IDirect3DSurface9**)=0;
  virtual void __stdcall UnsupportedSlot39()=0;
  virtual HRESULT __stdcall GetDepthStencilSurface(IDirect3DSurface9**)=0;
  virtual HRESULT __stdcall BeginScene()=0;
@@ -184,7 +184,7 @@ struct IDirect3DSurface9 {
  virtual void __stdcall UnsupportedSlot8()=0;
  virtual void __stdcall UnsupportedSlot9()=0;
  virtual UINT __stdcall GetType()=0;
- virtual void __stdcall UnsupportedSlot11()=0;
+ virtual HRESULT __stdcall GetContainer(const GUID&,void**)=0;
  virtual HRESULT __stdcall GetDesc(D3DSURFACE_DESC*)=0;
  virtual HRESULT __stdcall LockRect(D3DLOCKED_RECT*,const void*,DWORD)=0;
  virtual HRESULT __stdcall UnlockRect()=0;
@@ -304,7 +304,7 @@ struct IDirect3DBaseTexture9 {
 };
 struct IDirect3DTexture9 : IDirect3DBaseTexture9 {
  virtual HRESULT __stdcall GetLevelDesc(UINT,D3DSURFACE_DESC*)=0;
- virtual void __stdcall UnsupportedSlot18()=0;
+ virtual HRESULT __stdcall GetSurfaceLevel(UINT,IDirect3DSurface9**)=0;
  virtual HRESULT __stdcall LockRect(UINT,D3DLOCKED_RECT*,const void*,DWORD)=0;
  virtual HRESULT __stdcall UnlockRect(UINT)=0;
  virtual void __stdcall UnsupportedSlot21()=0;
