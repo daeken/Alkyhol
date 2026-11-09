@@ -6,7 +6,7 @@ pub fn element_size(ty: u32) -> Result<usize> {
     match ty {
         0..=3 => Ok((ty as usize + 1) * 4),
         4 | 6 | 8 | 15 => Ok(4), // D3DCOLOR, SHORT2, UBYTE4N, FLOAT16_2
-        16 => Ok(8),             // FLOAT16_4
+        7 | 16 => Ok(8),         // SHORT4, FLOAT16_4
         _ => Err("vertex element format is not implemented".into()),
     }
 }
@@ -27,8 +27,8 @@ pub fn expand(ty: u32, source: &[u8]) -> Result<[u8; 16]> {
                     .copy_from_slice(&(source[index] as f32 / 255.).to_le_bytes());
             }
         }
-        6 => {
-            for component in 0..2 {
+        6 | 7 => {
+            for component in 0..source.len() / 2 {
                 let value = i16::from_le_bytes(
                     source[component * 2..component * 2 + 2].try_into().unwrap(),
                 );
@@ -98,6 +98,19 @@ mod tests {
         );
     }
     #[test]
+    fn short4_widens_signed_components_without_normalization() {
+        let mixed = [-32768i16, 32767, -1, 7].map(i16::to_le_bytes).concat();
+        assert_eq!(
+            floats(expand(7, &mixed).unwrap()),
+            [-32768., 32767., -1., 7.]
+        );
+        for bits in 0..=u16::MAX {
+            let source = bits.to_le_bytes().repeat(4);
+            let expected = (i32::from(bits) - if bits & 0x8000 != 0 { 65536 } else { 0 }) as f32;
+            assert_eq!(floats(expand(7, &source).unwrap()), [expected; 4]);
+        }
+    }
+    #[test]
     fn packed_color_and_ubyte4n_have_distinct_order_and_normalization() {
         let data = [0u8, 17, 128, 255];
         assert_eq!(
@@ -116,11 +129,11 @@ mod tests {
     }
     #[test]
     fn unsupported_formats_and_partial_elements_are_errors() {
-        for ty in [5, 7, 9, 17, u32::MAX] {
+        for ty in [5, 9, 17, u32::MAX] {
             assert!(element_size(ty).is_err());
             assert!(expand(ty, &[0; 4]).is_err());
         }
-        for ty in [0, 1, 2, 3, 4, 6, 8, 15, 16] {
+        for ty in [0, 1, 2, 3, 4, 6, 7, 8, 15, 16] {
             let size = element_size(ty).unwrap();
             assert!(expand(ty, &vec![0; size - 1]).is_err());
             assert!(expand(ty, &vec![0; size + 1]).is_err());

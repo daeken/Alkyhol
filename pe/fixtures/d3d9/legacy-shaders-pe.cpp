@@ -28,7 +28,12 @@ static void ok(BOOL n){put(n?1:0);}
 static DWORD fail(DWORD status,HRESULT detail){put(0xdeadc0de);put(status);put((DWORD)detail);DWORD done=0;WriteFile(GetStdHandle((DWORD)-11),words,used*4,&done,NULL);return status;}
 static DWORD stack(){DWORD s;__asm__ volatile("movl %%esp,%0":"=r"(s));return s;}
 static LRESULT __stdcall proc(HWND w,UINT m,WPARAM a,LPARAM b){return DefWindowProcW(w,m,a,b);}
-#ifdef HALF
+#ifdef SHORT4
+struct Short4Vertex { short position[4]; unsigned short color[4]; };
+static const Short4Vertex vertices[]={{{0,1,0,1},{0x3c00,0,0,0x3c00}},{{1,-1,0,1},{0x3c00,0,0,0x3c00}},{{-1,-1,0,1},{0x3c00,0,0,0x3c00}}};
+static float matrix[16]={.75f,0,0,0,0,.75f,0,0,0,0,1,0,0,0,0,1};
+static const D3DVERTEXELEMENT9 elements[]={{0,0,7,0,0,0},{0,8,16,0,10,0},{255,0,17,0,0,0}};
+#elif defined(HALF)
 struct HalfVertex { unsigned short position[2],color[4]; };
 static const HalfVertex vertices[]={{{0,0x3c00},{0x3c00,0,0,0x3c00}},{{0x3c00,0xbc00},{0x3c00,0,0,0x3c00}},{{0xbc00,0xbc00},{0x3c00,0,0,0x3c00}}};
 static float matrix[16]={.75f,0,0,0,0,.75f,0,0,0,0,1,0,0,0,0,1};
@@ -243,7 +248,9 @@ static DWORD font_formats_witness(){
 #endif
 extern "C" DWORD entry(){
  DWORD before=stack();put(0x39534844);
-#ifdef HALF
+#ifdef SHORT4
+put(17);
+#elif defined(HALF)
 put(16);
 #elif defined(FONTS)
 put(15);

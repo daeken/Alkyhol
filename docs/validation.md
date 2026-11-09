@@ -6637,3 +6637,21 @@ Windows comparator and independent SDK enum checks are added to existing CI and
 pending. Fourteen D3D9 observer tests pass; existing acceptance rules for earlier
 witnesses and retained failed native observations remain unchanged. The next
 original run must establish whether the cleanup boundary is cleared.
+
+## DAO loading reaches signed SHORT4 declarations
+
+The clean 5f5449c replay passes FLOAT16_2/FLOAT16_4 validation. The next rejected
+original elements are SHORT4 (BLENDINDICES) at offsets 44, 52 and 56. Original
+cleanup still faults through a null interface at the previously recorded site;
+clearing declaration rejection has not yet established a character creation
+frame. The game code and asset bytes remain unchanged and local.
+
+[SHORT4](https://learn.microsoft.com/en-us/windows/win32/direct3d9/d3ddecltype)
+now fetches four signed, unnormalized 16-bit components. Exhaustive units check
+all 65,536 signed encodings and a mixed vector checks component order. Partial
+or oversized elements still fail. All 22 backend units, backend Clippy and 14
+D3D9 observer tests pass on this host. A new owned literal PE passes physically
+on the M4, including two complete RGB frames using SHORT4 positions and the
+unchanged shader bodies. Existing CI transfers that identical PE for native
+comparison and independently checks the SDK enum; those results remain pending.
+The next original-game replay must establish whether its cleanup fault clears.
