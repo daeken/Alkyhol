@@ -3,6 +3,13 @@
 use super::{LoadedImage32, unsupported};
 use crate::Result;
 use std::collections::BTreeSet;
+// A shared live-object bound, not a lifetime allocation counter. Real kernel
+// objects back every slot; CloseHandle releases capacity for either object kind.
+const MAX_SYNC_HANDLES: usize = 16_384;
+fn capacity_failure() -> u32 {
+    alkyhol::ffi::SetLastError(8); // ERROR_NOT_ENOUGH_MEMORY, never successful creation.
+    0
+}
 #[derive(Default)]
 pub(super) struct State {
     handles: BTreeSet<u32>,
@@ -16,8 +23,8 @@ impl State {
         self.handles.contains(&h) || self.semaphores.contains(&h)
     }
     fn create(&mut self, manual: bool, initial: bool) -> Result<u32> {
-        if self.handles.len() >= 128 {
-            return Err("PE32 event handle budget exceeded".into());
+        if self.handles.len() + self.semaphores.len() >= MAX_SYNC_HANDLES {
+            return Ok(capacity_failure());
         }
         let h = unsafe {
             alkyhol::ffi::CreateEventW(
@@ -27,7 +34,10 @@ impl State {
                 std::ptr::null(),
             )
         };
-        if h == 0 || h > u32::MAX as usize || (0x70000001..=0x70000003).contains(&h) {
+        if h == 0 {
+            return Ok(0);
+        } // Preserve a real kernel allocation error.
+        if h > u32::MAX as usize || (0x70000001..=0x70000003).contains(&h) {
             if h != 0 {
                 alkyhol::ffi::CloseHandle(h);
             }
@@ -37,8 +47,8 @@ impl State {
         Ok(h as u32)
     }
     fn semaphore(&mut self, initial: i32, maximum: i32) -> Result<u32> {
-        if self.semaphores.len() >= 128 {
-            return Err("PE32 semaphore handle budget exceeded".into());
+        if self.handles.len() + self.semaphores.len() >= MAX_SYNC_HANDLES {
+            return Ok(capacity_failure());
         }
         let h = unsafe {
             alkyhol::ffi::CreateSemaphoreW(std::ptr::null(), initial, maximum, std::ptr::null())
@@ -112,12 +122,14 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
                 "PE32 CreateSemaphoreW security attributes and named semaphores are unsupported",
             );
         }
-        let h = image
+        let allocation = image
             .cpu
             .events
             .borrow_mut()
-            .semaphore(args[1] as i32, args[2] as i32)
-            .unwrap_or_else(|e| unsupported(&e));
+            .semaphore(args[1] as i32, args[2] as i32);
+        // Drop the registry borrow before any fatal diagnostic can terminate
+        // while another guest worker is reacquiring the CPU lease.
+        let h = allocation.unwrap_or_else(|e| unsupported(&e));
         if h != 0 {
             alkyhol::ffi::SetLastError(0);
         }
@@ -126,13 +138,15 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
         if args[0] != 0 || args[3] != 0 {
             unsupported("PE32 CreateEventW security attributes and named events are unsupported");
         }
-        let h = image
+        let allocation = image
             .cpu
             .events
             .borrow_mut()
-            .create(args[1] != 0, args[2] != 0)
-            .unwrap_or_else(|e| unsupported(&e));
-        alkyhol::ffi::SetLastError(0);
+            .create(args[1] != 0, args[2] != 0);
+        let h = allocation.unwrap_or_else(|e| unsupported(&e));
+        if h != 0 {
+            alkyhol::ffi::SetLastError(0);
+        }
         h
     } else if id == 113 {
         if (args[1] != 0 || args[2] != 0)
@@ -153,12 +167,8 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
         }
         super::thread32::wait_handle(image, args[0], args[1])
     } else {
-        image
-            .cpu
-            .events
-            .borrow()
-            .change(args[0], id == 117)
-            .unwrap_or_else(|e| unsupported(&e))
+        let result = image.cpu.events.borrow().change(args[0], id == 117);
+        result.unwrap_or_else(|e| unsupported(&e))
     }
 }
 /// Win32 event/thread completion sets do not depend on Winsock initialization.
@@ -214,6 +224,52 @@ pub(super) fn release(image: &LoadedImage32<'_>, args: &[u32; 8]) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn live_capacity_is_shared_and_recovered_without_disturbing_remaining_objects() {
+        let mut state = State::default();
+        let mut events = Vec::new();
+        for _ in 0..MAX_SYNC_HANDLES - 1 {
+            let h = state.create(true, false).unwrap();
+            assert_ne!(h, 0);
+            events.push(h);
+        }
+        let semaphore = state.semaphore(1, 2).unwrap();
+        assert_ne!(semaphore, 0);
+        assert_eq!(state.create(false, true).unwrap(), 0);
+        assert_eq!(alkyhol::ffi::GetLastError(), 8);
+        assert_eq!(state.semaphore(1, 2).unwrap(), 0);
+        assert_eq!(alkyhol::ffi::GetLastError(), 8);
+        // Every slot has a distinct, actual kernel object; no dropped allocation.
+        assert_eq!(
+            state.handles.len() + state.semaphores.len(),
+            MAX_SYNC_HANDLES
+        );
+        assert_eq!(state.poll(events[129]).unwrap(), 258);
+        state.change(events[129], true).unwrap();
+        assert_eq!(state.poll(events[129]).unwrap(), 0);
+        for h in events.iter().step_by(2) {
+            assert!(state.close(*h).unwrap());
+        }
+        let available = MAX_SYNC_HANDLES - state.handles.len() - state.semaphores.len();
+        for _ in 0..available {
+            assert_ne!(state.semaphore(1, 1).unwrap(), 0);
+        }
+        assert_eq!(state.poll(events[129]).unwrap(), 0);
+        assert_eq!(state.poll(semaphore).unwrap(), 0);
+        assert_eq!(state.poll(semaphore).unwrap(), 258);
+        assert_eq!(state.create(true, false).unwrap(), 0);
+        assert_eq!(alkyhol::ffi::GetLastError(), 8);
+        assert!(state.close(semaphore).unwrap());
+        let replacement = state.create(false, true).unwrap();
+        assert_ne!(replacement, 0);
+        assert_eq!(state.poll(replacement).unwrap(), 0);
+        assert_eq!(state.poll(replacement).unwrap(), 258);
+        alkyhol::ffi::SetLastError(0xface1234);
+        state.clear();
+        assert_eq!(alkyhol::ffi::GetLastError(), 0xface1234);
+        assert!(state.handles.is_empty() && state.semaphores.is_empty());
+        assert!(state.poll(replacement).is_err());
+    }
     #[test]
     fn real_manual_and_automatic_state_close_and_kind_ownership() {
         let mut state = State::default();

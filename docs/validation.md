@@ -7232,3 +7232,34 @@ presentation. These are concrete optimization targets, not measured percentage
 attributions. Cache shader/pipeline preparation first, then measure logging and
 presentation independently; preserve all geometry, shaders and image quality.
 The user's interaction is the driver; keep originals/captures local.
+
+### Quick Play: live synchronization capacity
+
+The user reaches Quick Play in clean 3c867f2; the original run then stops at
+`PE32 event handle budget exceeded`, status 78 after 178.95 seconds. A secondary
+worker RefCell panic is also captured during termination. The primary observed
+limit is Alkyhol's 128 simultaneously owned events, not an established crash
+inside the game's Quick Play logic. The live registry removes entries on close;
+this is a live-count ceiling, not a cumulative allocation counter.
+
+The event/semaphore adapter now supports a combined 16,384 real live backing
+objects. This is an explicit Alkyhol resource bound, not a claimed Windows
+limit. A full registry returns NULL plus ERROR_NOT_ENOUGH_MEMORY; actual kernel
+creation failures preserve their errors. No phantom event or successful zero
+handle is returned. Closing either type frees capacity. Creation/state-change
+results also leave the registry borrow before invoking a fatal diagnostic.
+Named/security/alertable profiles remain outside existing supported contracts.
+
+On physical M4/Rosetta, the new 14-word owned event-capacity PE passes with 512
+live A/W events plus 512 semaphores: all object identities are distinct, manual
+signals persist, automatic signals consume, semaphores retain independent permit
+counts, and closing/replacing half preserves all other objects and stdcall stack.
+Three host event units pass, including actual 16,384-slot shared exhaustion,
+NULL/error-8 results, reclaimed capacity and error-preserving cleanup. The
+synthetic comparator rejection test and Clippy pass. All six existing frozen
+event PEs retain their earlier admitted and excluded outcomes; frozen bytes and
+native observation are unchanged. Identical-PE native Windows comparison for
+this new larger live-object witness is wired into existing CI and pending.
+Original Quick Play after this change is pending; character creation on the
+preceding revision remains the observed scene milestone. Game captures/data stay
+local, and no DAODecomp sources were changed.

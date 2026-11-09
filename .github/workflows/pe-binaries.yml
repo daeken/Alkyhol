@@ -214,6 +214,10 @@ jobs:
         run: |
           python tools/observe_pe32_file_family.py
           python tools/observe_pe32_file_family.py --host
+      - name: Execute DAO live synchronization capacity and object replacement
+        run: |
+          python tools/observe_pe32_event_capacity.py
+          python tools/observe_pe32_event_capacity.py --host
       - name: Execute real native windows and original x86 callbacks
         run: |
           python tools/observe_pe32_window_family.py
@@ -359,6 +363,8 @@ jobs:
             local/pe/startup-microtests/software-exception-host.json
             local/pe/startup-microtests/file-family-inputs.json
             local/pe/startup-microtests/file-family-host.json
+            local/pe/startup-microtests/event-capacity-inputs.json
+            local/pe/startup-microtests/event-capacity-host.json
             local/pe/startup-microtests/window-family-inputs.json
             local/pe/startup-microtests/window-family-host.json
             local/pe/startup-microtests/mouse-background-capture-inputs.json
@@ -570,6 +576,9 @@ jobs:
       - name: Observe identical file family PE on native Windows
         if: ${{ success() || failure() }}
         run: python tools/observe_pe32_file_family.py --native
+      - name: Compare identical DAO live event and semaphore capacity PE
+        if: ${{ success() || failure() }}
+        run: python tools/observe_pe32_event_capacity.py --native
       - name: Observe identical window family PE on native Windows
         if: ${{ success() || failure() }}
         run: python tools/observe_pe32_window_family.py --native
