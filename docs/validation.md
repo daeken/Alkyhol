@@ -5734,3 +5734,34 @@ retry is pending, and this correction is not yet counted as native DIB parity.
 The next integrated game run retains the configured empty class inventories and
 original EXE/source/profile identities. Its startup evidence, including any
 failed audio initialization, remains private. No original DAO frame is claimed.
+
+
+## Packed DAO vertex fetch and native COM evidence
+
+Original declaration types SHORT2, D3DCOLOR and UBYTE4N now expand using D3D9
+input rules into float4 GPU registers. Float1/2/3 missing components use zero/one;
+float source bits, guest storage, topology and source indices remain intact.
+Indexed conversion reads only initialized referenced vertices. Original POSITIONT
+bypass declarations and other integer/half formats remain explicitly unsupported.
+
+Four backend fetch units cover signed extremes/defaults, every 8-bit normalized
+value, color channel order, unchanged NaN/signed-zero bits and invalid extents.
+The owned packed PE renders both signed-short positions/ARGB colors and normalized
+RGBA bytes through identical legacy shaders. All 2,099 words pass on physical
+M4, including both full frames and retained COM/guest stack behavior; the existing
+2,100-word indexed witness passes again after the canonical fetch change.
+Backend units and PE/backend Clippy pass. New native packed comparison is pending.
+
+CI 42596516259 on c2ad72a passes the 25-word COM comparison on native Windows and
+hosted Rosetta, including both guarded activation failures. The physical M4's
+literal PE identity and output match that native report. Original FMOD handles
+the configured missing audio enumerator class and continues to waveOutGetNumDevs,
+which remains the next actual startup blocker; there is no fabricated audio
+endpoint or original rendered game frame.
+
+That CI still fails the same indexed-DIB reverse-copy assertion after GdiFlush.
+Synchronization is now correct, but it was not the cause of the mismatch. The
+next observer preserves all previous criteria and adds all 16 raw destination
+bytes (including padding) to determine the actual Windows color-index conversion.
+No complete native DIB agreement is claimed. Both failed raw reports remain
+retained locally.

@@ -1812,6 +1812,7 @@ fn draw_buffer(
     checked(image, address, n as usize, false);
     let bytes = unsafe { std::slice::from_raw_parts(address as *const u8, n as usize) };
     let mut attributes = Vec::new();
+    let mut fetch = Vec::new();
     if !fixed {
         let (vs, ps, decl) = programmable;
         if !s.programs.contains_key(&(vs, ps)) {
@@ -1840,15 +1841,48 @@ fn draw_buffer(
                 return INVALID;
             };
             let offset = (element[0] >> 16) as u64;
-            let (format, size) = declaration_format(element[1] & 255).unwrap();
+            let ty = element[1] & 255;
+            let size = alkyhol_d3d9::vertex::element_size(ty).unwrap() as u64;
             if offset + size > stride as u64 {
                 return INVALID;
             }
+            fetch.push((offset as usize, ty));
             attributes.push(VertexAttribute {
-                format,
-                offset,
+                format: VertexFormat::Float32x4,
+                offset: (attributes.len() * 16) as u64,
                 shader_location: input.register,
             });
+        }
+    }
+    // Canonical float4 input registers implement D3D9 fetch rules without
+    // modifying guest storage, source shaders, geometry or source index values.
+    let packed_stride = fetch.len() * 16;
+    let mut packed = Vec::new();
+    if !fixed {
+        let size = (vertices.unwrap() as usize)
+            .checked_mul(packed_stride)
+            .filter(|&size| size != 0 && size <= 64 * 1024 * 1024);
+        let Some(size) = size else {
+            return INVALID;
+        };
+        packed.resize(size, 0);
+        let mut convert = |index: usize| {
+            for (component, &(offset, ty)) in fetch.iter().enumerate() {
+                let start = index * stride as usize + offset;
+                let count = alkyhol_d3d9::vertex::element_size(ty).unwrap();
+                let value = alkyhol_d3d9::vertex::expand(ty, &bytes[start..start + count]).unwrap();
+                let dest = index * packed_stride + component * 16;
+                packed[dest..dest + 16].copy_from_slice(&value);
+            }
+        };
+        if let Some((_, indices)) = &indexed {
+            for &index in indices {
+                convert(index as usize);
+            }
+        } else {
+            for index in 0..vertices.unwrap() as usize {
+                convert(index);
+            }
         }
     }
     let Body::Device {
@@ -1921,8 +1955,8 @@ fn draw_buffer(
                 textures: &textures,
                 vertex_spirv: &program.unwrap().spirv,
                 pixel_spirv: &pixel_spirv,
-                vertices: bytes,
-                stride: stride as u64,
+                vertices: &packed,
+                stride: packed_stride as u64,
                 attributes: &attributes,
                 vertex_constants,
                 pixel_constants,
@@ -1951,15 +1985,7 @@ fn semantic(usage: u32) -> Option<&'static str> {
         _ => return None,
     })
 }
-fn declaration_format(ty: u32) -> Option<(VertexFormat, u64)> {
-    Some(match ty {
-        0 => (VertexFormat::Float32, 4),
-        1 => (VertexFormat::Float32x2, 8),
-        2 => (VertexFormat::Float32x3, 12),
-        3 => (VertexFormat::Float32x4, 16),
-        _ => return None,
-    })
-}
+
 fn create_shader(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16], stage: Stage) -> u32 {
     if a[2] == 0 || a[1] == 0 {
         return INVALID;
@@ -2049,7 +2075,7 @@ fn create_declaration(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -
             || element[0] >> 16 & 3 != 0
             || element[1] >> 8 & 255 != 0
             || semantic(element[1] >> 16 & 255).is_none()
-            || declaration_format(element[1] & 255).is_none()
+            || alkyhol_d3d9::vertex::element_size(element[1] & 255).is_err()
         {
             eprintln!("D3D9 unavailable declaration element: {element:x?}");
             return UNAVAILABLE;

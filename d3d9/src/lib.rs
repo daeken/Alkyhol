@@ -13,6 +13,7 @@ pub mod compiler;
 mod depth;
 pub mod legacy;
 mod legacy_gpu;
+pub mod vertex;
 pub use depth::Depth;
 mod render_state;
 pub use render_state::RenderState;

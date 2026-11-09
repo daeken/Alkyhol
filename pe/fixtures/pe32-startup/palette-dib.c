@@ -31,6 +31,7 @@ U entry(void){U before=stack();put(0x38424944);put(1);for(U i=0;i<256;i++)indexe
  indexed.header[2]=2;H bottom=CreateDIBSection(source,&indexed,0,(void**)&bottom_bits,0,0);put(bottom!=0&&bottom_bits!=0);if(!bottom||!bottom_bits)ExitProcess(4);
  for(U i=0;i<16;i++)bottom_bits[i]=0x5a;for(U x=0;x<5;x++){bottom_bits[x]=(unsigned char)(9+x);bottom_bits[8+x]=(unsigned char)(1+x);}
  put(SelectObject(source,bottom)==bitmap);put(GetPixel(source,1,0));put(GetPixel(source,1,1));put(BitBlt(source,0,0,5,2,target,0,0,0xcc0020)!=0&&GdiFlush());
+ for(U i=0;i<16;i++)put(bottom_bits[i]);
  put(bottom_bits[0]==6&&bottom_bits[8]==1&&bottom_bits[10]==17&&bottom_bits[5]==0x5a&&bottom_bits[13]==0x5a);
  put(SelectObject(source,old_source)==bottom&&SelectObject(target,old_target)==rgb);put(DeleteObject(bitmap)&&DeleteObject(bottom)&&DeleteObject(rgb));put(DeleteDC(source)&&DeleteDC(target));put(stack()==before);put(used+1);
  U done=0;int ok=WriteFile(GetStdHandle((U)-11),out,used*4,&done,0);ExitProcess(ok&&done==used*4?0:8);return 8;

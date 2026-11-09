@@ -49,6 +49,10 @@ jobs:
         run: |
           python tools/observe_d3d9_create_device.py --targets
           ALKYHOL_D3D9_SHADER_COMPILER="$PWD/local/tools/shader9/alkyhol-shader9" ALKYHOL_D3D9_SHADER_DIRECTORY="$PWD/local/d3d9/compiled-owned" python tools/observe_d3d9_create_device.py --targets --host
+      - name: Execute DAO SHORT2, D3DCOLOR and UBYTE4N vertex fetch
+        run: |
+          python tools/observe_d3d9_create_device.py --packed
+          ALKYHOL_D3D9_SHADER_COMPILER="$PWD/local/tools/shader9/alkyhol-shader9" ALKYHOL_D3D9_SHADER_DIRECTORY="$PWD/local/d3d9/compiled-owned" python tools/observe_d3d9_create_device.py --packed --host
       - name: Execute real D16 depth creation, clear and occlusion
         run: |
           python tools/observe_d3d9_create_device.py --depth
@@ -87,6 +91,9 @@ jobs:
         with:
           name: d3d9-identical-pe
           path: |
+            local/pe/d3d9-microtests/d3d9-packed.exe
+            local/pe/d3d9-microtests/d3d9-packed-inputs.json
+            local/pe/d3d9-microtests/d3d9-packed-host.json
             local/pe/d3d9-microtests/d3d9-bc3.exe
             local/pe/d3d9-microtests/d3d9-bc3-inputs.json
             local/pe/d3d9-microtests/d3d9-bc3-host.json
@@ -162,6 +169,9 @@ jobs:
       - name: Compare exact DXT5 surfaces, mip blocks, color spaces and full frames
         if: success() || failure()
         run: python tools/observe_d3d9_create_device.py --bc3 --native
+      - name: Compare packed vertex fetch and every rendered pixel
+        if: success() || failure()
+        run: python tools/observe_d3d9_create_device.py --packed --native
       - name: Compare every pixel and ABI field of the indexed buffer witness
         if: success() || failure()
         run: python tools/observe_d3d9_create_device.py --indexed --native

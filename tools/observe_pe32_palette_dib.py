@@ -31,7 +31,7 @@ def execute(d,native):
  if r.returncode:raise ValueError('palette DIB witness failed; raw capture retained: '+r.stderr.decode(errors='replace')[-1500:])
  if len(r.stdout)%4:raise ValueError('truncated palette DIB report')
  words=list(struct.unpack('<'+'I'*(len(r.stdout)//4),r.stdout));report['words']=words
- expected=[0x38424944,1]+[1]*5+[0x070d1d,0x070707,1]+[1]*2+[0x1d0d07,0x020202,0x111111,0x040404,0x050505,0x060606,0x070707,0x080808,0x090909,0x0a0a0a]+[1,1,0x020202,0x0a0a0a]+[1]*6
+ expected=[0x38424944,1]+[1]*5+[0x070d1d,0x070707,1]+[1]*2+[0x1d0d07,0x020202,0x111111,0x040404,0x050505,0x060606,0x070707,0x080808,0x090909,0x0a0a0a]+[1,1,0x020202,0x0a0a0a]+[6,7,8,9,10,0x5a,0x5a,0x5a,1,2,17,4,5,0x5a,0x5a,0x5a]+[1]*6
  expected += [len(expected)+1]
  path.write_text(json.dumps(report,indent=2)+'\n')
  if native:

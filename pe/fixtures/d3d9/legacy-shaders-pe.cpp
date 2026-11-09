@@ -28,9 +28,17 @@ static void ok(BOOL n){put(n?1:0);}
 static DWORD fail(DWORD status,HRESULT detail){put(0xdeadc0de);put(status);put((DWORD)detail);DWORD done=0;WriteFile(GetStdHandle((DWORD)-11),words,used*4,&done,NULL);return status;}
 static DWORD stack(){DWORD s;__asm__ volatile("movl %%esp,%0":"=r"(s));return s;}
 static LRESULT __stdcall proc(HWND w,UINT m,WPARAM a,LPARAM b){return DefWindowProcW(w,m,a,b);}
+#ifndef PACKED
 static const float vertices[][8]={{0,.75f,.5f,1,1,0,0,1},{.75f,-.75f,.5f,1,1,0,0,1},{-.75f,-.75f,.5f,1,1,0,0,1}};
 static float matrix[16]={1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1};
 static const D3DVERTEXELEMENT9 elements[]={{0,0,3,0,0,0},{0,16,3,0,10,0},{255,0,17,0,0,0}};
+#else
+struct PackedVertex { short x,y; DWORD color; };
+static const PackedVertex vertices[]={{0,1,0xffff0000},{1,-1,0xffff0000},{-1,-1,0xffff0000}};
+static float matrix[16]={.75f,0,0,0,0,.75f,0,0,0,0,1,0,0,0,0,1};
+static const D3DVERTEXELEMENT9 elements[]={{0,0,6,0,0,0},{0,4,4,0,10,0},{255,0,17,0,0,0}};
+#endif
+
 #ifdef TARGETS
 // Render, read back and sample one allocation. External texture/surface release
 // must not destroy bound storage or its cached COM identities.
@@ -138,7 +146,9 @@ static DWORD compressed_witness(){
 #endif
 extern "C" DWORD entry(){
  DWORD before=stack();put(0x39534844);
-#ifdef BC3
+#ifdef PACKED
+put(9);
+#elif defined(BC3)
 put(8);
 #elif defined(INDEXED)
 put(7);
@@ -191,7 +201,7 @@ put(1);
  D3DVERTEXBUFFER_DESC vb_desc={};ok(g_pd3dDevice->CreateVertexBuffer(vb_size,vb_usage,0,0,&vb,NULL)==S_OK&&vb&&vb->GetDesc(&vb_desc)==S_OK&&vb_desc.Usage==vb_usage&&vb_desc.Size==vb_size);if(!vb)return 8;
  void* storage=NULL;ok(vb->Lock(0,0,&storage,lock_flags)==S_OK);if(!storage)return 9;
  for(UINT i=0;i<vb_size;i++)((unsigned char*)storage)[i]=0;for(UINT i=0;i<sizeof(vertices);i++)((unsigned char*)storage)[i+vb_offset]=((const unsigned char*)vertices)[i];ok(vb->Unlock()==S_OK);
- ok(g_pd3dDevice->SetStreamSource(0,vb,stream_offset,32)==S_OK);
+ ok(g_pd3dDevice->SetStreamSource(0,vb,stream_offset,sizeof(vertices[0]))==S_OK);
  // Internal bindings retain resources, including shader bytecode and declaration.
  vs->Release();ps->Release();decl->Release();vb->Release();
  IDirect3DVertexShader9* bound=NULL;ok(g_pd3dDevice->GetVertexShader(&bound)==S_OK&&bound==vs);if(bound)bound->Release();
@@ -236,6 +246,22 @@ put(1);
  DWORD index_stage=index_witness();ok(index_stage==0);if(index_stage)return fail(18,index_stage);
  #endif
  for(UINT frame=0;frame<2;frame++){
+  #ifdef PACKED
+  // Change only the fetch representation on frame 2. The shader bodies and
+  // original integer positions stay identical; UBYTE4N RGBA differs from ARGB.
+  if(frame){
+   D3DVERTEXELEMENT9 normalized[]={{0,0,6,0,0,0},{0,4,8,0,10,0},{255,0,17,0,0,0}};
+   IDirect3DVertexDeclaration9* next=NULL;
+   if(g_pd3dDevice->CreateVertexDeclaration(normalized,&next)!=S_OK||!next)return 21;
+   if(g_pd3dDevice->SetVertexDeclaration(next)!=S_OK)return 22;next->Release();
+   IDirect3DVertexBuffer9* retained=NULL;UINT offset=99,stride=99;
+   if(g_pd3dDevice->GetStreamSource(0,&retained,&offset,&stride)!=S_OK||retained!=vb||offset!=0||stride!=8)return 23;
+   void* packed=NULL;if(retained->Lock(0,0,&packed,0)!=S_OK||!packed)return 24;
+   for(UINT i=0;i<3;i++)((PackedVertex*)packed)[i].color=0xff0000ff;
+   if(retained->Unlock()!=S_OK)return 25;retained->Release();
+  }
+  #endif
+
   #ifdef INDEXED
   if(frame){DWORD stage=wide_index_witness();if(stage)return fail(19,stage);}
   #endif
