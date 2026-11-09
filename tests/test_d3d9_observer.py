@@ -143,6 +143,14 @@ class LegacyShaderComparatorTests(unittest.TestCase):
                 changed=words.copy();changed[index]=value
                 with self.assertRaises(ValueError):shader_words(changed)
 
+    def test_transfer_batch_requires_resource_stage_and_unchanged_complete_frames(self):
+        words=self.record();words[1]=28;words.insert(22,1);words[-1]=2100
+        with patch.object(observer,'TRANSFERS',True):
+            self.assertEqual(shader_words(words),words)
+            for index,value in [(22,0),(23+9+20*32+22,0xff),(23+1034+9+20*32+10,0xff0000),(2099,2099)]:
+                changed=words.copy();changed[index]=value
+                with self.assertRaises(ValueError):shader_words(changed)
+
     def test_exact_frames_and_stack_extent(self):
         words=self.record();self.assertEqual(shader_words(words),words)
         for changed in [words[:-1],words+[0]]:

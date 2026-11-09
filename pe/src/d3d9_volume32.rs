@@ -36,6 +36,7 @@ fn layout(
             return None;
         }
         result.push(TextureLevel {
+            dirty: true,
             data,
             width: w,
             height: h,
@@ -54,7 +55,7 @@ pub(super) fn create(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) ->
         return INVALID;
     }
     write(image, a[8], &[0]);
-    if a[5] != 0 || ![21, 22, 50].contains(&a[6]) || ![0, 1].contains(&a[7]) || a[9] != 0 {
+    if a[5] != 0 || ![21, 22, 50].contains(&a[6]) || ![0, 1, 2].contains(&a[7]) || a[9] != 0 {
         return UNAVAILABLE;
     }
     let Some((mut levels, total)) = layout(a[1], a[2], a[3], a[4], a[6]) else {
@@ -246,7 +247,7 @@ pub(super) fn operation(
             if output == 0 || level.lock.is_some() {
                 return INVALID;
             }
-            if flags & !0x810 != 0 {
+            if flags & !0x8810 != 0 {
                 return UNAVAILABLE;
             }
             let b = if region == 0 {
@@ -258,6 +259,9 @@ pub(super) fn operation(
                 return INVALID;
             };
             let readonly = flags & 16 != 0;
+            if index == 0 && !readonly && flags & 0x8000 == 0 {
+                level.dirty = true;
+            }
             if readonly && !level.initialized {
                 unsupported("read of uninitialized volume shadow");
             }
@@ -283,6 +287,10 @@ pub(super) fn operation(
                     for p in bytes.as_chunks_mut::<4>().0 {
                         p[3] = 255;
                     }
+                }
+                if *pool == 2 {
+                    level.initialized = true;
+                    return 0;
                 }
                 device
                     .upload_volume(&mut gpu.borrow_mut(), index, &bytes)

@@ -1,5 +1,7 @@
 //! PE32 stdcall COM over owned low vtables. No host pointer is published.
 //! Unsupported virtual methods stop before returning; no successful COM stubs.
+#[path = "d3d9_transfers32.rs"]
+mod transfers;
 #[path = "d3d9_transforms32.rs"]
 mod transforms;
 #[path = "d3d9_volume32.rs"]
@@ -88,6 +90,7 @@ struct Object {
     body: Body,
 }
 struct TextureLevel {
+    dirty: bool,
     depth: u32,
     data: u32,
     width: u32,
@@ -407,6 +410,7 @@ pub(super) fn signature(id: u32) -> Option<(&'static str, u16)> {
         (12, 18) => ("IDirect3DVolumeTexture9::GetVolumeLevel", 12),
         (12, 19) => ("IDirect3DVolumeTexture9::LockBox", 20),
         (12, 20) => ("IDirect3DVolumeTexture9::UnlockBox", 8),
+        (12, 21) => ("IDirect3DVolumeTexture9::AddDirtyBox", 8),
         (13, 3) => ("IDirect3DVolume9::GetDevice", 8),
         (13, 7) => ("IDirect3DVolume9::GetContainer", 12),
         (13, 8) => ("IDirect3DVolume9::GetDesc", 8),
@@ -438,6 +442,7 @@ pub(super) fn signature(id: u32) -> Option<(&'static str, u16)> {
         (7, 18) => ("IDirect3DTexture9::GetSurfaceLevel", 12),
         (7, 19) => ("IDirect3DTexture9::LockRect", 20),
         (7, 20) => ("IDirect3DTexture9::UnlockRect", 8),
+        (7, 21) => ("IDirect3DTexture9::AddDirtyRect", 8),
         (10, 3) => ("IDirect3DCubeTexture9::GetDevice", 8),
         (10, 10) => ("IDirect3DCubeTexture9::GetType", 4),
         (10, 13) => ("IDirect3DCubeTexture9::GetLevelCount", 4),
@@ -445,6 +450,7 @@ pub(super) fn signature(id: u32) -> Option<(&'static str, u16)> {
         (10, 18) => ("IDirect3DCubeTexture9::GetCubeMapSurface", 16),
         (10, 19) => ("IDirect3DCubeTexture9::LockRect", 24),
         (10, 20) => ("IDirect3DCubeTexture9::UnlockRect", 12),
+        (10, 21) => ("IDirect3DCubeTexture9::AddDirtyRect", 12),
         (4..=6, 3) => ("D3D9 shader/declaration GetDevice", 8),
         (4 | 5, 4) => ("D3D9 shader GetFunction", 12),
         (6, 4) => ("D3D9 declaration GetDeclaration", 12),
@@ -2873,7 +2879,7 @@ fn create_texture(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16], cube:
     };
     if a[4] > 1
         || a[4] == 1 && format != SampleFormat::Bgra8
-        || ![0, 1].contains(&a[6])
+        || ![0, 1, 2].contains(&a[6])
         || a[8] != 0
         || a[4] == 1 && (a[3] != 1 || a[6] != 0)
         || cube && a[4] != 0
@@ -2927,6 +2933,7 @@ fn create_texture(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16], cube:
     let levels = layout
         .into_iter()
         .map(|mip| TextureLevel {
+            dirty: true,
             depth: 1,
             data: if data == 0 { 0 } else { data + mip.offset },
             width: mip.width,
@@ -2986,12 +2993,12 @@ fn texture_binding(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16], get:
     if a[2] != 0 {
         let Some(Object {
             refs: 1..,
-            body: Body::Texture { parent, .. },
+            body: Body::Texture { parent, pool, .. },
         }) = s.objects.get(&a[2])
         else {
             return INVALID;
         };
-        if *parent != a[0] {
+        if *parent != a[0] || *pool == 2 {
             return INVALID;
         }
     }
@@ -3053,7 +3060,7 @@ fn lock_rectangle_offset(
         return Some(0);
     }
     let bytes = match format {
-        21 => 4,
+        21 | 22 => 4,
         26 => 2,
         28 | 50 => 1,
         _ => return None,
@@ -3083,6 +3090,7 @@ fn texture_operation(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16], sl
     if slot == 13 {
         return gpu.borrow().levels();
     }
+    let mips = gpu.borrow().levels();
     let Some(level) = levels.get_mut(a[1] as usize) else {
         return INVALID;
     };
@@ -3105,7 +3113,7 @@ fn texture_operation(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16], sl
             if a[2] == 0 || level.lock.is_some() {
                 return INVALID;
             }
-            if ![0, 16].contains(&a[4]) {
+            if a[4] & !0x8810 != 0 {
                 return UNAVAILABLE;
             }
             let rectangle = if a[3] == 0 {
@@ -3118,7 +3126,10 @@ fn texture_operation(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16], sl
             else {
                 return UNAVAILABLE;
             };
-            let readonly = a[4] == 16;
+            let readonly = a[4] & 16 != 0;
+            if a[1].is_multiple_of(mips) && !readonly && a[4] & 0x8000 == 0 {
+                level.dirty = true;
+            }
             if readonly && !level.initialized && *format != 50 {
                 unsupported("D3D9 read of uninitialized texture shadow");
             }
@@ -3146,6 +3157,10 @@ fn texture_operation(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16], sl
                     for pixel in bytes.as_chunks_mut::<4>().0 {
                         pixel[3] = 255;
                     }
+                }
+                if *pool == 2 {
+                    level.initialized = true;
+                    return 0;
                 }
                 let mut texture = gpu.borrow_mut();
                 let mips = texture.levels();
@@ -3565,6 +3580,11 @@ fn dispatch_inner(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32 {
             }
             0
         }
+        (1, 28) => transfers::create_render_target(image, &mut s, a),
+        (1, 30) => transfers::update_surface(image, &mut s, a),
+        (1, 31) => transfers::update_texture(image, &mut s, a),
+        (1, 35) => transfers::color_fill(image, &mut s, a),
+        (7 | 10 | 12, 21) => transfers::add_dirty(image, &mut s, a, kind),
         (1, 24) => volume::create(image, &mut s, a),
         (12, 10) => 4,
         (12, 13 | 17..=20) | (13, 7..=10) => volume::operation(image, &mut s, a, kind, slot),
@@ -3943,34 +3963,7 @@ fn dispatch_inner(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32 {
                 args[4] = a[3];
                 return texture_operation(image, &mut s, &args, 19);
             }
-            if a[1] == 0 || a[2] != 0 || ![0, 16].contains(&a[3]) {
-                return INVALID;
-            }
-            let Body::Surface {
-                back,
-                attachment,
-                depth,
-                data,
-                width,
-                initialized,
-                locked,
-                ..
-            } = &mut s.objects.get_mut(&a[0]).unwrap().body
-            else {
-                unreachable!()
-            };
-            if *back || attachment.is_some() || depth.is_some() {
-                return INVALID;
-            }
-            if *locked {
-                return INVALID;
-            }
-            if !*initialized {
-                unsupported("D3D9 read of uninitialized system-memory surface");
-            }
-            write(image, a[1], &[*width * 4, *data]);
-            *locked = true;
-            0
+            transfers::lock_surface(image, &mut s, a)
         }
         (2, 14) => {
             let Body::Surface {
@@ -3987,13 +3980,19 @@ fn dispatch_inner(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32 {
                 args[1] = *texture_level;
                 return texture_operation(image, &mut s, &args, 20);
             }
-            let Body::Surface { locked, .. } = &mut s.objects.get_mut(&a[0]).unwrap().body else {
+            let Body::Surface {
+                locked,
+                initialized,
+                ..
+            } = &mut s.objects.get_mut(&a[0]).unwrap().body
+            else {
                 unreachable!()
             };
             if !*locked {
                 return INVALID;
             }
             *locked = false;
+            *initialized = true;
             0
         }
         _ => unsupported(&format!(

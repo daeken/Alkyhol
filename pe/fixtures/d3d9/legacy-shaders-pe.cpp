@@ -408,9 +408,14 @@ static HRESULT user_draw(UINT frame,IDirect3DVertexBuffer9* vb){
 #ifdef VOLUME
 #include "volume-witness.inc"
 #endif
+#ifdef TRANSFERS
+#include "transfers-witness.inc"
+#endif
 extern "C" DWORD entry(){
  DWORD before=stack();put(0x39534844);
-#ifdef VOLUME
+#ifdef TRANSFERS
+put(28);
+#elif defined(VOLUME)
 put(27);
 #elif defined(XYZ_QUERY)
 put(25);
@@ -536,6 +541,9 @@ put(1);
 22,
 #endif
 2,&copy,NULL)==S_OK);if(!back||!copy)return 10;
+ #ifdef TRANSFERS
+ DWORD transfer_stage=transfers_witness();ok(transfer_stage==0);if(transfer_stage)return fail(53,transfer_stage);
+ #endif
  #ifdef VOLUME
  DWORD volume_stage=volume_witness();ok(volume_stage==0);if(volume_stage)return fail(47,volume_stage);
  #endif

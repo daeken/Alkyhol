@@ -128,3 +128,12 @@ static_assert(offsetof(IDirect3DDevice9Vtbl,CreateVolumeTexture)==24*4);
 static_assert(offsetof(IDirect3DVolumeTexture9Vtbl,LockBox)==19*4);
 static_assert(offsetof(IDirect3DVolume9Vtbl,GetContainer)==7*4&&offsetof(IDirect3DVolume9Vtbl,LockBox)==9*4);
 static_assert(offsetof(D3DCAPS9,VolumeTextureFilterCaps)==18*4&&offsetof(D3DCAPS9,MaxVolumeExtent)==24*4);
+
+static_assert(offsetof(IDirect3DDevice9Vtbl,CreateRenderTarget)==28*4);
+static_assert(offsetof(IDirect3DDevice9Vtbl,UpdateSurface)==30*4);
+static_assert(offsetof(IDirect3DDevice9Vtbl,UpdateTexture)==31*4);
+static_assert(offsetof(IDirect3DDevice9Vtbl,ColorFill)==35*4);
+static_assert(offsetof(IDirect3DTexture9Vtbl,AddDirtyRect)==21*4);
+static_assert(offsetof(IDirect3DCubeTexture9Vtbl,AddDirtyRect)==21*4);
+static_assert(offsetof(IDirect3DVolumeTexture9Vtbl,AddDirtyBox)==21*4);
+static_assert(D3DLOCK_NO_DIRTY_UPDATE==0x8000&&D3DLOCK_NOSYSLOCK==0x800);

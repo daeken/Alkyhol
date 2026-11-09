@@ -203,6 +203,80 @@ impl Device {
         target.initialized.store(true, Ordering::Release);
         Ok(())
     }
+    /// Upload a tightly bounded BGRA rectangle, preserving every other texel.
+    /// A partial upload requires previously initialized destination storage.
+    pub fn write_target_region(
+        &self,
+        target: &mut Target,
+        rect: [u32; 4],
+        bytes: &[u8],
+        pitch: u32,
+    ) -> Result<()> {
+        let [left, top, right, bottom] = rect;
+        if left >= right || top >= bottom || right > target.width || bottom > target.height {
+            return Err("invalid attachment upload rectangle".into());
+        }
+        let row = (right - left)
+            .checked_mul(4)
+            .ok_or("attachment row overflow")?;
+        let required = (bottom - top - 1)
+            .checked_mul(pitch)
+            .and_then(|n| n.checked_add(row))
+            .ok_or("attachment upload length overflow")?;
+        if pitch < row || bytes.len() < required as usize {
+            return Err("attachment upload rows exceed source storage".into());
+        }
+        if rect != [0, 0, target.width, target.height]
+            && !target.initialized.load(Ordering::Acquire)
+        {
+            return Err("partial upload to uninitialized attachment".into());
+        }
+        self.scope();
+        self.queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &target.texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d {
+                    x: left,
+                    y: top,
+                    z: 0,
+                },
+                aspect: wgpu::TextureAspect::All,
+            },
+            bytes,
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(pitch),
+                rows_per_image: None,
+            },
+            wgpu::Extent3d {
+                width: right - left,
+                height: bottom - top,
+                depth_or_array_layers: 1,
+            },
+        );
+        self.finish()?;
+        target.initialized.store(true, Ordering::Release);
+        Ok(())
+    }
+    /// ColorFill is independent of viewport, blend, scissor and sRGB draw state.
+    pub fn fill_target_region(&self, target: &mut Target, rect: [u32; 4], argb: u32) -> Result<()> {
+        let [l, t, r, b] = rect;
+        if l >= r || t >= b || r > target.width || b > target.height {
+            return Err("invalid attachment fill rectangle".into());
+        }
+        let pitch = (r - l)
+            .checked_mul(4)
+            .ok_or("attachment fill row overflow")?;
+        let size = pitch
+            .checked_mul(b - t)
+            .ok_or("attachment fill size overflow")?;
+        let mut bytes = vec![0; size as usize];
+        for p in bytes.as_chunks_mut::<4>().0 {
+            *p = argb.to_le_bytes();
+        }
+        self.write_target_region(target, rect, &bytes, pitch)
+    }
     /// Copy a complete equal-size color attachment without changing draw state.
     /// X8 formats request opaque alpha; RGB bytes remain exactly those read.
     pub fn copy_target(

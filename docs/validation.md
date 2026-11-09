@@ -7146,3 +7146,26 @@ batch groups resource creation, locks/staging and transfer operations across
 the batch boundary. Do not resume an individual-call replay loop or create
 unrelated sample/coverage projects. Existing finite profiles still fail
 unsupported operations explicitly.
+
+### Coherent D3D9 resource and transfer batch
+
+The owned --transfers PE adds standalone render-target allocation/description,
+ColorFill under disabled color writes/sRGB state, full-pixel partial-fill and
+pitched UpdateSurface checks, source-lock and bounds rejection, partial writable
+staging locks, SYSTEMMEM binding rejection and UpdateTexture across 2D/cube/volume
+resources. Actual GPU reads check all three 2D mips, matching mip suffixes,
+NO_DIRTY_UPDATE/explicit dirty restoration, UpdateSurface into a sampled texture,
+all six cube faces at both mips, and both BGRA/L8 volume slices and lower mips.
+The unchanged normal shader frames are rendered after resource/state restoration.
+All 2100 report words pass on physical M4; no original game data is used.
+
+Two actual attachment GPU tests pass, including padded source rows, exact alpha,
+neighbor preservation, invalid extents/short input/overflow and rejection of
+partial writes into uninitialized GPU storage. All 224 PE units, 22 observer
+units and both crates' Clippy pass. Win32 stdcall cleanup tests cover every new
+method; real-SDK slot/flag assertions and identical-PE native Windows/software
+Vulkan comparisons are wired into the existing workflow and remain pending.
+This is a resource/transfer milestone, not a full D3D9 implementation or a
+verified original character-creation frame. The next action is one original DAO
+replay at this batch boundary; individual-call replay development is superseded
+by the user's request for coherent batches.

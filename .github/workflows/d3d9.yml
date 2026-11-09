@@ -73,6 +73,10 @@ jobs:
         run: |
           python tools/observe_d3d9_create_device.py --short4
           ALKYHOL_D3D9_SHADER_COMPILER="$PWD/local/tools/shader9/alkyhol-shader9" ALKYHOL_D3D9_SHADER_DIRECTORY="$PWD/local/d3d9/compiled-owned" python tools/observe_d3d9_create_device.py --short4 --host
+      - name: Execute staged texture families and rectangular color transfers
+        run: |
+          python tools/observe_d3d9_create_device.py --transfers
+          ALKYHOL_D3D9_SHADER_COMPILER="$PWD/local/tools/shader9/alkyhol-shader9" ALKYHOL_D3D9_SHADER_DIRECTORY="$PWD/local/d3d9/compiled-owned" python tools/observe_d3d9_create_device.py --transfers --host
       - name: Execute real volume mips, COM aliases and original-style sampler3D
         run: |
           python tools/observe_d3d9_create_device.py --volume
@@ -196,6 +200,9 @@ jobs:
             local/pe/d3d9-microtests/d3d9-half.exe
             local/pe/d3d9-microtests/d3d9-half-inputs.json
             local/pe/d3d9-microtests/d3d9-half-host.json
+            local/pe/d3d9-microtests/d3d9-transfers.exe
+            local/pe/d3d9-microtests/d3d9-transfers-inputs.json
+            local/pe/d3d9-microtests/d3d9-transfers-host.json
             local/pe/d3d9-microtests/d3d9-volume.exe
             local/pe/d3d9-microtests/d3d9-volume-inputs.json
             local/pe/d3d9-microtests/d3d9-volume-host.json
@@ -322,6 +329,9 @@ jobs:
       - name: Compare identical signed short4 vertex fetch and complete frames
         if: success() || failure()
         run: python tools/observe_d3d9_create_device.py --short4 --native
+      - name: Compare identical staged resource and rectangular transfer batch
+        if: success() || failure()
+        run: python tools/observe_d3d9_create_device.py --transfers --native
       - name: Compare identical volume COM locks, mip data and full sample frames
         if: success() || failure()
         run: python tools/observe_d3d9_create_device.py --volume --native
