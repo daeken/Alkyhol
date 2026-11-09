@@ -5267,3 +5267,8 @@ Literal CI Winsock/registry PE files subsequently ran on physical M4 and agreed
 with their native Windows input identities and every normalized output word.
 Their hashes and scope are recorded in pe32.md. None of this establishes full
 native Windows DAO behavior or game compatibility.
+
+A clean physical rerun at `0136bde` confirms the unchanged EXE identity, hidden
+1024×768 main client, 69 successful original cursor constructions and explicit
+status 78 at Direct3DCreate9. Detailed captures and dependency identities stay
+local. CI 42555112613 is pending; the new native checks are not results yet.
