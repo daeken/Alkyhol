@@ -72,3 +72,22 @@ jobs:
           name: d3d9-native-observation
           path: local/pe/d3d9-microtests/native-*.json
           if-no-files-found: error
+
+  vulkan-software:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install the open Mesa Vulkan software driver
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mesa-vulkan-drivers
+      - name: Execute the same backend contracts through Vulkan software rendering
+        run: |
+          python3 - <<'PY'
+          import os, pathlib, subprocess, tempfile
+          icd=next(pathlib.Path('/usr/share/vulkan/icd.d').glob('lvp*.json'))
+          directory=tempfile.mkdtemp(prefix='alkyhol-vulkan-')
+          env=dict(os.environ,VK_ICD_FILENAMES=str(icd),XDG_RUNTIME_DIR=directory)
+          subprocess.run(['cargo','test','--manifest-path','d3d9/Cargo.toml','--locked','--','--include-ignored','--nocapture'],env=env,check=True)
+          PY

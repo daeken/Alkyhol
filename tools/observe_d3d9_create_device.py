@@ -44,6 +44,9 @@ def execute(d,native):
  command=[str(exe)] if native else [str(runner(d)),str(exe),'--file-origins','--external','user32.dll']
  r=subprocess.run(command,capture_output=True,timeout=90)
  report={'backend':'native Windows D3D9' if native else 'Alkyhol PE32 wgpu D3D9','platform':platform.platform(),'hosted_ci':os.getenv('GITHUB_ACTIONS')=='true','inputs':ident,'status':r.returncode,'stdout_hex':r.stdout.hex(),'stderr_hex':r.stderr.hex()}
+ if not native:
+  paths=[*sorted((ROOT/'pe/src').glob('*.*')),*sorted((ROOT/'d3d9/src').glob('*.*')),ROOT/'pe/Cargo.lock',ROOT/'d3d9/Cargo.lock']
+  report['runtime']={'revision':subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),'sources':{p.relative_to(ROOT).as_posix():sha(p) for p in paths if p.is_file()},'tracked_runtime_clean':not subprocess.check_output(['git','status','--porcelain','--','pe/src','d3d9/src','pe/Cargo.lock','d3d9/Cargo.lock'],cwd=ROOT,text=True).strip()}
  path=d/(('native-'+PREFIX+'.json') if native else (PREFIX+'-host.json'));path.write_text(json.dumps(report,indent=2)+'\n')
  if r.returncode:raise ValueError('D3D9 sample failed; raw evidence retained: '+r.stderr.decode(errors='replace')[-2000:])
  report['words']=decode(r.stdout)
