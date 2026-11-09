@@ -6409,3 +6409,32 @@ its first failing phase/value were not included by that original witness.
 The next witness now records phase, actual pixel, expected pixel and mask on
 failure, without changing its acceptance criteria. No native color-copy equality
 or all-CI-green claim is made.
+
+## DAO interactive input: boot-clock correction
+
+Quartz delivered host-injected keyboard and mouse events to the acquired real
+event taps on physical M4/Rosetta, but menu activation was not established by
+those initial attempts. The trace exposed a real clock-domain error: event
+timestamps used uptime excluding sleep, while GetTickCount/timeGetTime used
+the continuous boot clock. The measured difference on this laptop exceeded two
+hours. Microsoft's [DIDEVICEOBJECTDATA contract](https://learn.microsoft.com/en-us/previous-versions/windows/desktop/ee416611(v=vs.85))
+requires the same clock as GetTickCount/timeGetTime.
+
+Input capture now maps the original Quartz timestamp through a fresh observed
+absolute/continuous clock pair. It preserves delivery age, includes elapsed
+sleep, scales in widened arithmetic and wraps only at the final DWORD. Invalid
+clock samples/future timestamps lose acquisition explicitly. Unit cases cover
+sleep-offset changes, delayed events, non-unit scaling, overflow and wrap; a
+physical clock check brackets the mapped timestamp by boot ticks. All 207 PE
+units and PE Clippy pass. Setting ALKYHOL_PE32_TRACE_INPUT enables acquisition,
+loss and at most 256 event diagnostics per acquired source; it does not inject
+input or modify guest state. Original game interaction is being retested;
+neither these synthetic units nor host-injected events establish gameplay or
+native Windows input equivalence. Native focus-change messages remain a
+separate unimplemented path.
+
+D3D9 CI [42635100920](https://github.com/daeken/Alkyhol/actions/runs/42635100920)
+on 443a41e passes Metal and software Vulkan; its native A8/A4R4G4B4 full-RGBA,
+subrectangle, stencil and transform comparisons pass. The overall native job
+still fails the preserved POSITIONT and StretchRect assertions. No acceptance
+criteria or frozen observations were changed for this clock correction.

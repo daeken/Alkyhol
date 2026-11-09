@@ -1,6 +1,7 @@
 //! Explicit UTC guest clock profile. No inference of macOS timezone/DST rules.
 use super::{LoadedImage32, unsupported};
 unsafe extern "C" {
+    fn mach_absolute_time() -> u64;
     fn mach_continuous_time() -> u64;
     fn mach_timebase_info(info: *mut [u32; 2]) -> i32;
 }
@@ -15,6 +16,34 @@ pub(super) fn tick_count() -> u32 {
 }
 fn tick_milliseconds(raw: u64, scale: [u32; 2]) -> u32 {
     (u128::from(raw) * u128::from(scale[0]) / u128::from(scale[1]) / 1_000_000) as u32
+}
+/// Quartz timestamps are uptime nanoseconds, excluding system sleep. DirectInput
+/// timestamps must use the same continuous boot clock as this bridge's
+/// GetTickCount/timeGetTime, while retaining the event's original delivery age.
+pub(super) fn input_tick_count(event_ns: u64) -> crate::Result<u32> {
+    let mut scale = [0; 2];
+    if unsafe { mach_timebase_info(&mut scale) } != 0 {
+        return Err("input boot clock scale is unavailable".into());
+    }
+    let absolute = unsafe { mach_absolute_time() };
+    let continuous = unsafe { mach_continuous_time() };
+    input_milliseconds(event_ns, absolute, continuous, scale)
+}
+fn input_milliseconds(
+    event_ns: u64,
+    absolute: u64,
+    continuous: u64,
+    scale: [u32; 2],
+) -> crate::Result<u32> {
+    if scale.contains(&0) || continuous < absolute {
+        return Err("invalid input boot clock sample".into());
+    }
+    let nanoseconds = |raw: u64| u128::from(raw) * u128::from(scale[0]) / u128::from(scale[1]);
+    let absolute_ns = nanoseconds(absolute);
+    if u128::from(event_ns) > absolute_ns {
+        return Err("input event timestamp is ahead of the observed host clock".into());
+    }
+    Ok(((u128::from(event_ns) + nanoseconds(continuous) - absolute_ns) / 1_000_000) as u32)
 }
 fn check(image: &LoadedImage32<'_>, address: u32, size: usize, write: bool) {
     if !address.is_multiple_of(4) || !image.permits(address as usize, size, write) {
@@ -133,6 +162,55 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn input_events_share_boot_epoch_keep_delivery_age_and_follow_sleep() {
+        assert_eq!(
+            input_milliseconds(9_000_000, 10_000_000, 10_000_000, [1, 1]).unwrap(),
+            9
+        );
+        assert_eq!(
+            input_milliseconds(9_000_000, 10_000_000, 7_010_000_000, [1, 1]).unwrap(),
+            7009
+        );
+        // A later wake changes the clock offset; it must not be cached at acquisition.
+        assert_eq!(
+            input_milliseconds(11_000_000, 12_000_000, 9_012_000_000, [1, 1]).unwrap(),
+            9011
+        );
+        assert_eq!(
+            input_milliseconds(9_000_000, 30_000_000, 6_030_000_000, [1, 3]).unwrap(),
+            2009
+        );
+        assert_eq!(
+            input_milliseconds(1_000_000, 2_000_000, ((1u64 << 32) + 3) * 1_000_000, [1, 1])
+                .unwrap(),
+            2
+        );
+        // Intermediate clock conversion can exceed u64 nanoseconds.
+        assert_eq!(
+            input_milliseconds(0, 1, u64::MAX, [1_000_000, 1]).unwrap(),
+            u32::MAX - 1
+        );
+        for (event, absolute, continuous, scale) in [
+            (11, 10, 20, [1, 1]),
+            (0, 10, 9, [1, 1]),
+            (0, 0, 0, [0, 1]),
+            (0, 0, 0, [1, 0]),
+        ] {
+            assert!(input_milliseconds(event, absolute, continuous, scale).is_err());
+        }
+    }
+    #[test]
+    fn physical_input_clock_conversion_is_bracketed_by_boot_ticks() {
+        let before = tick_count();
+        let mut scale = [0; 2];
+        assert_eq!(unsafe { mach_timebase_info(&mut scale) }, 0);
+        let raw = unsafe { mach_absolute_time() };
+        let event_ns = (u128::from(raw) * u128::from(scale[0]) / u128::from(scale[1])) as u64;
+        let event = input_tick_count(event_ns).unwrap();
+        let after = tick_count();
+        assert!(event.wrapping_sub(before) <= after.wrapping_sub(before));
+    }
     #[test]
     fn utc_profile_has_real_names_zero_bias_and_no_dst_transitions() {
         let bytes = zone();

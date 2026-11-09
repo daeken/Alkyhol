@@ -615,6 +615,9 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32
                 return NOTIMPL;
             }
             if !image.cpu.ui.borrow().input_foreground(window) {
+                if std::env::var_os("ALKYHOL_PE32_TRACE_INPUT").is_some() {
+                    eprintln!("PE32 native input acquisition denied: window={window:x} is not key");
+                }
                 return 0x80070005;
             }
             match host::Source::new(

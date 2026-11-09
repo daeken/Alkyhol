@@ -206,9 +206,24 @@ struct Context {
     capacity: usize,
     data: Mutex<Data>,
     stop: AtomicBool,
+    trace: bool,
+    traced: AtomicU32,
 }
 impl Context {
     fn update(&self, component: u16, value: i32, time: u32, relative: bool) {
+        if self.trace
+            && self
+                .traced
+                .try_update(Ordering::Relaxed, Ordering::Relaxed, |n| {
+                    (n < 256).then_some(n + 1)
+                })
+                .is_ok()
+        {
+            eprintln!(
+                "PE32 native input event: kind={:?} component={component} value={value} time={time} relative={relative}",
+                self.kind
+            );
+        }
         let mut data = self.data.lock().unwrap();
         for binding in self.bindings.iter().filter(|b| b.component == component) {
             if relative {
@@ -241,14 +256,35 @@ impl Context {
 unsafe extern "C" fn event(_proxy: Id, ty: u32, event: Id, user: Id) -> Id {
     let context = unsafe { &*(user as *const Context) };
     if ty >= 0xfffffffe {
+        if context.trace {
+            eprintln!(
+                "PE32 native input lost: kind={:?} tap_notification={ty:#x}",
+                context.kind
+            );
+        }
         context.data.lock().unwrap().lost = true;
         return event;
     }
     if !foreground() {
+        if context.trace {
+            eprintln!(
+                "PE32 native input lost: kind={:?} event arrived outside foreground",
+                context.kind
+            );
+        }
         context.data.lock().unwrap().lost = true;
         return event;
     }
-    let time = (unsafe { CGEventGetTimestamp(event) } / 1_000_000) as u32;
+    let time = match super::super::time32::input_tick_count(unsafe { CGEventGetTimestamp(event) }) {
+        Ok(time) => time,
+        Err(e) => {
+            if context.trace {
+                eprintln!("PE32 native input lost: {e}");
+            }
+            context.data.lock().unwrap().lost = true;
+            return event;
+        }
+    };
     if context.kind == Kind::Keyboard {
         if unsafe { CGEventGetIntegerValueField(event, 8) } != 0 {
             return event;
@@ -320,6 +356,8 @@ impl Source {
                 lost: false,
             }),
             stop: AtomicBool::new(false),
+            trace: std::env::var_os("ALKYHOL_PE32_TRACE_INPUT").is_some(),
+            traced: AtomicU32::new(0),
         });
         {
             let mut data = context.data.lock().unwrap();
@@ -402,6 +440,9 @@ impl Source {
                     CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.016, true);
                 }
                 if !foreground() {
+                    if state.trace {
+                        eprintln!("PE32 native input lost: kind={kind:?} process left foreground");
+                    }
                     state.data.lock().unwrap().lost = true;
                 }
             }
@@ -413,11 +454,19 @@ impl Source {
             }
         });
         match receive.recv_timeout(std::time::Duration::from_secs(3)) {
-            Ok(Ok(runloop)) => Ok(Self {
-                context,
-                runloop,
-                thread: Some(thread),
-            }),
+            Ok(Ok(runloop)) => {
+                if context.trace {
+                    eprintln!(
+                        "PE32 native input acquired: kind={kind:?} size={size} capacity={capacity} bindings={:?}",
+                        context.bindings
+                    );
+                }
+                Ok(Self {
+                    context,
+                    runloop,
+                    thread: Some(thread),
+                })
+            }
             result => {
                 context.stop.store(true, Ordering::Release);
                 let _ = thread.join();
@@ -509,6 +558,8 @@ mod tests {
                 lost: false,
             }),
             stop: AtomicBool::new(false),
+            trace: false,
+            traced: AtomicU32::new(0),
         };
         context.update(256, i32::MAX, 1, true);
         context.update(256, 1, 2, true);
