@@ -142,9 +142,8 @@ impl RenderState {
     pub fn set(&mut self, ty: u32, value: u32) -> Result<()> {
         let old = self.get(ty)?;
         let supported = match ty {
-            7 | 14 | 16 | 27 | 136 | 137 | 141 | 142 | 143 | 156 | 157 | 161 | 170 | 194 | 206 => {
-                value <= 1
-            }
+            7 | 14 | 16 | 27 | 52 | 185 | 136 | 137 | 141 | 142 | 143 | 156 | 157 | 161 | 170
+            | 194 | 206 => value <= 1,
             8 => value == 3,
             9 => value == 2,
             15
@@ -152,7 +151,6 @@ impl RenderState {
             | 28
             | 29
             | 48
-            | 52
             | 128..=135
             | 151
             | 152
@@ -161,7 +159,6 @@ impl RenderState {
             | 175
             | 176
             | 184
-            | 185
             | 195
             | 198..=205 => value == 0,
             19 | 20 | 207 | 208 => factor(value).is_ok(),
@@ -292,7 +289,7 @@ mod tests {
     #[test]
     fn unsupported_enabled_effects_do_not_mutate_state() {
         let mut state = RenderState::default();
-        for ty in [15, 26, 28, 52, 152, 174, 176] {
+        for ty in [15, 26, 28, 152, 174, 176] {
             assert!(state.set(ty, 1).is_err());
             assert_eq!(state.get(ty).unwrap(), 0);
         }

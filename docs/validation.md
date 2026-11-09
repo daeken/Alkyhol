@@ -6337,3 +6337,36 @@ also run as the literal native-CI-produced binaries on physical M4: source/PE
 identities and every output word agree with native Windows. These finite API
 observations do not resolve the separately retained native texture-threshold
 rendering differences.
+
+## Original title/UI rendering with backed stencil planes
+
+Original DAO now selects D24S8 in its own CreateDevice request, creates its
+requested separate 256x256 D24S8 surface, renders through original indexed and
+postprocess draws, and sustains a visible Dragon Age: Origins window. A private
+WindowServer capture shows original title artwork and UI shapes. Text is still
+missing; full menu behavior and gameplay are not demonstrated. The original
+renderer repeatedly requests unsupported A8 textures, with an earlier A4R4G4B4
+request too; those real format requests are the next investigation. The validation
+process was stopped deliberately after capturing this sustained rendering; this
+is not a clean original-game exit or a game-compatibility claim.
+
+D24S8 now uses a real wgpu Depth24PlusStencil8 attachment; D16 remains a separate
+format. Depth and stencil aspect initialization are checked independently.
+Stencil clear, reference/masks, comparison, all eight update operations,
+stencil/depth-failure paths and separate faces affect actual GPU state. Disabled
+Z testing does not suppress enabled stencil. Clear validates both aspects before
+mutation and preserves the other aspect. Capability reporting advertises the
+eight implemented operations, retaining the other prior exclusions. Original
+shader bodies and geometry remain unchanged.
+
+The physical GPU test executes all eight operations, clamp/wrap boundaries,
+replace on each failure path, masked writes, aspect initialization and independent
+front/back faces. All existing ignored GPU regressions, 19 backend units, 204 PE
+units, observer tests and backend/PE Clippy pass. The new owned 2,100-word PE
+checks real D24S8 creation/binding/descriptors and actual replace/equal/not-equal
+masks over both complete shader frames; it passes physically. The prior D16 PE
+also passes. Hosted and native comparison are added and pending. The
+[format specification](https://learn.microsoft.com/en-us/windows/win32/direct3d9/d3dformat)
+allows drivers to use additional depth precision while fixing stencil width;
+no bit-for-bit native DAO depth/frame agreement is inferred from these finite
+checks.

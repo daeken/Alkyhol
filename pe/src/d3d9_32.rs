@@ -718,6 +718,7 @@ fn capabilities(programmable: bool) -> [u32; 76] {
     caps[47] = 1; // stream zero
     caps[48] = 20; // implemented XYZRHW|DIFFUSE stride
     caps[58] = 1; // one adapter in this adapter group
+    caps[34] = 0xff; // Actual eight stencil operations on depth/stencil attachments.
     caps[9] |= 0x10; // real depth testing
     caps[10] = 0xff; // all eight real D16 comparisons
     caps[60] = 1; // one color target
@@ -760,7 +761,7 @@ fn device(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
         || p[6] != 1
         || p[8] != 1
         || p[9] > 1
-        || p[9] != 0 && p[10] != 80
+        || p[9] != 0 && ![75, 80].contains(&p[10])
         || p[11] != 0
         || p[12] != 0
         || ![0, 0x80000000].contains(&p[13])
@@ -835,8 +836,8 @@ fn device(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
         1,
     );
     if p[9] != 0 {
-        let depth =
-            allocate_depth(image, s, o, p[0], p[1], true).unwrap_or_else(|e| unsupported(&e));
+        let depth = allocate_depth(image, s, o, p[0], p[1], p[10], true)
+            .unwrap_or_else(|e| unsupported(&e));
         bind(s, depth);
         let Body::Device {
             depth_surface,
@@ -1372,12 +1373,17 @@ fn allocate_depth(
     parent: u32,
     width: u32,
     height: u32,
+    format: u32,
     implicit: bool,
 ) -> Result<u32> {
     let Body::Device { gpu, .. } = &s.objects[&parent].body else {
         unreachable!()
     };
-    let depth = gpu.create_depth16(width, height)?;
+    let depth = if format == 75 {
+        gpu.create_depth_stencil(width, height)?
+    } else {
+        gpu.create_depth16(width, height)?
+    };
     if !implicit {
         addref(s, parent);
     }
@@ -1396,7 +1402,7 @@ fn allocate_depth(
             data: 0,
             width,
             height,
-            format: 80,
+            format,
             initialized: false,
             locked: false,
         },
@@ -1408,10 +1414,10 @@ fn create_depth(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 
         return INVALID;
     }
     write(image, a[7], &[0]);
-    if a[3] != 80 || a[4] != 0 || a[5] != 0 || a[6] > 1 || a[8] != 0 {
+    if ![75, 80].contains(&a[3]) || a[4] != 0 || a[5] != 0 || a[6] > 1 || a[8] != 0 {
         return UNAVAILABLE;
     }
-    match allocate_depth(image, s, a[0], a[1], a[2], false) {
+    match allocate_depth(image, s, a[0], a[1], a[2], a[3], false) {
         Ok(p) => {
             write(image, a[7], &[p]);
             0
@@ -2843,7 +2849,7 @@ fn dispatch_inner(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32 {
                 return 0;
             }
             // Real BGRA8 color/sample storage and non-lockable D16 surfaces.
-            if a[4] == 2 && a[5] == 1 && a[6] == 80 {
+            if a[4] == 2 && a[5] == 1 && [75, 80].contains(&a[6]) {
                 return 0;
             }
             // Vertex textures and other formats remain unavailable.
@@ -2859,7 +2865,7 @@ fn dispatch_inner(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32 {
             if a[1] != 0 || a[2] != 1 {
                 return INVALID;
             }
-            if ![21, 22, 80].contains(&a[3]) || a[4] != 1 || a[5] != 0 {
+            if ![21, 22, 75, 80].contains(&a[3]) || a[4] != 1 || a[5] != 0 {
                 return UNAVAILABLE;
             }
             if a[6] != 0 {
@@ -2868,7 +2874,12 @@ fn dispatch_inner(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32 {
             0
         }
         (0, 12) => {
-            if a[1] == 0 && a[2] == 1 && a[3] == 22 && [21, 22].contains(&a[4]) && a[5] == 80 {
+            if a[1] == 0
+                && a[2] == 1
+                && a[3] == 22
+                && [21, 22].contains(&a[4])
+                && [75, 80].contains(&a[5])
+            {
                 0
             } else {
                 UNAVAILABLE
@@ -3229,7 +3240,7 @@ fn dispatch_inner(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32 {
             0
         }
         (1, 43) => {
-            if a[1] != 0 || a[2] != 0 || a[3] == 0 || a[3] & !3 != 0 {
+            if a[1] != 0 || a[2] != 0 || a[3] == 0 || a[3] & !7 != 0 {
                 return UNAVAILABLE;
             }
             let (mut active, format) = color_target(&s, a[0]);
@@ -3247,18 +3258,21 @@ fn dispatch_inner(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32 {
             else {
                 unreachable!()
             };
-            if a[3] & 2 != 0 {
+            if a[3] & 6 != 0 {
                 let Some(depth) = &depth else {
                     return INVALID;
                 };
                 if depth.dimensions() != active.dimensions() {
                     return UNAVAILABLE;
                 }
-                let value = f32::from_bits(a[5]);
-                if !value.is_finite() || !(0.0..=1.0).contains(&value) {
+                let value = (a[3] & 2 != 0).then(|| f32::from_bits(a[5]));
+                if value.is_some_and(|v| !v.is_finite() || !(0.0..=1.0).contains(&v)) {
                     return INVALID;
                 }
-                gpu.clear_depth(depth, value)
+                if a[3] & 4 != 0 && !depth.has_stencil() {
+                    return UNAVAILABLE;
+                }
+                gpu.clear_depth_stencil(depth, value, (a[3] & 4 != 0).then_some(a[6]))
                     .unwrap_or_else(|e| unsupported(&e));
             }
             if a[3] & 1 != 0 {
@@ -3456,11 +3470,12 @@ mod tests {
         let c = capabilities(false);
         assert_eq!(c.len() * 4, 304);
         assert_eq!((c[0], c[47], c[48], c[58], c[60]), (1, 1, 20, 1, 1));
+        assert_eq!(c[34], 0xff); // eight real stencil operations; no two-sided capability claim
         assert_eq!(c[3], 0); // no gamma-ramp/calibration support
         assert_eq!(c[49], 0);
         assert_eq!(c[51], 0); // shader versions
         for offset in [
-            60, 64, 68, 72, 88, 92, 96, 136, 144, 148, 152, 236, 248, 264, 296, 300,
+            60, 64, 68, 72, 88, 92, 96, 144, 148, 152, 236, 248, 264, 296, 300,
         ] {
             assert_eq!(c[offset / 4], 0);
         }

@@ -80,12 +80,17 @@ static DWORD render_target_witness(IDirect3DSurface9* back){
 #endif
 #ifdef DEPTH
 static DWORD depth_witness(){
+ #ifdef STENCIL
+ const UINT depth_format=75;
+ #else
+ const UINT depth_format=80;
+ #endif
  IDirect3DSurface9 *automatic=NULL,*surface=NULL,*again=NULL;D3DSURFACE_DESC desc={};
  #define REQUIRE_DEPTH(test,stage) if(!(test))return stage
- REQUIRE_DEPTH(g_pD3D->CheckDeviceFormat(0,1,22,2,1,80)==S_OK,1);
+ REQUIRE_DEPTH(g_pD3D->CheckDeviceFormat(0,1,22,2,1,depth_format)==S_OK,1);
  REQUIRE_DEPTH(g_pd3dDevice->GetDepthStencilSurface(&automatic)==S_OK&&automatic,2);
- REQUIRE_DEPTH(automatic->GetDesc(&desc)==S_OK&&desc.Format==80&&desc.Usage==2&&desc.Pool==0&&desc.Width==32&&desc.Height==32,3);
- REQUIRE_DEPTH(g_pd3dDevice->CreateDepthStencilSurface(32,32,80,0,0,TRUE,&surface,NULL)==S_OK&&surface,4);
+ REQUIRE_DEPTH(automatic->GetDesc(&desc)==S_OK&&desc.Format==depth_format&&desc.Usage==2&&desc.Pool==0&&desc.Width==32&&desc.Height==32,3);
+ REQUIRE_DEPTH(g_pd3dDevice->CreateDepthStencilSurface(32,32,depth_format,0,0,TRUE,&surface,NULL)==S_OK&&surface,4);
  REQUIRE_DEPTH(g_pd3dDevice->SetDepthStencilSurface(surface)==S_OK,5);
  automatic->Release();surface->Release();
  REQUIRE_DEPTH(g_pd3dDevice->GetDepthStencilSurface(&again)==S_OK&&again==surface,6);
@@ -194,9 +199,24 @@ static DWORD stretch_witness(IDirect3DSurface9* back,IDirect3DSurface9* backcopy
  return 0;
 }
 #endif
+#ifdef STENCIL
+static DWORD stencil_mask(UINT frame){
+ float mask_matrix[16]={1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1};
+ const DWORD states[][2]={{7,0},{52,1},{53,1},{54,1},{55,3},{56,8},{57,frame?4u:3u},{58,255},{59,255},{168,0}};
+ for(UINT i=0;i<sizeof(states)/sizeof(states[0]);i++)if(g_pd3dDevice->SetRenderState(states[i][0],states[i][1])!=S_OK)return 1;
+ DWORD observed=0;if(g_pd3dDevice->GetRenderState(52,&observed)!=S_OK||observed!=1)return 2;
+ if(g_pd3dDevice->SetVertexShaderConstantF(0,mask_matrix,4)!=S_OK||g_pd3dDevice->BeginScene()!=S_OK)return 3;
+ if(g_pd3dDevice->DrawPrimitive(4,0,1)!=S_OK||g_pd3dDevice->EndScene()!=S_OK)return 4;
+ if(g_pd3dDevice->SetRenderState(168,15)!=S_OK||g_pd3dDevice->SetRenderState(56,frame?6:3)!=S_OK||g_pd3dDevice->SetRenderState(55,1)!=S_OK)return 5;
+ if(g_pd3dDevice->SetVertexShaderConstantF(0,matrix,4)!=S_OK)return 6;
+ return 0;
+}
+#endif
 extern "C" DWORD entry(){
  DWORD before=stack();put(0x39534844);
-#ifdef STRETCH
+#ifdef STENCIL
+put(14);
+#elif defined(STRETCH)
 put(13);
 #elif defined(TRANSFORMS)
 put(12);
@@ -231,7 +251,12 @@ put(1);
  g_pD3D=Direct3DCreate9(32);if(!g_pD3D)return 4;
  D3DPRESENT_PARAMETERS present={};present.BackBufferWidth=32;present.BackBufferHeight=32;present.BackBufferFormat=21;present.BackBufferCount=1;present.SwapEffect=1;present.hDeviceWindow=window;present.Windowed=TRUE;present.PresentationInterval=0x80000000;
  #ifdef DEPTH
- present.EnableAutoDepthStencil=TRUE;present.AutoDepthStencilFormat=80;
+ present.EnableAutoDepthStencil=TRUE;
+ #ifdef STENCIL
+ present.AutoDepthStencilFormat=75;
+ #else
+ present.AutoDepthStencilFormat=80;
+ #endif
  #endif
  if(g_pD3D->CreateDevice(0,1,window,0x24,&present,&g_pd3dDevice)!=S_OK)return 4;
  #else
@@ -385,12 +410,17 @@ put(1);
   ok(g_pd3dDevice->SetVertexShaderConstantF(0,matrix,4)==S_OK);
   static float actual[16];ok(g_pd3dDevice->GetVertexShaderConstantF(0,actual,4)==S_OK&&actual[3]==matrix[3]);
   ok(g_pd3dDevice->Clear(0,NULL,
- #ifdef DEPTH
+ #ifdef STENCIL
+ 5,0xff0000ff,1,
+ #elif defined(DEPTH)
  3,0xff0000ff,frame?1.f:0.f,
  #else
  1,0xff0000ff,1,
  #endif
  0)==S_OK);
+ #ifdef STENCIL
+ DWORD stencil_stage=stencil_mask(frame);if(stencil_stage)return fail(30,stencil_stage);
+ #endif
  #ifdef TRANSFORMED
  DWORD viewport[6]={frame?8u:0u,frame?4u:0u,frame?16u:32u,frame?20u:32u,0,0x3f800000};
  ok(g_pd3dDevice->SetViewport(viewport)==S_OK);

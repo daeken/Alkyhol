@@ -112,7 +112,11 @@ impl Device {
         viewport: [f32; 6],
     ) -> Result<()> {
         validate_viewport(viewport, target.width, target.height)?;
-        let depth = if state.get(7)? != 0 { depth } else { None };
+        let depth = if state.get(7)? != 0 || state.get(52)? != 0 {
+            depth
+        } else {
+            None
+        };
         depth::validate_depth(target, depth)?;
         let depth_state = state.depth_state(depth)?;
         let depth_view = depth.map(Depth::attachment);
@@ -306,11 +310,8 @@ impl Device {
                 depth_stencil_attachment: depth_view.as_ref().map(|view| {
                     wgpu::RenderPassDepthStencilAttachment {
                         view,
-                        depth_ops: Some(wgpu::Operations {
-                            load: wgpu::LoadOp::Load,
-                            store: wgpu::StoreOp::Store,
-                        }),
-                        stencil_ops: None,
+                        depth_ops: depth.unwrap().depth_ops(state),
+                        stencil_ops: depth.unwrap().stencil_ops(state),
                     }
                 }),
                 label: Some("D3D9 legacy shader draw"),
@@ -326,6 +327,7 @@ impl Device {
                 ..Default::default()
             });
             pass.set_pipeline(&pipeline);
+            pass.set_stencil_reference(state.get(57)? & 255);
             pass.set_blend_constant(state.constant());
             pass.set_viewport(
                 viewport[0],
