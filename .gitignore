@@ -13,3 +13,5 @@ __pycache__/
 
 /pe/target/
 /d3d9/target/
+
+/jit32/target/

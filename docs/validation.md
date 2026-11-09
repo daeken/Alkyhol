@@ -7372,3 +7372,72 @@ with “Design iterative decompiler workflow.” That coordination is complete;
 verified Rust entry points, ownership, memory/ABI boundaries and incomplete CPU
 state/exception areas are recorded in sharpretro.md. This is an integration plan,
 not an implemented or validated replacement for the current Rosetta runner.
+
+
+### SharpRetro native ARM64 PE32 execution foundation
+
+The user paused further Rosetta API iteration after a later Orzammar cutscene
+crash and requested the JIT binary path for side-by-side comparison. Clean
+614363a's preserved local capture terminates at original daorigins.exe+0x24242a
+calling KERNEL32!GetLocalTime. That API remains unchanged; the cinematic identity
+and later progression are the user's report. No new native full-game comparison
+or corrected-frame assertion is inferred.
+
+The isolated jit32 crate now executes the existing owned no-CRT PE32 ABI binary
+unchanged through open SharpRetro Bits32 decoding/lifting and Tier0-generated
+ARM64, using Apple MAP_JIT plus write protection/cache invalidation. No Rosetta or
+interpreter fallback executes inside this runner. The external SharpRetro pin is
+1ab08109ac75cfe65d2393828706bac11f01cc91; all relevant Rust trees, generated
+artifacts and generator/ISA inputs have checked SHA-256 identities in
+jit32/sharpretro-source.json. Its active unrelated Decompiler files are untouched.
+Runtime execution is Rust/libSystem; open .NET is needed only to regenerate the
+upstream ignored Rust sources in a fresh checkout.
+
+Guest memory is disjoint checked logical storage in an owned sparse 4-GiB
+reservation, with read/write/fetch permissions, overlap/wrap checks and no W+X
+admission. Each compiled instruction guards its memory access before Tier0's
+native load/store. A denied access exits to Rust, restoring the pre-instruction
+register/flags snapshot. Unsupported multi-store/read-after-store operations,
+atomics, loops, FP/SIMD and 16-bit stack operations do not receive successful
+results. Both instruction execution and import transitions are bounded. Current
+imports are four real Alkyhol kernel services with checked stdcall marshalling;
+no arbitrary guest pointer enters the host-pointer ffi.rs API. The initial stdout
+contract explicitly requires a regular file.
+
+Cumulative execution exposed two generated-lifter bugs: CALL emits an eight-byte
+return-PC write while subtracting four from ESP in Bits32, and PUSH Ib-sx def84
+mistakes its encoded immediate width for the stack operand width. Explicit local
+adapter corrections and 32-bit stack wrapping are tested with original opcode
+bytes, adjacent stack values and exact register/flag assertions. Tracked shared
+SharpRetro sources remain unchanged; these findings were sent to the coordinated
+decompiler chat. Twelve targeted physical M4 tests pass, including actual native
+ARM execution, CALL/PUSH/RET footprint and stack wraparound, unmapped and protected
+faults, RMW rollback, cache/budget resume, unsupported operations and real kernel
+service marshalling. One Python transport test rejects changed bytes/status,
+missing or extra diagnostics, budget exits and missing cumulative evidence.
+Runner Clippy passes; the upstream CPU dependency still reports its own warnings.
+
+The PE SHA-256 is da101b3b451c8d511dd02e6316dc3101ef5c1b13cd56add33c029f9a476b191c,
+identical to the existing frozen native Windows observation. On physical M4 each
+JIT execution completes 100,089 guest instructions, 20,005 service transitions
+and 99 compiled instruction blocks, returning status zero. Both preferred-address
+and forced-rebase output are exactly 32 bytes / eight words, agreeing with both
+actual Rosetta runs and the existing frozen Windows result. The native reference
+and fixture sources are unchanged. tools/check_jit32.py verifies identities
+before and after execution and records code/source identities and host details
+in ignored local/jit32/comparison.json. Windows was not rerun for this milestone;
+its evidence remains the separately identified frozen native observation.
+
+DAO itself does not run through this JIT milestone. Original DLL initialization,
+TEB/FS/TLS, callback continuations/reentry, x87/MXCSR/exception state, threads and
+the larger Win32/COM/D3D9 service marshaller remain required. The old low-pointer
+Rosetta dispatcher cannot be reused by casting guest offsets into host pointers.
+No game-equivalence or general CPU-completeness claim follows from this finite
+PE result. The D3D9/Rosetta/source/Metal paths and frozen acceptance data remain
+unchanged.
+
+A direct read-only startup preflight of the user's local original DAOrigins.exe
+returns `static TLS initialization is not implemented by JIT32` before executing
+any original game instruction. That is the next loader boundary; it was not
+bypassed. Its report remains in ignored local/jit32/dao-preflight.stderr. The JIT
+host itself is verified as an arm64 Mach-O executable.

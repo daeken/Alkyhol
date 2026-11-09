@@ -1,0 +1,16 @@
+[package]
+name = "alkyhol-jit32"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+description = "Checked experimental PE32 runner using SharpRetro ARM64 JIT"
+
+[dependencies]
+alkyhol = { path = ".." }
+alkyhol-pe = { path = "../pe" }
+xfusion-recomp = { path = "../../SharpRetro/rust/xfusion-recomp" }
+sharpretro-jit = { path = "../../SharpRetro/rust/sharpretro-jit" }
+libc = "0.2"
+
+[patch.crates-io]
+wgpu-hal = { path = "../vendor/wgpu-hal" }
