@@ -6696,3 +6696,34 @@ Tutorial 02 fixed-function GPU witnesses pass without changing acceptance rules.
 Existing CI now transfers the identical stream PE for native Windows comparison,
 which remains pending. The next original replay is still required to determine
 whether the observed loading cleanup fault clears.
+
+Native Windows also passes the identical SHORT4 full-frame PE on 7786a27 in
+[42680558107](https://github.com/daeken/Alkyhol/actions/runs/42680558107).
+Metal and software Vulkan jobs pass; the native job still fails only the retained
+StretchRect/POSITIONT checks. This does not establish full original DAO rendering.
+
+## Separate streams advance DAO to further buffer allocations
+
+The clean 63f3169 run accepts New Game and the stream-1 declaration. It proceeds
+through further original character-resource vertex/index allocations without
+encountering the prior null-interface fault before its next stop: the existing
+512-mapping guard at CreateVertexBuffer. A character-creation frame and gameplay
+remain unverified. Native Escape key events were tried during intro playback;
+no original startup instruction or asset was omitted.
+
+Vertex/index CPU shadows now use disjoint, 16-byte-aligned slots in stable 4 MiB
+writable arenas. Larger buffers retain their checked dedicated mappings. Slots
+never move or get reused during the process lifetime, including while a resource
+is owned solely through a binding. The 512-map, 4,096-live-object and 64 MiB
+per-buffer limits remain unchanged. This reduces mapping overhead without
+claiming a resource-memory reclamation implementation.
+
+All 217 PE units and PE Clippy pass physically on this host; 15 observer tests
+pass. The new owned `--buffer-storage` PE passes physically: one batch each of
+4,094 live vertex and index buffers checks guarded descriptors and every word
+of unique buffer contents after later allocations, crosses arena boundaries,
+and checks retained bindings, parent identity and raw bytes after all external
+references are released. The separate-stream ordinary/indexed complete-frame
+PE also passes with arena storage. CI transfers the identical allocation PE for
+native comparison, pending. The next clean original replay determines whether
+this clears the observed allocation stop; no original game files were committed.

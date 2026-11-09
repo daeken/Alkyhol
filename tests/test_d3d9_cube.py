@@ -16,6 +16,20 @@ class CubeResourceReportTests(unittest.TestCase):
             changed = words.copy(); changed[2] = stage
             with self.assertRaises(ValueError): observer.decode(struct.pack('<8I', *changed), True)
         with self.assertRaises(ValueError): observer.decode(struct.pack('<8I', *words))
+    def test_buffer_storage_report_rejects_corruption_and_failed_stages(self):
+        words = [0x42554641, 1, 0, 1, 1, 1, 2, 8]
+        raw = struct.pack('<8I', *words)
+        self.assertEqual(observer.decode(raw, buffers=True), words)
+        for n in range(8):
+            changed = words.copy(); changed[n] ^= 1
+            with self.assertRaises(ValueError): observer.decode(struct.pack('<8I', *changed), buffers=True)
+        for stage in list(range(1, 15)) + list(range(101, 115)):
+            changed = words.copy(); changed[2] = stage
+            with self.assertRaises(ValueError): observer.decode(struct.pack('<8I', *changed), buffers=True)
+        for value in [b'', raw[:-1], raw + b'\0'*4]:
+            with self.assertRaises(ValueError): observer.decode(value, buffers=True)
+        with self.assertRaises(ValueError): observer.decode(raw)
+
     def test_complete_resource_contract(self):
         words = [0x43554245, 1, 0, 1, 1, 1, 1, 8]
         self.assertEqual(observer.decode(struct.pack('<8I', *words)), words)

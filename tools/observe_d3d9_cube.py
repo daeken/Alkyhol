@@ -7,6 +7,7 @@ from observe_pe32_activation_startup import runner
 from observe_d3d9_create_device import SYMBOLS,SOURCE,sha
 PREFIX='d3d9-cube'
 HEADERS=False
+BUFFERS=False
 SOURCES=[SOURCE/'cube-pe.cpp',SOURCE/'include/d3d9.h',SOURCE/'include/strsafe.h',ROOT/'samples/d3d9/create_device/CreateDevice.cpp',ROOT/'samples/d3d9/provenance.json']
 def identity(d):return {'source':{p.relative_to(ROOT).as_posix():sha(p) for p in SOURCES},'pe':sha(d/(PREFIX+'.exe'))}
 def build(d):
@@ -21,10 +22,10 @@ def build(d):
  subprocess.run([shutil.which('clang++'),'--target=i686-pc-windows-msvc','-std=c++17','-O1','-ffreestanding','-fno-builtin','-fno-stack-protector','-fno-exceptions','-fno-rtti','-ffunction-sections','-Wall','-Wextra','-Werror','-Wno-unknown-pragmas','-I'+str(SOURCE/'include'),'-c',str(SOURCES[0]),'-o',str(obj)],check=True)
  subprocess.run([lld,'-flavor','link','/nodefaultlib','/subsystem:console','/machine:x86','/dynamicbase','/fixed:no','/timestamp:0','/safeseh:no','/manifest:no','/opt:ref','/entry:entry',str(obj),*libs,*[f'/alternatename:__imp__{n}@{s}=__imp__{n}' for entries in SYMBOLS.values() for n,s in entries],'/out:'+str(d/(PREFIX+'.exe'))],check=True)
  (d/(PREFIX+'-inputs.json')).write_text(json.dumps(identity(d),indent=2)+'\n')
-def decode(data,headers=False):
+def decode(data,headers=False,buffers=False):
  if len(data)!=32:raise ValueError('cube resource report length differs')
  words=list(struct.unpack('<8I',data))
- expected=[0x434f4d48,1,0,1,1,1,2,8] if headers else [0x43554245,1,0,1,1,1,1,8]
+ expected=[0x42554641,1,0,1,1,1,2,8] if buffers else [0x434f4d48,1,0,1,1,1,2,8] if headers else [0x43554245,1,0,1,1,1,1,8]
  if words!=expected:raise ValueError('resource COM, storage, lifetime or stack contract differs: '+repr(words))
  return words
 def execute(d,native=False):
@@ -36,12 +37,14 @@ def execute(d,native=False):
  report={'backend':'native Windows D3D9' if native else 'Alkyhol PE32 wgpu D3D9','platform':platform.platform(),'hosted_ci':os.getenv('GITHUB_ACTIONS')=='true','inputs':ident,'status':r.returncode,'stdout_hex':r.stdout.hex(),'stderr_hex':r.stderr.hex()}
  path=d/(('native-' if native else '')+PREFIX+('.json' if native else '-host.json'));path.write_text(json.dumps(report,indent=2)+'\n')
  if r.returncode:raise ValueError('cube PE failed; raw evidence retained: '+r.stderr.decode(errors='replace')[-1500:])
- report['words']=decode(r.stdout,HEADERS)
+ report['words']=decode(r.stdout,HEADERS,BUFFERS)
  if native:
   peer=json.loads((d/(PREFIX+'-host.json')).read_text())
   if peer['inputs']!=ident or peer['status'] or peer['stdout_hex']!=report['stdout_hex']:raise ValueError('identical cube PE native/host contract differs')
- path.write_text(json.dumps(report,indent=2)+'\n');print('Two cycles of 4094 live COM declarations, all descriptors, retained binding and rollover validate' if HEADERS else 'Six cube faces, all mips, COM identities, surface aliases, raw locks and bound lifetime validate')
+ path.write_text(json.dumps(report,indent=2)+'\n');print('4094 vertex and index buffers, all contents, retained binding and arena rollover validate' if BUFFERS else 'Two cycles of 4094 live COM declarations, all descriptors, retained binding and rollover validate' if HEADERS else 'Six cube faces, all mips, COM identities, surface aliases, raw locks and bound lifetime validate')
 if __name__=='__main__':
- p=argparse.ArgumentParser(description=__doc__);p.add_argument('--output',type=Path,default=ROOT/'local/pe/d3d9-microtests');p.add_argument('--com-headers',action='store_true');g=p.add_mutually_exclusive_group();g.add_argument('--host',action='store_true');g.add_argument('--native',action='store_true');a=p.parse_args();d=a.output.resolve()
+ p=argparse.ArgumentParser(description=__doc__);p.add_argument('--output',type=Path,default=ROOT/'local/pe/d3d9-microtests');p.add_argument('--com-headers',action='store_true');p.add_argument('--buffer-storage',action='store_true');g=p.add_mutually_exclusive_group();g.add_argument('--host',action='store_true');g.add_argument('--native',action='store_true');a=p.parse_args();d=a.output.resolve()
+ if a.com_headers and a.buffer_storage:p.error('choose one resource witness')
+ if a.buffer_storage:BUFFERS=True;PREFIX='d3d9-buffer-storage';SOURCES[0]=SOURCE/'buffer-storage-pe.cpp'
  if a.com_headers:HEADERS=True;PREFIX='d3d9-com-headers';SOURCES[0]=SOURCE/'com-headers-pe.cpp'
  execute(d,a.native) if a.host or a.native else build(d)

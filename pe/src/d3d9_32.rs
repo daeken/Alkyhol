@@ -211,6 +211,7 @@ pub(super) struct State {
     compiler: Option<Compiler>,
     programs: BTreeMap<(u32, u32), Compiled>,
     headers: Vec<(u32, u32)>,
+    buffer_arenas: Vec<(u32, u32)>,
 }
 // Exact stack sizes for implemented slots. Unknown slots never return to the
 // guest, so their unsupported gate only snapshots this and terminates explicitly.
@@ -1103,6 +1104,36 @@ fn lock_length(length: u32, offset: u32, size: u32) -> Option<u32> {
     };
     (n != 0 && offset.checked_add(n)? <= length).then_some(n)
 }
+const BUFFER_ARENA: u32 = 4 * 1024 * 1024;
+fn buffer_slot(used: u32, length: u32) -> Option<(u32, u32)> {
+    if length == 0 {
+        return None;
+    }
+    let start = used.checked_add(15)? & !15;
+    let end = start.checked_add(length)?;
+    (end <= BUFFER_ARENA).then_some((start, end))
+}
+fn buffer_storage(cpu: &Cpu32, s: &mut State, length: u32) -> Result<u32> {
+    if length > BUFFER_ARENA {
+        return memory(cpu, &vec![0; length as usize], true, false);
+    }
+    if s.buffer_arenas
+        .last()
+        .is_none_or(|&(_, used)| buffer_slot(used, length).is_none())
+    {
+        let base = memory(cpu, &vec![0; BUFFER_ARENA as usize], true, false)?;
+        s.buffer_arenas.push((base, 0));
+    }
+    let (base, used) = s.buffer_arenas.last_mut().unwrap();
+    let (offset, end) = buffer_slot(*used, length).ok_or("D3D9 buffer arena extent is invalid")?;
+    let pointer = base
+        .checked_add(offset)
+        .ok_or("D3D9 buffer arena address overflow")?;
+    *used = end;
+    // Fresh, disjoint slots stay stable for the whole process lifetime. They
+    // are never reused, including while only a stream/index binding owns them.
+    Ok(pointer)
+}
 fn vertex_buffer(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
     if a[5] == 0 {
         return INVALID;
@@ -1117,8 +1148,7 @@ fn vertex_buffer(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32
     {
         return UNAVAILABLE;
     }
-    let data = memory(&image.cpu, &vec![0u8; a[1] as usize], true, false)
-        .unwrap_or_else(|e| unsupported(&e));
+    let data = buffer_storage(&image.cpu, s, a[1]).unwrap_or_else(|e| unsupported(&e));
     addref(s, a[0]);
     let p = object(
         &image.cpu,
@@ -1522,8 +1552,7 @@ fn index_buffer(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 
     {
         return UNAVAILABLE;
     }
-    let data = memory(&image.cpu, &vec![0; a[1] as usize], true, false)
-        .unwrap_or_else(|e| unsupported(&e));
+    let data = buffer_storage(&image.cpu, s, a[1]).unwrap_or_else(|e| unsupported(&e));
     addref(s, a[0]);
     let p = object(
         &image.cpu,
@@ -3815,6 +3844,32 @@ mod tests {
         assert_eq!(lock_length(60, 0, 0), Some(60));
         assert_eq!(lock_length(60, 4, 0), Some(56));
         assert_eq!(lock_length(60, 40, 20), Some(20));
+    }
+    #[test]
+    fn buffer_arena_slots_are_aligned_disjoint_and_checked_before_growth() {
+        let mut used = 0;
+        for length in [1, 7, 16, 1040, 65536, 131071] {
+            let (offset, end) = buffer_slot(used, length).unwrap();
+            assert_eq!(offset % 16, 0);
+            assert!(offset >= used);
+            assert_eq!(end - offset, length);
+            used = end;
+        }
+        assert_eq!(buffer_slot(0, BUFFER_ARENA), Some((0, BUFFER_ARENA)));
+        assert_eq!(
+            buffer_slot(BUFFER_ARENA - 16, 16),
+            Some((BUFFER_ARENA - 16, BUFFER_ARENA))
+        );
+        for (used, length) in [
+            (0, 0),
+            (0, BUFFER_ARENA + 1),
+            (BUFFER_ARENA, 1),
+            (BUFFER_ARENA - 1, 1),
+            (u32::MAX, 1),
+            (16, u32::MAX),
+        ] {
+            assert!(buffer_slot(used, length).is_none());
+        }
     }
     #[test]
     fn separate_stream_spans_keep_offsets_strides_and_overflow_checks() {
