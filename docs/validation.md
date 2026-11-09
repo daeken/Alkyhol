@@ -7169,3 +7169,40 @@ This is a resource/transfer milestone, not a full D3D9 implementation or a
 verified original character-creation frame. The next action is one original DAO
 replay at this batch boundary; individual-call replay development is superseded
 by the user's request for coherent batches.
+
+### First visible original DAO character-creation scene
+
+Clean 845c2a2 on the physical M4 reaches Character Generation after New Game and
+skipping the original opening movie. CUA directly observes a textured male human
+character, textured room/columns/floor, character-generation controls and the
+opening background tutorial. These are original executable/asset scene and UI
+observations, not the intro movie or an owned replacement scene. The original EXE
+SHA remains 2346caee611002d4dff6ecef68eb315b63a37004dd98b39c11a9c26c0b45bfb3.
+The running capture records an empty pre-build runtime diff, all source hashes,
+original EXE/probe/driver identities and first-unique stderr lines with repetition
+counts. Original files/captures remain ignored and local.
+
+The trace passes the prior 512x512x4 L8 allocation and subsequent original volume
+locks/unlocks, with further original indexed draws and no fatal diagnostic at
+observation time. Some finite-profile HRESULT failures remain visible; this is
+not an assertion that every call succeeds. The new ColorFill/UpdateSurface/
+UpdateTexture operations were not observed in this startup capture, so their
+owned GPU tests are separate evidence. In particular, the progression from
+5142eb4 includes abffcbd's previously unreplayed L8 support: the larger resource
+batch is not isolated as the cause of this scene becoming visible.
+
+The user is exploring the running build. Leave its original diagnostic process
+and runtime sources intact during that exploration. No frame rate, full-frame
+native Windows parity, complete visual correctness or gameplay is established.
+
+Previous CI 42707022286 (abffcbd) passes hosted Metal. Software Vulkan's filtered
+BGRA volume midpoint is [128,0,127,255] versus the test's exact [128,0,128,255];
+this finite rounding difference remains recorded without changing the oracle.
+Native version-27 volume PE fails at initial CreatePixelShader with INVALIDCALL
+(stage 6), before volume allocation. Thus it provides shader-rejection evidence,
+not a native volume-resource comparison. The pinned open HLSL compiler emitted
+SM2 TEXLD directly into oC0 from a swizzled v0, contrary to Microsoft's documented
+SM2 temporary-destination and coordinate-register restrictions. A separately
+identified legal shader witness is needed; do not relabel the rejected binary
+as native success. Existing streams/StretchRect/POSITIONT native mismatches also
+remain. CI 42709101205 tests 845c2a2; results are still pending at this record.
