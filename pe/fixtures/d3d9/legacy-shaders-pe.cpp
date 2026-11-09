@@ -110,9 +110,37 @@ static DWORD wide_index_witness(){
  return 0;
 }
 #endif
+#ifdef BC3
+static DWORD compressed_witness(){
+ const DWORD format=0x35545844;IDirect3DTexture9* texture=NULL;
+ #define REQUIRE_BC(test,stage) if(!(test))return stage
+ REQUIRE_BC(g_pD3D->CheckDeviceFormat(0,1,22,0x80000,3,format)==S_OK,1);
+ REQUIRE_BC(g_pd3dDevice->CreateTexture(8,8,0,0,format,1,&texture,NULL)==S_OK&&texture&&texture->GetLevelCount()==4,2);
+ const unsigned char encoded[16]={128,255,0,0,0,0,0,0,0x10,0x84,0,0,0,0,0,0};
+ const GUID texture_iid={0x85c31227,0x3de5,0x4f00,{0x9b,0x3a,0xf1,0x1a,0xc3,0x8c,0x18,0xb5}};
+ for(UINT level=0;level<4;level++){
+  IDirect3DSurface9 *surface=NULL,*again=NULL;REQUIRE_BC(texture->GetSurfaceLevel(level,&surface)==S_OK&&surface,3);
+  REQUIRE_BC(texture->GetSurfaceLevel(level,&again)==S_OK&&again==surface,4);again->Release();
+  UINT extent=8>>level;if(!extent)extent=1;D3DSURFACE_DESC desc={};REQUIRE_BC(surface->GetDesc(&desc)==S_OK&&desc.Format==format&&desc.Usage==0&&desc.Pool==1&&desc.Width==extent&&desc.Height==extent,5);
+  void* container=NULL;REQUIRE_BC(surface->GetContainer(texture_iid,&container)==S_OK&&container==texture,6);((IDirect3DTexture9*)container)->Release();
+  D3DLOCKED_RECT lock={};REQUIRE_BC(surface->LockRect(&lock,NULL,0)==S_OK&&lock.pBits&&lock.Pitch>=(INT)((extent+3)/4*16),7);
+  for(UINT y=0;y<(extent+3)/4;y++)for(UINT x=0;x<(extent+3)/4;x++)for(UINT b=0;b<16;b++)((unsigned char*)lock.pBits)[y*lock.Pitch+x*16+b]=encoded[b];
+  REQUIRE_BC(surface->UnlockRect()==S_OK,8);surface->Release();
+  REQUIRE_BC(texture->GetSurfaceLevel(level,&again)==S_OK&&again==surface,9);
+  REQUIRE_BC(again->LockRect(&lock,NULL,16)==S_OK&&lock.pBits,10);
+  for(UINT y=0;y<(extent+3)/4;y++)for(UINT x=0;x<(extent+3)/4;x++)for(UINT b=0;b<16;b++)REQUIRE_BC(((unsigned char*)lock.pBits)[y*lock.Pitch+x*16+b]==encoded[b],11);
+  REQUIRE_BC(again->UnlockRect()==S_OK,12);again->Release();
+ }
+ REQUIRE_BC(g_pd3dDevice->SetTexture(0,texture)==S_OK,13);texture->Release();
+ #undef REQUIRE_BC
+ return 0;
+}
+#endif
 extern "C" DWORD entry(){
  DWORD before=stack();put(0x39534844);
-#ifdef INDEXED
+#ifdef BC3
+put(8);
+#elif defined(INDEXED)
 put(7);
 #elif defined(DEPTH)
 put(6);
@@ -189,6 +217,9 @@ put(1);
  #ifdef TARGETS
  DWORD target_stage=render_target_witness(back);ok(target_stage==0);if(target_stage)return fail(16,target_stage);
  #endif
+ #endif
+ #ifdef BC3
+ DWORD bc_stage=compressed_witness();ok(bc_stage==0);if(bc_stage)return fail(20,bc_stage);
  #endif
  #ifdef STATES
  ok(g_pd3dDevice->SetRenderState(27,1)==S_OK);ok(g_pd3dDevice->SetRenderState(19,5)==S_OK);ok(g_pd3dDevice->SetRenderState(20,6)==S_OK);

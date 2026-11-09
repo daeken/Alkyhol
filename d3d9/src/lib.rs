@@ -19,7 +19,7 @@ pub use render_state::RenderState;
 mod texture;
 mod texture_stages;
 pub use legacy_gpu::LegacyDraw;
-pub use texture::{SamplerState, Texture2D, TextureBinding};
+pub use texture::{SampleFormat, SamplerState, Texture2D, TextureBinding};
 pub use texture_stages::TextureStages;
 pub use wgpu::{VertexAttribute, VertexFormat};
 pub type Result<T> = std::result::Result<T, String>;
@@ -84,6 +84,7 @@ impl Device {
         let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
             label: Some("Alkyhol D3D9"),
             required_limits: wgpu::Limits::downlevel_defaults().using_resolution(adapter.limits()),
+            required_features: adapter.features() & wgpu::Features::TEXTURE_COMPRESSION_BC,
             ..Default::default()
         }))
         .map_err(|e| e.to_string())?;

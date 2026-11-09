@@ -3,8 +3,8 @@
 use super::{Cpu32, LoadedImage32, PAGE, unsupported};
 use crate::Result;
 use alkyhol_d3d9::{
-    Depth, Device as Gpu, LegacyDraw, RenderState, SamplerState, Target, Texture2D, TextureBinding,
-    TextureStages, VertexAttribute, VertexFormat,
+    Depth, Device as Gpu, LegacyDraw, RenderState, SampleFormat, SamplerState, Target, Texture2D,
+    TextureBinding, TextureStages, VertexAttribute, VertexFormat,
     compiler::{self, Compiled, Compiler},
     legacy::Stage,
 };
@@ -70,6 +70,9 @@ struct TextureLevel {
     data: u32,
     width: u32,
     height: u32,
+    pitch: u32,
+    length: u32,
+    surface: u32,
     lock: Option<bool>,
     initialized: bool,
 }
@@ -83,7 +86,6 @@ enum Body {
         bindings: u32,
         usage: u32,
         attachment: Option<Target>,
-        surface: u32,
     },
     Shader {
         parent: u32,
@@ -134,6 +136,7 @@ enum Body {
         depth: Option<Depth>,
         implicit_depth: bool,
         container: u32,
+        texture_level: u32,
         bindings: u32,
         data: u32,
         width: u32,
@@ -870,6 +873,7 @@ fn backbuffer(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
                 depth: None,
                 implicit_depth: false,
                 container: 0,
+                texture_level: 0,
                 bindings: 0,
                 data: 0,
                 width: p[0],
@@ -922,6 +926,7 @@ fn offscreen(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
             depth: None,
             implicit_depth: false,
             container: 0,
+            texture_level: 0,
             bindings: 0,
             data,
             width: a[1],
@@ -974,6 +979,7 @@ fn transfer(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
                 back: false,
                 attachment: None,
                 depth: None,
+                container: 0,
                 data,
                 width: w,
                 height: h,
@@ -1076,14 +1082,16 @@ fn bind(s: &mut State, p: u32) {
 }
 fn remove_object(s: &mut State, p: u32) -> Object {
     let removed = s.objects.remove(&p).unwrap();
-    if let Body::Texture { surface, .. } = &removed.body
-        && *surface != 0
-    {
-        let o = &s.objects[surface];
-        if !matches!(o.body, Body::Surface { bindings: 0, .. }) || o.refs != 0 {
-            unsupported("live surface lost its texture storage");
+    if let Body::Texture { levels, .. } = &removed.body {
+        for level in levels {
+            if level.surface != 0 {
+                let o = &s.objects[&level.surface];
+                if !matches!(o.body, Body::Surface { bindings: 0, .. }) || o.refs != 0 {
+                    unsupported("live surface lost its texture storage");
+                }
+                s.objects.remove(&level.surface);
+            }
         }
-        s.objects.remove(surface);
     }
     removed
 }
@@ -1236,34 +1244,39 @@ fn texture_surface(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u
     let Body::Texture {
         parent,
         attachment,
-        surface,
+        levels,
         format,
         ..
     } = &s.objects[&a[0]].body
     else {
         unreachable!()
     };
-    if a[1] != 0 {
+    let Some(level) = levels.get(a[1] as usize) else {
         return INVALID;
-    }
-    let Some(target) = attachment.clone() else {
-        return UNAVAILABLE;
     };
-    let (parent, format, mut pointer) = (*parent, *format, *surface);
+    let (parent, format, mut pointer, width, height, data) = (
+        *parent,
+        *format,
+        level.surface,
+        level.width,
+        level.height,
+        level.data,
+    );
+    let attachment = attachment.clone();
     if pointer == 0 {
-        let (width, height) = target.dimensions();
         pointer = object(
             &image.cpu,
             s,
             Body::Surface {
                 parent,
                 back: false,
-                attachment: Some(target),
+                attachment,
                 depth: None,
                 implicit_depth: false,
                 container: a[0],
+                texture_level: a[1],
                 bindings: 0,
-                data: 0,
+                data,
                 width,
                 height,
                 format,
@@ -1272,10 +1285,10 @@ fn texture_surface(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u
             },
             0,
         );
-        let Body::Texture { surface, .. } = &mut s.objects.get_mut(&a[0]).unwrap().body else {
+        let Body::Texture { levels, .. } = &mut s.objects.get_mut(&a[0]).unwrap().body else {
             unreachable!()
         };
-        *surface = pointer;
+        levels[a[1] as usize].surface = pointer;
     }
     expose(s, pointer);
     write(image, a[2], &[pointer]);
@@ -1318,6 +1331,7 @@ fn allocate_depth(
             depth: Some(depth),
             implicit_depth: implicit,
             container: 0,
+            texture_level: 0,
             bindings: 0,
             data: 0,
             width,
@@ -2037,6 +2051,7 @@ fn create_declaration(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -
             || semantic(element[1] >> 16 & 255).is_none()
             || declaration_format(element[1] & 255).is_none()
         {
+            eprintln!("D3D9 unavailable declaration element: {element:x?}");
             return UNAVAILABLE;
         }
         if elements
@@ -2203,13 +2218,25 @@ fn constants(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16], slot: u32)
     0
 }
 
+fn sample_format(format: u32) -> Option<SampleFormat> {
+    match format {
+        21 | 22 => Some(SampleFormat::Bgra8),
+        0x31545844 => Some(SampleFormat::Bc1),
+        0x33545844 => Some(SampleFormat::Bc2),
+        0x35545844 => Some(SampleFormat::Bc3),
+        _ => None,
+    }
+}
 fn create_texture(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
     if a[7] == 0 {
         return INVALID;
     }
     write(image, a[7], &[0]);
+    let Some(format) = sample_format(a[5]) else {
+        return UNAVAILABLE;
+    };
     if a[4] > 1
-        || ![21, 22].contains(&a[5])
+        || a[4] == 1 && format.compressed()
         || ![0, 1].contains(&a[6])
         || a[8] != 0
         || a[4] == 1 && (a[3] != 1 || a[6] != 0)
@@ -2223,7 +2250,7 @@ fn create_texture(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u3
         gpu.create_render_texture(a[1], a[2])
             .map(|(texture, target)| (texture, Some(target)))
     } else {
-        gpu.create_texture(a[1], a[2], a[3])
+        gpu.create_sampled_texture(a[1], a[2], a[3], format)
             .map(|texture| (texture, None))
     };
     let (texture, attachment) = match allocation {
@@ -2237,7 +2264,8 @@ fn create_texture(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u3
     let mut levels = Vec::new();
     for level in 0..texture.levels() {
         let (width, height) = texture.dimensions(level).unwrap();
-        let bytes = width as usize * height as usize * 4;
+        let (pitch, length) = texture.byte_layout(level).unwrap();
+        let bytes = length as usize;
         total += bytes;
         if total > 64 * 1024 * 1024 {
             return UNAVAILABLE;
@@ -2250,6 +2278,9 @@ fn create_texture(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u3
             },
             width,
             height,
+            pitch,
+            length,
+            surface: 0,
             lock: None,
             initialized: false,
         });
@@ -2267,7 +2298,6 @@ fn create_texture(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u3
             bindings: 0,
             usage: a[4],
             attachment,
-            surface: 0,
         },
         1,
     );
@@ -2415,7 +2445,7 @@ fn texture_operation(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16], sl
             if readonly && !level.initialized {
                 unsupported("D3D9 read of uninitialized texture shadow");
             }
-            write(image, a[2], &[level.width * 4, level.data]);
+            write(image, a[2], &[level.pitch, level.data]);
             level.lock = Some(readonly);
             0
         }
@@ -2424,7 +2454,7 @@ fn texture_operation(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16], sl
                 return INVALID;
             };
             if !readonly {
-                let length = level.width as usize * level.height as usize * 4;
+                let length = level.length as usize;
                 checked(image, level.data, length, false);
                 let mut bytes =
                     unsafe { std::slice::from_raw_parts(level.data as *const u8, length) }.to_vec();
@@ -2543,6 +2573,15 @@ fn dispatch_inner(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32 {
         (0, 10) => {
             if a[1] != 0 || a[2] != 1 || a[3] != 22 {
                 return INVALID;
+            }
+            if a[5] == 3
+                && a[4] & !0x80000 == 0
+                && sample_format(a[6]).is_some_and(SampleFormat::compressed)
+            {
+                let Body::Factory(gpu, _) = &s.objects[&a[0]].body else {
+                    unreachable!()
+                };
+                return if gpu.supports_bc() { 0 } else { UNAVAILABLE };
             }
             // Real BGRA8 color/sample storage and non-lockable D16 surfaces.
             if a[4] == 2 && a[5] == 1 && a[6] == 80 {
@@ -2978,6 +3017,7 @@ fn dispatch_inner(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32 {
                 back,
                 attachment,
                 depth,
+                container,
                 width,
                 height,
                 format,
@@ -2986,31 +3026,43 @@ fn dispatch_inner(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32 {
             else {
                 unreachable!()
             };
+            let (usage, pool) = if *container != 0 {
+                let Body::Texture { usage, pool, .. } = &s.objects[container].body else {
+                    unreachable!()
+                };
+                (*usage, *pool)
+            } else if depth.is_some() {
+                (2, 0)
+            } else if *back || attachment.is_some() {
+                (1, 0)
+            } else {
+                (0, 2)
+            };
             write(
                 image,
                 a[1],
-                &[
-                    *format,
-                    1,
-                    if depth.is_some() {
-                        2
-                    } else {
-                        u32::from(*back || attachment.is_some())
-                    },
-                    if *back || attachment.is_some() || depth.is_some() {
-                        0
-                    } else {
-                        2
-                    },
-                    0,
-                    0,
-                    *width,
-                    *height,
-                ],
+                &[*format, 1, usage, pool, 0, 0, *width, *height],
             );
             0
         }
         (2, 13) => {
+            let Body::Surface {
+                container,
+                texture_level,
+                ..
+            } = &s.objects[&a[0]].body
+            else {
+                unreachable!()
+            };
+            if *container != 0 {
+                let mut args = [0; 16];
+                args[0] = *container;
+                args[1] = *texture_level;
+                args[2] = a[1];
+                args[3] = a[2];
+                args[4] = a[3];
+                return texture_operation(image, &mut s, &args, 19);
+            }
             if a[1] == 0 || a[2] != 0 || ![0, 16].contains(&a[3]) {
                 return INVALID;
             }
@@ -3041,6 +3093,20 @@ fn dispatch_inner(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32 {
             0
         }
         (2, 14) => {
+            let Body::Surface {
+                container,
+                texture_level,
+                ..
+            } = &s.objects[&a[0]].body
+            else {
+                unreachable!()
+            };
+            if *container != 0 {
+                let mut args = [0; 16];
+                args[0] = *container;
+                args[1] = *texture_level;
+                return texture_operation(image, &mut s, &args, 20);
+            }
             let Body::Surface { locked, .. } = &mut s.objects.get_mut(&a[0]).unwrap().body else {
                 unreachable!()
             };

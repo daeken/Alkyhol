@@ -5660,3 +5660,19 @@ That case now supplies actual NULL, retaining the same false/error-6/untouched
 output requirement. Pseudo/non-file handle information remains explicitly
 unsupported by this file-only implementation. The failed raw native report is
 retained and is not counted as complete expanded-file parity.
+
+## Original DXT5 font atlas uploads
+
+The unchanged original EXE now creates, locks and uploads its original DXT5 font
+textures through actual BC3 GPU storage, preserving compressed data and mip/color
+space choices. It passes the settings-write boundary and reaches an 8-bit palette
+DIB request during text setup. No original draw, menu or gameplay is observed.
+
+Physical M4 passes 10 backend host units plus the module integration check, nine
+actual GPU tests, all 185 PE library tests and remaining targets, and PE/backend
+Clippy. The owned 2,118-word BC3 PE checks every mip's surface metadata/identity,
+container, complete encoded block roundtrip, deferred lifetime and exact full
+linear/sRGB frames. Direct GPU tests independently cover BC1/2/3 with alpha,
+all four mip levels including 1x1/2x2 tails and shared initialization guards.
+New native Windows/software Vulkan BC comparisons are pending; no game data or
+derived shader/texture inventory is uploaded by these CI steps.

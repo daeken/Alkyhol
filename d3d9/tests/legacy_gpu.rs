@@ -359,3 +359,119 @@ fn indexed_gpu_quad_uses_four_vertices_and_checked_index_ranges() {
     }
     assert_eq!(&pixels[..4], &[255, 0, 0, 255]);
 }
+
+#[test]
+#[ignore = "requires actual BC texture support"]
+fn bc123_native_blocks_keep_mip_tails_color_alpha_and_srgb_views() {
+    use alkyhol_d3d9::{SampleFormat, SamplerState, TextureBinding};
+    let device = Device::new().unwrap();
+    assert!(device.supports_bc());
+    let mut target = device.create_target(32, 32).unwrap();
+    let vertices: Vec<_> = [
+        0f32, 0.75, 0.5, 1., 1., 0., 0., 1., 0.75, -0.75, 0.5, 1., 1., 0., 0., 1., -0.75, -0.75,
+        0.5, 1., 1., 0., 0., 1.,
+    ]
+    .iter()
+    .flat_map(|f| f.to_le_bytes())
+    .collect();
+    let constants: Vec<_> = [
+        1f32, 0., 0., 0., 0., 1., 0., 0., 0., 0., 1., 0., 0., 0., 0., 1.,
+    ]
+    .iter()
+    .flat_map(|f| f.to_le_bytes())
+    .collect();
+    let attributes = [
+        wgpu::VertexAttribute {
+            format: wgpu::VertexFormat::Float32x4,
+            offset: 0,
+            shader_location: 0,
+        },
+        wgpu::VertexAttribute {
+            format: wgpu::VertexFormat::Float32x4,
+            offset: 16,
+            shader_location: 1,
+        },
+    ];
+    let draw = |target: &mut _, texture: &_, sampler| {
+        device.draw_legacy(
+            target,
+            &LegacyDraw {
+                indices: None,
+                vertex_spirv: VS,
+                pixel_spirv: include_bytes!("fixtures/legacy-texture.ps.spv"),
+                vertices: &vertices,
+                stride: 32,
+                attributes: &attributes,
+                vertex_constants: &constants,
+                pixel_constants: &[],
+                textures: &[TextureBinding {
+                    slot: 0,
+                    texture,
+                    sampler,
+                }],
+            },
+        )
+    };
+    let block = |format: SampleFormat, color: u16| {
+        let mut bytes = match format {
+            SampleFormat::Bc1 => vec![],
+            SampleFormat::Bc2 => vec![0x88; 8],
+            SampleFormat::Bc3 => vec![128, 255, 0, 0, 0, 0, 0, 0],
+            _ => unreachable!(),
+        };
+        bytes.extend(color.to_le_bytes());
+        bytes.extend([0; 6]);
+        bytes
+    };
+    let at = |pixels: Vec<u8>| pixels[(20 * 32 + 22) * 4..(20 * 32 + 22) * 4 + 4].to_vec();
+    for format in [SampleFormat::Bc1, SampleFormat::Bc2, SampleFormat::Bc3] {
+        let mut texture = device.create_sampled_texture(8, 8, 0, format).unwrap();
+        assert_eq!(texture.levels(), 4);
+        device.clear(&mut target, 0xff0000ff).unwrap();
+        assert!(draw(&mut target, &texture, SamplerState::default()).is_err());
+        for (level, color) in [0xf800u16, 0x07e0, 0x001f, 0xffff].into_iter().enumerate() {
+            let (_, length) = texture.byte_layout(level as u32).unwrap();
+            let block = block(format, color);
+            let data: Vec<_> = block
+                .iter()
+                .copied()
+                .cycle()
+                .take(length as usize)
+                .collect();
+            device
+                .upload_texture(&mut texture, level as u32, &data)
+                .unwrap();
+        }
+        let alpha = if format == SampleFormat::Bc1 {
+            255
+        } else if format == SampleFormat::Bc2 {
+            136
+        } else {
+            128
+        };
+        for (level, rgb) in [[0, 0, 255], [0, 255, 0], [255, 0, 0], [255, 255, 255]]
+            .into_iter()
+            .enumerate()
+        {
+            let mut sampler = SamplerState::default();
+            sampler.set(9, level as u32).unwrap();
+            draw(&mut target, &texture, sampler).unwrap();
+            assert_eq!(
+                at(device.readback(&target).unwrap()),
+                [rgb[0], rgb[1], rgb[2], alpha]
+            );
+        }
+    }
+    let mut gray = device
+        .create_sampled_texture(4, 4, 1, SampleFormat::Bc3)
+        .unwrap();
+    device
+        .upload_texture(&mut gray, 0, &block(SampleFormat::Bc3, 0x8410))
+        .unwrap();
+    for (srgb, expected) in [(0, [132, 130, 132, 128]), (1, [59, 57, 59, 128])] {
+        let mut sampler = SamplerState::default();
+        sampler.set(11, srgb).unwrap();
+        draw(&mut target, &gray, sampler).unwrap();
+        assert_eq!(at(device.readback(&target).unwrap()), expected);
+    }
+}

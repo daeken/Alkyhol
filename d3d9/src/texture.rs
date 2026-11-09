@@ -75,8 +75,47 @@ impl SamplerState {
         self.values[11] != 0
     }
 }
+/// D3D9's BC1/2/3 data stays compressed all the way to the GPU. Support is
+/// conditional on the real adapter; there is no successful fallback texture.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SampleFormat {
+    Bgra8,
+    Bc1,
+    Bc2,
+    Bc3,
+}
+impl SampleFormat {
+    fn native(self) -> wgpu::TextureFormat {
+        match self {
+            Self::Bgra8 => wgpu::TextureFormat::Bgra8Unorm,
+            Self::Bc1 => wgpu::TextureFormat::Bc1RgbaUnorm,
+            Self::Bc2 => wgpu::TextureFormat::Bc2RgbaUnorm,
+            Self::Bc3 => wgpu::TextureFormat::Bc3RgbaUnorm,
+        }
+    }
+    pub fn block_layout(self, width: u32, height: u32) -> Result<(u32, u32)> {
+        if width == 0 || height == 0 {
+            return Err("zero texture block extent".into());
+        }
+        let (w, h) = self.native().block_dimensions();
+        let bytes = self.native().block_copy_size(None).unwrap();
+        let pitch = width
+            .div_ceil(w)
+            .checked_mul(bytes)
+            .ok_or("texture block pitch overflow")?;
+        let rows = height.div_ceil(h);
+        pitch
+            .checked_mul(rows)
+            .ok_or("texture block length overflow")?;
+        Ok((pitch, rows))
+    }
+    pub fn compressed(self) -> bool {
+        self != Self::Bgra8
+    }
+}
 pub struct Texture2D {
     texture: wgpu::Texture,
+    format: SampleFormat,
     width: u32,
     height: u32,
     levels: u32,
@@ -94,6 +133,11 @@ impl Texture2D {
             .first()
             .is_some_and(|v| Arc::ptr_eq(v, &target.initialized))
     }
+    pub fn byte_layout(&self, level: u32) -> Result<(u32, u32)> {
+        let (width, height) = self.dimensions(level)?;
+        let (pitch, rows) = self.format.block_layout(width, height)?;
+        Ok((pitch, pitch * rows))
+    }
     pub fn levels(&self) -> u32 {
         self.levels
     }
@@ -103,9 +147,9 @@ impl Texture2D {
         }
         Ok(self.texture.create_view(&wgpu::TextureViewDescriptor {
             format: Some(if srgb {
-                wgpu::TextureFormat::Bgra8UnormSrgb
+                self.format.native().add_srgb_suffix()
             } else {
-                wgpu::TextureFormat::Bgra8Unorm
+                self.format.native()
             }),
             ..Default::default()
         }))
@@ -123,6 +167,7 @@ impl Device {
         let target = self.create_target(width, height)?;
         let sampled = Texture2D {
             texture: target.texture.clone(),
+            format: SampleFormat::Bgra8,
             width,
             height,
             levels: 1,
@@ -131,6 +176,28 @@ impl Device {
         Ok((sampled, target))
     }
     pub fn create_texture(&self, width: u32, height: u32, levels: u32) -> Result<Texture2D> {
+        self.create_sampled_texture(width, height, levels, SampleFormat::Bgra8)
+    }
+    pub fn supports_bc(&self) -> bool {
+        self.device
+            .features()
+            .contains(wgpu::Features::TEXTURE_COMPRESSION_BC)
+    }
+    pub fn create_sampled_texture(
+        &self,
+        width: u32,
+        height: u32,
+        levels: u32,
+        format: SampleFormat,
+    ) -> Result<Texture2D> {
+        if format.compressed()
+            && (!self.supports_bc() || !width.is_multiple_of(4) || !height.is_multiple_of(4))
+        {
+            return Err(
+                "compressed texture needs actual BC support and block-aligned base dimensions"
+                    .into(),
+            );
+        }
         extent(
             width,
             height,
@@ -152,13 +219,14 @@ impl Device {
             mip_level_count: levels,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Bgra8Unorm,
+            format: format.native(),
             usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-            view_formats: &[wgpu::TextureFormat::Bgra8UnormSrgb],
+            view_formats: &[format.native().add_srgb_suffix()],
         });
         self.finish()?;
         Ok(Texture2D {
             texture,
+            format,
             width,
             height,
             levels,
@@ -169,7 +237,8 @@ impl Device {
     }
     pub fn upload_texture(&self, texture: &mut Texture2D, level: u32, bytes: &[u8]) -> Result<()> {
         let (width, height) = texture.dimensions(level)?;
-        if bytes.len() != width as usize * height as usize * 4 {
+        let (pitch, rows) = texture.format.block_layout(width, height)?;
+        if bytes.len() != pitch as usize * rows as usize {
             return Err("texture upload byte extent differs".into());
         }
         self.scope();
@@ -183,14 +252,15 @@ impl Device {
             bytes,
             wgpu::TexelCopyBufferLayout {
                 offset: 0,
-                bytes_per_row: Some(width * 4),
-                rows_per_image: Some(height),
+                bytes_per_row: Some(pitch),
+                rows_per_image: Some(rows),
             },
             wgpu::Extent3d {
                 width,
                 height,
                 depth_or_array_layers: 1,
-            },
+            }
+            .physical_size(texture.format.native()),
         );
         self.finish()?;
         texture.initialized[level as usize].store(true, Ordering::Release);
@@ -200,6 +270,19 @@ impl Device {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn block_rows_and_mip_tails_preserve_complete_encoded_blocks() {
+        assert_eq!(SampleFormat::Bgra8.block_layout(3, 2).unwrap(), (12, 2));
+        assert_eq!(SampleFormat::Bc1.block_layout(8, 8).unwrap(), (16, 2));
+        for format in [SampleFormat::Bc2, SampleFormat::Bc3] {
+            assert_eq!(format.block_layout(8, 8).unwrap(), (32, 2));
+            for (width, height) in [(1, 1), (2, 2), (4, 4)] {
+                assert_eq!(format.block_layout(width, height).unwrap(), (16, 1));
+            }
+            assert!(format.block_layout(0, 4).is_err());
+            assert!(format.block_layout(u32::MAX, u32::MAX).is_err());
+        }
+    }
     #[test]
     fn unsupported_sampler_settings_preserve_prior_state() {
         let mut s = SamplerState::default();
