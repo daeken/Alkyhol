@@ -23,6 +23,7 @@ inline void ZeroMemory(void* p,UINT n){unsigned char* b=(unsigned char*)p;for(UI
 #define D3DCOLOR_XRGB(r,g,b) (0xff000000U|((DWORD)(r)<<16)|((DWORD)(g)<<8)|(DWORD)(b))
 struct D3DPRESENT_PARAMETERS{UINT BackBufferWidth,BackBufferHeight,BackBufferFormat,BackBufferCount,MultiSampleType,MultiSampleQuality,SwapEffect;HWND hDeviceWindow;BOOL Windowed,EnableAutoDepthStencil;UINT AutoDepthStencilFormat,Flags,FullScreen_RefreshRateInHz,PresentationInterval;};
 struct D3DSURFACE_DESC{UINT Format,Type,Usage,Pool,MultiSampleType,MultiSampleQuality,Width,Height;};
+struct D3DVERTEXBUFFER_DESC{UINT Format,Type,Usage,Pool,Size,FVF;};
 struct D3DLOCKED_RECT{INT Pitch;void* pBits;};
 
 struct IDirect3D9; struct IDirect3DDevice9; struct IDirect3DSurface9; struct IDirect3DVertexBuffer9;

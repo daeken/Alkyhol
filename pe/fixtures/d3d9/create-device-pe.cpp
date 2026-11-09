@@ -36,7 +36,8 @@ extern "C" DWORD entry(){
  #ifdef VERTICES
  put(InitVB()==S_OK);if(!g_pVB)return 9;
  IDirect3DDevice9* owner=NULL;put(g_pVB->GetDevice(&owner)==S_OK&&owner==g_pd3dDevice);if(owner)owner->Release();
- void* locked_vertex=NULL;put(g_pVB->Lock(60,1,&locked_vertex,0)==(HRESULT)0x8876086c);
+ D3DVERTEXBUFFER_DESC vb_desc={};put(g_pVB->GetDesc(&vb_desc)==S_OK&&vb_desc.Size==60&&vb_desc.FVF==D3DFVF_CUSTOMVERTEX&&vb_desc.Type==6&&vb_desc.Pool==D3DPOOL_DEFAULT);
+ void* locked_vertex=NULL;
  put(g_pVB->Lock(0,60,&locked_vertex,0)==S_OK&&locked_vertex&&((FLOAT*)locked_vertex)[0]==150.f);put(g_pVB->Unlock()==S_OK);
 #endif
  ShowWindow(window,1);Render(); // Original Microsoft clear/scene/present body.

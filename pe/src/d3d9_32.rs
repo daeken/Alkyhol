@@ -556,6 +556,16 @@ fn transfer(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
     *initialized = true;
     0
 }
+// The host enforces owned-storage safety even for invalid calls a native driver
+// happens to accept. Only valid byte ranges are in the portable lock contract.
+fn lock_length(length: u32, offset: u32, size: u32) -> Option<u32> {
+    let n = if size == 0 {
+        length.checked_sub(offset)?
+    } else {
+        size
+    };
+    (n != 0 && offset.checked_add(n)? <= length).then_some(n)
+}
 fn vertex_buffer(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
     if a[5] == 0 {
         return INVALID;
@@ -803,12 +813,10 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32
             else {
                 unreachable!()
             };
-            let n = if a[2] == 0 {
-                length.saturating_sub(a[1])
-            } else {
-                a[2]
+            let Some(n) = lock_length(*length, a[1], a[2]) else {
+                return INVALID;
             };
-            if lock.is_some() || n == 0 || a[1].checked_add(n).is_none_or(|end| end > *length) {
+            if lock.is_some() {
                 return INVALID;
             }
             *lock = Some((a[1], n));
@@ -986,6 +994,21 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn vertex_lock_ranges_enforce_owned_storage_without_overflow() {
+        for (length, offset, size) in [
+            (60, 60, 1),
+            (60, 61, 0),
+            (60, 60, 0),
+            (u32::MAX, u32::MAX, 1),
+            (60, 4, u32::MAX),
+        ] {
+            assert_eq!(lock_length(length, offset, size), None);
+        }
+        assert_eq!(lock_length(60, 0, 0), Some(60));
+        assert_eq!(lock_length(60, 4, 0), Some(56));
+        assert_eq!(lock_length(60, 40, 20), Some(20));
+    }
     #[test]
     fn com_stack_contracts_and_bounds() {
         assert_eq!(signature(BASE + 16), Some(("IDirect3D9::CreateDevice", 28)));
