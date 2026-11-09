@@ -1873,7 +1873,9 @@ fn draw_user_inner(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16], inde
         body: Body::Declaration { elements, .. },
         ..
     }) = s.objects.get(declaration)
-        && elements.iter().any(|e| e[1] & 255 != 17 && e[0] & 65535 != 0)
+        && elements
+            .iter()
+            .any(|e| e[1] & 255 != 17 && e[0] & 65535 != 0)
     {
         return INVALID;
     }
@@ -2067,6 +2069,13 @@ fn vertex_stream(
     checked(image, address, size as usize, false);
     Some((address, size, stride))
 }
+// This finite profile consumes only position/depth/query effects. Color is
+// disabled, so no lighting/material/texture output is substituted.
+fn xyz_visibility_state(state: &RenderState) -> bool {
+    [(168, 0), (15, 0), (151, 0), (167, 0)]
+        .into_iter()
+        .all(|(key, value)| state.get(key) == Ok(value))
+}
 fn draw_buffer(
     image: &LoadedImage32<'_>,
     s: &mut State,
@@ -2101,12 +2110,34 @@ fn draw_buffer(
         programmable.1,
     );
     let fixed = *fvf == 0x44 && programmable.0 == 0 && programmable.1 == 0;
+    let xyz = !fixed && !pretransformed && programmable.0 == 0 && programmable.1 == 0;
+    if xyz {
+        let Body::Device { render_state, .. } = &s.objects[&a[0]].body else {
+            unreachable!()
+        };
+        if !xyz_visibility_state(render_state) {
+            return UNAVAILABLE;
+        }
+        let Some(Object {
+            body: Body::Declaration { elements, .. },
+            ..
+        }) = s.objects.get(&programmable.2)
+        else {
+            return INVALID;
+        };
+        if elements.iter().filter(|e| e[1] & 255 != 17).count() != 1
+            || !elements.iter().any(|e| e[1] == 2)
+        {
+            return UNAVAILABLE;
+        }
+    }
     if fixed {
         texture_stages
             .validate_transformed_color(textures[0] != 0)
             .unwrap_or_else(|e| unsupported(&e));
     }
     if !fixed
+        && !xyz
         && (programmable.0 == 0 && !pretransformed || programmable.1 == 0 || programmable.2 == 0)
     {
         return INVALID;
@@ -2147,7 +2178,12 @@ fn draw_buffer(
     if !fixed {
         let (vs, ps, decl) = programmable;
         if !s.programs.contains_key(&program_key) {
-            let compiled = if pretransformed {
+            let compiled = if xyz {
+                alkyhol_d3d9::fixed_xyz::shaders()
+                    .unwrap_or_else(|e| unsupported(&e))
+                    .0
+                    .clone()
+            } else if pretransformed {
                 let Body::Shader { compiled, .. } = &s.objects[&ps].body else {
                     unreachable!()
                 };
@@ -2243,7 +2279,7 @@ fn draw_buffer(
         .iter()
         .enumerate()
         .filter_map(|(slot, &pointer)| {
-            if pointer == 0 {
+            if pointer == 0 || xyz {
                 return None;
             }
             let Body::Texture { gpu, levels, .. } = &s.objects[&pointer].body else {
@@ -2286,9 +2322,27 @@ fn draw_buffer(
         .iter()
         .flat_map(|n| n.to_le_bytes())
         .collect();
+    let xyz_constants: Vec<u8> = if xyz {
+        let Body::Device { transforms, .. } = &s.objects[&a[0]].body else {
+            unreachable!()
+        };
+        [256, 2, 3]
+            .into_iter()
+            .flat_map(|key| transforms.get(key).unwrap())
+            .flat_map(u32::to_le_bytes)
+            .collect()
+    } else {
+        Vec::new()
+    };
     let program = s.programs.get(&program_key);
     let pixel_spirv = if fixed {
         Vec::new()
+    } else if xyz {
+        alkyhol_d3d9::fixed_xyz::shaders()
+            .unwrap_or_else(|e| unsupported(&e))
+            .1
+            .spirv
+            .clone()
     } else {
         let Body::Shader { compiled, .. } = &s.objects[&programmable.1].body else {
             unreachable!()
@@ -2342,13 +2396,15 @@ fn draw_buffer(
                     .as_ref()
                     .map(|(_, indices)| indices.as_slice())
                     .or(strip.as_deref()),
-                textures: &textures,
+                textures: if xyz { &[] } else { &textures },
                 vertex_spirv: &program.unwrap().spirv,
                 pixel_spirv: &pixel_spirv,
                 vertices: &packed,
                 stride: packed_stride as u64,
                 attributes: &attributes,
-                vertex_constants: if pretransformed {
+                vertex_constants: if xyz {
+                    &xyz_constants
+                } else if pretransformed {
                     &fixed_constants
                 } else {
                     vertex_constants
@@ -4083,6 +4139,21 @@ mod tests {
             (16, u32::MAX),
         ] {
             assert!(buffer_slot(used, length).is_none());
+        }
+    }
+    #[test]
+    fn xyz_visibility_rejects_color_alpha_and_vertex_blending() {
+        let mut state = RenderState::default();
+        assert!(!xyz_visibility_state(&state));
+        state.set(168, 0).unwrap();
+        assert!(xyz_visibility_state(&state));
+        for key in [168, 15, 151, 167] {
+            let old = state.get(key).unwrap();
+            // Unsupported blending is still rejected by state itself.
+            if state.set(key, 1).is_ok() {
+                assert!(!xyz_visibility_state(&state));
+                state.set(key, old).unwrap();
+            }
         }
     }
     #[test]

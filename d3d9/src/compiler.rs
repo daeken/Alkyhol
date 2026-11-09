@@ -14,13 +14,13 @@ pub struct Compiler {
     executable: PathBuf,
     directory: PathBuf,
 }
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Input {
     pub semantic: String,
     pub index: u32,
     pub register: u32,
 }
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Compiled {
     pub spirv: Vec<u8>,
     pub inputs: Vec<Input>,

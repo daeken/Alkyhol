@@ -123,6 +123,14 @@ class LegacyShaderComparatorTests(unittest.TestCase):
             for changed in [words[:-1],words+[0],words[:1047]+words[1047+1034:]]:
                 with self.assertRaises(ValueError):shader_words(changed)
 
+    def test_xyz_query_requires_real_nonzero_and_hidden_counts(self):
+        words=self.record();words[1]=25;words[20:20]=[1,516,258,0];words[-1]=2103
+        with patch.object(observer,'OCCLUSION',True),patch.object(observer,'XYZ_QUERY',True):
+            self.assertEqual(shader_words(words),words)
+            for index,value in [(21,0),(22,0),(23,1),(22,257),(21,2),(22,1)]:
+                changed=words.copy();changed[index]=value
+                with self.assertRaises(ValueError):shader_words(changed)
+
     def test_exact_frames_and_stack_extent(self):
         words=self.record();self.assertEqual(shader_words(words),words)
         for changed in [words[:-1],words+[0]]:

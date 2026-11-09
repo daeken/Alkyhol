@@ -251,6 +251,36 @@ static DWORD font_formats_witness(){
 }
 #endif
 #ifdef OCCLUSION
+#ifdef XYZ_QUERY
+static IDirect3DVertexShader9* xyz_vs;
+static IDirect3DPixelShader9* xyz_ps;
+static IDirect3DVertexDeclaration9* xyz_decl;
+static IDirect3DVertexBuffer9* xyz_stream;
+static UINT xyz_offset,xyz_stride;
+static BOOL xyz_setup(){
+ if(g_pd3dDevice->GetVertexShader(&xyz_vs)!=S_OK||g_pd3dDevice->GetPixelShader(&xyz_ps)!=S_OK||g_pd3dDevice->GetVertexDeclaration(&xyz_decl)!=S_OK||g_pd3dDevice->GetStreamSource(0,&xyz_stream,&xyz_offset,&xyz_stride)!=S_OK)return FALSE;
+ const D3DVERTEXELEMENT9 elements[]={{0,0,2,0,0,0},{255,0,17,0,0,0}};
+ IDirect3DVertexDeclaration9* decl=NULL;
+ if(g_pd3dDevice->CreateVertexDeclaration(elements,&decl)!=S_OK||!decl||g_pd3dDevice->SetVertexDeclaration(decl)!=S_OK)return FALSE;decl->Release();
+ static float world[16]={.8f,0,0,0,0,1.2f,0,0,0,0,1,0,.1f,0,.4f,1};
+ static float view[16]={0,1,0,0,-1,0,0,0,0,0,1,0,.1f,-.1f,.05f,1};
+ static float projection[16]={.9f,0,0,.2f,0,.6f,0,0,0,0,.8f,0,0,0,0,1};
+ return g_pd3dDevice->SetVertexShader(NULL)==S_OK&&g_pd3dDevice->SetPixelShader(NULL)==S_OK&&g_pd3dDevice->SetRenderState(168,0)==S_OK&&g_pd3dDevice->SetRenderState(22,1)==S_OK&&g_pd3dDevice->SetTransform(256,world)==S_OK&&g_pd3dDevice->SetTransform(2,view)==S_OK&&g_pd3dDevice->SetTransform(3,projection)==S_OK;
+}
+static BOOL xyz_restore(){
+ BOOL ok=g_pd3dDevice->SetVertexShader(xyz_vs)==S_OK&&g_pd3dDevice->SetPixelShader(xyz_ps)==S_OK&&g_pd3dDevice->SetVertexDeclaration(xyz_decl)==S_OK&&g_pd3dDevice->SetStreamSource(0,xyz_stream,xyz_offset,xyz_stride)==S_OK&&g_pd3dDevice->SetRenderState(168,15)==S_OK&&g_pd3dDevice->SetRenderState(22,3)==S_OK;
+ xyz_vs->Release();xyz_ps->Release();xyz_decl->Release();xyz_stream->Release();return ok;
+}
+#endif
+static HRESULT query_geometry(){
+ #ifdef XYZ_QUERY
+ static float box[][3]={{-.5f,-.5f,-.2f},{.5f,-.5f,-.2f},{.5f,.5f,-.2f},{-.5f,.5f,-.2f},{-.5f,-.5f,.2f},{.5f,-.5f,.2f},{.5f,.5f,.2f},{-.5f,.5f,.2f}};
+ static DWORD indices[]={0,1,2,0,2,3,4,6,5,4,7,6,0,4,5,0,5,1,3,2,6,3,6,7,0,3,7,0,7,4,1,5,6,1,6,2};
+ return g_pd3dDevice->DrawIndexedPrimitiveUP(4,0,8,12,indices,102,box,12);
+ #else
+ return g_pd3dDevice->DrawPrimitive(4,0,1);
+ #endif
+}
 static DWORD query_counts[3];
 static BOOL query_result(IDirect3DQuery9* query,DWORD* value){
  DWORD data[3]={0x719bad15,0x87654321,0x719bad15};
@@ -264,21 +294,27 @@ static BOOL query_result(IDirect3DQuery9* query,DWORD* value){
 }
 static DWORD occlusion_witness(){
  #define REQUIRE_QUERY(test,stage) if(!(test))return stage
+ #ifdef XYZ_QUERY
+ REQUIRE_QUERY(xyz_setup(),13);
+ #endif
  IDirect3DQuery9 *outer=NULL,*inner=NULL;
  REQUIRE_QUERY(g_pd3dDevice->CreateQuery(9,NULL)==S_OK&&g_pd3dDevice->CreateQuery(9,&outer)==S_OK&&outer&&g_pd3dDevice->CreateQuery(9,&inner)==S_OK&&inner,1);
  const GUID query_iid={0xd9771460,0xa695,0x4f26,{0xbb,0xd3,0x27,0xb8,0x40,0xb5,0x41,0xcc}};
  void* identity=NULL;REQUIRE_QUERY(outer->QueryInterface(query_iid,&identity)==S_OK&&identity==outer,2);((IDirect3DQuery9*)identity)->Release();
  IDirect3DDevice9* parent=NULL;REQUIRE_QUERY(outer->GetType()==9&&outer->GetDataSize()==4&&outer->GetDevice(&parent)==S_OK&&parent==g_pd3dDevice,3);parent->Release();
  REQUIRE_QUERY(g_pd3dDevice->SetVertexShaderConstantF(0,matrix,4)==S_OK&&g_pd3dDevice->Clear(0,NULL,1,0xff0000ff,1,0)==S_OK&&g_pd3dDevice->BeginScene()==S_OK,4);
- REQUIRE_QUERY(outer->Issue(2)==S_OK&&g_pd3dDevice->DrawPrimitive(4,0,1)==S_OK&&inner->Issue(2)==S_OK&&g_pd3dDevice->DrawPrimitive(4,0,1)==S_OK&&inner->Issue(1)==S_OK&&outer->Issue(1)==S_OK&&g_pd3dDevice->EndScene()==S_OK,5);
+ REQUIRE_QUERY(outer->Issue(2)==S_OK&&query_geometry()==S_OK&&inner->Issue(2)==S_OK&&query_geometry()==S_OK&&inner->Issue(1)==S_OK&&outer->Issue(1)==S_OK&&g_pd3dDevice->EndScene()==S_OK,5);
  REQUIRE_QUERY(query_result(outer,query_counts)&&query_result(inner,query_counts+1)&&query_counts[1]>0&&query_counts[1]<=1024&&query_counts[0]==2*query_counts[1],6);
  REQUIRE_QUERY(outer->GetData(NULL,0,1)==S_OK,7);
  IDirect3DSurface9* depth=NULL;
  REQUIRE_QUERY(g_pd3dDevice->CreateDepthStencilSurface(32,32,80,0,0,TRUE,&depth,NULL)==S_OK&&depth&&g_pd3dDevice->SetDepthStencilSurface(depth)==S_OK&&g_pd3dDevice->SetRenderState(7,1)==S_OK&&g_pd3dDevice->Clear(0,NULL,2,0,0,0)==S_OK,8);depth->Release();
- REQUIRE_QUERY(g_pd3dDevice->BeginScene()==S_OK&&outer->Issue(2)==S_OK&&g_pd3dDevice->DrawPrimitive(4,0,1)==S_OK&&outer->Issue(1)==S_OK&&g_pd3dDevice->EndScene()==S_OK,9);
+ REQUIRE_QUERY(g_pd3dDevice->BeginScene()==S_OK&&outer->Issue(2)==S_OK&&query_geometry()==S_OK&&outer->Issue(1)==S_OK&&g_pd3dDevice->EndScene()==S_OK,9);
  REQUIRE_QUERY(query_result(outer,query_counts+2)&&query_counts[2]==0,10);
  DWORD empty=99;REQUIRE_QUERY(outer->Issue(2)==S_OK&&outer->Issue(1)==S_OK&&query_result(outer,&empty)&&empty==0,11);
  REQUIRE_QUERY(g_pd3dDevice->SetRenderState(7,0)==S_OK&&g_pd3dDevice->SetDepthStencilSurface(NULL)==S_OK,12);
+ #ifdef XYZ_QUERY
+ REQUIRE_QUERY(xyz_restore(),14);
+ #endif
  outer->Release();inner->Release();return 0;
 }
 #endif
@@ -363,7 +399,9 @@ static HRESULT user_draw(UINT frame,IDirect3DVertexBuffer9* vb){
 #endif
 extern "C" DWORD entry(){
  DWORD before=stack();put(0x39534844);
-#ifdef ALPHA_TEST
+#ifdef XYZ_QUERY
+put(25);
+#elif defined(ALPHA_TEST)
 put(24);
 #elif defined(USER_DRAW)
 put(23);

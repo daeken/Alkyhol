@@ -25,6 +25,7 @@ mod texture;
 mod texture_stages;
 pub use legacy_gpu::{LegacyDraw, viewport_from_words};
 pub mod fixed_vertex;
+pub mod fixed_xyz;
 pub use texture::{SampleFormat, SampledTexture, SamplerState, Texture2D, TextureBinding};
 pub use texture_stages::TextureStages;
 pub use wgpu::{VertexAttribute, VertexFormat};

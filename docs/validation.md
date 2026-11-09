@@ -7054,3 +7054,28 @@ POSITIONT comparisons. CI 42699413184 on c77d399 stops its Metal producer on a
 rustfmt difference in the added error diagnostic; no fresh-target native result
 comes from that run. That formatting is corrected in 0fd342b. Fresh-target and
 alpha native results remain pending; physical evidence is recorded above.
+
+### Fixed XYZ visibility/query geometry
+
+The original null-VS/null-PS occlusion-box path now has explicit generated
+fixed-function stages. POSITION0 float3 is expanded with W=1, then transformed
+by the retained WORLD, VIEW and PROJECTION matrices in D3DMATRIX row-vector
+order. The ordinary fetch, clipping, viewport, cull, depth/stencil, bias and real
+query renderer executes it. This finite path requires disabled color writes and
+alpha test and no vertex blending; lighting/material/texture colors are not
+substituted. Application shader bindings and constants stay independent. Other
+fixed-function layouts/color draws still return an explicit unsupported failure.
+
+The owned --xyz-query PE disables both application shaders, binds only an XYZ
+declaration and submits INDEX32 box geometry with 12-byte source stride. It uses
+noncommuting world/view transforms and projective W. Physical M4 returns actual
+516/258/0 outer/inner/depth-hidden samples, empty reuse and all 2103 report words
+pass. Shader/declaration/stream bindings are restored for the two existing full
+frames. A separate actual-GPU test compares the generated transform's query
+coverage against independently CPU-transformed clip positions rendered through
+the original owned shader, checks depth rejection and every unchanged color byte.
+The independent reference uses separate row-vector arithmetic, not the generated
+shader code. The shader-interface unit, 221 PE units, 20 observer units and both
+crates' Clippy pass. Native identical-PE XYZ comparison is wired into existing
+CI and pending. The original DAO replay is next; finite owned geometry is not
+yet evidence that the original box draws successfully.
