@@ -5393,3 +5393,20 @@ operations continue to fail. Original DAO passes its real adapter gate and reach
 CreateDevice, where unsupported presentation settings remain the next boundary.
 There is still no original-game shader/frame observation. The exact contracts,
 limits, source pins and retained diagnostics are in d3d9.md.
+
+With corrected capability field offsets, original DAO successfully creates its
+windowed immediate A8R8G8B8 device with multithreaded software vertex processing,
+then enters the original renderer's state initialization. Supported render state
+now affects actual GPU blending, culling, write masks and sRGB output. Physical
+GPU/state-PE checks pass; new native state comparisons are pending. No DAO frame
+has been rendered. The bounded no-depth profile is still explicit.
+
+CI 42569366247 is not fully successful: Metal/Vulkan-software pass; native Windows
+passes the exact 2,117-word texture/sRGB witness and previous witnesses, but rejects
+the owned long SM2 pixel shader at creation (exit 6). The owned HLSL compiler had
+emitted FRC directly to oC0, forbidden by SM2's MOV-only output rule. Fixture-only
+normalization now preserves all arithmetic in r0 then writes oC0 with MOV;
+regeneration/provenance records it, and raw failure HRESULTs are retained on new
+runs. Original game shaders are not rewritten. Native corrected-SM2 and state
+comparisons remain pending. A separate new caps field-offset mistake is fixed
+and covered by independent SDK offset assertions. See d3d9.md for exact evidence.

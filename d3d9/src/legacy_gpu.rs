@@ -1,6 +1,6 @@
 //! Real programmable draws over translated legacy bytecode. Initial binding
 //! profile: float constants, triangle lists and explicit float vertex attributes.
-use super::{Device, Result, Target, TextureBinding, legacy};
+use super::{Device, RenderState, Result, Target, TextureBinding, legacy};
 use std::collections::BTreeSet;
 use wgpu::util::DeviceExt;
 pub struct LegacyDraw<'a> {
@@ -47,6 +47,14 @@ fn resources(module: &naga::Module, stage: u32, used: &mut BTreeSet<(u32, u32)>)
 }
 impl Device {
     pub fn draw_legacy(&self, target: &mut Target, draw: &LegacyDraw<'_>) -> Result<()> {
+        self.draw_legacy_state(target, draw, &RenderState::default())
+    }
+    pub fn draw_legacy_state(
+        &self,
+        target: &mut Target,
+        draw: &LegacyDraw<'_>,
+        state: &RenderState,
+    ) -> Result<()> {
         if !target.initialized
             || draw.stride == 0
             || draw.stride > 2048
@@ -132,21 +140,17 @@ impl Device {
                         attributes: draw.attributes,
                     }],
                 },
-                primitive: wgpu::PrimitiveState {
-                    front_face: wgpu::FrontFace::Cw,
-                    cull_mode: Some(wgpu::Face::Back),
-                    ..Default::default()
-                },
+                primitive: state.primitive(),
                 depth_stencil: None,
-                multisample: Default::default(),
+                multisample: state.multisample(),
                 fragment: Some(wgpu::FragmentState {
                     module: &pixel,
                     entry_point: Some("main"),
                     compilation_options: Default::default(),
                     targets: &[Some(wgpu::ColorTargetState {
-                        format: wgpu::TextureFormat::Bgra8Unorm,
-                        blend: None,
-                        write_mask: wgpu::ColorWrites::ALL,
+                        format: state.format(),
+                        blend: state.blend(),
+                        write_mask: state.writes(),
                     })],
                 }),
                 multiview: None,
@@ -203,7 +207,10 @@ impl Device {
                 contents: draw.vertices,
                 usage: wgpu::BufferUsages::VERTEX,
             });
-        let view = target.texture.create_view(&Default::default());
+        let view = target.texture.create_view(&wgpu::TextureViewDescriptor {
+            format: Some(state.format()),
+            ..Default::default()
+        });
         let mut encoder = self.device.create_command_encoder(&Default::default());
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -220,6 +227,7 @@ impl Device {
                 ..Default::default()
             });
             pass.set_pipeline(&pipeline);
+            pass.set_blend_constant(state.constant());
             for (n, group) in groups.iter().enumerate() {
                 pass.set_bind_group(n as u32, group, &[]);
             }

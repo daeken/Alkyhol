@@ -10,15 +10,17 @@
     "legacy-model2.vs.hlsl": "0e33c434e2e5b45c597cd948195dfad16b5694f58126cc4e40d7c8f9e226a65a",
     "legacy-model2.vs.json": "efa168905d3f884e41295bf7191875e588e7f0fcc0e0e9f9e143f38ca8ae9c6b",
     "legacy-model2.vs.spv": "00bfc147107195f755003c1cb6cdcac156ff1480f7b91b24daee7cac6ef3f331",
-    "legacy-slots128.ps.bin": "d3eb474ae3d3a161d263d460a21961b25b843d828af8bda1c2dfd47c90a9ace8",
+    "legacy-slots128.ps.bin": "b108403056b4b0a68adc39ec9a88d33ac6d05cf32797dfbefd664ccddc52ba0a",
     "legacy-slots128.ps.hlsl": "4147c6f34ab38cb584fcbe6647a490a5f6150cceb1db9140577aa655c2c5e44f",
     "legacy-slots128.ps.json": "e46d77ca5ea875e74c0c6438b9d0742eeba1c565586e3115930d7152d80d2e82",
-    "legacy-slots128.ps.spv": "3c77d5d1864362049dcda06392fb01ae57e082ad7e422a132e14a727bbc1aa21"
+    "legacy-slots128.ps.spv": "8aa3a9a496c717f7a7285f55376474edead6e7b4078315d88eedd8d1b93bdfe3"
   },
   "helper_source_sha256": "8d627ecb485af26e905aa5dd5b4c91096707e9b3d2fc8cfa2b063e25ce049fa8",
   "pixel_arithmetic_slots": {
     "ADD": 64,
     "FRC": 64,
-    "header": "0xffff0200"
-  }
+    "header": "0xffff0200",
+    "output_MOV": 1
+  },
+  "owned_output_normalization": "SM2 allows only MOV to oC0; upstream owned HLSL output FRC oC0,r0 is preserved as FRC r0,r0 then MOV oC0,r0. Fixture generator only; game bytecode is never patched."
 }

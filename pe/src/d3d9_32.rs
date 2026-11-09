@@ -3,8 +3,8 @@
 use super::{Cpu32, LoadedImage32, PAGE, unsupported};
 use crate::Result;
 use alkyhol_d3d9::{
-    Device as Gpu, LegacyDraw, SamplerState, Target, Texture2D, TextureBinding, VertexAttribute,
-    VertexFormat,
+    Device as Gpu, LegacyDraw, RenderState, SamplerState, Target, Texture2D, TextureBinding,
+    VertexAttribute, VertexFormat,
     compiler::{self, Compiled, Compiler},
     legacy::Stage,
 };
@@ -95,6 +95,7 @@ enum Body {
         scene: bool,
         parameters: [u32; 14],
         creation_flags: u32,
+        render_state: RenderState,
         back: u32,
         fvf: u32,
         stream: Option<(u32, u32, u32)>,
@@ -198,6 +199,8 @@ pub(super) fn signature(id: u32) -> Option<(&'static str, u16)> {
         (0, 16) => ("IDirect3D9::CreateDevice", 28),
         (1, 3) => ("IDirect3DDevice9::TestCooperativeLevel", 4),
         (1, 26) => ("IDirect3DDevice9::CreateVertexBuffer", 28),
+        (1, 57) => ("IDirect3DDevice9::SetRenderState", 12),
+        (1, 58) => ("IDirect3DDevice9::GetRenderState", 12),
         (1, 23) => ("IDirect3DDevice9::CreateTexture", 36),
         (1, 64) => ("IDirect3DDevice9::GetTexture", 12),
         (1, 65) => ("IDirect3DDevice9::SetTexture", 12),
@@ -513,6 +516,7 @@ fn identifier(image: &LoadedImage32<'_>, s: &State, a: &[u32; 16]) -> u32 {
 fn capabilities(programmable: bool) -> [u32; 76] {
     let mut caps = [0; 76];
     caps[0] = 1; // HAL
+    caps[5] = 0x80000000; // immediate presentation; no vertical-blank guarantee
     caps[7] = 0x80000 | 0x400 | 0x40; // real rasterization and TL system-memory vertices
     caps[8] = 0x40; // default CCW cull mode
     caps[14] = 8; // diffuse Gouraud colors, measured by the original tutorial
@@ -523,8 +527,14 @@ fn capabilities(programmable: bool) -> [u32; 76] {
     caps[60] = 1; // one color target
     if programmable {
         // Bounded open SM2 compiler/draw profile, not a generic SM3 promise.
-        caps[15] = 2048;
-        caps[16] = 2048;
+        caps[15] = 0x4004; // alpha and mipmapped texture resources
+        caps[16] = 0x03030300; // real point/linear min, mag and mip filtering
+        caps[19] = 7; // wrap, mirror and clamp; no border/mirror-once promise
+        caps[22] = 2048;
+        caps[23] = 2048;
+        caps[25] = 2048;
+        caps[26] = 2048;
+        caps[27] = 1;
         caps[48] = 2048;
         caps[49] = 0xfffe0200;
         caps[50] = 256;
@@ -556,7 +566,7 @@ fn device(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
         || p[9] != 0
         || p[11] != 0
         || p[12] != 0
-        || p[13] != 0
+        || ![0, 0x80000000].contains(&p[13])
     {
         return UNAVAILABLE;
     }
@@ -601,6 +611,7 @@ fn device(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
             scene: false,
             parameters: p,
             creation_flags: a[4],
+            render_state: RenderState::default(),
             back: 0,
             fvf: 0,
             stream: None,
@@ -1019,6 +1030,7 @@ fn draw(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
         target,
         vertex_constants,
         pixel_constants,
+        render_state,
         ..
     } = &mut s.objects.get_mut(&a[0]).unwrap().body
     else {
@@ -1028,10 +1040,10 @@ fn draw(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
         if stride != 20 {
             return INVALID;
         }
-        gpu.draw_transformed(target, bytes)
+        gpu.draw_transformed_state(target, bytes, render_state)
             .unwrap_or_else(|e| unsupported(&e));
     } else {
-        gpu.draw_legacy(
+        gpu.draw_legacy_state(
             target,
             &LegacyDraw {
                 textures: &textures,
@@ -1043,6 +1055,7 @@ fn draw(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
                 vertex_constants,
                 pixel_constants,
             },
+            render_state,
         )
         .unwrap_or_else(|e| unsupported(&e));
     }
@@ -1712,6 +1725,24 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32
             write(image, a[1], &[0, 1, *hwnd, *creation_flags]);
             0
         }
+        (1, 57 | 58) => {
+            let Body::Device { render_state, .. } = &mut s.objects.get_mut(&a[0]).unwrap().body
+            else {
+                unreachable!()
+            };
+            if slot == 57 {
+                render_state
+                    .set(a[1], a[2])
+                    .unwrap_or_else(|e| unsupported(&e));
+            } else {
+                if a[2] == 0 {
+                    return INVALID;
+                }
+                let value = render_state.get(a[1]).unwrap_or_else(|e| unsupported(&e));
+                write(image, a[2], &[value]);
+            }
+            0
+        }
         (1, 23) => create_texture(image, &mut s, a),
         (1, 64 | 65) => texture_binding(image, &mut s, a, slot == 64),
         (1, 68 | 69) => sampler_state(image, &mut s, a, slot == 68),
@@ -1832,6 +1863,7 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32
                 gpu,
                 target,
                 parameters,
+                render_state,
                 ..
             } = &mut s.objects.get_mut(&a[0]).unwrap().body
             else {
@@ -1842,7 +1874,8 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32
             } else {
                 a[4]
             };
-            gpu.clear(target, color).unwrap_or_else(|e| unsupported(&e));
+            gpu.clear_state(target, color, render_state)
+                .unwrap_or_else(|e| unsupported(&e));
             0
         }
         (1, 17) => {
@@ -1963,6 +1996,9 @@ mod tests {
         }
         assert_eq!(c[7] & 0x100000, 0); // no pure-device promise
         let p = capabilities(true);
+        assert_eq!((p[22], p[23]), (2048, 2048));
+        assert_eq!((p[15], p[16], p[19]), (0x4004, 0x03030300, 7));
+        assert_eq!(p[5], 0x80000000);
         assert_eq!(
             (p[49], p[50], p[51], p[70]),
             (0xfffe0200, 256, 0xffff0200, 128)

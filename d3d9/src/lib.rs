@@ -5,6 +5,8 @@ use wgpu::util::DeviceExt;
 pub mod compiler;
 pub mod legacy;
 mod legacy_gpu;
+mod render_state;
+pub use render_state::RenderState;
 mod texture;
 pub use legacy_gpu::LegacyDraw;
 pub use texture::{SamplerState, Texture2D, TextureBinding};
@@ -130,7 +132,7 @@ impl Device {
             dimension: wgpu::TextureDimension::D2,
             format: wgpu::TextureFormat::Bgra8Unorm,
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
-            view_formats: &[],
+            view_formats: &[wgpu::TextureFormat::Bgra8UnormSrgb],
         });
         self.finish()?;
         Ok(Target {
@@ -141,9 +143,15 @@ impl Device {
         })
     }
     pub fn clear(&self, target: &mut Target, argb: u32) -> Result<()> {
+        self.clear_state(target, argb, &RenderState::default())
+    }
+    pub fn clear_state(&self, target: &mut Target, argb: u32, state: &RenderState) -> Result<()> {
         let [r, g, b, a] = argb_channels(argb);
         self.scope();
-        let view = target.texture.create_view(&Default::default());
+        let view = target.texture.create_view(&wgpu::TextureViewDescriptor {
+            format: Some(state.format()),
+            ..Default::default()
+        });
         let mut encoder = self.device.create_command_encoder(&Default::default());
         {
             let _pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -173,6 +181,14 @@ impl Device {
     /// XYZRHW|DIFFUSE triangle-list vertex bytes (20 bytes/vertex). D3D9's
     /// default clockwise faces are front-facing; no depth attachment is enabled.
     pub fn draw_transformed(&self, target: &mut Target, bytes: &[u8]) -> Result<()> {
+        self.draw_transformed_state(target, bytes, &RenderState::default())
+    }
+    pub fn draw_transformed_state(
+        &self,
+        target: &mut Target,
+        bytes: &[u8],
+        state: &RenderState,
+    ) -> Result<()> {
         validate_vertices(bytes)?;
         if !target.initialized {
             return Err("draw requires an initialized backbuffer".into());
@@ -228,21 +244,17 @@ impl Device {
                         ],
                     }],
                 },
-                primitive: wgpu::PrimitiveState {
-                    front_face: wgpu::FrontFace::Cw,
-                    cull_mode: Some(wgpu::Face::Back),
-                    ..Default::default()
-                },
+                primitive: state.primitive(),
                 depth_stencil: None,
-                multisample: Default::default(),
+                multisample: state.multisample(),
                 fragment: Some(wgpu::FragmentState {
                     module: &shader,
                     entry_point: Some("fs"),
                     compilation_options: Default::default(),
                     targets: &[Some(wgpu::ColorTargetState {
-                        format: wgpu::TextureFormat::Bgra8Unorm,
-                        blend: None,
-                        write_mask: wgpu::ColorWrites::ALL,
+                        format: state.format(),
+                        blend: state.blend(),
+                        write_mask: state.writes(),
                     })],
                 }),
                 multiview: None,
@@ -256,7 +268,10 @@ impl Device {
                 resource: uniform.as_entire_binding(),
             }],
         });
-        let view = target.texture.create_view(&Default::default());
+        let view = target.texture.create_view(&wgpu::TextureViewDescriptor {
+            format: Some(state.format()),
+            ..Default::default()
+        });
         let mut encoder = self.device.create_command_encoder(&Default::default());
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -273,6 +288,7 @@ impl Device {
                 ..Default::default()
             });
             pass.set_pipeline(&pipeline);
+            pass.set_blend_constant(state.constant());
             pass.set_bind_group(0, &bind, &[]);
             pass.set_vertex_buffer(0, vertices.slice(..));
             pass.draw(0..(bytes.len() / 20) as u32, 0..1);

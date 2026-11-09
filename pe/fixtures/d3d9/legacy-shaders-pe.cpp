@@ -25,6 +25,7 @@ static const DWORD pixel_code[]={
 static DWORD words[2300],used;
 static void put(DWORD n){words[used++]=n;}
 static void ok(BOOL n){put(n?1:0);}
+static DWORD fail(DWORD status,HRESULT detail){put(0xdeadc0de);put(status);put((DWORD)detail);DWORD done=0;WriteFile(GetStdHandle((DWORD)-11),words,used*4,&done,NULL);return status;}
 static DWORD stack(){DWORD s;__asm__ volatile("movl %%esp,%0":"=r"(s));return s;}
 static LRESULT __stdcall proc(HWND w,UINT m,WPARAM a,LPARAM b){return DefWindowProcW(w,m,a,b);}
 static const float vertices[][8]={{0,.75f,.5f,1,1,0,0,1},{.75f,-.75f,.5f,1,1,0,0,1},{-.75f,-.75f,.5f,1,1,0,0,1}};
@@ -32,7 +33,9 @@ static float matrix[16]={1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1};
 static const D3DVERTEXELEMENT9 elements[]={{0,0,3,0,0,0},{0,16,3,0,10,0},{255,0,17,0,0,0}};
 extern "C" DWORD entry(){
  DWORD before=stack();put(0x39534844);
-#ifdef MODEL2
+#ifdef STATES
+put(4);
+#elif defined(MODEL2)
 put(3);
 #elif defined(TEXTURES)
 put(2);
@@ -43,14 +46,20 @@ put(1);
  if(!RegisterClassExW(&wc))return 2;
  HWND window=CreateWindowExW(0,wc.lpszClassName,L"Original legacy shader execution",0x80000000,80,80,32,32,NULL,NULL,wc.hInstance,NULL);
  if(!window)return 3;
- if(InitD3D(window)!=S_OK)return 4;
  #ifdef MODEL2
- static DWORD caps[78];caps[0]=caps[77]=0x715e7a11;
- ok(g_pD3D->GetDeviceCaps(0,1,caps+1)==S_OK&&caps[0]==0x715e7a11&&caps[77]==0x715e7a11&&caps[50]>=0xfffe0200&&caps[52]>=0xffff0200&&caps[71]>=128);
+ g_pD3D=Direct3DCreate9(32);if(!g_pD3D)return 4;
+ D3DPRESENT_PARAMETERS present={};present.BackBufferWidth=32;present.BackBufferHeight=32;present.BackBufferFormat=21;present.BackBufferCount=1;present.SwapEffect=1;present.hDeviceWindow=window;present.Windowed=TRUE;present.PresentationInterval=0x80000000;
+ if(g_pD3D->CreateDevice(0,1,window,0x24,&present,&g_pd3dDevice)!=S_OK)return 4;
+ #else
+ if(InitD3D(window)!=S_OK)return 4;
+ #endif
+ #ifdef MODEL2
+ static DWORD caps[78];caps[0]=caps[77]=0x715e7a11;DWORD creation[4]={};
+ ok(g_pD3D->GetDeviceCaps(0,1,caps+1)==S_OK&&caps[0]==0x715e7a11&&caps[77]==0x715e7a11&&caps[50]>=0xfffe0200&&caps[52]>=0xffff0200&&caps[71]>=128&&caps[23]>=32&&caps[24]>=32&&g_pd3dDevice->GetCreationParameters(creation)==S_OK&&creation[3]==0x24);
  #endif
  IDirect3DVertexShader9* vs=NULL;IDirect3DPixelShader9* ps=NULL;IDirect3DVertexDeclaration9* decl=NULL;IDirect3DVertexBuffer9* vb=NULL;
- ok(g_pd3dDevice->CreateVertexShader(vertex_code,&vs)==S_OK);if(!vs)return 5;
- ok(g_pd3dDevice->CreatePixelShader(pixel_code,&ps)==S_OK);if(!ps)return 6;
+ HRESULT vertex_hr=g_pd3dDevice->CreateVertexShader(vertex_code,&vs);ok(vertex_hr==S_OK);if(!vs)return fail(5,vertex_hr);
+ HRESULT pixel_hr=g_pd3dDevice->CreatePixelShader(pixel_code,&ps);ok(pixel_hr==S_OK);if(!ps)return fail(6,pixel_hr);
  UINT size=0;ok(vs->GetFunction(NULL,&size)==S_OK&&size==sizeof(vertex_code));
  static DWORD copied[256];ok(vs->GetFunction(copied,&size)==S_OK);BOOL exact=TRUE;for(UINT i=0;i<sizeof(vertex_code)/4;i++)if(copied[i]!=vertex_code[i])exact=FALSE;ok(exact);
  IDirect3DDevice9* parent=NULL;ok(vs->GetDevice(&parent)==S_OK&&parent==g_pd3dDevice);if(parent)parent->Release();
@@ -65,7 +74,13 @@ put(1);
  // Internal bindings retain resources, including shader bytecode and declaration.
  vs->Release();ps->Release();decl->Release();vb->Release();
  IDirect3DVertexShader9* bound=NULL;ok(g_pd3dDevice->GetVertexShader(&bound)==S_OK&&bound==vs);if(bound)bound->Release();
- IDirect3DSurface9 *back=NULL,*copy=NULL;ok(g_pd3dDevice->GetBackBuffer(0,0,0,&back)==S_OK);ok(g_pd3dDevice->CreateOffscreenPlainSurface(32,32,22,2,&copy,NULL)==S_OK);if(!back||!copy)return 10;
+ IDirect3DSurface9 *back=NULL,*copy=NULL;ok(g_pd3dDevice->GetBackBuffer(0,0,0,&back)==S_OK);ok(g_pd3dDevice->CreateOffscreenPlainSurface(32,32,
+#ifdef MODEL2
+21,
+#else
+22,
+#endif
+2,&copy,NULL)==S_OK);if(!back||!copy)return 10;
  #ifdef TEXTURES
  IDirect3DTexture9* texture=NULL;ok(g_pd3dDevice->CreateTexture(1,1,1,0,21,1,&texture,NULL)==S_OK);if(!texture)return 13;
  ok(texture->GetLevelCount()==1);D3DSURFACE_DESC desc={};ok(texture->GetLevelDesc(0,&desc)==S_OK&&desc.Format==21&&desc.Type==1&&desc.Pool==1&&desc.Width==1&&desc.Height==1);
@@ -79,9 +94,16 @@ put(1);
  ok(texture->QueryInterface(base_texture,&texture_identity)==S_OK&&texture_identity==texture);if(texture_identity)((IDirect3DBaseTexture9*)texture_identity)->Release();
  texture->Release();
  #endif
+ #ifdef STATES
+ ok(g_pd3dDevice->SetRenderState(27,1)==S_OK);ok(g_pd3dDevice->SetRenderState(19,5)==S_OK);ok(g_pd3dDevice->SetRenderState(20,6)==S_OK);
+ DWORD blend=0;ok(g_pd3dDevice->GetRenderState(7,&blend)==S_OK&&blend==0&&g_pd3dDevice->GetRenderState(27,&blend)==S_OK&&blend==1);
+ #endif
  for(UINT frame=0;frame<2;frame++){
   matrix[3]=frame?.75f:0;
   put(0xfeed0000+frame);
+  #ifdef STATES
+  ok(g_pd3dDevice->SetRenderState(168,frame?1:15)==S_OK);DWORD writes=0;ok(g_pd3dDevice->GetRenderState(168,&writes)==S_OK&&writes==(frame?1u:15u));
+  #endif
   #ifdef TEXTURES
   ok(g_pd3dDevice->SetSamplerState(0,11,frame)==S_OK);DWORD srgb=99;ok(g_pd3dDevice->GetSamplerState(0,11,&srgb)==S_OK&&srgb==frame);
   #endif

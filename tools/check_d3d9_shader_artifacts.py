@@ -6,6 +6,16 @@ import argparse,hashlib,json,struct,subprocess
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
 def sha(path):return hashlib.sha256(path.read_bytes()).hexdigest()
+def normalize_owned_ps2_output(path):
+ """vkd3d 2.1's owned HLSL fixture writes FRC directly to oC0. SM2 only
+ permits MOV there. Preserve its last FRC in r0 and append the required MOV.
+ This is fixture generation only; runtime game bytecode is never rewritten.
+ """
+ raw=path.read_bytes();words=list(struct.unpack('<'+'I'*(len(raw)//4),raw))
+ if words[0]!=0xffff0200 or words[-4:]!=[0x02000013,0x800f0800,0x80e40000,0xffff]:raise ValueError('unexpected owned SM2 output pattern')
+ words[-3]=0x800f0000
+ words[-1:]=[0x02000001,0x800f0800,0x80e40000,0xffff]
+ path.write_bytes(struct.pack('<'+'I'*len(words),*words))
 def check(directory):
  manifest=json.loads((directory/'compiler.json').read_text())
  fixture=ROOT/'d3d9/tests/fixtures';provenance=json.loads((fixture/'legacy-color-provenance.json').read_text())
@@ -24,6 +34,7 @@ def check(directory):
   stage=prefix.rsplit('.',1)[1]
   profile=stage+('_2_0' if prefix in ['legacy-slots128.ps','legacy-model2.vs'] else '_3_0')
   subprocess.run([manifest['hlsl_compiler'],'-x','hlsl','-b','d3dbc','-p',profile,str(fixture/(prefix+'.hlsl')),'-o',str(output/(prefix+'.bin'))],check=True)
+  if prefix=='legacy-slots128.ps':normalize_owned_ps2_output(output/(prefix+'.bin'))
   following=[str(output/('legacy-slots128.ps.bin' if prefix=='legacy-model2.vs' else 'legacy-color.ps.bin'))] if stage=='vs' else []
   subprocess.run([manifest['helper'],str(output/(prefix+'.bin')),str(output/(prefix+'.spv')),str(output/(prefix+'.json')),*following],check=True)
   for extension in ['bin','spv','json']:

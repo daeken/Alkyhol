@@ -108,8 +108,8 @@ struct IDirect3DDevice9 {
  virtual void __stdcall UnsupportedSlot54()=0;
  virtual void __stdcall UnsupportedSlot55()=0;
  virtual void __stdcall UnsupportedSlot56()=0;
- virtual void __stdcall UnsupportedSlot57()=0;
- virtual void __stdcall UnsupportedSlot58()=0;
+ virtual HRESULT __stdcall SetRenderState(UINT,DWORD)=0;
+ virtual HRESULT __stdcall GetRenderState(UINT,DWORD*)=0;
  virtual void __stdcall UnsupportedSlot59()=0;
  virtual void __stdcall UnsupportedSlot60()=0;
  virtual void __stdcall UnsupportedSlot61()=0;
