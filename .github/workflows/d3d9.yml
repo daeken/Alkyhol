@@ -1,0 +1,63 @@
+name: D3D9 binary GPU comparison
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  metal-producer:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-apple-darwin
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Fetch pinned open renderer dependencies
+        run: |
+          cargo fetch --manifest-path pe/Cargo.toml --locked
+          cargo fetch --manifest-path d3d9/Cargo.toml --locked
+      - name: Validate portable renderer and execute actual Metal pixels
+        run: |
+          cargo fmt --manifest-path d3d9/Cargo.toml --check
+          cargo test --manifest-path d3d9/Cargo.toml --locked --offline
+          cargo test --manifest-path d3d9/Cargo.toml --locked --offline -- --ignored --nocapture
+          cargo clippy --manifest-path d3d9/Cargo.toml --locked --offline --all-targets -- -D warnings
+      - name: Compile unchanged Microsoft Tutorial 01 bodies into a single PE
+        run: python tools/observe_d3d9_create_device.py
+      - name: Execute that PE through binary COM and Metal
+        run: python tools/observe_d3d9_create_device.py --host
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d3d9-identical-pe
+          path: |
+            local/pe/d3d9-microtests/d3d9-create-device.exe
+            local/pe/d3d9-microtests/d3d9-create-device-inputs.json
+            local/pe/d3d9-microtests/d3d9-create-device-host.json
+          if-no-files-found: error
+  native-d3d9:
+    needs: metal-producer
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x86
+      - uses: actions/download-artifact@v4
+        with:
+          name: d3d9-identical-pe
+          path: local/pe/d3d9-microtests
+      - name: Check structures and virtual slots against the independent Windows SDK
+        run: cl /nologo /c /W4 /WX /std:c++17 pe/fixtures/d3d9/sdk-layout.cpp /Folocal/pe/d3d9-microtests/sdk-layout.obj
+      - name: Execute the identical PE on native Windows D3D9 and compare every reported pixel
+        run: python tools/observe_d3d9_create_device.py --native
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: d3d9-native-observation
+          path: local/pe/d3d9-microtests/native-d3d9-create-device.json
+          if-no-files-found: error

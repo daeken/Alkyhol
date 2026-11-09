@@ -13,6 +13,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Fetch locked dependencies before offline PE builds
+        if: runner.os == 'macOS'
+        run: cargo fetch --manifest-path pe/Cargo.toml --locked
       - name: Microtests for blockers reached during DAO startup; no game files
         run: python tools/check_pe32_startup.py
       - name: Inspect owned PE resources for the DAO activation-context blocker
@@ -354,6 +357,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Fetch locked dependencies before offline PE builds
+        if: runner.os == 'macOS'
+        run: cargo fetch --manifest-path pe/Cargo.toml --locked
       - uses: actions/download-artifact@v4
         with:
           name: pe32-startup-microtests
@@ -563,6 +569,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Fetch locked dependencies before offline PE builds
+        if: runner.os == 'macOS'
+        run: cargo fetch --manifest-path pe/Cargo.toml --locked
       - run: cargo fmt --manifest-path pe/Cargo.toml --check
       - run: rustfmt --edition 2024 --check pe/launcher.rs
       - run: cargo test --manifest-path pe/Cargo.toml --locked --offline
@@ -1090,6 +1099,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Fetch locked dependencies before offline PE builds
+        if: runner.os == 'macOS'
+        run: cargo fetch --manifest-path pe/Cargo.toml --locked
       - uses: actions/download-artifact@v4
         with:
           name: pe-make2compdb-release
@@ -1459,6 +1471,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Fetch locked dependencies before offline PE builds
+        if: runner.os == 'macOS'
+        run: cargo fetch --manifest-path pe/Cargo.toml --locked
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo test --manifest-path pe/Cargo.toml --locked --offline
       - uses: actions/download-artifact@v4

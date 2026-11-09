@@ -39,7 +39,7 @@ struct View {
 #[derive(Default)]
 pub(super) struct State {
     directory: Option<File>,
-    handles: BTreeMap<u32, (Rc<Section>, bool)>,
+    handles: BTreeMap<u32, (Rc<Section>, bool, Option<Lease>)>,
     views: BTreeMap<u32, View>,
 }
 fn file(directory: &File, name: &str, create: bool) -> Result<Option<File>> {
@@ -187,6 +187,17 @@ impl State {
             lease.unlock().map_err(|e| e.to_string())?;
             return Ok(None);
         }
+        if !existing {
+            // A mapped view retains the old descriptor, but native Windows removes
+            // the name at the last handle close. A recreated name needs a new inode
+            // so old views cannot alias or be truncated by the new object.
+            let path = CString::new(format!("{name}.data")).unwrap();
+            if unsafe { unlinkat(directory.as_raw_fd(), path.as_ptr(), 0) } != 0
+                && std::io::Error::last_os_error().kind() != std::io::ErrorKind::NotFound
+            {
+                return Err("stale section unlink failed".into());
+            }
+        }
         let mut backing = file(directory, &format!("{name}.data"), !existing)?
             .ok_or("live section has no backing file")?;
         let (length, protection) = if existing {
@@ -236,14 +247,15 @@ impl State {
             existing,
         )))
     }
-    fn token(&mut self, section: Section, write: bool) -> Result<u32> {
+    fn token(&mut self, mut section: Section, write: bool) -> Result<u32> {
         if self.handles.len() >= 256 {
             return Err("section handle budget exceeded".into());
         }
         let h = alkyhol::kernel::reserve_handle_token()
             .map_err(|e| format!("section handle allocation: {e:?}"))?;
         let h = u32::try_from(h).map_err(|_| "section handle outside Win32")?;
-        self.handles.insert(h, (Rc::new(section), write));
+        let lease = section._lease.take();
+        self.handles.insert(h, (Rc::new(section), write, lease));
         Ok(h)
     }
 }
@@ -340,9 +352,10 @@ pub(super) fn map(image: &LoadedImage32<'_>, a: &[u32; 8]) -> u32 {
         _ => return fail(50),
     };
     let mut state = image.cpu.sections.borrow_mut();
-    let Some((section, granted)) = state.handles.get(&a[0]).cloned() else {
+    let Some((section, granted, _)) = state.handles.get(&a[0]) else {
         return fail(6);
     };
+    let (section, granted) = (section.clone(), *granted);
     if write && !private && !granted {
         return fail(5);
     }

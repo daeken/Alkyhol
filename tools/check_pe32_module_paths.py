@@ -110,7 +110,7 @@ def host(directory):
     build = ROOT/'pe/target'/target/'debug'
     probe = directory/'module-path-macos'
     subprocess.run([rustc, '--edition=2024', '--target', target, str(ROOT/'pe/probe_startup32.rs'),
-                    '--extern', 'alkyhol_pe='+str(build/'libalkyhol_pe.rlib'), '-L', 'dependency='+str(build/'deps'),
+                    '--extern', 'alkyhol_pe='+str(build/'libalkyhol_pe.rlib'), '-L', 'dependency='+str(build/'deps'),'-L','dependency='+str(build.parent.parent/'debug/deps'),
                     '-C', 'link-arg=-Wl,-pagezero_size,0x1000', '-o', str(probe)], check=True)
     run = setup_run(directory)
     observations = []

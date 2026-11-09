@@ -48,7 +48,7 @@ def check(output,native=False):
     cargo=shutil.which('cargo') or str(Path.home()/'.cargo/bin/cargo');rustc=shutil.which('rustc') or str(Path.home()/'.cargo/bin/rustc');target='x86_64-apple-darwin'
     subprocess.run([cargo,'build','--manifest-path',str(ROOT/'pe/Cargo.toml'),'--target',target,'--locked','--offline'],check=True)
     build=ROOT/'pe/target'/target/'debug';probe=output/'startup-macos'
-    subprocess.run([rustc,'--edition=2024','--target',target,str(ROOT/'pe/probe_startup32.rs'),'--extern','alkyhol_pe='+str(build/'libalkyhol_pe.rlib'),'-L','dependency='+str(build/'deps'),'-C','link-arg=-Wl,-pagezero_size,0x1000','-o',str(probe)],check=True)
+    subprocess.run([rustc,'--edition=2024','--target',target,str(ROOT/'pe/probe_startup32.rs'),'--extern','alkyhol_pe='+str(build/'libalkyhol_pe.rlib'),'-L','dependency='+str(build/'deps'),'-L','dependency='+str(build.parent.parent/'debug/deps'),'-C','link-arg=-Wl,-pagezero_size,0x1000','-o',str(probe)],check=True)
     observations=[]
     environment=dict(os.environ,ALKYHOL_STARTUP_MICRO="active",ALKYHOL_STARTUP_UNICODE="λ🌸",ALKYHOL_STARTUP_EMPTY="");environment.pop("ALKYHOL_STARTUP_MICRO_ABSENT",None)
     for mode in [0,1,3,4,5,6,7,8,9,10,11,12,13]:

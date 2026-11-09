@@ -5272,3 +5272,24 @@ A clean physical rerun at `0136bde` confirms the unchanged EXE identity, hidden
 1024×768 main client, 69 successful original cursor constructions and explicit
 status 78 at Direct3DCreate9. Detailed captures and dependency identities stay
 local. CI 42555112613 is pending; the new native checks are not results yet.
+
+
+## First D3D9 binary COM/GPU milestone
+
+The user authorized D3D9 implementation and Microsoft tutorial witnesses. The new
+separate wgpu crate performs actual GPU color clear and padded readback. Physical
+M4 runs unchanged Microsoft Tutorial 01 InitD3D/Render/Cleanup bodies inside a
+finite PE32 witness, through real binary COM identities and owned system-memory
+surface readback; all 195 RGB pixels and the COM/scene/stack assertions pass. The
+interactive entry loop is replaced by the explicit witness, not claimed unchanged.
+All 177 PE library tests, backend tests, explicit GPU test and Clippy pass locally.
+Native D3D9/SDK comparisons are newly scheduled, not yet observed. No shaders,
+triangles, full D3D9 compatibility or DAO frames are claimed by this clear test.
+
+CI 42555112613 passed the newly added brush/cursor/SDK/DLL-worker checks, as well
+as the previous worker/GDI comparisons. Full-path, message and software-context
+failures remain. Its section test exposed a wrong lifetime assumption: native
+views retain backing data after all handles close, but not the name. Runtime
+namespace leases now belong to handles; a new logical object uses a new backing
+inode so existing views remain independent. The owned test checks that measured
+behavior and locally passes; new native confirmation is still required.

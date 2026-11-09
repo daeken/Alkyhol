@@ -111,7 +111,7 @@ def host(directory):
     probe = directory/'resource-macos'
     subprocess.run([rustc, '--edition=2024', '--target', target, str(ROOT/'pe/probe_resources.rs'),
                     '--extern', 'alkyhol_pe='+str(build/'libalkyhol_pe.rlib'),
-                    '-L', 'dependency='+str(build/'deps'), '-o', str(probe)], check=True)
+                    '-L', 'dependency='+str(build/'deps'),'-L','dependency='+str(build.parent.parent/'debug/deps'), '-o', str(probe)], check=True)
     result = subprocess.run([str(probe), str(exe)], capture_output=True, timeout=15)
     if result.returncode or result.stdout != expected_resources() or result.stderr:
         raise ValueError('resource parser disagrees with original linked payloads: '+repr(result.stderr))

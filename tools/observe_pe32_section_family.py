@@ -17,7 +17,7 @@ def build(d):
  (d/'section-family-inputs.json').write_text(json.dumps(inputs(d),indent=2)+'\n')
 def decode(data):
  if len(data)%4:raise ValueError('truncated window family report')
- words=list(struct.unpack('<'+'I'*(len(data)//4),data));expected=[0x53454332,4]+[1]*25+[28]
+ words=list(struct.unpack('<'+'I'*(len(data)//4),data));expected=[0x53454332,4]+[1]*26+[29]
  if words!=expected:raise ValueError('file contents, sharing, descriptor metadata or stack differ: '+repr(words))
  return words
 def execute(d,native=False):

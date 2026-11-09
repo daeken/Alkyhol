@@ -52,7 +52,7 @@ def run(directory,output):
         rustc=shutil.which('rustc') or str(Path.home()/'.cargo/bin/rustc')
         subprocess.run([cargo,'build','--manifest-path',str(ROOT/'pe/Cargo.toml'),'--target',target,'--locked','--offline','--lib'],check=True)
         build=ROOT/'pe/target'/target/'debug';executable=directory/'probe-macos'
-        subprocess.run([rustc,'--edition=2024','--target',target,str(ROOT/'pe/probe_process32.rs'),'--extern','alkyhol_pe='+str(build/'libalkyhol_pe.rlib'),'-L','dependency='+str(build/'deps'),'-C','link-arg=-Wl,-pagezero_size,0x1000','-o',str(executable)],check=True)
+        subprocess.run([rustc,'--edition=2024','--target',target,str(ROOT/'pe/probe_process32.rs'),'--extern','alkyhol_pe='+str(build/'libalkyhol_pe.rlib'),'-L','dependency='+str(build/'deps'),'-L','dependency='+str(build.parent.parent/'debug/deps'),'-C','link-arg=-Wl,-pagezero_size,0x1000','-o',str(executable)],check=True)
     else:raise RuntimeError('requires Windows or macOS/Rosetta')
     def observe(forced=False,mode=None):
         command=[str(executable)] if windows else [str(executable),str(directory)]+(['--'+mode] if mode else ['--rebase'] if forced else [])

@@ -9,4 +9,5 @@ description = "Bounded PE64 binary execution against Alkyhol under Rosetta"
 alkyhol = { path = ".." }
 
 [target.'cfg(all(target_os = "macos", target_arch = "x86_64"))'.dependencies]
+alkyhol-d3d9 = { path = "../d3d9" }
 roxmltree = { path = "vendor/roxmltree-0.20.0", version = "=0.20.0", default-features = false, features = ["std"] }

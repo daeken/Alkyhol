@@ -71,7 +71,7 @@ def host(directory):
     target='x86_64-apple-darwin';build=ROOT/'pe/target'/target/'debug';probe=directory/'system-directory-macos'
     subprocess.run([cargo,'build','--manifest-path',str(ROOT/'pe/Cargo.toml'),'--target',target,'--locked','--offline'],check=True)
     subprocess.run([rustc,'--edition=2024','--target',target,str(ROOT/'pe/probe_startup32.rs'),'--extern','alkyhol_pe='+str(build/'libalkyhol_pe.rlib'),
-                    '-L','dependency='+str(build/'deps'),'-C','link-arg=-Wl,-pagezero_size,0x1000','-o',str(probe)],check=True)
+                    '-L','dependency='+str(build/'deps'),'-L','dependency='+str(build.parent.parent/'debug/deps'),'-C','link-arg=-Wl,-pagezero_size,0x1000','-o',str(probe)],check=True)
     system=directory/'system profile λ🌸/Windows/System32';system.mkdir(parents=True,exist_ok=True)
     records=[]
     for mode in range(5):

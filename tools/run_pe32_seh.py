@@ -51,7 +51,7 @@ def run(directory,output):
         subprocess.run(['clang','-arch','x86_64','-Wall','-Wextra','-Werror','-c',str(ROOT/SOURCES[-1]),'-o',str(directory/'darwin-layout.o')],check=True)
         build=ROOT/'pe/target'/target/'debug';probe=directory/'probe-macos'
         subprocess.run([rustc,'--edition=2024','--target',target,str(ROOT/'pe/probe_seh32.rs'),
-                        '--extern','alkyhol_pe='+str(build/'libalkyhol_pe.rlib'),'-L','dependency='+str(build/'deps'),
+                        '--extern','alkyhol_pe='+str(build/'libalkyhol_pe.rlib'),'-L','dependency='+str(build/'deps'),'-L','dependency='+str(build.parent.parent/'debug/deps'),
                         '-C','link-arg=-Wl,-pagezero_size,0x1000','-o',str(probe)],check=True)
     else:raise RuntimeError('requires Windows or macOS/Rosetta')
     def observe(case='pe32-seh',forced=False):

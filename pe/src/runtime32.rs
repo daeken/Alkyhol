@@ -49,6 +49,8 @@ mod heap32;
 #[path = "icon32.rs"]
 mod icon32;
 pub use icon32::IconImage32;
+#[path = "d3d9_32.rs"]
+mod d3d9_32;
 #[path = "image32.rs"]
 mod image32;
 #[path = "ini32.rs"]
@@ -115,7 +117,7 @@ unsafe extern "C" {
 }
 const PAGE: usize = 4096;
 const STACK: usize = 1024 * 1024;
-const APIS: [(&str, u16); 255] = [
+const APIS: [(&str, u16); 257] = [
     ("GetLastError", 0),
     ("SetLastError", 4),
     ("GetStdHandle", 4),
@@ -371,6 +373,8 @@ const APIS: [(&str, u16); 255] = [
     ("SetCursor", 4),
     ("DestroyCursor", 4),
     ("GetCursor", 0),
+    ("Direct3DCreate9", 4),
+    ("UnregisterClassW", 8),
 ];
 // The first 120 API slots retain their original offsets. The second bank
 // begins after both x87 bodies, leaving their machine code and failure gates
@@ -432,6 +436,8 @@ fn api_id(module: &str, symbol: &ImportSymbol) -> Option<usize> {
                 && *name == symbol
                 && module.eq_ignore_ascii_case(if cdecl_api(*id) {
                     "msvcrt.dll"
+                } else if *id == 255 {
+                    "d3d9.dll"
                 } else if matches!(*id, 8 | 120) {
                     "shell32.dll"
                 } else if (188..=197).contains(id) || matches!(*id, 202 | 247 | 248) {
@@ -442,6 +448,7 @@ fn api_id(module: &str, symbol: &ImportSymbol) -> Option<usize> {
                     || (203..=211).contains(id)
                     || (218..=219).contains(id)
                     || (249..=254).contains(id)
+                    || *id == 256
                 {
                     "user32.dll"
                 } else if matches!(*id, 107 | 108 | 216 | 220 | 221) {
@@ -806,6 +813,8 @@ struct Cpu32 {
     winsock: RefCell<winsock32::State>,
     sections: RefCell<section32::State>,
     images: RefCell<image32::State>,
+    d3d9: RefCell<d3d9_32::State>,
+    d3d9_storage: RefCell<Vec<(LowMapping, bool)>>,
 }
 impl Cpu32 {
     fn stack(&self) -> &LowMapping {
@@ -928,6 +937,8 @@ impl Cpu32 {
             winsock: RefCell::new(Default::default()),
             sections: RefCell::new(Default::default()),
             images: RefCell::new(Default::default()),
+            d3d9: RefCell::new(Default::default()),
+            d3d9_storage: RefCell::new(Default::default()),
         })
     }
 }
@@ -1398,6 +1409,11 @@ impl<'a> LoadedImage32<'a> {
         let Some(end) = address.checked_add(len) else {
             return false;
         };
+        if self.cpu.d3d9_storage.borrow().iter().any(|(m, writable)| {
+            (!write || *writable) && address >= m.base as usize && end <= m.base as usize + m.len
+        }) {
+            return true;
+        }
         if self.cpu.sections.borrow().permits(address, len, write) {
             return true;
         }
@@ -2001,7 +2017,11 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
                 self.0.set(self.1);
             }
         }
-        let Some(&(_, bytes)) = APIS.get(id as usize) else {
+        let Some((name, bytes)) = APIS
+            .get(id as usize)
+            .copied()
+            .or_else(|| d3d9_32::signature(id))
+        else {
             unsupported("unknown gateway");
         };
         if !(arguments as usize).is_multiple_of(4)
@@ -2026,7 +2046,7 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
         }
         let args: &[u32; 8] = words[..8].try_into().expect("fixed gateway prefix");
         let trace_call = image.cpu.diagnostic.is_some()
-            && (!image.cpu.trace_first_calls || {
+            && (id as usize >= APIS.len() || !image.cpu.trace_first_calls || {
                 let mut seen = image.cpu.trace_seen.borrow_mut();
                 let first = !seen[id as usize];
                 seen[id as usize] = true;
@@ -2040,7 +2060,7 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
             let pc = unsafe { (return_address as *const u32).read_unaligned() };
             eprintln!(
                 "PE32 diagnostic call: {}; return_pc=0x{pc:08x}; stack_words={:x?}",
-                APIS[id as usize].0,
+                name,
                 &words[..bytes as usize / 4]
             );
         }
@@ -2285,6 +2305,9 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
             252 => image32::set(image, args[0]),
             253 => image32::destroy(image, args[0]),
             254 => image32::current(image),
+            255 => d3d9_32::create(image, args[0]),
+            256 => ui32::dispatch(image, 42, &words),
+            d3d9_32::BASE.. => d3d9_32::dispatch(image, id, &words),
             215 => {
                 // No adapter/DHCP projection is implemented. Return the explicit
                 // API failure and let the original caller handle it; never invent
@@ -2463,6 +2486,8 @@ mod tests {
                 winsock: RefCell::new(Default::default()),
                 sections: RefCell::new(Default::default()),
                 images: RefCell::new(Default::default()),
+                d3d9: RefCell::new(Default::default()),
+                d3d9_storage: RefCell::new(Default::default()),
             }),
             tls: None,
             tls_entered: Cell::new(false),

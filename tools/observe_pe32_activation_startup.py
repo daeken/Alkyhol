@@ -144,7 +144,7 @@ def runner(directory):
     subprocess.run([cargo,'build','--manifest-path',str(ROOT/'pe/Cargo.toml'),'--target',target,'--locked','--offline'],check=True)
     output=ROOT/'pe/target'/target/'debug';probe=directory/'ctx-startup-macos'
     subprocess.run([rustc,'--edition=2024','--target',target,str(ROOT/'pe/probe_startup32.rs'),'--extern',
-                    'alkyhol_pe='+str(output/'libalkyhol_pe.rlib'),'-L','dependency='+str(output/'deps'),
+                    'alkyhol_pe='+str(output/'libalkyhol_pe.rlib'),'-L','dependency='+str(output/'deps'),'-L','dependency='+str(output.parent.parent/'debug/deps'),
                     '-C','link-arg=-Wl,-pagezero_size,0x1000','-o',str(probe)],check=True)
     return probe
 

@@ -1,0 +1,11 @@
+{
+  "repository": "https://github.com/microsoft/DirectX-SDK-Samples",
+  "revision": "07e3eaa10e7dd026ec9d95fe326db2d5c4227e1b",
+  "license": "MIT",
+  "files": {
+    "create_device/CreateDevice.cpp": {
+      "upstream_path": "C++/Direct3D/Tutorials/Tut01_CreateDevice/CreateDevice.cpp",
+      "sha256": "98f4342fd0668f5671df05b4c3be9e69da53addb5d301b53c4b4a1ccf221af0f"
+    }
+  }
+}

@@ -45,6 +45,30 @@ pub(super) struct State {
     messages: BTreeMap<u32, VecDeque<[u32; 7]>>,
 }
 impl State {
+    pub(super) fn graphics_client(&self, hwnd: u32) -> crate::Result<(u32, u32)> {
+        let window = self
+            .windows
+            .get(&hwnd)
+            .ok_or("D3D9 requires an owned live window")?;
+        let r = window.native.client();
+        if r.size.width < 1.0 || r.size.height < 1.0 {
+            return Err("empty D3D9 client".into());
+        }
+        Ok((r.size.width as u32, r.size.height as u32))
+    }
+    pub(super) fn graphics_present(
+        &self,
+        hwnd: u32,
+        width: u32,
+        height: u32,
+        pixels: &[u8],
+    ) -> crate::Result<()> {
+        self.windows
+            .get(&hwnd)
+            .ok_or("D3D9 target window was destroyed")?
+            .native
+            .present(width, height, pixels)
+    }
     fn app(&mut self) -> Result<&host::App> {
         if self.app.is_none() {
             self.app = Some(host::App::new()?);
@@ -682,8 +706,8 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32
     match id {
         0 => register(image, a[0], false),
         1 => register(image, a[0], true),
-        2 => {
-            let name = string(image, a[0], true);
+        2 | 42 => {
+            let name = string(image, a[0], id == 2);
             let mut ui = image.cpu.ui.borrow_mut();
             let Some(atom) = ui
                 .classes

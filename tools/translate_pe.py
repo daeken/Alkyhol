@@ -81,7 +81,7 @@ def _package(source, output, launcher, kind, extra_link_args=()):
         digest = hashlib.sha256(payload.read_bytes()).hexdigest()
         args = [rustc, '--edition=2024', '--target', TARGET, str(launcher),
                 '--extern', 'alkyhol_pe=' + str(build / 'libalkyhol_pe.rlib'),
-                '-L', 'dependency=' + str(build / 'deps'), '-o', str(output)]
+                '-L', 'dependency=' + str(build / 'deps'), '-L', 'dependency=' + str(build.parent.parent / 'debug/deps'), '-o', str(output)]
         # cc is the linker driver: every ld argument gets its own -Xlinker pair.
         for arg in [*extra_link_args, '-sectcreate', '__ALKYHOL', '__pefile', str(payload), '-segprot', '__ALKYHOL', 'r', 'r']:
             args += ['-C', 'link-arg=-Xlinker', '-C', 'link-arg=' + arg]
