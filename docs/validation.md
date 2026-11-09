@@ -6279,3 +6279,42 @@ legacy-registry step does not execute: the new artifact was uploaded but omitted
 from the explicit native download list. There is no native semantic result from
 that step. The registry and instruction-feature artifact transfers are now
 included; this plumbing correction does not change an observation or comparator.
+
+## Preserved POSITIONT texture-threshold observation
+
+D3D9 CI 42623855024 on 373dd3b passes Metal production and software Vulkan.
+Native Windows passes every admitted POSITIONT call/guard/stack assertion, but
+the exact full-frame comparator still fails on three of 2,121 words. Native
+Windows and hosted Metal differ at pixel (8,22) in both frames (blue versus
+red), and frame 1 pixel (20,19) (white versus green). Source/PE identities agree. The complete native report is preserved unchanged in
+pe/reference/pe32-positiont-rhw-threshold-windows-v1.json (SHA-256
+ d74739dd0e996a9ed2a006b9351cd1a79090dae0691ca5557fef40b649be803a).
+
+Independent exact screen-space arithmetic for those original owned triangles
+gives perspective V exactly 1/2, the 2x2 point texture's color boundary. The
+physical M4's separately compiled witness differs only at (20,19), but that
+separate compilation is not counted as identical-PE evidence. Floating
+interpolation/clipping precision is a hypothesis for the difference, not a
+measured internal Windows implementation. The exact comparator is retained and
+continues to fail; no tolerance, omitted pixel or changed shader/vertex fixture
+is used to make it pass. This remains a known finite rendering discrepancy,
+separate from original DAO intro rendering and unmeasured full game parity.
+
+## Original renderer full-surface StretchRect
+
+Original DAO passes the projection/view transform calls and requests a full-size
+backbuffer-to-render-texture StretchRect with null rectangles and filter NONE.
+That equal-size, single-sample BGRA8 attachment path now copies actual content,
+without changing render bindings, viewport or shader state. A8-to-A8 uses an
+actual GPU image copy. X8 source/destination copies use actual readback/upload
+and force only the logically opaque alpha channel; RGB bytes are preserved.
+Partial rectangles, scaling, filters, depth/system-memory surfaces, self copies
+and in-scene StretchRect remain outside this implemented profile.
+
+The physical GPU test checks uninitialized-source failure, unchanged outputs,
+all copied bytes, alpha preservation/opacity, resource alias lifetime and
+size/self-copy exclusions. The owned 2,100-word PE checks three actual surface
+copy directions, all 1,024 pixels for each phase, A8 alpha and X8 RGB, then both
+unchanged programmable shader frames and stack. It passes physical M4; native
+and hosted comparisons are added and pending. Backend and PE Clippy pass.
+Integrated original-game retry is pending.

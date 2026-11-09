@@ -947,6 +947,59 @@ fn offscreen(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
     write(image, a[5], &[o]);
     0
 }
+fn stretch(s: &State, a: &[u32; 16]) -> u32 {
+    let Body::Device {
+        gpu, target, scene, ..
+    } = &s.objects[&a[0]].body
+    else {
+        unreachable!()
+    };
+    if *scene {
+        return INVALID;
+    }
+    if a[2] != 0 || a[4] != 0 || a[5] != 0 {
+        return UNAVAILABLE;
+    }
+    let attachment = |pointer| match s.objects.get(&pointer) {
+        Some(Object {
+            refs: 1..,
+            body:
+                Body::Surface {
+                    parent,
+                    back,
+                    attachment,
+                    format,
+                    locked: false,
+                    depth: None,
+                    ..
+                },
+        }) if *parent == a[0] && [21, 22].contains(format) => {
+            if *back {
+                Some(((**target).clone(), *format))
+            } else {
+                attachment.as_ref().map(|t| (t.clone(), *format))
+            }
+        }
+        _ => None,
+    };
+    let Some((source, source_format)) = attachment(a[1]) else {
+        return INVALID;
+    };
+    let Some((mut destination, destination_format)) = attachment(a[3]) else {
+        return INVALID;
+    };
+    match gpu.copy_target(
+        &source,
+        &mut destination,
+        source_format == 22 || destination_format == 22,
+    ) {
+        Ok(()) => 0,
+        Err(e) => {
+            eprintln!("D3D9 StretchRect outside full color-copy profile: {e}");
+            UNAVAILABLE
+        }
+    }
+}
 fn transfer(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
     let Some(Object {
         refs: 1..,
@@ -3169,6 +3222,7 @@ fn dispatch_inner(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32 {
         (1, 29) => create_depth(image, &mut s, a),
         (1, 39 | 40) => depth_binding(image, &mut s, a, slot == 40),
         (1, 32) => transfer(image, &mut s, a),
+        (1, 34) => stretch(&s, a),
         (1, 41) | (1, 42) => {
             let Body::Device { scene, .. } = &mut s.objects.get_mut(&a[0]).unwrap().body else {
                 unreachable!()

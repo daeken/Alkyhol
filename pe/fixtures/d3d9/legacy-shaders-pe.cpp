@@ -171,9 +171,32 @@ static DWORD transform_witness(){
  return 0;
 }
 #endif
+#ifdef STRETCH
+static DWORD stretch_witness(IDirect3DSurface9* back,IDirect3DSurface9* backcopy){
+ IDirect3DTexture9 *textures[2]={};IDirect3DSurface9 *surfaces[2]={},*copy=NULL;
+ for(UINT n=0;n<2;n++)if(g_pd3dDevice->CreateTexture(32,32,1,1,21,0,textures+n,NULL)!=S_OK||!textures[n]||textures[n]->GetSurfaceLevel(0,surfaces+n)!=S_OK||!surfaces[n])return 1;
+ if(g_pd3dDevice->CreateOffscreenPlainSurface(32,32,21,2,&copy,NULL)!=S_OK||!copy)return 2;
+ if(g_pd3dDevice->SetRenderTarget(0,surfaces[0])!=S_OK||g_pd3dDevice->Clear(0,NULL,1,0x80332211,1,0)!=S_OK)return 3;
+ for(UINT phase=0;phase<3;phase++){
+  IDirect3DSurface9 *source=phase==0?surfaces[0]:phase==1?back:surfaces[1],*destination=phase==0?surfaces[1]:phase==1?surfaces[0]:back,*output=phase==2?backcopy:copy;
+  if(phase==1 && (g_pd3dDevice->SetRenderTarget(0,back)!=S_OK||g_pd3dDevice->Clear(0,NULL,1,0x40345678,1,0)!=S_OK))return 4;
+  if(g_pd3dDevice->StretchRect(source,NULL,destination,NULL,0)!=S_OK)return 5;
+  if(g_pd3dDevice->GetRenderTargetData(destination,output)!=S_OK)return 6;
+  D3DLOCKED_RECT lock={};if(output->LockRect(&lock,NULL,16)!=S_OK||!lock.pBits)return 7;
+  DWORD expected=phase==1?0xff345678:0x80332211,mask=phase==2?0xffffff:0xffffffff;
+  for(UINT y=0;y<32;y++)for(UINT x=0;x<32;x++)if((((DWORD*)((unsigned char*)lock.pBits+y*lock.Pitch))[x]&mask)!=(expected&mask))return 8;
+  if(output->UnlockRect()!=S_OK)return 9;
+ }
+ if(g_pd3dDevice->SetRenderTarget(0,back)!=S_OK)return 10;
+ copy->Release();for(UINT n=0;n<2;n++){surfaces[n]->Release();textures[n]->Release();}
+ return 0;
+}
+#endif
 extern "C" DWORD entry(){
  DWORD before=stack();put(0x39534844);
-#ifdef TRANSFORMS
+#ifdef STRETCH
+put(13);
+#elif defined(TRANSFORMS)
 put(12);
 #elif defined(TRANSFORMED)
 put(11);
@@ -248,6 +271,9 @@ put(1);
 22,
 #endif
 2,&copy,NULL)==S_OK);if(!back||!copy)return 10;
+ #ifdef STRETCH
+ DWORD stretch_stage=stretch_witness(back,copy);ok(stretch_stage==0);if(stretch_stage)return fail(29,stretch_stage);
+ #endif
  #ifdef TEXTURES
  const UINT sampled_format=
  #ifdef LUMINANCE

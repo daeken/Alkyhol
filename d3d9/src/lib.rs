@@ -196,6 +196,75 @@ impl Device {
         target.initialized.store(true, Ordering::Release);
         Ok(())
     }
+    /// Copy a complete equal-size color attachment without changing draw state.
+    /// X8 formats request opaque alpha; RGB bytes remain exactly those read.
+    pub fn copy_target(
+        &self,
+        source: &Target,
+        destination: &mut Target,
+        opaque: bool,
+    ) -> Result<()> {
+        if source.dimensions() != destination.dimensions()
+            || Arc::ptr_eq(&source.initialized, &destination.initialized)
+        {
+            return Err("color copy requires distinct equal-size attachments".into());
+        }
+        if !source.initialized.load(Ordering::Acquire) {
+            return Err("copy from uninitialized color attachment".into());
+        }
+        if opaque {
+            let mut bytes = self.readback(source)?;
+            for pixel in bytes.as_chunks_mut::<4>().0 {
+                pixel[3] = 255;
+            }
+            self.scope();
+            self.queue.write_texture(
+                wgpu::TexelCopyTextureInfo {
+                    texture: &destination.texture,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d::ZERO,
+                    aspect: wgpu::TextureAspect::All,
+                },
+                &bytes,
+                wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(source.width * 4),
+                    rows_per_image: Some(source.height),
+                },
+                wgpu::Extent3d {
+                    width: source.width,
+                    height: source.height,
+                    depth_or_array_layers: 1,
+                },
+            );
+        } else {
+            self.scope();
+            let mut encoder = self.device.create_command_encoder(&Default::default());
+            encoder.copy_texture_to_texture(
+                wgpu::TexelCopyTextureInfo {
+                    texture: &source.texture,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d::ZERO,
+                    aspect: wgpu::TextureAspect::All,
+                },
+                wgpu::TexelCopyTextureInfo {
+                    texture: &destination.texture,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d::ZERO,
+                    aspect: wgpu::TextureAspect::All,
+                },
+                wgpu::Extent3d {
+                    width: source.width,
+                    height: source.height,
+                    depth_or_array_layers: 1,
+                },
+            );
+            self.queue.submit([encoder.finish()]);
+        }
+        self.finish()?;
+        destination.initialized.store(true, Ordering::Release);
+        Ok(())
+    }
     /// XYZRHW|DIFFUSE triangle-list vertex bytes (20 bytes/vertex). D3D9's
     /// default clockwise faces are front-facing; no depth attachment is enabled.
     pub fn draw_transformed(&self, target: &mut Target, bytes: &[u8]) -> Result<()> {

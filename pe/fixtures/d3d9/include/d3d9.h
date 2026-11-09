@@ -88,7 +88,7 @@ struct IDirect3DDevice9 {
  virtual void __stdcall UnsupportedSlot31()=0;
  virtual HRESULT __stdcall GetRenderTargetData(IDirect3DSurface9*,IDirect3DSurface9*)=0;
  virtual void __stdcall UnsupportedSlot33()=0;
- virtual void __stdcall UnsupportedSlot34()=0;
+ virtual HRESULT __stdcall StretchRect(IDirect3DSurface9*,const void*,IDirect3DSurface9*,const void*,UINT)=0;
  virtual void __stdcall UnsupportedSlot35()=0;
  virtual HRESULT __stdcall CreateOffscreenPlainSurface(UINT,UINT,UINT,UINT,IDirect3DSurface9**,void*)=0;
  virtual HRESULT __stdcall SetRenderTarget(DWORD,IDirect3DSurface9*)=0;
