@@ -6370,3 +6370,42 @@ also passes. Hosted and native comparison are added and pending. The
 allows drivers to use additional depth precision while fixing stencil width;
 no bit-for-bit native DAO depth/frame agreement is inferred from these finite
 checks.
+
+## Original DAO main menu and font formats
+
+The original 32-bit EXE now reaches and visibly renders its real main menu on
+physical M4 under Rosetta: title art, buttons and text are present. The same
+private capture before A8 support showed the art/shapes without text; after the
+format implementation the menu labels render. This is an observed original-game
+menu milestone. Menu interaction, character creation, gameplay, saving and audio
+playback remain unverified. The initial validation session ended at its explicit
+600-second budget, not by a clean game exit. Captures, source identities and the
+complete game-derived logs stay local.
+
+The actual A8 and A4R4G4B4 requests now have backed one-/two-byte CPU mip layouts
+and lossless GPU uploads. A8's missing RGB components are zero, the documented
+[format exception](https://learn.microsoft.com/en-us/windows/win32/direct3d9/d3dformat);
+its alpha byte is preserved. A4R4G4B4 expands each nibble to the corresponding
+8-bit channel without modifying guest bytes. Uncompressed subrectangle locks
+return a checked offset with full row pitch; actual CPU updates are uploaded,
+preserving the other bytes. Compressed partial locks and A8/L8 sRGB remain
+explicitly outside the implemented profile.
+
+Units check all alpha bytes, all 65,536 four-bit-channel words, mip pitches and
+bounds/overflow. A physical GPU test samples every A8 byte and every A4R4G4B4
+word through unchanged owned legacy bytecode and verifies full RGBA output.
+All existing GPU regressions, 20 backend units, 205 PE units and backend/PE
+Clippy pass. The owned 2,100-word PE checks both format descriptors, full and
+partial updates/read-only coherence, two complete RGBA frames (including alpha),
+COM lifetime and stack. It passes physically; native/hosted comparisons are added
+and pending. The observer tests explicitly reject alpha-only mismatches.
+
+D3D9 CI 42630692048 on d472f28 passes Metal and software Vulkan. The identical
+2,100-word stencil PE also passes native Windows with exact agreement to hosted
+Metal. The overall native job still fails on the retained POSITIONT threshold
+pixels and a new StretchRect pixel-value assertion (stage 8). The latter raw
+report is retained unchanged in pe/reference/pe32-stretch-color-copy-windows-v1.json;
+its first failing phase/value were not included by that original witness.
+The next witness now records phase, actual pixel, expected pixel and mask on
+failure, without changing its acceptance criteria. No native color-copy equality
+or all-CI-green claim is made.

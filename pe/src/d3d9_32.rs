@@ -2458,6 +2458,8 @@ fn sample_format(format: u32) -> Option<SampleFormat> {
     match format {
         21 | 22 => Some(SampleFormat::Bgra8),
         50 => Some(SampleFormat::Luminance8),
+        28 => Some(SampleFormat::Alpha8),
+        26 => Some(SampleFormat::Argb4444),
         0x31545844 => Some(SampleFormat::Bc1),
         0x33545844 => Some(SampleFormat::Bc2),
         0x35545844 => Some(SampleFormat::Bc3),
@@ -2621,6 +2623,28 @@ fn sampler_state(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16], get: b
         }
     }
 }
+fn lock_rectangle_offset(
+    format: u32,
+    width: u32,
+    height: u32,
+    pitch: u32,
+    r: [u32; 4],
+) -> Option<u32> {
+    if r[0] >= r[2] || r[1] >= r[3] || r[2] > width || r[3] > height {
+        return None;
+    }
+    if r == [0, 0, width, height] {
+        return Some(0);
+    }
+    let bytes = match format {
+        21 => 4,
+        26 => 2,
+        28 | 50 => 1,
+        _ => return None,
+    };
+    r[1].checked_mul(pitch)?
+        .checked_add(r[0].checked_mul(bytes)?)
+}
 fn texture_operation(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16], slot: u32) -> u32 {
     let Body::Texture { parent, .. } = &s.objects[&a[0]].body else {
         unreachable!()
@@ -2668,16 +2692,16 @@ fn texture_operation(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16], sl
             if ![0, 16].contains(&a[4]) {
                 return UNAVAILABLE;
             }
-            if a[3] != 0 {
-                let rectangle = read::<4>(image, a[3]);
-                eprintln!(
-                    "D3D9 texture lock rectangle: {rectangle:?}; level={}x{}",
-                    level.width, level.height
-                );
-                if rectangle != [0, 0, level.width, level.height] {
-                    return UNAVAILABLE;
-                }
-            }
+            let rectangle = if a[3] == 0 {
+                [0, 0, level.width, level.height]
+            } else {
+                read::<4>(image, a[3])
+            };
+            let Some(offset) =
+                lock_rectangle_offset(*format, level.width, level.height, level.pitch, rectangle)
+            else {
+                return UNAVAILABLE;
+            };
             let readonly = a[4] == 16;
             if readonly && !level.initialized && *format != 50 {
                 unsupported("D3D9 read of uninitialized texture shadow");
@@ -2686,7 +2710,7 @@ fn texture_operation(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16], sl
             // may expose it, but its initial contents are not a Windows-value
             // promise. This neither uploads zero pixels nor initializes the GPU;
             // sampling still requires an actual writable unlock.
-            write(image, a[2], &[level.pitch, level.data]);
+            write(image, a[2], &[level.pitch, level.data + offset]);
             level.lock = Some(readonly);
             0
         }
@@ -2845,7 +2869,7 @@ fn dispatch_inner(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32 {
             }
             // Linear L8 luminance textures are real storage; render targets,
             // vertex-texture and sRGB queries for L8 remain unavailable.
-            if a[4] == 0 && a[5] == 3 && a[6] == 50 {
+            if a[4] == 0 && a[5] == 3 && [26, 28, 50].contains(&a[6]) {
                 return 0;
             }
             // Real BGRA8 color/sample storage and non-lockable D16 surfaces.
@@ -3452,6 +3476,36 @@ fn dispatch_inner(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn subrectangle_locks_keep_full_pitch_and_checked_pixel_offsets() {
+        for (format, pitch, offset) in [(21, 20, 24), (26, 10, 12), (28, 5, 6), (50, 5, 6)] {
+            assert_eq!(
+                lock_rectangle_offset(format, 5, 3, pitch, [1, 1, 4, 3]),
+                Some(offset)
+            );
+            for rect in [
+                [0, 0, 6, 3],
+                [0, 0, 5, 4],
+                [2, 2, 1, 3],
+                [0, 0, 0, 0],
+                [u32::MAX, 1, 4, 3],
+            ] {
+                assert_eq!(lock_rectangle_offset(format, 5, 3, pitch, rect), None);
+            }
+        }
+        assert_eq!(
+            lock_rectangle_offset(0x35545844, 4, 4, 16, [0, 0, 4, 4]),
+            Some(0)
+        );
+        assert_eq!(
+            lock_rectangle_offset(0x35545844, 4, 4, 16, [0, 0, 2, 4]),
+            None
+        );
+        assert_eq!(
+            lock_rectangle_offset(21, 5, 3, u32::MAX, [1, 2, 4, 3]),
+            None
+        );
+    }
     #[test]
     fn strips_keep_every_triangle_winding_and_degenerate_indices() {
         assert_eq!(primitive_vertices(4, 2), Some(6));

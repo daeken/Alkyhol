@@ -16,7 +16,7 @@ static const DWORD vertex_code[]={
 static const DWORD pixel_code[]={
 #ifdef MODEL2
 #include "legacy-slots128.ps.inc"
-#elif defined(TEXTURES)
+#elif defined(TEXTURES)||defined(FONTS)
 #include "legacy-texture.ps.inc"
 #else
 #include "legacy-color.ps.inc"
@@ -28,7 +28,11 @@ static void ok(BOOL n){put(n?1:0);}
 static DWORD fail(DWORD status,HRESULT detail){put(0xdeadc0de);put(status);put((DWORD)detail);DWORD done=0;WriteFile(GetStdHandle((DWORD)-11),words,used*4,&done,NULL);return status;}
 static DWORD stack(){DWORD s;__asm__ volatile("movl %%esp,%0":"=r"(s));return s;}
 static LRESULT __stdcall proc(HWND w,UINT m,WPARAM a,LPARAM b){return DefWindowProcW(w,m,a,b);}
-#ifdef TRANSFORMED
+#ifdef FONTS
+static const float vertices[][8]={{0,.75f,.5f,1,.75f,.75f,0,1},{.75f,-.75f,.5f,1,.75f,.75f,0,1},{-.75f,-.75f,.5f,1,.75f,.75f,0,1}};
+static float matrix[16]={1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1};
+static const D3DVERTEXELEMENT9 elements[]={{0,0,3,0,0,0},{0,16,3,0,10,0},{255,0,17,0,0,0}};
+#elif defined(TRANSFORMED)
 // Actual screen coordinates and nonuniform RHW. The bound programmable VS must
 // be bypassed by POSITIONT; original PS samples the interpolated COLOR0.xy.
 static const float vertices[][8]={{4,4,.5f,.5f,0,0,0,1},{28,4,.5f,2,1,0,0,1},{4,28,.5f,.5f,0,1,0,1},{28,28,.5f,2,1,1,0,1}};
@@ -191,7 +195,7 @@ static DWORD stretch_witness(IDirect3DSurface9* back,IDirect3DSurface9* backcopy
   if(g_pd3dDevice->GetRenderTargetData(destination,output)!=S_OK)return 6;
   D3DLOCKED_RECT lock={};if(output->LockRect(&lock,NULL,16)!=S_OK||!lock.pBits)return 7;
   DWORD expected=phase==1?0xff345678:0x80332211,mask=phase==2?0xffffff:0xffffffff;
-  for(UINT y=0;y<32;y++)for(UINT x=0;x<32;x++)if((((DWORD*)((unsigned char*)lock.pBits+y*lock.Pitch))[x]&mask)!=(expected&mask))return 8;
+  for(UINT y=0;y<32;y++)for(UINT x=0;x<32;x++)if((((DWORD*)((unsigned char*)lock.pBits+y*lock.Pitch))[x]&mask)!=(expected&mask)){put(phase);put(((DWORD*)((unsigned char*)lock.pBits+y*lock.Pitch))[x]);put(expected);put(mask);return 8;}
   if(output->UnlockRect()!=S_OK)return 9;
  }
  if(g_pd3dDevice->SetRenderTarget(0,back)!=S_OK)return 10;
@@ -212,9 +216,31 @@ static DWORD stencil_mask(UINT frame){
  return 0;
 }
 #endif
+#ifdef FONTS
+static IDirect3DTexture9* font_textures[2];
+static DWORD font_formats_witness(){
+ for(UINT n=0;n<2;n++){
+  const UINT format=n?26:28,size=n?2:1;
+  if(g_pd3dDevice->CreateTexture(3,2,1,0,format,1,font_textures+n,NULL)!=S_OK||!font_textures[n])return 1;
+  D3DSURFACE_DESC desc={};if(font_textures[n]->GetLevelDesc(0,&desc)!=S_OK||desc.Format!=format||desc.Width!=3||desc.Height!=2||desc.Pool!=1)return 2;
+  D3DLOCKED_RECT lock={};if(font_textures[n]->LockRect(0,&lock,NULL,0)!=S_OK||!lock.pBits||lock.Pitch<(INT)(3*size))return 3;
+  for(UINT y=0;y<2;y++)for(UINT x=0;x<3;x++){unsigned char* row=(unsigned char*)lock.pBits+y*lock.Pitch;if(n)((unsigned short*)row)[x]=0x8642;else row[x]=128;}
+  if(font_textures[n]->UnlockRect(0)!=S_OK)return 4;
+  INT rectangle[4]={1,1,3,2};if(font_textures[n]->LockRect(0,&lock,rectangle,0)!=S_OK||!lock.pBits||lock.Pitch<(INT)(3*size))return 5;
+  for(UINT x=0;x<2;x++){if(n)((unsigned short*)lock.pBits)[x]=0x1357;else ((unsigned char*)lock.pBits)[x]=153;}
+  if(font_textures[n]->UnlockRect(0)!=S_OK)return 6;
+  if(font_textures[n]->LockRect(0,&lock,NULL,16)!=S_OK||!lock.pBits||lock.Pitch<(INT)(3*size))return 7;
+  for(UINT y=0;y<2;y++)for(UINT x=0;x<3;x++){unsigned char* row=(unsigned char*)lock.pBits+y*lock.Pitch;UINT expected=n?(y==1&&x>=1?0x1357:0x8642):(y==1&&x>=1?153:128);if((n?((unsigned short*)row)[x]:row[x])!=expected)return 8;}
+  if(font_textures[n]->UnlockRect(0)!=S_OK)return 9;
+ }
+ return 0;
+}
+#endif
 extern "C" DWORD entry(){
  DWORD before=stack();put(0x39534844);
-#ifdef STENCIL
+#ifdef FONTS
+put(15);
+#elif defined(STENCIL)
 put(14);
 #elif defined(STRETCH)
 put(13);
@@ -247,7 +273,7 @@ put(1);
  if(!RegisterClassExW(&wc))return 2;
  HWND window=CreateWindowExW(0,wc.lpszClassName,L"Original legacy shader execution",0x80000000,80,80,32,32,NULL,NULL,wc.hInstance,NULL);
  if(!window)return 3;
- #if defined(MODEL2)||defined(DEPTH)
+ #if defined(MODEL2)||defined(DEPTH)||defined(FONTS)
  g_pD3D=Direct3DCreate9(32);if(!g_pD3D)return 4;
  D3DPRESENT_PARAMETERS present={};present.BackBufferWidth=32;present.BackBufferHeight=32;present.BackBufferFormat=21;present.BackBufferCount=1;present.SwapEffect=1;present.hDeviceWindow=window;present.Windowed=TRUE;present.PresentationInterval=0x80000000;
  #ifdef DEPTH
@@ -292,12 +318,15 @@ put(1);
  vs->Release();ps->Release();decl->Release();vb->Release();
  IDirect3DVertexShader9* bound=NULL;ok(g_pd3dDevice->GetVertexShader(&bound)==S_OK&&bound==vs);if(bound)bound->Release();
  IDirect3DSurface9 *back=NULL,*copy=NULL;ok(g_pd3dDevice->GetBackBuffer(0,0,0,&back)==S_OK);ok(g_pd3dDevice->CreateOffscreenPlainSurface(32,32,
-#if defined(MODEL2)||defined(DEPTH)
+#if defined(MODEL2)||defined(DEPTH)||defined(FONTS)
 21,
 #else
 22,
 #endif
 2,&copy,NULL)==S_OK);if(!back||!copy)return 10;
+ #ifdef FONTS
+ DWORD font_stage=font_formats_witness();ok(font_stage==0);if(font_stage)return fail(31,font_stage);
+ #endif
  #ifdef STRETCH
  DWORD stretch_stage=stretch_witness(back,copy);ok(stretch_stage==0);if(stretch_stage)return fail(29,stretch_stage);
  #endif
@@ -369,6 +398,9 @@ put(1);
  DWORD index_stage=index_witness();ok(index_stage==0);if(index_stage)return fail(18,index_stage);
  #endif
  for(UINT frame=0;frame<2;frame++){
+  #ifdef FONTS
+  if(g_pd3dDevice->SetTexture(0,font_textures[frame])!=S_OK)return 32;
+  #endif
   #ifdef TRANSFORMED
   DWORD full[6]={0,0,32,32,0,0x3f800000};
   if(g_pd3dDevice->SetViewport(full)!=S_OK)return 26;
@@ -439,10 +471,18 @@ put(1);
  ==S_OK);ok(g_pd3dDevice->EndScene()==S_OK);
   ok(g_pd3dDevice->GetRenderTargetData(back,copy)==S_OK);
   D3DLOCKED_RECT lock={};ok(copy->LockRect(&lock,NULL,D3DLOCK_READONLY)==S_OK);if(!lock.pBits)return 11;
-  for(UINT y=0;y<32;y++)for(UINT x=0;x<32;x++)put(((DWORD*)((unsigned char*)lock.pBits+y*lock.Pitch))[x]&0xffffff);
+  for(UINT y=0;y<32;y++)for(UINT x=0;x<32;x++)put(((DWORD*)((unsigned char*)lock.pBits+y*lock.Pitch))[x]
+  #ifndef FONTS
+  &0xffffff
+  #endif
+  );
   ok(copy->UnlockRect()==S_OK);
  }
  copy->Release();back->Release();
+ #ifdef FONTS
+ if(g_pd3dDevice->SetTexture(0,NULL)!=S_OK)return 33;
+ for(UINT n=0;n<2;n++)font_textures[n]->Release();
+ #endif
  #ifdef TEXTURES
  if(g_pd3dDevice->SetTexture(0,NULL)!=S_OK)return 15;
  #endif

@@ -4,6 +4,8 @@ import sys
 import unittest
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/"tools"))
 from observe_d3d9_create_device import triangle_pixels,compare_triangle_pixels,shader_words
+import observe_d3d9_create_device as observer
+from unittest.mock import patch
 
 class TriangleComparatorTests(unittest.TestCase):
     def test_metadata_and_footer_are_excluded_from_the_complete_pixel_region(self):
@@ -32,6 +34,18 @@ class LegacyShaderComparatorTests(unittest.TestCase):
             pixels[20*32+10]=0xff0000 if frame==0 else 0xff
             words += [0xfeed0000+frame]+[1]*8+pixels+[1]
         return words+[0xfeedffff]+[1]*7+[2099]
+    def test_font_record_retains_alpha_in_both_complete_frames(self):
+        words=[0x39534844,15]+[1]*21
+        for frame,color in [(0,0x99000000),(1,0x11335577)]:
+            pixels=[0xff0000ff]*1024;pixels[20*32+22]=color
+            pixels[20*32+10]=color if frame==0 else 0xff0000ff
+            words += [0xfeed0000+frame]+[1]*8+pixels+[1]
+        words += [0xfeedffff]+[1]*7+[2100]
+        with patch.object(observer,'FONTS',True):
+            self.assertEqual(shader_words(words),words)
+            for at,value in [(23+9+20*32+22,0x98000000),(1057+9+20*32+22,0x00335577)]:
+                changed=words.copy();changed[at]=value
+                with self.assertRaises(ValueError):shader_words(changed)
     def test_texture_record_checks_srgb_and_its_separate_metadata_extent(self):
         words=[0x39534844,2]+[1]*34
         for frame,color in [(0,0x808080),(1,0x373737)]:

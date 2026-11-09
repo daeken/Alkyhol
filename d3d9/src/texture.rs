@@ -81,6 +81,8 @@ impl SamplerState {
 pub enum SampleFormat {
     Bgra8,
     Luminance8,
+    Alpha8,
+    Argb4444,
     Bc1,
     Bc2,
     Bc3,
@@ -88,7 +90,9 @@ pub enum SampleFormat {
 impl SampleFormat {
     fn native(self) -> wgpu::TextureFormat {
         match self {
-            Self::Bgra8 | Self::Luminance8 => wgpu::TextureFormat::Bgra8Unorm,
+            Self::Bgra8 | Self::Luminance8 | Self::Alpha8 | Self::Argb4444 => {
+                wgpu::TextureFormat::Bgra8Unorm
+            }
             Self::Bc1 => wgpu::TextureFormat::Bc1RgbaUnorm,
             Self::Bc2 => wgpu::TextureFormat::Bc2RgbaUnorm,
             Self::Bc3 => wgpu::TextureFormat::Bc3RgbaUnorm,
@@ -98,11 +102,19 @@ impl SampleFormat {
         if width == 0 || height == 0 {
             return Err("zero texture block extent".into());
         }
-        if self == Self::Luminance8 {
-            width
+        let size = match self {
+            Self::Luminance8 | Self::Alpha8 => Some(1),
+            Self::Argb4444 => Some(2),
+            _ => None,
+        };
+        if let Some(size) = size {
+            let pitch = width
+                .checked_mul(size)
+                .ok_or("linear texture pitch overflow")?;
+            pitch
                 .checked_mul(height)
-                .ok_or("luminance texture byte extent overflow")?;
-            return Ok((width, height));
+                .ok_or("linear texture extent overflow")?;
+            return Ok((pitch, height));
         }
         let (w, h) = self.native().block_dimensions();
         let bytes = self.native().block_copy_size(None).unwrap();
@@ -152,8 +164,8 @@ impl Texture2D {
         if self.initialized.iter().any(|v| !v.load(Ordering::Acquire)) {
             return Err("sampling an uninitialized texture mip".into());
         }
-        if self.format == SampleFormat::Luminance8 && srgb {
-            return Err("sRGB sampling of L8 requires native format evidence".into());
+        if matches!(self.format, SampleFormat::Luminance8 | SampleFormat::Alpha8) && srgb {
+            return Err("sRGB sampling of L8/A8 requires native format evidence".into());
         }
         Ok(self.texture.create_view(&wgpu::TextureViewDescriptor {
             format: Some(if srgb {
@@ -251,14 +263,14 @@ impl Device {
         if bytes.len() != pitch as usize * rows as usize {
             return Err("texture upload byte extent differs".into());
         }
-        // L8 samples as (L,L,L,1) in D3D9. Expand without quantization while
-        // retaining the original one-byte guest mip layout and input bytes.
-        let expanded;
-        let (bytes, pitch) = if texture.format == SampleFormat::Luminance8 {
-            expanded = expand_luminance(bytes);
+        // Keep guest encodings unchanged; only the GPU upload is expanded.
+        let expanded = expand_linear(texture.format, bytes);
+        let (bytes, pitch) = if let Some(expanded) = &expanded {
             (
                 expanded.as_slice(),
-                width.checked_mul(4).ok_or("luminance GPU pitch overflow")?,
+                width
+                    .checked_mul(4)
+                    .ok_or("expanded texture pitch overflow")?,
             )
         } else {
             (bytes, pitch)
@@ -289,6 +301,30 @@ impl Device {
         Ok(())
     }
 }
+fn expand_linear(format: SampleFormat, bytes: &[u8]) -> Option<Vec<u8>> {
+    match format {
+        SampleFormat::Luminance8 => Some(expand_luminance(bytes)),
+        // A8 is the documented exception: absent RGB components are zero.
+        SampleFormat::Alpha8 => Some(bytes.iter().flat_map(|&alpha| [0, 0, 0, alpha]).collect()),
+        SampleFormat::Argb4444 => Some(
+            bytes
+                .as_chunks::<2>()
+                .0
+                .iter()
+                .flat_map(|&pair| {
+                    let word = u16::from_le_bytes(pair);
+                    [
+                        (word & 15) as u8 * 17,
+                        ((word >> 4) & 15) as u8 * 17,
+                        ((word >> 8) & 15) as u8 * 17,
+                        ((word >> 12) & 15) as u8 * 17,
+                    ]
+                })
+                .collect(),
+        ),
+        _ => None,
+    }
+}
 fn expand_luminance(bytes: &[u8]) -> Vec<u8> {
     bytes
         .iter()
@@ -298,6 +334,31 @@ fn expand_luminance(bytes: &[u8]) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn alpha_and_argb4444_keep_raw_pitches_and_every_channel_value() {
+        assert_eq!(SampleFormat::Alpha8.block_layout(3, 2).unwrap(), (3, 2));
+        assert_eq!(SampleFormat::Argb4444.block_layout(3, 2).unwrap(), (6, 2));
+        let alpha: Vec<_> = (0..=255).collect();
+        let expanded = expand_linear(SampleFormat::Alpha8, &alpha).unwrap();
+        for (n, pixel) in expanded.as_chunks::<4>().0.iter().enumerate() {
+            assert_eq!(*pixel, [0, 0, 0, n as u8]);
+        }
+        let words: Vec<_> = (0..=u16::MAX).flat_map(u16::to_le_bytes).collect();
+        let expanded = expand_linear(SampleFormat::Argb4444, &words).unwrap();
+        for (n, pixel) in expanded.as_chunks::<4>().0.iter().enumerate() {
+            assert_eq!(
+                *pixel,
+                [
+                    (n & 15) as u8 * 17,
+                    ((n >> 4) & 15) as u8 * 17,
+                    ((n >> 8) & 15) as u8 * 17,
+                    ((n >> 12) & 15) as u8 * 17
+                ]
+            );
+        }
+        assert!(SampleFormat::Argb4444.block_layout(u32::MAX, 1).is_err());
+        assert!(SampleFormat::Alpha8.block_layout(u32::MAX, 2).is_err());
+    }
     #[test]
     fn block_rows_and_mip_tails_preserve_complete_encoded_blocks() {
         assert_eq!(SampleFormat::Bgra8.block_layout(3, 2).unwrap(), (12, 2));
