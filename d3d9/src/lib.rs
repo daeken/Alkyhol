@@ -2,7 +2,7 @@
 //! Initial contract: single-sample BGRA8 render targets, clear and real readback.
 use std::{
     sync::{
-        Arc,
+        Arc, OnceLock,
         atomic::{AtomicBool, Ordering},
         mpsc,
     },
@@ -36,6 +36,7 @@ pub struct Device {
     queue: wgpu::Queue,
     info: wgpu::AdapterInfo,
     occlusion: Arc<std::sync::Mutex<occlusion::Tracker>>,
+    null_textures: OnceLock<Result<[SampledTexture; 3]>>,
 }
 #[derive(Clone)]
 pub struct Target {
@@ -101,6 +102,7 @@ impl Device {
             queue,
             info,
             occlusion: Arc::default(),
+            null_textures: OnceLock::new(),
         })
     }
     pub fn adapter_name(&self) -> &str {

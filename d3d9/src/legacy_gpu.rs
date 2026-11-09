@@ -1,7 +1,10 @@
 //! Real programmable draws over translated legacy bytecode. Initial binding
 //! profile: float constants, triangle lists and explicit float vertex attributes.
 use super::{Depth, Device, RenderState, Result, Target, TextureBinding, depth, legacy};
-use std::{collections::BTreeSet, sync::atomic::Ordering};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    sync::atomic::Ordering,
+};
 use wgpu::util::DeviceExt;
 pub struct LegacyDraw<'a> {
     /// Normalized indices into this draw's vertex slice; uploaded as a GPU INDEX buffer.
@@ -75,6 +78,45 @@ fn resources(module: &naga::Module, stage: u32, used: &mut BTreeSet<(u32, u32)>)
         }
     }
     Ok(())
+}
+fn texture_dimensions(
+    module: &naga::Module,
+    used: &BTreeSet<(u32, u32)>,
+) -> Result<BTreeMap<u32, naga::ImageDimension>> {
+    let mut result = BTreeMap::new();
+    for (_, global) in module.global_variables.iter() {
+        let Some(binding) = &global.binding else {
+            continue;
+        };
+        if binding.group != 1
+            || !(16..32).contains(&binding.binding)
+            || !used.contains(&(1, binding.binding))
+        {
+            continue;
+        }
+        let naga::TypeInner::Image {
+            dim,
+            arrayed: false,
+            class:
+                naga::ImageClass::Sampled {
+                    kind: naga::ScalarKind::Float,
+                    multi: false,
+                },
+        } = module.types[global.ty].inner
+        else {
+            return Err("legacy pixel texture requires a nonarrayed float sampled image".into());
+        };
+        if !matches!(
+            dim,
+            naga::ImageDimension::D2 | naga::ImageDimension::D3 | naga::ImageDimension::Cube
+        ) {
+            return Err("legacy pixel texture dimension is outside the D3D9 profile".into());
+        }
+        if result.insert(binding.binding - 16, dim).is_some() {
+            return Err("conflicting pixel texture binding".into());
+        }
+    }
+    Ok(result)
 }
 impl Device {
     pub fn draw_legacy(&self, target: &mut Target, draw: &LegacyDraw<'_>) -> Result<()> {
@@ -181,34 +223,44 @@ impl Device {
                 textures.insert((binding - 16) % 16);
             }
         }
-        for &slot in &textures {
-            let input = draw
-                .textures
-                .iter()
-                .find(|t| t.slot == slot)
-                .ok_or("pixel shader texture slot is not bound")?;
-            if input.texture.shares_target(target) {
-                return Err("D3D9 draw cannot sample its current render target".into());
-            }
-            input
-                .texture
-                .view(input.sampler.srgb())
-                .map_err(|e| format!("pixel texture slot {slot}: {e}"))?;
+        let dimensions = texture_dimensions(&ps, &used)?;
+        if textures.iter().any(|slot| !dimensions.contains_key(slot)) {
+            return Err("pixel sampler has no supported sampled image declaration".into());
         }
-        self.scope();
+        // Validate real bindings first. A locked/uninitialized/mismatched real
+        // resource must not acquire the NULL sampler behavior.
+        for &slot in &textures {
+            if let Some(input) = draw.textures.iter().find(|t| t.slot == slot) {
+                if input.texture.shares_target(target) {
+                    return Err("D3D9 draw cannot sample its current render target".into());
+                }
+                input
+                    .texture
+                    .view(input.sampler.srgb())
+                    .map_err(|e| format!("pixel texture slot {slot}: {e}"))?;
+            }
+        }
+        // Initialize private NULL views before entering this draw's error scope.
         let texture_resources: Vec<_> = textures
             .iter()
             .map(|&slot| {
-                let input = draw
-                    .textures
-                    .iter()
-                    .find(|t| t.slot == slot)
-                    .ok_or("pixel shader texture slot is not bound")?;
-                let view = input.texture.view(input.sampler.srgb())?;
-                let sampler = self.device.create_sampler(&input.sampler.descriptor());
-                Ok((slot, view, sampler))
+                let (view, sampler) =
+                    if let Some(input) = draw.textures.iter().find(|t| t.slot == slot) {
+                        (input.texture.view(input.sampler.srgb())?, input.sampler)
+                    } else {
+                        (
+                            self.null_texture_view(dimensions[&slot])?,
+                            crate::SamplerState::default(),
+                        )
+                    };
+                Ok((
+                    slot,
+                    view,
+                    self.device.create_sampler(&sampler.descriptor()),
+                ))
             })
             .collect::<Result<_>>()?;
+        self.scope();
         let vertex = self
             .device
             .create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -403,6 +455,44 @@ mod viewport_tests {
             [0, 0, 1, 1, (-0.1f32).to_bits(), 1f32.to_bits()],
         ] {
             assert!(viewport_from_words(words, 32, 32).is_err());
+        }
+    }
+}
+
+#[cfg(test)]
+mod null_tests {
+    use super::*;
+    #[test]
+    fn null_resource_dimensions_follow_used_float_image_declarations() {
+        for (ty, dimension) in [
+            ("texture_2d<f32>", naga::ImageDimension::D2),
+            ("texture_cube<f32>", naga::ImageDimension::Cube),
+            ("texture_3d<f32>", naga::ImageDimension::D3),
+        ] {
+            let module =
+                naga::front::wgsl::parse_str(&format!("@group(1) @binding(23) var image: {ty};"))
+                    .unwrap();
+            assert_eq!(
+                texture_dimensions(&module, &BTreeSet::from([(1, 23)])).unwrap(),
+                BTreeMap::from([(7, dimension)])
+            );
+            assert!(
+                texture_dimensions(&module, &BTreeSet::new())
+                    .unwrap()
+                    .is_empty()
+            );
+        }
+        for ty in [
+            "texture_2d<u32>",
+            "texture_2d_array<f32>",
+            "texture_multisampled_2d<f32>",
+            "texture_depth_2d",
+            "texture_1d<f32>",
+        ] {
+            let module =
+                naga::front::wgsl::parse_str(&format!("@group(1) @binding(16) var image: {ty};"))
+                    .unwrap();
+            assert!(texture_dimensions(&module, &BTreeSet::from([(1, 16)])).is_err());
         }
     }
 }

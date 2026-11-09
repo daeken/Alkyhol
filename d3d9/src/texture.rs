@@ -223,6 +223,43 @@ pub struct TextureBinding<'a> {
     pub sampler: SamplerState,
 }
 impl Device {
+    /// D3D9 NULL float pixel samplers read (0,0,0,1). These private, initialized
+    /// views implement that API state only; a bound invalid/uninitialized
+    /// texture is never replaced. Views retain the declared image dimension.
+    pub(crate) fn null_texture_view(
+        &self,
+        dimension: naga::ImageDimension,
+    ) -> Result<wgpu::TextureView> {
+        let textures = self
+            .null_textures
+            .get_or_init(|| {
+                let color = [0, 0, 0, 255];
+                let mut flat = self.create_sampled_texture(1, 1, 1, SampleFormat::Bgra8)?;
+                self.upload_texture(&mut flat, 0, &color)?;
+                let mut cube = self.create_cube_texture(1, 1, SampleFormat::Bgra8)?;
+                for face in 0..6 {
+                    self.upload_cube_face(&mut cube, face, 0, &color)?;
+                }
+                let mut volume = self.create_volume_texture(1, 1, 1, 1)?;
+                self.upload_volume(&mut volume, 0, &color)?;
+                Ok([flat, cube, volume])
+            })
+            .as_ref()
+            .map_err(Clone::clone)?;
+        let index = match dimension {
+            naga::ImageDimension::D2 => 0,
+            naga::ImageDimension::Cube => 1,
+            naga::ImageDimension::D3 => 2,
+            _ => {
+                return Err(
+                    "NULL texture dimension is outside the D3D9 pixel sampler profile".into(),
+                );
+            }
+        };
+        textures[index].view(false)
+    }
+}
+impl Device {
     /// The render attachment and sampled texture are two views of the same
     /// allocation; clear/draw initialization is shared without a CPU copy.
     pub fn create_render_texture(&self, width: u32, height: u32) -> Result<(Texture2D, Target)> {

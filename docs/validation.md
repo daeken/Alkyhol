@@ -7331,3 +7331,44 @@ the physical allocation evidence. The normal suite explicitly skips this one
 link-dependent test: 229 other PE units pass. Eighteen observer units, including
 new strict transport rejection checks, and Clippy pass. Original scene loading
 after the allocator change remains pending; user game/profile data stays local.
+
+### User-reported Orzammar cinematic and NULL pixel samplers
+
+The user reports that clean f0a3bb4 progresses into the in-engine Orzammar
+introductory cinematic, then stops partway through it. The captured run lasts
+944.04 seconds and terminates with `pixel shader texture slot is not bound`.
+The cinematic identification is the user's observation; no full native Windows
+frame comparison or independently captured cinematic-frame assertion is added.
+The earlier low-storage stop is absent from this run.
+
+D3D9 NULL pixel sampling is now implemented as opaque black (0,0,0,1), using
+private initialized one-texel 2D/cube/volume GPU views matching the shader's actual
+float-image declaration. A per-device lazy cache retains those three resources;
+GetTexture/application COM state is unchanged. This applies only when a slot has
+no application binding. Real bound resources still undergo initialization,
+feedback, type and lock checks; invalid assets are not replaced with a NULL view.
+Array/integer/depth/multisample/unsupported image declarations remain failures.
+
+The expected result is independently specified in Wine's existing native-facing
+[unbound sampler tests](https://github.com/wine-mirror/wine/blob/master/dlls/d3d9/tests/visual.c)
+(the 2D/cube/volume unbound checks), not inferred from a desired DAO picture.
+No Wine test code or shader bytes were copied into the MIT fixtures. The owned
+version-29 --null-textures PE uses the existing legal SM3 2D bytecode, alternates
+NULL/real/NULL/real bindings, checks actual GetTexture values and all RGBA values
+in four complete frames, including opaque-black alpha versus the real texture's
+quarter alpha. All 4168 words pass on physical M4. Its identical native Windows
+comparison is wired and pending, so this is not yet new native evidence.
+
+The physical GPU test separately passes 2D/cube/volume NULL output, real nonopaque
+texture output and repeated unbinding over complete targets; real uninitialized
+textures still fail. A host unit validates dimensions and rejects unsupported
+image classes. Twenty-nine backend units, nineteen observer units, both crates'
+Clippy and the new physical GPU test pass. The normal backend unit suite also
+retains its two explicitly GPU-dependent skips. Original cinematic progression
+after this change remains pending.
+
+The user also requests a future pure-Rust SharpRetro runner and coordination
+with “Design iterative decompiler workflow.” That coordination is complete;
+verified Rust entry points, ownership, memory/ABI boundaries and incomplete CPU
+state/exception areas are recorded in sharpretro.md. This is an integration plan,
+not an implemented or validated replacement for the current Rosetta runner.

@@ -18,13 +18,13 @@ static const DWORD pixel_code[]={
 #include "legacy-volume.ps.inc"
 #elif defined(MODEL2)
 #include "legacy-slots128.ps.inc"
-#elif defined(TEXTURES)||defined(FONTS)
+#elif defined(TEXTURES)||defined(FONTS)||defined(NULL_TEXTURES)
 #include "legacy-texture.ps.inc"
 #else
 #include "legacy-color.ps.inc"
 #endif
 };
-#ifdef USER_DRAW
+#if defined(USER_DRAW)||defined(NULL_TEXTURES)
 static DWORD words[5500],used;
 #elif defined(VOLUME)
 static DWORD words[4500],used;
@@ -413,7 +413,9 @@ static HRESULT user_draw(UINT frame,IDirect3DVertexBuffer9* vb){
 #endif
 extern "C" DWORD entry(){
  DWORD before=stack();put(0x39534844);
-#ifdef TRANSFERS
+#ifdef NULL_TEXTURES
+put(29);
+#elif defined(TRANSFERS)
 put(28);
 #elif defined(VOLUME)
 put(27);
@@ -470,7 +472,7 @@ put(1);
  if(!RegisterClassExW(&wc))return 2;
  HWND window=CreateWindowExW(0,wc.lpszClassName,L"Original legacy shader execution",0x80000000,80,80,32,32,NULL,NULL,wc.hInstance,NULL);
  if(!window)return 3;
- #if defined(MODEL2)||defined(DEPTH)||defined(FONTS)||defined(FRESH_STENCIL)||defined(BIAS)
+ #if defined(MODEL2)||defined(DEPTH)||defined(FONTS)||defined(FRESH_STENCIL)||defined(BIAS)||defined(NULL_TEXTURES)
  g_pD3D=Direct3DCreate9(32);if(!g_pD3D)return 4;
  D3DPRESENT_PARAMETERS present={};present.BackBufferWidth=32;present.BackBufferHeight=32;present.BackBufferFormat=21;present.BackBufferCount=1;present.SwapEffect=1;present.hDeviceWindow=window;present.Windowed=TRUE;present.PresentationInterval=0x80000000;
  #if defined(DEPTH)||defined(FRESH_STENCIL)||defined(BIAS)
@@ -535,12 +537,18 @@ put(1);
  for(UINT n=0;n<3;n++)put(query_counts[n]);
  #endif
  IDirect3DSurface9 *back=NULL,*copy=NULL;ok(g_pd3dDevice->GetBackBuffer(0,0,0,&back)==S_OK);ok(g_pd3dDevice->CreateOffscreenPlainSurface(32,32,
-#if defined(MODEL2)||defined(DEPTH)||defined(FONTS)||defined(FRESH_STENCIL)||defined(BIAS)
+#if defined(MODEL2)||defined(DEPTH)||defined(FONTS)||defined(FRESH_STENCIL)||defined(BIAS)||defined(NULL_TEXTURES)
 21,
 #else
 22,
 #endif
 2,&copy,NULL)==S_OK);if(!back||!copy)return 10;
+ #ifdef NULL_TEXTURES
+ IDirect3DTexture9* null_control=NULL;D3DLOCKED_RECT null_lock={};
+ BOOL null_ok=g_pd3dDevice->CreateTexture(1,1,1,0,21,1,&null_control,NULL)==S_OK&&null_control&&null_control->LockRect(0,&null_lock,NULL,0)==S_OK&&null_lock.pBits;
+ if(null_ok){*(DWORD*)null_lock.pBits=0x4080c020;null_ok=null_control->UnlockRect(0)==S_OK;}
+ ok(null_ok);if(!null_ok)return 54;
+ #endif
  #ifdef TRANSFERS
  DWORD transfer_stage=transfers_witness();ok(transfer_stage==0);if(transfer_stage)return fail(53,transfer_stage);
  #endif
@@ -621,7 +629,7 @@ put(1);
  DWORD index_stage=index_witness();ok(index_stage==0);if(index_stage)return fail(18,index_stage);
  #endif
  for(UINT frame=0;frame<
- #if defined(USER_DRAW)||defined(VOLUME)
+ #if defined(USER_DRAW)||defined(VOLUME)||defined(NULL_TEXTURES)
  4
  #else
  2
@@ -698,6 +706,12 @@ put(1);
   #endif
   ok(g_pd3dDevice->SetSamplerState(0,11,srgb_value)==S_OK);DWORD srgb=99;ok(g_pd3dDevice->GetSamplerState(0,11,&srgb)==S_OK&&srgb==srgb_value);
   #endif
+  #ifdef NULL_TEXTURES
+  if(g_pd3dDevice->SetTexture(0,frame%2?null_control:NULL)!=S_OK)return 55;
+  IDirect3DBaseTexture9* observed=NULL;
+  if(g_pd3dDevice->GetTexture(0,&observed)!=S_OK||observed!=(frame%2?null_control:NULL))return 56;
+  if(observed)observed->Release();
+  #endif
   ok(g_pd3dDevice->SetVertexShaderConstantF(0,matrix,4)==S_OK);
   static float actual[16];ok(g_pd3dDevice->GetVertexShaderConstantF(0,actual,4)==S_OK&&actual[3]==matrix[3]);
   #if defined(STENCIL)||defined(FRESH_STENCIL)||defined(BIAS)
@@ -750,12 +764,15 @@ put(1);
   ok(g_pd3dDevice->GetRenderTargetData(back,copy)==S_OK);
   D3DLOCKED_RECT lock={};ok(copy->LockRect(&lock,NULL,D3DLOCK_READONLY)==S_OK);if(!lock.pBits)return 11;
   for(UINT y=0;y<32;y++)for(UINT x=0;x<32;x++)put(((DWORD*)((unsigned char*)lock.pBits+y*lock.Pitch))[x]
-  #ifndef FONTS
+  #if !defined(FONTS)&&!defined(NULL_TEXTURES)
   &0xffffff
   #endif
   );
   ok(copy->UnlockRect()==S_OK);
  }
+ #ifdef NULL_TEXTURES
+ if(g_pd3dDevice->SetTexture(0,NULL)!=S_OK)return 57;null_control->Release();
+ #endif
  copy->Release();back->Release();
  #ifdef VOLUME
  if(g_pd3dDevice->SetTexture(0,NULL)!=S_OK)return 51;volume_luminance->Release();

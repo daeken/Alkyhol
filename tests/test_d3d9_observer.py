@@ -161,6 +161,19 @@ class LegacyShaderComparatorTests(unittest.TestCase):
             with self.assertRaises(ValueError):decode(struct.pack('<8I',*bad),texture_storage=True)
         with self.assertRaises(ValueError):decode(struct.pack('<7I',*words[:-1]),texture_storage=True)
 
+    def test_null_texture_record_retains_alpha_binding_changes_and_complete_frames(self):
+        words=[0x39534844,29]+[1]*21
+        for frame in range(4):
+            color=0x4080c020 if frame%2 else 0xff000000
+            pixels=[0xff0000ff]*1024;pixels[20*32+22]=color;pixels[20*32+10]=color if frame==0 else 0xff0000ff
+            words += [0xfeed0000+frame]+[1]*8+pixels+[1]
+        words += [0xfeedffff]+[1]*7+[4168]
+        with patch.object(observer,'NULL_TEXTURES',True):
+            self.assertEqual(shader_words(words),words)
+            for at,value in [(22,0),(32+20*32+22,0),(32+1034+20*32+22,0xff80c020),(32+2*1034+20*32+22,0x4080c020),(4167,4167)]:
+                changed=words.copy();changed[at]=value
+                with self.assertRaises(ValueError):shader_words(changed)
+
     def test_exact_frames_and_stack_extent(self):
         words=self.record();self.assertEqual(shader_words(words),words)
         for changed in [words[:-1],words+[0]]:
