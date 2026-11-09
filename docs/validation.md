@@ -6112,3 +6112,48 @@ compared. CI 42617007466 passes both startup/API jobs. Physical M4 agrees with t
 identical native 66-word pre-Winsock Win32/event-set PE and 39-word admitted select
 PE. The preserved negative-timeout discrepancy remains an explicit exclusion.
 These are finite owned observations, not native DAO frame or game equivalence.
+
+## Original DAO intro rendering through its own binary shaders
+
+The integrated original EXE now renders an identifiable original Dragon Age
+intro frame, using the original Bink decoder, original full-size L8 YUV planes
+and original legacy pixel shader. The actual 1710x1107 Present readback is
+captured privately; no game image, shader or inventory enters the repository.
+This is physical M4/Rosetta execution with the dirty source identities retained
+by the private driver, not a native-Windows full-frame comparison. The next movie
+opens, then low guest-address mapping stops explicitly. No main menu, gameplay
+or audio playback is claimed.
+
+The reached drawing profile adds triangle strips without dropping triangles or
+changing winding (including degenerates), subviewport state/clipping and a
+POSITIONT fixed vertex adapter. POSITIONT bypasses the bound vertex shader while
+preserving the application's observable shader binding and constants. The
+adapter reconstructs clip W from RHW and links actual COLOR/TEXCOORD semantics
+to the unchanged following pixel shader. It is generated with open Naga, not a
+replacement movie shader. The [Microsoft declaration rules](https://learn.microsoft.com/en-us/windows/win32/direct3d9/mapping-fvf-codes-to-a-directx-9-declaration)
+require bypassing vertex processing for POSITIONT. Nondefault POSITIONT depth
+ranges, fixed untextured subviewports, subviewport Clear and stencil Clear remain
+explicitly unavailable; unsupported varyings are not invented.
+
+This supersedes the earlier fresh-managed-L8 read-only upload description:
+[new managed textures are initially dirty](https://learn.microsoft.com/en-us/windows/win32/direct3d9/texture-dirty-regions).
+The first L8 read-only unlock now uploads its actual existing owned CPU bytes if
+no prior GPU copy exists. It does not promise Windows initial allocation values,
+change application bytes or suppress the backend's uninitialized sampling guard.
+Later read-only unlocks do not upload. Original Bink uses this previous-buffer
+initialization path.
+
+The physical GPU test exercises nonuniform RHW, original owned pixel bytecode,
+a four-color 2x2 texture, full/subviewport clipping and invalid viewport
+rejection without output changes. The owned 2,125-word PE exercises the same
+render path, POSITIONT with a still-bound VS, Get/SetViewport guards and failure
+preservation, shader/COM retention, two complete 32x32 frames and guest stack.
+It passes on physical M4; identical-PE native and hosted comparisons are added
+and pending. Existing 200 PE units and backend units passed; targeted GPU and
+observer tests pass. The earlier L8 comparison remains finite known-byte data,
+not original DAO frame equivalence.
+
+CI 42618856909 passes all three D3D9 jobs on 775b18a; startup/API comparison
+42618857208 and conformance 42618857330 also pass. The separate broad PE workflow
+42618857300 still has earlier native discrepancy failures; no all-CI-green claim
+is made.

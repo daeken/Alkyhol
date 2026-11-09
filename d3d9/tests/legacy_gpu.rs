@@ -495,3 +495,114 @@ fn bc123_native_blocks_keep_mip_tails_color_alpha_and_srgb_views() {
         assert_eq!(at(device.readback(&target).unwrap()), expected);
     }
 }
+
+#[test]
+#[ignore = "requires an actual native GPU"]
+fn pretransformed_rhw_preserves_screen_positions_and_subviewport_clipping() {
+    use alkyhol_d3d9::{RenderState, SamplerState, TextureBinding, compiler::Input, fixed_vertex};
+    let device = Device::new().unwrap();
+    let mut target = device.create_target(32, 32).unwrap();
+    let mut texture = device.create_texture(2, 2, 1).unwrap();
+    device
+        .upload_texture(
+            &mut texture,
+            0,
+            &[
+                0, 0, 255, 255, 0, 255, 0, 255, 255, 0, 0, 255, 255, 255, 255, 255,
+            ],
+        )
+        .unwrap();
+    let shader = fixed_vertex::vertex_shader(&[Input {
+        semantic: "COLOR".into(),
+        index: 0,
+        register: 0,
+    }])
+    .unwrap();
+    let vertices: Vec<u8> = [
+        [4f32, 4., 0.5, 0.5, 0., 0., 0., 1.],
+        [28., 4., 0.5, 2., 1., 0., 0., 1.],
+        [4., 28., 0.5, 0.5, 0., 1., 0., 1.],
+        [28., 28., 0.5, 2., 1., 1., 0., 1.],
+    ]
+    .into_iter()
+    .flatten()
+    .flat_map(f32::to_le_bytes)
+    .collect();
+    let attributes = [
+        wgpu::VertexAttribute {
+            format: wgpu::VertexFormat::Float32x4,
+            offset: 0,
+            shader_location: 0,
+        },
+        wgpu::VertexAttribute {
+            format: wgpu::VertexFormat::Float32x4,
+            offset: 16,
+            shader_location: 1,
+        },
+    ];
+    for viewport in [[0f32, 0., 32., 32., 0., 1.], [8., 4., 16., 20., 0., 1.]] {
+        let constants: Vec<_> = [viewport[2], viewport[3], viewport[0], viewport[1]]
+            .into_iter()
+            .flat_map(f32::to_le_bytes)
+            .collect();
+        let bindings = [TextureBinding {
+            slot: 0,
+            texture: &texture,
+            sampler: SamplerState::default(),
+        }];
+        let draw = LegacyDraw {
+            indices: Some(&[0, 1, 2, 1, 3, 2]),
+            vertex_spirv: &shader.spirv,
+            pixel_spirv: include_bytes!("fixtures/legacy-texture.ps.spv"),
+            vertices: &vertices,
+            stride: 32,
+            attributes: &attributes,
+            vertex_constants: &constants,
+            textures: &bindings,
+            pixel_constants: &[],
+        };
+        device.clear(&mut target, 0xff0000ff).unwrap();
+        device
+            .draw_legacy_viewport_depth_state(
+                &mut target,
+                &draw,
+                &RenderState::default(),
+                None,
+                viewport,
+            )
+            .unwrap();
+        let pixels = device.readback(&target).unwrap();
+        let at = |x: usize, y: usize| &pixels[(y * 32 + x) * 4..(y * 32 + x + 1) * 4];
+        assert_eq!(at(0, 0), [255, 0, 0, 255]);
+        assert_eq!(at(10, 8), [0, 255, 0, 255]); // Affine UV would incorrectly select red.
+        assert_eq!(at(22, 20), [255, 255, 255, 255]);
+        assert_eq!(
+            at(6, 8),
+            if viewport[0] == 0. {
+                [0, 0, 255, 255]
+            } else {
+                [255, 0, 0, 255]
+            }
+        );
+        assert_eq!(
+            at(26, 8),
+            if viewport[0] == 0. {
+                [0, 255, 0, 255]
+            } else {
+                [255, 0, 0, 255]
+            }
+        );
+        assert!(
+            device
+                .draw_legacy_viewport_depth_state(
+                    &mut target,
+                    &draw,
+                    &RenderState::default(),
+                    None,
+                    [31., 0., 2., 32., 0., 1.]
+                )
+                .is_err()
+        );
+        assert_eq!(device.readback(&target).unwrap(), pixels);
+    }
+}

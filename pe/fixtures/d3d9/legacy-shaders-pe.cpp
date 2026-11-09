@@ -28,7 +28,13 @@ static void ok(BOOL n){put(n?1:0);}
 static DWORD fail(DWORD status,HRESULT detail){put(0xdeadc0de);put(status);put((DWORD)detail);DWORD done=0;WriteFile(GetStdHandle((DWORD)-11),words,used*4,&done,NULL);return status;}
 static DWORD stack(){DWORD s;__asm__ volatile("movl %%esp,%0":"=r"(s));return s;}
 static LRESULT __stdcall proc(HWND w,UINT m,WPARAM a,LPARAM b){return DefWindowProcW(w,m,a,b);}
-#ifndef PACKED
+#ifdef TRANSFORMED
+// Actual screen coordinates and nonuniform RHW. The bound programmable VS must
+// be bypassed by POSITIONT; original PS samples the interpolated COLOR0.xy.
+static const float vertices[][8]={{4,4,.5f,.5f,0,0,0,1},{28,4,.5f,2,1,0,0,1},{4,28,.5f,.5f,0,1,0,1},{28,28,.5f,2,1,1,0,1}};
+static float matrix[16]={1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1};
+static const D3DVERTEXELEMENT9 elements[]={{0,0,3,0,9,0},{0,16,3,0,10,0},{255,0,17,0,0,0}};
+#elif !defined(PACKED)
 static const float vertices[][8]={{0,.75f,.5f,1,1,0,0,1},{.75f,-.75f,.5f,1,1,0,0,1},{-.75f,-.75f,.5f,1,1,0,0,1}};
 static float matrix[16]={1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1};
 static const D3DVERTEXELEMENT9 elements[]={{0,0,3,0,0,0},{0,16,3,0,10,0},{255,0,17,0,0,0}};
@@ -146,7 +152,9 @@ static DWORD compressed_witness(){
 #endif
 extern "C" DWORD entry(){
  DWORD before=stack();put(0x39534844);
-#ifdef LUMINANCE
+#ifdef TRANSFORMED
+put(11);
+#elif defined(LUMINANCE)
 put(10);
 #elif defined(PACKED)
 put(9);
@@ -221,14 +229,22 @@ put(1);
  #else
  21;
  #endif
- IDirect3DTexture9* texture=NULL;ok(g_pd3dDevice->CreateTexture(1,1,1,0,sampled_format,1,&texture,NULL)==S_OK);if(!texture)return 13;
+ #ifdef TRANSFORMED
+ const UINT texture_extent=2;
+ #else
+ const UINT texture_extent=1;
+ #endif
+ IDirect3DTexture9* texture=NULL;ok(g_pd3dDevice->CreateTexture(texture_extent,texture_extent,1,0,sampled_format,1,&texture,NULL)==S_OK);if(!texture)return 13;
  #ifdef LUMINANCE
  D3DLOCKED_RECT initial={};BOOL initial_lock=texture->LockRect(0,&initial,NULL,16)==S_OK&&initial.pBits&&initial.Pitch>=1;
  if(initial_lock){volatile unsigned char observed=*(volatile unsigned char*)initial.pBits;(void)observed;initial_lock=texture->UnlockRect(0)==S_OK;}ok(initial_lock); // No initial byte value is promised or compared.
  #endif
- ok(texture->GetLevelCount()==1);D3DSURFACE_DESC desc={};ok(texture->GetLevelDesc(0,&desc)==S_OK&&desc.Format==sampled_format&&desc.Type==1&&desc.Pool==1&&desc.Width==1&&desc.Height==1);
- INT whole_texture[4]={0,0,1,1};D3DLOCKED_RECT texlock={};ok(texture->LockRect(0,&texlock,whole_texture,0)==S_OK);if(!texlock.pBits)return 14;
- #ifdef LUMINANCE
+ ok(texture->GetLevelCount()==1);D3DSURFACE_DESC desc={};ok(texture->GetLevelDesc(0,&desc)==S_OK&&desc.Format==sampled_format&&desc.Type==1&&desc.Pool==1&&desc.Width==texture_extent&&desc.Height==texture_extent);
+ INT whole_texture[4]={0,0,(INT)texture_extent,(INT)texture_extent};D3DLOCKED_RECT texlock={};ok(texture->LockRect(0,&texlock,whole_texture,0)==S_OK);if(!texlock.pBits)return 14;
+ #ifdef TRANSFORMED
+ ((DWORD*)texlock.pBits)[0]=0xffff0000;((DWORD*)texlock.pBits)[1]=0xff00ff00;
+ ((DWORD*)((unsigned char*)texlock.pBits+texlock.Pitch))[0]=0xff0000ff;((DWORD*)((unsigned char*)texlock.pBits+texlock.Pitch))[1]=0xffffffff;
+ #elif defined(LUMINANCE)
  *(unsigned char*)texlock.pBits=128;
  #else
  *(DWORD*)texlock.pBits=0x80808080;
@@ -236,7 +252,12 @@ put(1);
  ok(texture->UnlockRect(0)==S_OK);ok(g_pd3dDevice->SetTexture(0,texture)==S_OK);
  IDirect3DBaseTexture9* retrieved=NULL;ok(g_pd3dDevice->GetTexture(0,&retrieved)==S_OK&&retrieved==texture);if(retrieved)retrieved->Release();
  parent=NULL;ok(texture->GetDevice(&parent)==S_OK&&parent==g_pd3dDevice);if(parent)parent->Release();ok(texture->GetType()==3);
- DWORD state=99;ok(g_pd3dDevice->GetSamplerState(0,11,&state)==S_OK&&state==0);ok(g_pd3dDevice->SetSamplerState(0,5,2)==S_OK);ok(g_pd3dDevice->GetSamplerState(0,5,&state)==S_OK&&state==2);
+ #ifdef TRANSFORMED
+ const DWORD filter=1;
+ #else
+ const DWORD filter=2;
+ #endif
+ DWORD state=99;ok(g_pd3dDevice->GetSamplerState(0,11,&state)==S_OK&&state==0);ok(g_pd3dDevice->SetSamplerState(0,5,filter)==S_OK);ok(g_pd3dDevice->GetSamplerState(0,5,&state)==S_OK&&state==filter);
  ok(g_pD3D->CheckDeviceFormat(0,1,22,
  #ifdef LUMINANCE
  0,
@@ -269,6 +290,10 @@ put(1);
  DWORD index_stage=index_witness();ok(index_stage==0);if(index_stage)return fail(18,index_stage);
  #endif
  for(UINT frame=0;frame<2;frame++){
+  #ifdef TRANSFORMED
+  DWORD full[6]={0,0,32,32,0,0x3f800000};
+  if(g_pd3dDevice->SetViewport(full)!=S_OK)return 26;
+  #endif
   #ifdef PACKED
   // Change only the fetch representation on frame 2. The shader bodies and
   // original integer positions stay identical; UBYTE4N RGBA differs from ARGB.
@@ -311,8 +336,22 @@ put(1);
  #else
  1,0xff0000ff,1,
  #endif
- 0)==S_OK);ok(g_pd3dDevice->BeginScene()==S_OK);ok(
- #ifdef INDEXED
+ 0)==S_OK);
+ #ifdef TRANSFORMED
+ DWORD viewport[6]={frame?8u:0u,frame?4u:0u,frame?16u:32u,frame?20u:32u,0,0x3f800000};
+ ok(g_pd3dDevice->SetViewport(viewport)==S_OK);
+ DWORD observed[8]={0x719bad15,0,0,0,0,0,0,0x719bad15};
+ BOOL same=g_pd3dDevice->GetViewport(observed+1)==S_OK&&observed[0]==0x719bad15&&observed[7]==0x719bad15;
+ for(UINT n=0;n<6;n++)if(observed[n+1]!=viewport[n])same=FALSE;ok(same);
+ DWORD invalid[6]={31,0,2,32,0,0x3f800000};
+ ok(g_pd3dDevice->SetViewport(invalid)==(HRESULT)0x8876086c);
+ same=g_pd3dDevice->GetViewport(observed+1)==S_OK;
+ for(UINT n=0;n<6;n++)if(observed[n+1]!=viewport[n])same=FALSE;ok(same);
+ #endif
+ ok(g_pd3dDevice->BeginScene()==S_OK);ok(
+ #ifdef TRANSFORMED
+ g_pd3dDevice->DrawPrimitive(5,0,2)
+ #elif defined(INDEXED)
  g_pd3dDevice->DrawIndexedPrimitive(4,-1,2,3,1,1)
  #else
  g_pd3dDevice->DrawPrimitive(4,0,1)

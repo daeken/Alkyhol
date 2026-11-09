@@ -114,6 +114,7 @@ enum Body {
         hwnd: u32,
         scene: bool,
         parameters: [u32; 14],
+        viewport: [u32; 6],
         creation_flags: u32,
         render_state: RenderState,
         texture_stages: TextureStages,
@@ -810,6 +811,7 @@ fn device(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
             hwnd,
             scene: false,
             parameters: p,
+            viewport: [0, 0, p[0], p[1], 0, 1f32.to_bits()],
             creation_flags: a[4],
             render_state: initial_state,
             texture_stages: TextureStages::default(),
@@ -1234,6 +1236,12 @@ fn render_binding(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16], get: 
             unbind(s, previous);
         }
     }
+    let (target, _) = color_target(s, a[0]);
+    let (width, height) = target.dimensions();
+    let Body::Device { viewport, .. } = &mut s.objects.get_mut(&a[0]).unwrap().body else {
+        unreachable!()
+    };
+    *viewport = [0, 0, width, height, 0, 1f32.to_bits()];
     0
 }
 fn texture_surface(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
@@ -1560,8 +1568,32 @@ fn buffer_lock(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16], unlock: 
     write(image, a[3], &[data + a[1]]);
     0
 }
+fn primitive_vertices(kind: u32, count: u32) -> Option<u32> {
+    if count == 0 || count > 1024 * 1024 {
+        return None;
+    }
+    match kind {
+        4 => count.checked_mul(3),
+        5 => count.checked_add(2),
+        _ => None,
+    }
+}
+fn strip_triangles(source: &[u32]) -> Option<Vec<u32>> {
+    if source.len() < 3 || source.len() - 2 > 1024 * 1024 {
+        return None;
+    }
+    let mut result = Vec::with_capacity((source.len() - 2) * 3);
+    for i in 0..source.len() - 2 {
+        result.extend(if i % 2 == 0 {
+            [source[i], source[i + 1], source[i + 2]]
+        } else {
+            [source[i], source[i + 2], source[i + 1]]
+        });
+    }
+    Some(result)
+}
 fn draw_indexed(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
-    if a[1] != 4 || a[4] == 0 || a[6] == 0 {
+    if !matches!(a[1], 4 | 5) || a[4] == 0 || a[6] == 0 {
         return UNAVAILABLE;
     }
     let Body::Device { indices, .. } = &s.objects[&a[0]].body else {
@@ -1588,7 +1620,7 @@ fn draw_indexed(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 
     let Some(first) = a[5].checked_mul(width) else {
         return INVALID;
     };
-    let Some(n) = a[6].checked_mul(3).and_then(|v| v.checked_mul(width)) else {
+    let Some(n) = primitive_vertices(a[1], a[6]).and_then(|v| v.checked_mul(width)) else {
         return INVALID;
     };
     let Some(end) = first.checked_add(n) else {
@@ -1628,7 +1660,15 @@ fn draw_indexed(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 
     if values.iter().any(|&v| v < a[3] || v >= last) {
         return INVALID;
     }
-    let normalized = values.into_iter().map(|v| v - a[3]).collect();
+    let normalized: Vec<_> = values.into_iter().map(|v| v - a[3]).collect();
+    let normalized = if a[1] == 5 {
+        let Some(values) = strip_triangles(&normalized) else {
+            return INVALID;
+        };
+        values
+    } else {
+        normalized
+    };
     let mut args = [0; 16];
     args[0] = a[0];
     args[1] = a[1];
@@ -1730,7 +1770,7 @@ fn draw_buffer(
     a: &[u32; 16],
     indexed: Option<(u32, Vec<u32>)>,
 ) -> u32 {
-    if a[1] != 4 || a[3] == 0 {
+    if !matches!(a[1], 4 | 5) || a[3] == 0 {
         return UNAVAILABLE;
     }
     let Body::Device {
@@ -1751,6 +1791,11 @@ fn draw_buffer(
         return INVALID;
     }
     let programmable = (*vertex_shader, *pixel_shader, *declaration);
+    let pretransformed = s.objects.get(&programmable.2).is_some_and(|object| matches!(&object.body, Body::Declaration { elements, .. } if elements.iter().any(|e| e[1] >> 16 & 255 == 9)));
+    let program_key = (
+        if pretransformed { 0 } else { programmable.0 },
+        programmable.1,
+    );
     let fixed = *fvf == 0x44 && programmable.0 == 0 && programmable.1 == 0;
     if fixed && indexed.is_some() {
         return UNAVAILABLE;
@@ -1760,7 +1805,9 @@ fn draw_buffer(
             .validate_transformed_color(textures[0] != 0)
             .unwrap_or_else(|e| unsupported(&e));
     }
-    if !fixed && (programmable.0 == 0 || programmable.1 == 0 || programmable.2 == 0) {
+    if !fixed
+        && (programmable.0 == 0 && !pretransformed || programmable.1 == 0 || programmable.2 == 0)
+    {
         return INVALID;
     }
     let Some((p, offset, stride)) = *stream else {
@@ -1785,7 +1832,18 @@ fn draw_buffer(
     let vertices = if let Some((count, _)) = &indexed {
         Some(*count)
     } else {
-        a[3].checked_mul(3)
+        primitive_vertices(a[1], a[3])
+    };
+    let strip = if a[1] == 5 && indexed.is_none() {
+        let Some(count) = vertices else {
+            return INVALID;
+        };
+        let Some(indices) = strip_triangles(&(0..count).collect::<Vec<_>>()) else {
+            return INVALID;
+        };
+        Some(indices)
+    } else {
+        None
     };
     let Some(n) = vertices.and_then(|v| v.checked_mul(stride)) else {
         return INVALID;
@@ -1815,25 +1873,32 @@ fn draw_buffer(
     let mut fetch = Vec::new();
     if !fixed {
         let (vs, ps, decl) = programmable;
-        if !s.programs.contains_key(&(vs, ps)) {
-            let Body::Shader { code: vertex, .. } = &s.objects[&vs].body else {
-                unreachable!()
+        if !s.programs.contains_key(&program_key) {
+            let compiled = if pretransformed {
+                let Body::Shader { compiled, .. } = &s.objects[&ps].body else {
+                    unreachable!()
+                };
+                alkyhol_d3d9::fixed_vertex::vertex_shader(&compiled.inputs)
+                    .unwrap_or_else(|e| unsupported(&e))
+            } else {
+                let Body::Shader { code: vertex, .. } = &s.objects[&vs].body else {
+                    unreachable!()
+                };
+                let Body::Shader { code: pixel, .. } = &s.objects[&ps].body else {
+                    unreachable!()
+                };
+                s.compiler
+                    .as_ref()
+                    .unwrap()
+                    .compile(vertex, Stage::Vertex, Some(pixel))
+                    .unwrap_or_else(|e| unsupported(&e))
             };
-            let Body::Shader { code: pixel, .. } = &s.objects[&ps].body else {
-                unreachable!()
-            };
-            let compiled = s
-                .compiler
-                .as_ref()
-                .unwrap()
-                .compile(vertex, Stage::Vertex, Some(pixel))
-                .unwrap_or_else(|e| unsupported(&e));
-            s.programs.insert((vs, ps), compiled);
+            s.programs.insert(program_key, compiled);
         }
         let Body::Declaration { elements, .. } = &s.objects[&decl].body else {
             unreachable!()
         };
-        for input in &s.programs[&(vs, ps)].inputs {
+        for input in &s.programs[&program_key].inputs {
             let Some(element) = elements.iter().find(|e| {
                 semantic(e[1] >> 16 & 255) == Some(input.semantic.as_str())
                     && e[1] >> 24 == input.index
@@ -1922,7 +1987,23 @@ fn draw_buffer(
         .collect();
     let (mut active, _) = color_target(s, a[0]);
     let depth = depth_target(s, a[0]);
-    let program = s.programs.get(&(programmable.0, programmable.1));
+    let Body::Device { viewport, .. } = &s.objects[&a[0]].body else {
+        unreachable!()
+    };
+    let viewport_words = *viewport;
+    let (width, height) = active.dimensions();
+    let viewport = alkyhol_d3d9::viewport_from_words(viewport_words, width, height)
+        .unwrap_or_else(|e| unsupported(&e));
+    if pretransformed && viewport_words[4..] != [0, 1f32.to_bits()] {
+        // POSITIONT Z has already undergone the Windows viewport transform.
+        // Nondefault depth unprojection is not implemented by this adapter.
+        return UNAVAILABLE;
+    }
+    let fixed_constants: Vec<_> = [viewport[2], viewport[3], viewport[0], viewport[1]]
+        .iter()
+        .flat_map(|n| n.to_le_bytes())
+        .collect();
+    let program = s.programs.get(&program_key);
     let pixel_spirv = if fixed {
         Vec::new()
     } else {
@@ -1945,28 +2026,92 @@ fn draw_buffer(
         if stride != 20 {
             return INVALID;
         }
+        if viewport_words != [0, 0, width, height, 0, 1f32.to_bits()] {
+            return UNAVAILABLE;
+        }
+        let expanded;
+        let bytes = if let Some(indices) = &strip {
+            expanded = indices
+                .iter()
+                .flat_map(|&index| {
+                    bytes[index as usize * 20..(index as usize + 1) * 20]
+                        .iter()
+                        .copied()
+                })
+                .collect::<Vec<_>>();
+            expanded.as_slice()
+        } else {
+            bytes
+        };
         gpu.draw_transformed_depth_state(&mut active, bytes, render_state, depth.as_ref())
             .unwrap_or_else(|e| unsupported(&e));
     } else {
-        gpu.draw_legacy_depth_state(
+        gpu.draw_legacy_viewport_depth_state(
             &mut active,
             &LegacyDraw {
-                indices: indexed.as_ref().map(|(_, indices)| indices.as_slice()),
+                indices: indexed
+                    .as_ref()
+                    .map(|(_, indices)| indices.as_slice())
+                    .or(strip.as_deref()),
                 textures: &textures,
                 vertex_spirv: &program.unwrap().spirv,
                 pixel_spirv: &pixel_spirv,
                 vertices: &packed,
                 stride: packed_stride as u64,
                 attributes: &attributes,
-                vertex_constants,
+                vertex_constants: if pretransformed {
+                    &fixed_constants
+                } else {
+                    vertex_constants
+                },
                 pixel_constants,
             },
             render_state,
             depth.as_ref(),
+            viewport,
         )
         .unwrap_or_else(|e| unsupported(&e));
     }
     0
+}
+fn capture_present(width: u32, height: u32, bytes: &[u8]) {
+    use std::io::Write;
+    static SERIAL: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let Some(directory) = std::env::var_os("ALKYHOL_D3D9_CAPTURE_DIRECTORY") else {
+        return;
+    };
+    let serial = SERIAL.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+    if ![1, 5, 30, 60, 120].contains(&serial) {
+        return;
+    }
+    let result = (|| -> std::io::Result<_> {
+        let directory = std::path::PathBuf::from(directory);
+        std::fs::create_dir_all(&directory)?;
+        let path = directory.join(format!("present-{}-{serial:06}.ppm", std::process::id()));
+        let mut output = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)?;
+        write!(output, "P6\n{width} {height}\n255\n")?;
+        let rgb: Vec<_> = bytes
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .flat_map(|p| [p[2], p[1], p[0]])
+            .collect();
+        output.write_all(&rgb)?;
+        output.sync_all()?;
+        Ok(path)
+    })();
+    match result {
+        Ok(path) => eprintln!(
+            "PE32 actual D3D9 present capture: {} ({}x{}, serial={serial})",
+            path.display(),
+            width,
+            height
+        ),
+        Err(error) => eprintln!("PE32 present capture failed independently of rendering: {error}"),
+    }
 }
 fn semantic(usage: u32) -> Option<&'static str> {
     Some(match usage {
@@ -1978,6 +2123,7 @@ fn semantic(usage: u32) -> Option<&'static str> {
         5 => "TEXCOORD",
         6 => "TANGENT",
         7 => "BINORMAL",
+        9 => "POSITIONT",
         10 => "COLOR",
         11 => "FOG",
         12 => "DEPTH",
@@ -2056,6 +2202,11 @@ fn create_declaration(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -
             if elements.is_empty() {
                 return INVALID;
             }
+            if elements.iter().any(|e: &[u32; 2]| e[1] >> 16 & 255 == 9)
+                && elements.iter().any(|e| e[1] >> 16 & 255 == 0)
+            {
+                return INVALID;
+            }
             elements.push(element);
             addref(s, a[0]);
             let declaration = object(
@@ -2075,6 +2226,7 @@ fn create_declaration(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -
             || element[0] >> 16 & 3 != 0
             || element[1] >> 8 & 255 != 0
             || semantic(element[1] >> 16 & 255).is_none()
+            || element[1] >> 16 & 255 == 9 && (element[1] & 255 != 3 || element[1] >> 24 != 0)
             || alkyhol_d3d9::vertex::element_size(element[1] & 255).is_err()
         {
             eprintln!("D3D9 unavailable declaration element: {element:x?}");
@@ -2484,7 +2636,10 @@ fn texture_operation(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16], sl
             let Some(readonly) = level.lock.take() else {
                 return INVALID;
             };
-            if !readonly {
+            // Managed textures start wholly dirty. A first read-only unlock
+            // does not erase that initial dirty state: upload actual owned CPU
+            // bytes, without promising their undefined initial Windows values.
+            if !readonly || *format == 50 && *pool == 1 && !level.initialized {
                 let length = level.length as usize;
                 checked(image, level.data, length, false);
                 let mut bytes =
@@ -2951,13 +3106,23 @@ fn dispatch_inner(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32 {
             if a[1] == 0 {
                 return INVALID;
             }
-            let (target, _) = color_target(&s, a[0]);
-            let (width, height) = target.dimensions();
-            let viewport = [0, 0, width, height, 0, 1f32.to_bits()];
             if slot == 48 {
-                write(image, a[1], &viewport);
-            } else if read::<6>(image, a[1]) != viewport {
-                return UNAVAILABLE;
+                let Body::Device { viewport, .. } = &s.objects[&a[0]].body else {
+                    unreachable!()
+                };
+                write(image, a[1], viewport);
+            } else {
+                let words = read::<6>(image, a[1]);
+                let (target, _) = color_target(&s, a[0]);
+                let (width, height) = target.dimensions();
+                if alkyhol_d3d9::viewport_from_words(words, width, height).is_err() {
+                    return INVALID;
+                }
+                let Body::Device { viewport, .. } = &mut s.objects.get_mut(&a[0]).unwrap().body
+                else {
+                    unreachable!()
+                };
+                *viewport = words;
             }
             0
         }
@@ -2980,6 +3145,13 @@ fn dispatch_inner(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32 {
                 return UNAVAILABLE;
             }
             let (mut active, format) = color_target(&s, a[0]);
+            let (width, height) = active.dimensions();
+            let Body::Device { viewport, .. } = &s.objects[&a[0]].body else {
+                unreachable!()
+            };
+            if *viewport != [0, 0, width, height, 0, 1f32.to_bits()] {
+                return UNAVAILABLE;
+            }
             let depth = depth_target(&s, a[0]);
             let Body::Device {
                 gpu, render_state, ..
@@ -3030,6 +3202,8 @@ fn dispatch_inner(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32 {
                 return INVALID;
             }
             let mut bytes = gpu.readback(target).unwrap_or_else(|e| unsupported(&e));
+            let (width, height) = target.dimensions();
+            capture_present(width, height, &bytes);
             for p in bytes.as_chunks_mut::<4>().0 {
                 p[3] = 255;
             }
@@ -3176,6 +3350,19 @@ fn dispatch_inner(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn strips_keep_every_triangle_winding_and_degenerate_indices() {
+        assert_eq!(primitive_vertices(4, 2), Some(6));
+        assert_eq!(primitive_vertices(5, 2), Some(4));
+        assert_eq!(primitive_vertices(5, u32::MAX), None);
+        assert_eq!(primitive_vertices(5, 0), None);
+        assert_eq!(
+            strip_triangles(&[7, 8, 9, 10, 11]).unwrap(),
+            [7, 8, 9, 8, 10, 9, 9, 10, 11]
+        );
+        assert_eq!(strip_triangles(&[1, 1, 2, 2]).unwrap(), [1, 1, 2, 1, 2, 2]);
+        assert!(strip_triangles(&[1, 2]).is_none());
+    }
     #[test]
     fn capability_record_does_not_invent_unimplemented_shader_or_texture_support() {
         let c = capabilities(false);

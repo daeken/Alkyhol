@@ -15,6 +15,35 @@ pub struct LegacyDraw<'a> {
     pub textures: &'a [TextureBinding<'a>],
     pub pixel_constants: &'a [u8],
 }
+/// Decode D3DVIEWPORT9 words while retaining checked native target bounds.
+pub fn viewport_from_words(words: [u32; 6], width: u32, height: u32) -> Result<[f32; 6]> {
+    let viewport = [
+        words[0] as f32,
+        words[1] as f32,
+        words[2] as f32,
+        words[3] as f32,
+        f32::from_bits(words[4]),
+        f32::from_bits(words[5]),
+    ];
+    validate_viewport(viewport, width, height)?;
+    Ok(viewport)
+}
+fn validate_viewport(v: [f32; 6], width: u32, height: u32) -> Result<()> {
+    if v.iter().any(|n| !n.is_finite())
+        || v[0] < 0.
+        || v[1] < 0.
+        || v[2] <= 0.
+        || v[3] <= 0.
+        || v[0] + v[2] > width as f32
+        || v[1] + v[3] > height as f32
+        || v[4] < 0.
+        || v[5] > 1.
+        || v[4] > v[5]
+    {
+        return Err("viewport lies outside the checked target/depth profile".into());
+    }
+    Ok(())
+}
 fn resources(module: &naga::Module, stage: u32, used: &mut BTreeSet<(u32, u32)>) -> Result<()> {
     let info = naga::valid::Validator::new(
         naga::valid::ValidationFlags::all(),
@@ -66,6 +95,23 @@ impl Device {
         state: &RenderState,
         depth: Option<&Depth>,
     ) -> Result<()> {
+        self.draw_legacy_viewport_depth_state(
+            target,
+            draw,
+            state,
+            depth,
+            [0., 0., target.width as f32, target.height as f32, 0., 1.],
+        )
+    }
+    pub fn draw_legacy_viewport_depth_state(
+        &self,
+        target: &mut Target,
+        draw: &LegacyDraw<'_>,
+        state: &RenderState,
+        depth: Option<&Depth>,
+        viewport: [f32; 6],
+    ) -> Result<()> {
+        validate_viewport(viewport, target.width, target.height)?;
         let depth = if state.get(7)? != 0 { depth } else { None };
         depth::validate_depth(target, depth)?;
         let depth_state = state.depth_state(depth)?;
@@ -99,11 +145,11 @@ impl Device {
         resources(&ps, 1, &mut used)?;
         let vs_text = legacy::wgsl(&vs)?;
         let ps_text = legacy::wgsl(&ps)?;
-        let viewport: Vec<u8> = [target.width as f32, target.height as f32, 0., 0.]
+        let viewport_data: Vec<u8> = [viewport[2], viewport[3], viewport[0], viewport[1]]
             .iter()
             .flat_map(|n| n.to_le_bytes())
             .collect();
-        let data = [draw.vertex_constants, draw.pixel_constants, &viewport];
+        let data = [draw.vertex_constants, draw.pixel_constants, &viewport_data];
         for (n, bytes) in data.iter().enumerate() {
             if used.contains(&(n as u32, 0))
                 && (bytes.is_empty() || !bytes.len().is_multiple_of(16))
@@ -278,6 +324,14 @@ impl Device {
             });
             pass.set_pipeline(&pipeline);
             pass.set_blend_constant(state.constant());
+            pass.set_viewport(
+                viewport[0],
+                viewport[1],
+                viewport[2],
+                viewport[3],
+                viewport[4],
+                viewport[5],
+            );
             for (n, group) in groups.iter().enumerate() {
                 pass.set_bind_group(n as u32, group, &[]);
             }
@@ -291,5 +345,30 @@ impl Device {
         }
         self.queue.submit([encoder.finish()]);
         self.finish()
+    }
+}
+
+#[cfg(test)]
+mod viewport_tests {
+    use super::*;
+    #[test]
+    fn native_viewport_words_check_bounds_finite_depth_and_wraparound() {
+        assert_eq!(
+            viewport_from_words([3, 5, 17, 11, 0.25f32.to_bits(), 0.75f32.to_bits()], 32, 32)
+                .unwrap(),
+            [3., 5., 17., 11., 0.25, 0.75]
+        );
+        for words in [
+            [0, 0, 0, 32, 0, 1f32.to_bits()],
+            [31, 0, 2, 32, 0, 1f32.to_bits()],
+            [u32::MAX, 0, 2, 1, 0, 1f32.to_bits()],
+            [0, 31, 1, 2, 0, 1f32.to_bits()],
+            [0, 0, 1, 1, f32::NAN.to_bits(), 1f32.to_bits()],
+            [0, 0, 1, 1, 0, f32::INFINITY.to_bits()],
+            [0, 0, 1, 1, 0.75f32.to_bits(), 0.25f32.to_bits()],
+            [0, 0, 1, 1, (-0.1f32).to_bits(), 1f32.to_bits()],
+        ] {
+            assert!(viewport_from_words(words, 32, 32).is_err());
+        }
     }
 }
