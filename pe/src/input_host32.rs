@@ -1,4 +1,4 @@
-//! Real Quartz events for the virtual DirectInput keyboard/mouse. Keyboard taps
+//! Real Quartz events for the virtual DirectInput keyboard/mouse. Both taps
 //! are process-scoped. Mouse events are accepted only while this process is
 //! foreground. No guest pointer or guest callback enters a native event tap.
 use std::{
@@ -14,14 +14,6 @@ use std::{
 type Id = *mut c_void;
 #[link(name = "CoreGraphics", kind = "framework")]
 unsafe extern "C" {
-    fn CGEventTapCreate(
-        tap: u32,
-        place: u32,
-        options: u32,
-        mask: u64,
-        callback: unsafe extern "C" fn(Id, u32, Id, Id) -> Id,
-        context: Id,
-    ) -> Id;
     fn CGEventTapCreateForPid(
         pid: i32,
         place: u32,
@@ -391,13 +383,10 @@ impl Source {
                     .fold(0u64, |n, &ty| n | (1 << ty))
             };
             let user = Arc::as_ptr(&state) as Id;
-            let port = unsafe {
-                if kind == Kind::Keyboard {
-                    CGEventTapCreateForPid(getpid(), 0, 1, mask, event, user)
-                } else {
-                    CGEventTapCreate(1, 0, 1, mask, event, user)
-                }
-            };
+            // Targeted WindowServer input can bypass a session-wide tap while
+            // still reaching this process's native window. Observe the same
+            // process delivery for mouse and keyboard, exactly once per event.
+            let port = unsafe { CGEventTapCreateForPid(getpid(), 0, 1, mask, event, user) };
             if port.is_null() {
                 let _ = send.send(Err("native event tap denied or unavailable".to_string()));
                 return;

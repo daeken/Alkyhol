@@ -6923,3 +6923,22 @@ observer units pass. Existing CI now compares the identical background PE on
 native Windows, pending. Native delivery of arbitrary background mouse sequences
 is not established by these lifecycle assertions. The next original replay
 checks whether focus transitions clear the observed startup barrier.
+
+### Process-delivered DirectInput mouse events and original query progress
+
+At clean 300c6c4, actual window mouse messages reach DAO but process-targeted
+desktop-control clicks do not reach the session-scoped DirectInput mouse tap;
+keyboard events already use a process tap and arrive. The mouse now uses the
+same CGEventTapCreateForPid delivery point, once per event, with the existing
+foreground, loss, bounded queue and timestamp checks intact. This removes the
+global session mouse tap rather than combining duplicate sources.
+
+The dirty candidate replay on 300c6c4 captures exact runtime/source hashes. A
+real native click now produces both WM_LBUTTONDOWN/UP and DirectInput component
+512 transitions with identical timestamps, selects original New Game and plays
+the original opening movie. Native Escape skips it. The original EXE proceeds
+through CreateQuery(type 9), then stops explicitly at device slot 84,
+DrawIndexedPrimitiveUP. This establishes original query creation progress, not
+a rendered character-creation frame or full query-result/game correctness.
+The targeted input queue/overflow unit and PE Clippy pass on the Rosetta host.
+Private traces and captures remain local; the original EXE is unchanged.
