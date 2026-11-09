@@ -13,3 +13,7 @@ static_assert(offsetof(DIBSECTION,dsBmih)==24);
 static_assert(offsetof(DIBSECTION,dshSection)==76);
 static_assert(sizeof(WNDCLASSEXW)==48);
 static_assert(sizeof(CREATESTRUCTW)==48);
+
+static_assert(sizeof(OVERLAPPED)==20);
+static_assert(offsetof(OVERLAPPED,hEvent)==16);
+static_assert(offsetof(FILE_NOTIFY_INFORMATION,FileName)==12);

@@ -30,9 +30,6 @@ pub(super) fn open(image: &LoadedImage32<'_>, a: &[u32; 8], ansi: bool) -> u32 {
     if a[3] != 0 || a[6] != 0 {
         unsupported("file security/template arguments are unsupported");
     }
-    if a[1] & !0xc0000000 != 0 || a[2] & !7 != 0 || a[5] & !(0x80 | 0x18000000) != 0 {
-        unsupported("file access/sharing/flags are outside the synchronous ordinary profile");
-    }
     if image.cpu.files.borrow().len() >= 4096 {
         unsupported("owned file-handle budget exhausted");
     }
@@ -51,6 +48,12 @@ pub(super) fn open(image: &LoadedImage32<'_>, a: &[u32; 8], ansi: bool) -> u32 {
             "PE32 diagnostic file open: path={name:?}; access={:x}; share={:x}; disposition={}; flags={:x}",
             a[1], a[2], a[4], a[5]
         );
+    }
+    if a[5] & 0x02000000 != 0 {
+        return super::watch32::open(image, &name, a);
+    }
+    if a[1] & !0xc0000000 != 0 || a[2] & !7 != 0 || a[5] & !(0x80 | 0x18000000) != 0 {
+        unsupported("file access/sharing/flags are outside the synchronous ordinary profile");
     }
     let write = a[1] & 0x40000000 != 0;
     let (file, existed) = if write {

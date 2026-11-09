@@ -132,7 +132,10 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
         alkyhol::ffi::SetLastError(0);
         h
     } else if id == 113 {
-        if (args[1] != 0 || args[2] != 0) && !image.cpu.threads.borrow().has_workers() {
+        if (args[1] != 0 || args[2] != 0)
+            && !image.cpu.threads.borrow().has_workers()
+            && !image.cpu.watches.borrow().completion_event(args[0])
+        {
             if image.cpu.events.borrow().semaphores.contains(&args[0]) {
                 unsupported("semaphore waits require zero timeout and alertable FALSE");
             }

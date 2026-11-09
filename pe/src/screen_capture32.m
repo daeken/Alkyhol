@@ -1,3 +1,7 @@
+#include <sys/event.h>
+#include <stddef.h>
+_Static_assert(sizeof(struct kevent) == 32, "Rust kevent size");
+_Static_assert(offsetof(struct kevent, udata) == 24, "Rust kevent opaque pointer");
 /* Original MIT public-API glue for ScreenCaptureKit's Objective-C blocks.
  * No guest pointers or game metadata enter this adapter. UI coordinates use
  * the explicitly selected logical desktop dimensions supplied by Rust. */

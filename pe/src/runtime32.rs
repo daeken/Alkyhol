@@ -79,6 +79,8 @@ mod thread32;
 mod time32;
 #[path = "ui32.rs"]
 mod ui32;
+#[path = "watch32.rs"]
+mod watch32;
 #[path = "window_host32.rs"]
 mod window_host32;
 pub use process32::{ProcessImage32, ProcessOptions32, TimeZone32};
@@ -105,7 +107,7 @@ unsafe extern "C" {
 }
 const PAGE: usize = 4096;
 const STACK: usize = 1024 * 1024;
-const APIS: [(&str, u16); 212] = [
+const APIS: [(&str, u16); 215] = [
     ("GetLastError", 0),
     ("SetLastError", 4),
     ("GetStdHandle", 4),
@@ -318,6 +320,9 @@ const APIS: [(&str, u16); 212] = [
     ("PostMessageA", 16),
     ("InvalidateRect", 12),
     ("ValidateRect", 8),
+    ("ReadDirectoryChangesW", 32),
+    ("GetOverlappedResult", 16),
+    ("CancelIo", 4),
 ];
 // The first 120 API slots retain their original offsets. The second bank
 // begins after both x87 bodies, leaving their machine code and failure gates
@@ -705,6 +710,7 @@ struct Cpu32 {
     gdi: RefCell<gdi32::State>,
     utc_timezone: bool,
     threads: RefCell<thread32::State>,
+    watches: RefCell<watch32::State>,
 }
 impl Cpu32 {
     fn stack(&self) -> &LowMapping {
@@ -729,6 +735,7 @@ impl Cpu32 {
     }
     fn close_files(&self) {
         let error = alkyhol::ffi::GetLastError();
+        self.watches.borrow_mut().clear();
         self.events.borrow_mut().clear();
         self.current_directory.borrow_mut().take();
         if let Some(mutexes) = &self.mutexes {
@@ -814,6 +821,7 @@ impl Cpu32 {
             gdi: RefCell::new(Default::default()),
             utc_timezone: false,
             threads: RefCell::new(Default::default()),
+            watches: RefCell::new(Default::default()),
         })
     }
 }
@@ -2060,6 +2068,7 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
             109 => mutex32::create(image, args),
             111 => directory32::set(image, args[0]),
             112 => directory32::get(image, args),
+            113 if image.cpu.watches.borrow().contains(args[0]) => thread32::wait(image, args),
             113 if image.cpu.threads.borrow().contains(args[0]) => thread32::wait(image, args),
             113 if image.cpu.events.borrow().contains(args[0]) => {
                 event32::dispatch(image, id, args)
@@ -2082,7 +2091,9 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
             133 => directory32::get_ansi(image, args),
             134 | 135 => bulk32::attributes(image, args[0], id == 135),
             136 => {
-                if image.cpu.threads.borrow().contains(args[0]) {
+                if image.cpu.threads.borrow().contains(args[0])
+                    || image.cpu.watches.borrow().contains(args[0])
+                {
                     thread32::wait(image, args)
                 } else if image.cpu.events.borrow().contains(args[0]) {
                     event32::dispatch(image, 113, args)
@@ -2131,6 +2142,9 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
             198..=201 => ui32::dispatch(image, id - 198 + 29, &words),
             202 => gdi32::dib_section(image, args),
             203..=211 => ui32::dispatch(image, id - 203 + 33, &words),
+            212 => watch32::read(image, args),
+            213 => watch32::result(image, args),
+            214 => watch32::cancel(image, args[0]),
             _ => unreachable!(),
         }
     })
@@ -2288,6 +2302,7 @@ mod tests {
                 gdi: RefCell::new(Default::default()),
                 utc_timezone: false,
                 threads: RefCell::new(Default::default()),
+                watches: RefCell::new(Default::default()),
             }),
             tls: None,
             tls_entered: Cell::new(false),

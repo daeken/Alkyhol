@@ -5204,3 +5204,24 @@ DAO's splash bitmap was captured from its actual on-screen native window; image
 and traces remain ignored local. Its next resource-manager run hit the execution
 budget, so reaching D3D9 or complete startup is not claimed. Native Windows GUI/
 SDK comparisons are scheduled in the existing workflow and remain pending.
+
+The original DAO splash now survives a corrected GUI publication lifetime: the
+main thread holds the result lock through its final wakeup, so a timed-out
+submitter cannot destroy a request while the notifier still uses its condition
+variable. A 512-request owned handoff stress test passes. New real asynchronous
+directory notifications use native kqueue descriptors and an active monitor
+between guest reads; the owned PE observes file creation, retained changes,
+completion, cancellation and untouched guards. All 170 PE library tests and PE
+Clippy pass physically. Windows comparisons for this new directory family are
+scheduled, not yet observed. Its finite ASCII namespace, budgets, fixed filter,
+rescan/error cases and lack of APC/IOCP delivery are explicit. The actual DAO
+run passes three original directory-monitor requests and next stops in PhysX at
+GetAdaptersInfo, before D3D9. This is still startup evidence, not game support.
+
+CI 42544367465 passed the PE producer and PE64/native comparison jobs; the native
+PE32 job retained the known full-path/software-context mismatches and exposed a
+new message fixture assumption: an unfiltered native window queue includes OS
+messages as well as the owned test messages. The new fixture now requests its
+specific custom/paint message ranges, retaining the same content, ownership,
+callback, guard and lifetime assertions. The older observation remains a failed
+comparison; a new native run is required before claiming agreement.

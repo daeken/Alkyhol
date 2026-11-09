@@ -485,6 +485,9 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
             base
         }
         9 => {
+            if image.cpu.watches.borrow_mut().close(args[0]) {
+                return 1;
+            }
             if image.cpu.threads.borrow_mut().close(args[0]) {
                 return 1;
             }
@@ -647,6 +650,9 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
             0 // VOID return: the caller receives the configured record above.
         }
         41 => {
+            if image.cpu.watches.borrow().contains(args[0]) {
+                return 1;
+            }
             let native = handle(image, args[0]);
             if let Some(result) = crate::process::stream_file_type(native) {
                 return match result {

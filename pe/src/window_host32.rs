@@ -109,7 +109,11 @@ fn main_exec<T: Send, F: FnOnce() -> T + Send>(operation: F) -> T {
             .expect("one GUI request execution");
         let value = std::panic::catch_unwind(std::panic::AssertUnwindSafe(operation))
             .unwrap_or_else(|_| super::unsupported("host main-thread GUI request panicked"));
-        *request.value.lock().unwrap() = Some(value);
+        // Hold publication lock through the final notification. The submitting
+        // thread can wake from its timed wait without this notification; letting
+        // it destroy the stack request first would race Condvar::notify_one.
+        let mut slot = request.value.lock().unwrap();
+        *slot = Some(value);
         request.changed.notify_one();
     }
     let request = Request {
@@ -641,5 +645,31 @@ mod capture_tests {
     #[test]
     fn native_bitmap_row_orientation_rgb_conversion_and_opacity_are_observed() {
         assert_eq!(unsafe { super::alkyhol_pe32_capture_color_contract() }, 1);
+    }
+}
+
+#[cfg(test)]
+mod handoff_tests {
+    #[test]
+    fn submitting_thread_can_destroy_each_completed_request_immediately() {
+        let worker = std::thread::spawn(|| {
+            for n in 0..512 {
+                let payload = vec![n as u8; 257];
+                let output = super::main_exec(move || (n, payload));
+                assert_eq!(output, (n, vec![n as u8; 257]));
+            }
+        });
+        while !worker.is_finished() {
+            let task = super::tasks().lock().unwrap().pop_front();
+            if let Some(task) = task {
+                // Pure owned closures only: this test performs no AppKit work.
+                unsafe {
+                    (task.invoke)(task.address);
+                }
+            } else {
+                std::thread::yield_now();
+            }
+        }
+        worker.join().unwrap();
     }
 }

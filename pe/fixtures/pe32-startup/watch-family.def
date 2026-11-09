@@ -1,0 +1,14 @@
+LIBRARY KERNEL32.dll
+EXPORTS
+GetStdHandle
+GetModuleFileNameA
+SetCurrentDirectoryA
+CreateFileA
+CloseHandle
+GetLastError
+WriteFile
+CreateEventW
+ReadDirectoryChangesW
+GetOverlappedResult
+CancelIo
+WaitForSingleObject
