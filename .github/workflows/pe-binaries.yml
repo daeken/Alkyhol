@@ -218,6 +218,10 @@ jobs:
         run: |
           python tools/observe_pe32_window_family.py
           python tools/observe_pe32_window_family.py --host
+      - name: Execute DAO capture lifecycle and capture-change callback
+        run: |
+          python tools/observe_pe32_mouse_capture.py
+          python tools/observe_pe32_mouse_capture.py --host
       - uses: actions/upload-artifact@v4
         with:
           name: pe32-startup-microtests
@@ -347,6 +351,8 @@ jobs:
             local/pe/startup-microtests/file-family-host.json
             local/pe/startup-microtests/window-family-inputs.json
             local/pe/startup-microtests/window-family-host.json
+            local/pe/startup-microtests/mouse-capture-inputs.json
+            local/pe/startup-microtests/mouse-capture-host.json
             local/pe/startup-microtests/ctx-layout-empty-importer.dll
             local/pe/startup-microtests/ctx-layout-*.manifest
   native-pe32-startup:
@@ -551,6 +557,9 @@ jobs:
       - name: Observe identical window family PE on native Windows
         if: ${{ success() || failure() }}
         run: python tools/observe_pe32_window_family.py --native
+      - name: Observe identical capture lifecycle PE on native Windows
+        if: ${{ success() || failure() }}
+        run: python tools/observe_pe32_mouse_capture.py --native
       - uses: actions/upload-artifact@v4
         if: always()
         with:

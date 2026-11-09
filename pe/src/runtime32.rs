@@ -136,7 +136,7 @@ unsafe extern "C" {
 }
 const PAGE: usize = 4096;
 const STACK: usize = 1024 * 1024;
-const APIS: [(&str, u16); 299] = [
+const APIS: [(&str, u16); 302] = [
     ("GetLastError", 0),
     ("SetLastError", 4),
     ("GetStdHandle", 4),
@@ -436,6 +436,9 @@ const APIS: [(&str, u16); 299] = [
     ("timeEndPeriod", 4),
     ("WaitForMultipleObjects", 16),
     ("RegOpenKeyA", 12),
+    ("SetCapture", 4),
+    ("ReleaseCapture", 0),
+    ("GetCapture", 0),
 ];
 // The first 120 API slots retain their original offsets. The second bank
 // begins after both x87 bodies, leaving their machine code and failure gates
@@ -523,6 +526,7 @@ fn api_id(module: &str, symbol: &ImportSymbol) -> Option<usize> {
                     || (218..=219).contains(id)
                     || (249..=254).contains(id)
                     || matches!(*id, 256..=258)
+                    || matches!(*id, 299..=301)
                 {
                     "user32.dll"
                 } else if matches!(*id, 107 | 108 | 216 | 220 | 221 | 285 | 298) {
@@ -2314,6 +2318,9 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
                 .reallocate(args[0], args[1], args[2], args[3])
                 .unwrap_or_else(|e| unsupported(&e)),
             100 => cursor32::position(image, args[0]),
+            299 => ui32::set_capture(image, args[0]),
+            300 => ui32::release_capture(image),
+            301 => ui32::get_capture(image),
             101 => module_path32::windows_directory_ansi(image, args),
             102 => module_path32::system_directory_ansi(image, args),
             103 => exception_filter32::replace(image, args[0]),
@@ -2561,6 +2568,16 @@ mod tests {
         assert_eq!(api_id("kernel32.dll", &symbol), None);
         assert_eq!(APIS[298].1, 12);
         assert_eq!(cleanup_bytes(298, 12), 12);
+    }
+    #[test]
+    fn mouse_capture_imports_use_user32_and_their_measured_stdcall_widths() {
+        for (id, bytes) in [(299, 4), (300, 0), (301, 0)] {
+            let symbol = ImportSymbol::Name(APIS[id].0.into());
+            assert_eq!(api_id("user32.dll", &symbol), Some(id));
+            assert_eq!(api_id("kernel32.dll", &symbol), None);
+            assert_eq!(APIS[id].1, bytes);
+            assert_eq!(cleanup_bytes(id, bytes), bytes);
+        }
     }
     #[test]
     fn win32_event_sets_use_kernel32_without_winsock_startup() {

@@ -6462,3 +6462,33 @@ the original game procedure and stops honestly at its SetCapture import. The
 menu has not yet activated New Game: native mouse capture/release is the next
 observed blocker. No original instruction or UI state was patched to reach it;
 captures and game-derived disassembly stay local.
+
+## Original DAO accepts New Game and enters scene loading
+
+The original main menu now responds to host mouse input. On the physical M4,
+an actual move/down/up sequence passed through WindowServer/AppKit, the owned
+Win32 queue, DAO's original window procedure and its SetCapture/ReleaseCapture
+calls. DAO left the menu, opened its original loading UI and uploaded further
+original textures. It then stopped explicitly at IDirect3DDevice9::CreateCubeTexture
+(managed A8R8G8B8, edge 4, one level). Character creation/gameplay and full-scene
+rendering are not yet established. The EXE, assets and original instruction
+stream were not changed; all game-derived traces/captures remain private.
+
+Foreground owned-window mouse capture now routes real AppKit drag/up events
+outside the client to the selected Win32 window. It uses the existing native
+WindowServer drag stream and does not intercept another application's clicks.
+Release, GetCapture and WM_CAPTURECHANGED update actual routing and owner-thread
+state; hiding/destroying/losing the native key window invalidates capture.
+Background and foreign-thread capture are explicitly outside this profile.
+The physical owned-window `--capture` probe observes correct move/up delivery
+at client (-40,-30), release, repeated acquisition and invalid native-window
+rejection. Acquisition does not succeed merely by storing a guest handle.
+
+The new owned 19-word PE passes physically: initial/same/repeated acquisition,
+queries, both capture-change callbacks, release, teardown and stdcall stack.
+It pumps real activation events before acquisition; the earlier immediate
+ShowWindow/acquire attempt correctly failed the foreground prerequisite.
+All 210 preceding PE units and the additional API-routing unit pass, as does PE
+Clippy. Three observer tests reject every failed assertion, malformed/truncated
+report and extra output. Existing CI now transfers this literal PE and exact
+source identities for native Windows comparison; that result is pending.

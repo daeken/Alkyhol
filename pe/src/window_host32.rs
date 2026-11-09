@@ -330,6 +330,7 @@ pub(super) struct MouseEvent {
 struct MouseQueue {
     buttons: u32,
     events: VecDeque<MouseEvent>,
+    capture: Option<i64>,
 }
 fn mouse_message(kind: u64, button: u64, buttons: &mut u32, modifiers: u64) -> Option<(u32, u32)> {
     let (message, xbutton) = match kind {
@@ -501,11 +502,29 @@ impl App {
         if !matches!(kind, 1..=7 | 25..=27) {
             return Ok(());
         }
-        let window = unsafe { send0::<Id>(event, "window") };
+        let mut window = unsafe { send0::<Id>(event, "window") };
         if window.is_null() {
             return Ok(());
         }
-        let location = unsafe { send0::<Point>(event, "locationInWindow") };
+        let mut location = unsafe { send0::<Point>(event, "locationInWindow") };
+        let screen = unsafe { send1::<Point, Point>(window, "convertPointToScreen:", location) };
+        let mut queue = self.mouse.lock().unwrap();
+        if let Some(number) = queue.capture {
+            let captured =
+                unsafe { send1::<_, Id>(self.app, "windowWithWindowNumber:", number as isize) };
+            let active = unsafe { send0::<i8>(self.app, "isActive") } != 0
+                && !captured.is_null()
+                && unsafe { send0::<i8>(captured, "isKeyWindow") } != 0;
+            let another_down = matches!(kind, 1 | 3 | 25)
+                && unsafe { send0::<i64>(window, "windowNumber") } != number;
+            if !active || another_down {
+                queue.capture = None;
+            } else {
+                window = captured;
+                location =
+                    unsafe { send1::<Point, Point>(window, "convertPointFromScreen:", screen) };
+            }
+        }
         let view = unsafe { send0::<Id>(window, "contentView") };
         if view.is_null() {
             return Ok(());
@@ -523,15 +542,11 @@ impl App {
         let bounds = unsafe { rectangle(view, "bounds") };
         let x = local.x - bounds.origin.x;
         let y = local.y - bounds.origin.y;
-        if x < 0.0 || y < 0.0 || x >= bounds.size.width || y >= bounds.size.height {
-            return Ok(()); // AppKit owns the unimplemented nonclient/capture path.
-        }
         let flipped = unsafe { send0::<i8>(view, "isFlipped") } != 0;
         let client = mouse_point(Point {
             x,
             y: if flipped { y } else { bounds.size.height - y },
         })?;
-        let screen = unsafe { send1::<Point, Point>(window, "convertPointToScreen:", location) };
         let screen = mouse_point(Point {
             x: screen.x,
             y: self.desktop.size.height - screen.y,
@@ -546,13 +561,17 @@ impl App {
             0
         };
         let modifiers = unsafe { send0::<u64>(event, "modifierFlags") };
-        let mut queue = self.mouse.lock().unwrap();
         if let Some((message, keys)) = mouse_message(kind, button, &mut queue.buttons, modifiers) {
+            if queue.capture.is_none()
+                && (x < 0.0 || y < 0.0 || x >= bounds.size.width || y >= bounds.size.height)
+            {
+                return Ok(()); // Nonclient events still update the physical button state.
+            }
             if queue.events.len() >= 4096 {
                 return Err("native mouse queue exceeds bounds".into());
             }
             queue.events.push_back(MouseEvent {
-                window: unsafe { send0(event, "windowNumber") },
+                window: unsafe { send0(window, "windowNumber") },
                 message,
                 keys,
                 client,
@@ -569,6 +588,44 @@ impl App {
     }
     pub(super) fn take_mouse(&self) -> Vec<MouseEvent> {
         self.mouse.lock().unwrap().events.drain(..).collect()
+    }
+    /// Foreground owned-window capture. AppKit/WindowServer retain the original
+    /// drag/up stream outside the window after a native button down. This routing
+    /// sends it to the selected Win32 window; it never intercepts another app's
+    /// clicks. Background capture is explicitly outside this backend's profile.
+    pub(super) fn set_mouse_capture(&self, number: Option<i64>) -> crate::Result<Option<i64>> {
+        main_exec(move || {
+            if let Some(number) = number {
+                let window =
+                    unsafe { send1::<_, Id>(self.app, "windowWithWindowNumber:", number as isize) };
+                if window.is_null()
+                    || unsafe { send0::<i8>(self.app, "isActive") } == 0
+                    || unsafe { send0::<i8>(window, "isKeyWindow") } == 0
+                {
+                    return Err("mouse capture requires an actual foreground owned window".into());
+                }
+            }
+            let mut mouse = self.mouse.lock().unwrap();
+            let previous = mouse.capture;
+            mouse.capture = number;
+            Ok(previous)
+        })
+    }
+    pub(super) fn mouse_capture(&self) -> Option<i64> {
+        main_exec(move || {
+            let mut mouse = self.mouse.lock().unwrap();
+            if let Some(number) = mouse.capture {
+                let window =
+                    unsafe { send1::<_, Id>(self.app, "windowWithWindowNumber:", number as isize) };
+                if window.is_null()
+                    || unsafe { send0::<i8>(self.app, "isActive") } == 0
+                    || unsafe { send0::<i8>(window, "isKeyWindow") } == 0
+                {
+                    mouse.capture = None;
+                }
+            }
+            mouse.capture
+        })
     }
     pub(super) fn screen_geometry(&self) -> crate::Result<(Rect, u32)> {
         main_exec(move || {

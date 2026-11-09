@@ -45,6 +45,7 @@ pub(super) struct State {
     active: BTreeMap<u32, u32>,
     messages: BTreeMap<u32, VecDeque<[u32; 7]>>,
     mouse_traced: usize,
+    capture: Option<(u32, u32)>,
 }
 impl State {
     pub(super) fn input_window(&self, hwnd: u32) -> bool {
@@ -440,6 +441,15 @@ fn destroy(image: &LoadedImage32<'_>, hwnd: u32) -> u32 {
     if !image.cpu.ui.borrow().windows.contains_key(&hwnd) {
         return error(1400);
     }
+    if image
+        .cpu
+        .ui
+        .borrow()
+        .capture
+        .is_some_and(|(captured, _)| captured == hwnd)
+    {
+        release_capture(image);
+    }
     call(image, hwnd, 2, 0, 0);
     call(image, hwnd, 0x82, 0, 0);
     let mut ui = image.cpu.ui.borrow_mut();
@@ -656,6 +666,7 @@ fn peek_message(image: &LoadedImage32<'_>, a: &[u32; 16]) -> u32 {
             Vec::new()
         }
     };
+    sync_capture(image);
     for event in native {
         let mut ui = image.cpu.ui.borrow_mut();
         let Some((&hwnd, window)) = ui
@@ -723,6 +734,76 @@ fn peek_message(image: &LoadedImage32<'_>, a: &[u32; 16]) -> u32 {
         return 1;
     }
     0
+}
+fn sync_capture(image: &LoadedImage32<'_>) {
+    let lost = {
+        let mut ui = image.cpu.ui.borrow_mut();
+        match ui.capture {
+            Some((hwnd, owner)) if owner == alkyhol::ffi::GetCurrentThreadId() => {
+                let actual = ui.app.as_ref().and_then(host::App::mouse_capture);
+                if actual != ui.windows.get(&hwnd).map(|w| w.native.number()) {
+                    ui.capture = None;
+                    Some(hwnd)
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
+    };
+    if let Some(hwnd) = lost {
+        call(image, hwnd, 0x215, 0, 0);
+    }
+}
+pub(super) fn set_capture(image: &LoadedImage32<'_>, hwnd: u32) -> u32 {
+    sync_capture(image);
+    let previous = {
+        let mut ui = image.cpu.ui.borrow_mut();
+        let Some(window) = ui.windows.get(&hwnd) else {
+            return error(1400);
+        };
+        let owner = window.owner;
+        if owner != alkyhol::ffi::GetCurrentThreadId() {
+            return error(5);
+        }
+        let number = window.native.number();
+        stop(ui.app.as_ref().unwrap().set_mouse_capture(Some(number)));
+        ui.capture.replace((hwnd, owner)).map_or(0, |(old, _)| old)
+    };
+    if previous != 0 && previous != hwnd {
+        call(image, previous, 0x215, 0, hwnd);
+    }
+    previous
+}
+pub(super) fn release_capture(image: &LoadedImage32<'_>) -> u32 {
+    sync_capture(image);
+    let previous = {
+        let mut ui = image.cpu.ui.borrow_mut();
+        if ui
+            .capture
+            .is_some_and(|(_, owner)| owner != alkyhol::ffi::GetCurrentThreadId())
+        {
+            return error(5);
+        }
+        if let Some(app) = &ui.app {
+            stop(app.set_mouse_capture(None));
+        }
+        ui.capture.take().map(|(hwnd, _)| hwnd)
+    };
+    if let Some(hwnd) = previous {
+        call(image, hwnd, 0x215, 0, 0);
+    }
+    1
+}
+pub(super) fn get_capture(image: &LoadedImage32<'_>) -> u32 {
+    sync_capture(image);
+    image
+        .cpu
+        .ui
+        .borrow()
+        .capture
+        .filter(|(_, owner)| *owner == alkyhol::ffi::GetCurrentThreadId())
+        .map_or(0, |(hwnd, _)| hwnd)
 }
 fn mouse_words(hwnd: u32, event: host::MouseEvent, class_style: u32, time: u32) -> [u32; 7] {
     let double = class_style & 8 != 0

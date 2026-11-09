@@ -71,7 +71,7 @@ fn main() -> Result<()> {
     assert!(window.visible() && onscreen && window.number() > 0);
     assert_eq!((frame.origin.x, frame.origin.y), (110., 120.));
     assert_eq!((client.size.width, client.size.height), (640., 480.));
-    if std::env::args().any(|arg| arg == "--mouse") {
+    if std::env::args().any(|arg| matches!(arg.as_str(), "--mouse" | "--capture")) {
         if !unsafe { AXIsProcessTrusted() } {
             return Err("native mouse probe requires Accessibility access".into());
         }
@@ -120,6 +120,51 @@ fn main() -> Result<()> {
             assert!(event.timestamp_ns != 0);
         }
         println!("WindowServer/AppKit mouse move/down/up: {events:?}");
+        if std::env::args().any(|arg| arg == "--capture") {
+            let outside = host::Point {
+                x: content.origin.x - 40.,
+                y: content.origin.y - 30.,
+            };
+            for (kind, at) in [(1, point), (6, outside), (2, outside)] {
+                let event = unsafe { CGEventCreateMouseEvent(std::ptr::null_mut(), kind, at, 0) };
+                if event.is_null() {
+                    return Err("native drag event creation failed".into());
+                }
+                unsafe {
+                    CGEventPost(0, event);
+                    CFRelease(event);
+                }
+                for _ in 0..10 {
+                    app.pump()?;
+                    std::thread::sleep(std::time::Duration::from_millis(10));
+                }
+                if kind == 1 {
+                    app.take_mouse();
+                    assert_eq!(app.set_mouse_capture(Some(window.number()))?, None);
+                    assert_eq!(app.mouse_capture(), Some(window.number()));
+                    assert_eq!(
+                        app.set_mouse_capture(Some(window.number()))?,
+                        Some(window.number())
+                    );
+                } else {
+                    let events = app.take_mouse();
+                    let message = if kind == 6 { 0x200 } else { 0x202 };
+                    let event = events
+                        .iter()
+                        .find(|e| e.message == message)
+                        .ok_or("native outside-window drag/up was not captured")?;
+                    assert_eq!(event.window, window.number());
+                    assert_eq!(event.client, [-40, -30]);
+                    assert_eq!(event.screen, [outside.x as i32, outside.y as i32]);
+                    assert_eq!(event.keys & 1, u32::from(kind == 6));
+                    println!("WindowServer/AppKit captured outside event: {event:?}");
+                }
+            }
+            assert_eq!(app.set_mouse_capture(None)?, Some(window.number()));
+            assert_eq!(app.mouse_capture(), None);
+            assert_eq!(app.set_mouse_capture(None)?, None);
+            assert!(app.set_mouse_capture(Some(i64::MAX)).is_err());
+        }
     }
     window.show(false);
     app.pump()?;
