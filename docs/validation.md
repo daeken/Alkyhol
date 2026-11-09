@@ -6563,3 +6563,26 @@ the remaining jobs; the input/PE workflows likewise initially created no jobs.
 The latter have been requested again. These infrastructure failures are not
 counted as native observations or passing comparisons; the prior retained native
 rendering differences remain unchanged.
+
+## Original loading passes CRT helpers; texture mip mappings are packed
+
+The clean 72954a1 run accepts New Game and passes the original D3DX setlocale and
+`_strdup` calls. It continues loading original scene textures until the existing
+512 low-storage mapping budget is exhausted. This is an allocator boundary, not
+a successful scene/gameplay milestone. Captures and the complete original trace
+remain local; no game data or shader was omitted to reach it.
+
+Previously each texture face/mip consumed a separate low mapping, despite even
+one tiny level reserving a full host allocation unit. A texture now reserves one
+checked mapping containing all its face/mip shadows. Subresources have disjoint
+16-byte-aligned ranges, original pitch/length/dimensions and independent lock and
+initialization state. Surface aliases point at the same real subresource bytes.
+The 512-map and 64 MiB shadow limits remain intact; no mip or face is dropped.
+All padding and total sizes are checked before allocating GPU/CPU storage.
+
+All 215 PE units and PE Clippy pass. New units test face/mip disjointness, raw
+block extents, byte formats, alignment, overflow and allocation-budget rejection.
+The existing owned cube resource, full-RGBA font/subrectangle and BC3 mip PE/GPU
+witnesses all pass physically with packed storage. Their existing assertions
+and original bytecode are unchanged. The next clean original-game run is needed
+to establish whether packing clears the observed allocation boundary.

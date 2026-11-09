@@ -2490,6 +2490,55 @@ fn cube_subresource(face: u32, level: u32, mips: u32) -> Option<u32> {
     }
     face.checked_mul(mips)?.checked_add(level)
 }
+#[derive(Debug)]
+struct CpuMip {
+    offset: u32,
+    width: u32,
+    height: u32,
+    pitch: u32,
+    length: u32,
+}
+fn texture_cpu_layout(
+    width: u32,
+    height: u32,
+    mips: u32,
+    faces: u32,
+    format: SampleFormat,
+) -> Option<(Vec<CpuMip>, u32)> {
+    if width == 0
+        || height == 0
+        || width > 8192
+        || height > 8192
+        || !matches!(faces, 1 | 6)
+        || faces == 6 && width != height
+        || mips == 0
+        || mips > 32 - width.max(height).leading_zeros()
+    {
+        return None;
+    }
+    let mut levels = Vec::new();
+    let mut total = 0u32;
+    for _ in 0..faces {
+        for level in 0..mips {
+            let (w, h) = ((width >> level).max(1), (height >> level).max(1));
+            let (pitch, rows) = format.block_layout(w, h).ok()?;
+            let length = pitch.checked_mul(rows)?;
+            let offset = total;
+            total = total.checked_add(length)?.checked_add(15)? & !15;
+            if total > 64 * 1024 * 1024 {
+                return None;
+            }
+            levels.push(CpuMip {
+                offset,
+                width: w,
+                height: h,
+                pitch,
+                length,
+            });
+        }
+    }
+    Some((levels, total))
+}
 fn create_texture(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16], cube: bool) -> u32 {
     let mut normalized = *a;
     if cube {
@@ -2522,18 +2571,9 @@ fn create_texture(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16], cube:
         return INVALID;
     }
     let faces = if cube { 6 } else { 1 };
-    let mut cpu_bytes = 0u64;
-    for level in 0..mips {
-        let (pitch, rows) =
-            match format.block_layout((a[1] >> level).max(1), (a[2] >> level).max(1)) {
-                Ok(layout) => layout,
-                Err(_) => return UNAVAILABLE,
-            };
-        cpu_bytes += u64::from(pitch) * u64::from(rows) * faces;
-        if cpu_bytes > 64 * 1024 * 1024 {
-            return UNAVAILABLE;
-        }
-    }
+    let Some((layout, total)) = texture_cpu_layout(a[1], a[2], mips, faces, format) else {
+        return UNAVAILABLE;
+    };
     let allocation = if cube {
         gpu.create_cube_texture(a[1], a[3], format)
             .map(|texture| (texture, None))
@@ -2551,29 +2591,27 @@ fn create_texture(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16], cube:
             return UNAVAILABLE;
         }
     };
-    let mut levels = Vec::new();
-    for _face in 0..faces {
-        for level in 0..texture.levels() {
-            let (width, height) = texture.dimensions(level).unwrap();
-            let (pitch, length) = texture.byte_layout(level).unwrap();
-            let bytes = length as usize;
-            levels.push(TextureLevel {
-                data: if a[4] == 1 {
-                    0
-                } else {
-                    memory(&image.cpu, &vec![0; bytes], true, false)
-                        .unwrap_or_else(|e| unsupported(&e))
-                },
-                width,
-                height,
-                pitch,
-                length,
-                surface: 0,
-                lock: None,
-                initialized: false,
-            });
-        }
-    }
+    // One checked mapping per texture. Each face/mip still has independent,
+    // aligned storage and initialization/lock state; no geometry or mip is omitted.
+    let data = if a[4] == 1 {
+        0
+    } else {
+        memory(&image.cpu, &vec![0; total as usize], true, false)
+            .unwrap_or_else(|e| unsupported(&e))
+    };
+    let levels = layout
+        .into_iter()
+        .map(|mip| TextureLevel {
+            data: if data == 0 { 0 } else { data + mip.offset },
+            width: mip.width,
+            height: mip.height,
+            pitch: mip.pitch,
+            length: mip.length,
+            surface: 0,
+            lock: None,
+            initialized: false,
+        })
+        .collect();
     addref(s, a[0]);
     let pointer = object(
         &image.cpu,
@@ -3560,6 +3598,55 @@ fn dispatch_inner(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn packed_texture_mips_keep_aligned_disjoint_faces_and_exact_block_layouts() {
+        let (layout, total) = texture_cpu_layout(4, 4, 3, 6, SampleFormat::Bgra8).unwrap();
+        assert_eq!((layout.len(), total), (18, 576));
+        let mut bytes = vec![0; total as usize];
+        for (n, mip) in layout.iter().enumerate() {
+            let face = n / 3;
+            let level = n % 3;
+            assert_eq!(mip.offset, face as u32 * 96 + [0, 64, 80][level]);
+            assert_eq!(mip.offset % 16, 0);
+            assert_eq!((mip.width, mip.height), (4 >> level, 4 >> level));
+            assert_eq!(mip.pitch, mip.width * 4);
+            bytes[mip.offset as usize..(mip.offset + mip.length) as usize].fill(n as u8 + 1);
+        }
+        for (n, mip) in layout.iter().enumerate() {
+            assert!(
+                bytes[mip.offset as usize..(mip.offset + mip.length) as usize]
+                    .iter()
+                    .all(|&v| v == n as u8 + 1)
+            );
+        }
+        let (bc, total) = texture_cpu_layout(8, 8, 4, 6, SampleFormat::Bc1).unwrap();
+        assert_eq!((bc.len(), total), (24, 480));
+        assert_eq!(
+            bc.iter()
+                .take(4)
+                .map(|m| (m.pitch, m.length))
+                .collect::<Vec<_>>(),
+            [(16, 32), (8, 8), (8, 8), (8, 8)]
+        );
+        let (l8, total) = texture_cpu_layout(3, 3, 2, 1, SampleFormat::Luminance8).unwrap();
+        assert_eq!(
+            (l8[0].length, l8[1].offset, l8[1].length, total),
+            (9, 16, 1, 32)
+        );
+        for (w, h, mips, faces) in [
+            (0, 1, 1, 1),
+            (1, 0, 1, 1),
+            (8193, 1, 1, 1),
+            (4, 4, 0, 1),
+            (4, 4, 4, 1),
+            (4, 2, 2, 6),
+            (4, 4, 1, 7),
+            (8192, 8192, 1, 1),
+            (4096, 4096, 1, 6),
+        ] {
+            assert!(texture_cpu_layout(w, h, mips, faces, SampleFormat::Bgra8).is_none());
+        }
+    }
     #[test]
     fn cube_faces_address_distinct_mips_and_reject_overflow_and_invalid_faces() {
         let mut seen = std::collections::BTreeSet::new();
