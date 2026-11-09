@@ -5338,3 +5338,12 @@ coverage and exact lengths. The old CI remains failed pending a new complete run
 Literal earlier CI PE files also ran on physical M4: full clear output agrees with
 Windows, and the triangle finite pixel audit matches coverage with RGB error <=1,
 while retaining the old overall invalid-lock mismatch as a failure.
+
+CI 42561453681 at 9dbab80 passes the complete D3D9 workflow: hosted Metal, native
+Windows D3D9/SDK and Linux Mesa Vulkan-software. Both original C++ tutorial
+witnesses pass. The identical transferred PEs subsequently run on clean physical
+M4 runtime 9dbab80: clear agrees in all words, triangle coverage agrees at all
+90,000 pixels and RGB channel error is <=1, with complete control/stack checks.
+The acceptance thresholds are unchanged. SHA-256s and scope are in d3d9.md. The
+local 178 PE, five backend and four observer tests plus Clippy pass. Other PE/
+conformance failures remain separate; no full D3D9 or DAO rendering is claimed.
