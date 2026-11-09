@@ -22,12 +22,19 @@ def build(d):
  obj=d/(PREFIX+'.obj');subprocess.run([shutil.which('clang++'),'--target=i686-pc-windows-msvc','-std=c++17','-O1','-ffreestanding','-fno-builtin','-fno-stack-protector','-fno-exceptions','-fno-rtti','-ffunction-sections','-Wall','-Wextra','-Werror','-Wno-unknown-pragmas',*(['-DVERTICES'] if VERTICES else []),'-I'+str(SOURCE/'include'),'-c',str(SOURCE/'create-device-pe.cpp'),'-o',str(obj)],check=True)
  subprocess.run([lld,'-flavor','link','/nodefaultlib','/subsystem:console','/machine:x86','/dynamicbase','/fixed:no','/timestamp:0','/safeseh:no','/manifest:no','/opt:ref','/entry:entry',str(obj),*libs,*[f'/alternatename:__imp__{n}@{s}=__imp__{n}' for entries in SYMBOLS.values() for n,s in entries],'/out:'+str(d/FILES[0])],check=True)
  (d/(PREFIX+'-inputs.json')).write_text(json.dumps(identity(d),indent=2)+'\n')
+def triangle_pixels(words):
+ if len(words)!=90032:raise ValueError('triangle report length differs')
+ return words[23:-9]
+def compare_triangle_pixels(first,second):
+ if len(first)!=90000 or len(second)!=90000:raise ValueError('triangle pixel count differs')
+ for i,(a,b) in enumerate(zip(first,second)):
+  if (a==0xff)!=(b==0xff) or any(abs(((a>>n)&255)-((b>>n)&255))>1 for n in [0,8,16]):raise ValueError(f'native triangle coverage or RGB tolerance 1 failed at {i%300},{i//300}')
 def decode(data):
  if len(data)%4:raise ValueError('truncated D3D9 report')
  words=list(struct.unpack('<'+'I'*(len(data)//4),data))
  if VERTICES:
   if len(words)!=90032 or words[:23]!=[0x44394433,4,0]+[1]*20 or words[-9:]!=[1]*8+[90032]:raise ValueError('triangle COM/state/guard/stack differs')
-  pixels=words[23:-9]
+  pixels=triangle_pixels(words)
   if not 19000<sum(n!=0xff for n in pixels)<21001 or pixels[150*300+150]==0xff or any(pixels[n]!=0xff for n in [0,299,299*300,300*300-1]):raise ValueError('triangle coverage/background failed')
   return words
  expected=[0x44394433,4,0]+[1]*10+[0xff]*195+[1]*8+[217]
@@ -56,8 +63,7 @@ def execute(d,native):
   other=decode(bytes.fromhex(peer['stdout_hex']))
   if not VERTICES and other!=report['words']:raise ValueError('exact clear/COM comparison failed')
   if VERTICES:
-   for a,b in zip(other[23:-9],report['words'][14:-9]):
-    if (a==0xff)!=(b==0xff) or any(abs(((a>>n)&255)-((b>>n)&255))>1 for n in [0,8,16]):raise ValueError('native triangle coverage or RGB tolerance 1 failed')
+   compare_triangle_pixels(triangle_pixels(other),triangle_pixels(report['words']))
    report['comparison']='all 90000 coverage decisions exact; RGB channel error <= 1'
  path.write_text(json.dumps(report,indent=2)+'\n');print(('Original Tutorial 02 vertex buffers/DrawPrimitive' if VERTICES else 'Original Tutorial 01 clear/present')+' executes; GPU pixels and finite COM witness pass')
 if __name__=='__main__':

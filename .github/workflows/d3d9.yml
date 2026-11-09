@@ -19,6 +19,7 @@ jobs:
           cargo fetch --manifest-path d3d9/Cargo.toml --locked
       - name: Validate portable renderer and execute actual Metal pixels
         run: |
+          python -m unittest discover -s tests -p test_d3d9_observer.py -v
           cargo fmt --manifest-path d3d9/Cargo.toml --check
           cargo test --manifest-path d3d9/Cargo.toml --locked --offline
           cargo test --manifest-path d3d9/Cargo.toml --locked --offline -- --ignored --nocapture

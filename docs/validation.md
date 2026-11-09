@@ -5319,10 +5319,22 @@ remain failed evidence. See d3d9.md for precise supported/unsupported operations
 CI 42560083730 passes the corrected SDK checks and the full native D3D9 clear
 witness, agreeing in all 217 words with hosted Metal. The same-PE triangle's
 90,000 coverage decisions agree and all RGB channels differ by at most one, but
-its overall witness fails a wrong invalid-input premise: the native driver accepts
-a lock beyond the declared VB length. The failed result remains recorded. The
+its overall witness fails a wrong invalid-input premise: the native lock result differs from the
+expected INVALIDCALL value for an invalid range; its raw HRESULT was not retained
+and acceptance versus another error remains unknown. The failed result remains recorded. The
 next witness uses valid GetDesc metadata instead; owned-storage bounds remain
 enforced and separately tested. All 178 PE library units pass. CI 42560238748's
 Linux Vulkan-software job independently passes all five backend tests via Mesa
 Lavapipe; this is software Vulkan evidence. Full native triangle witness agreement
 is pending. Hashes, counts and limitations are in d3d9.md.
+
+CI 42560726454 passes Metal, Vulkan-software, Windows SDK and native clear jobs/
+steps. Its triangle control/metadata/stack values all pass; its comparison fails
+because the observer includes nine metadata words in one pixel slice. A shared
+23-word-prefix extraction corrects the parser without changing pixel coverage or
+tolerance requirements. The corrected comparator passes the preserved raw
+Windows/Metal outputs; four regression units cover extraction, RGB thresholds,
+coverage and exact lengths. The old CI remains failed pending a new complete run.
+Literal earlier CI PE files also ran on physical M4: full clear output agrees with
+Windows, and the triangle finite pixel audit matches coverage with RGB error <=1,
+while retaining the old overall invalid-lock mismatch as a failure.
