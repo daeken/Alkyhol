@@ -752,7 +752,7 @@ fn capabilities(programmable: bool) -> [u32; 76] {
     caps[48] = 20; // implemented XYZRHW|DIFFUSE stride
     caps[58] = 1; // one adapter in this adapter group
     caps[34] = 0xff; // Actual eight stencil operations on depth/stencil attachments.
-    caps[9] |= 0x10; // real depth testing
+    caps[9] |= 0x10 | 0x06000000; // depth testing and real float constant/slope bias
     caps[10] = 0xff; // all eight real D16 comparisons
     caps[60] = 1; // one color target
     if programmable {

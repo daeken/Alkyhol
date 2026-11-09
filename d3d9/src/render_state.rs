@@ -146,21 +146,10 @@ impl RenderState {
             | 194 | 206 => value <= 1,
             8 => value == 3,
             9 => value == 2,
-            15
-            | 26
-            | 28
-            | 29
-            | 48
-            | 128..=135
-            | 151
-            | 152
-            | 167
-            | 174
-            | 175
-            | 176
-            | 184
-            | 195
-            | 198..=205 => value == 0,
+            15 | 26 | 28 | 29 | 48 | 128..=135 | 151 | 152 | 167 | 174 | 176 | 184 | 198..=205 => {
+                value == 0
+            }
+            175 | 195 => f32::from_bits(value).is_finite(),
             19 | 20 | 207 | 208 => factor(value).is_ok(),
             22 => (1..=3).contains(&value),
             23 | 25 | 56 => (1..=8).contains(&value),
@@ -284,6 +273,20 @@ mod tests {
                 .set(ty, value)
                 .unwrap_or_else(|e| panic!("default state {ty}: {e}"));
             assert_eq!(state.get(ty).unwrap(), value);
+        }
+    }
+    #[test]
+    fn bias_states_retain_float_bits_and_reject_nonfinite_updates() {
+        let mut state = RenderState::default();
+        for ty in [175, 195] {
+            for value in [0.125f32, -0.125, 1e-5, -0.] {
+                state.set(ty, value.to_bits()).unwrap();
+                assert_eq!(state.get(ty).unwrap(), value.to_bits());
+            }
+            for value in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+                assert!(state.set(ty, value.to_bits()).is_err());
+                assert_eq!(state.get(ty).unwrap(), (-0f32).to_bits());
+            }
         }
     }
     #[test]

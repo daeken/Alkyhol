@@ -82,7 +82,10 @@ impl RenderState {
         if stencil && !depth.stencil_initialized.load(Ordering::Acquire) {
             let states = [7, 52, 53, 54, 55, 56, 57, 58, 59, 185, 186, 187, 188, 189]
                 .map(|ty| (ty, self.get(ty).unwrap()));
-            return Err(format!("stencil testing requires an initialized stencil aspect; dimensions={:?}; render_states={states:?}", depth.dimensions()).into());
+            return Err(format!(
+                "stencil testing requires an initialized stencil aspect; dimensions={:?}; render_states={states:?}",
+                depth.dimensions()
+            ));
         }
         let stencil = if stencil {
             let face = |fail, zfail, pass, func| -> Result<_> {

@@ -6778,3 +6778,45 @@ zero-initialization. The full backend stencil GPU operation/aspect test,
 PE Clippy and 15 observer tests pass. Existing CI transfers the identical new PE
 for native comparison, pending. The next clean DAO replay determines whether
 scene rendering advances; no character-creation frame/gameplay is yet claimed.
+
+The buffer-storage native comparison passes on d974dba in CI
+[42683201703](https://github.com/daeken/Alkyhol/actions/runs/42683201703);
+its Metal and Vulkan producer jobs pass. Native stream stage 11 and the retained
+POSITIONT/StretchRect differences still fail, so the overall workflow is not green.
+The 9fc21bf Metal producer is blocked by backend Clippy's redundant `.into()` on
+the new diagnostic String; its native diagnostic did not run. The PE Clippy pass
+does not lint dependency crates. This diagnostic-only lint is being corrected
+separately from the rendering behavior and native evidence.
+
+## New Game reaches the opening movie, then original float depth bias
+
+Clean 4d99a60 passes the prior stencil stop and continues New Game into the
+original opening movie. After a native Escape event, later original scene setup
+requests D3DRS_DEPTHBIAS = 0x3727c5ac and stops. This is progress beyond the
+loading/preview draw, not a verified character-creation scene or gameplay frame.
+
+Constant and slope bias now retain their actual finite float32 state values.
+A Naga fragment-entry adapter implements the
+[documented float offset](https://learn.microsoft.com/en-us/windows/win32/direct3d9/depth-bias)
+from fragment position and depth derivatives, after clipping, clamped to [0,1].
+The original fragment body is called unchanged; all original color outputs are
+retained and the biased fragment depth is returned separately. This avoids
+rounding the normalized float constant into wgpu's integer hardware-bias units.
+Both fixed transformed-color and translated original-shader paths use the same
+adapter. Zero bias leaves the module untouched. Nonfinite values, explicit
+shader depth output with nonzero bias, and explicit early-depth modes fail
+rather than silently selecting different behavior. Fine native depth precision,
+slope derivative/quantization boundaries and their full-scene effects remain
+unmeasured; this is finite implementation evidence, not a native frame oracle.
+
+All 25 backend units, 217 PE units, both crates' Clippy checks and 16 observer
+units pass locally. IR units validate output interfaces, existing/new fragment
+position input, no-op identity and explicit failure cases. Physical M4 tests
+compare complete frames for positive/negative constant and slope bias on D16
+and D24/stencil attachments, retaining every covered pixel. The owned `--bias`
+PE uses unchanged shader bytecode and tests float state roundtrip, positive-bias
+occlusion and negative-bias visibility in two complete RGB frames; it passes
+physically. Independent SDK enum/capability checks and identical-PE native
+comparison are added to existing CI and pending. The diagnostic String lint
+from 9fc21bf is fixed without changing its failure semantics. A clean original
+replay is required to identify the next scene boundary.

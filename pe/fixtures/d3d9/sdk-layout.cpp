@@ -44,6 +44,8 @@ static_assert(offsetof(D3DCAPS9,NumberOfAdaptersInGroup)==232);
 static_assert(offsetof(D3DCAPS9,NumSimultaneousRTs)==240);
 
 static_assert(sizeof(D3DVERTEXELEMENT9)==8);
+static_assert(D3DRS_DEPTHBIAS==195&&D3DRS_SLOPESCALEDEPTHBIAS==175);
+static_assert(D3DPRASTERCAPS_DEPTHBIAS==0x04000000&&D3DPRASTERCAPS_SLOPESCALEDEPTHBIAS==0x02000000);
 static_assert(D3DDECLTYPE_SHORT4==7);
 static_assert(D3DDECLTYPE_FLOAT16_2==15&&D3DDECLTYPE_FLOAT16_4==16);
 static_assert(offsetof(IDirect3DDevice9Vtbl,CreateVertexDeclaration)==86*4);

@@ -11,6 +11,7 @@ use std::{
 use wgpu::util::DeviceExt;
 pub mod compiler;
 mod depth;
+mod depth_bias;
 pub mod legacy;
 mod legacy_gpu;
 pub mod vertex;
@@ -316,11 +317,20 @@ impl Device {
                 contents: &uniform,
                 usage: wgpu::BufferUsages::UNIFORM,
             });
+        let mut shader_text = include_str!("transformed.wgsl").to_owned();
+        let bias = f32::from_bits(state.get(195)?);
+        let slope = f32::from_bits(state.get(175)?);
+        if depth.is_some() && (bias != 0. || slope != 0.) {
+            let mut module =
+                naga::front::wgsl::parse_str(&shader_text).map_err(|e| e.to_string())?;
+            depth_bias::lower(&mut module, bias, slope)?;
+            shader_text = legacy::wgsl(&module)?;
+        }
         let shader = self
             .device
             .create_shader_module(wgpu::ShaderModuleDescriptor {
                 label: Some("D3D9 fixed-function XYZRHW diffuse"),
-                source: wgpu::ShaderSource::Wgsl(include_str!("transformed.wgsl").into()),
+                source: wgpu::ShaderSource::Wgsl(shader_text.into()),
             });
         let pipeline = self
             .device

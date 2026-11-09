@@ -76,6 +76,17 @@ class LegacyShaderComparatorTests(unittest.TestCase):
         self.assertEqual(shader_words(words,True,states=True),words)
         words[44+15+20*32+22]=0x808080
         with self.assertRaises(ValueError):shader_words(words,True,states=True)
+    def test_float_bias_requires_occlusion_and_both_complete_frames(self):
+        words=self.record();words[1]=20
+        words[31:31+1024]=[0xff]*1024
+        with patch.object(observer,'BIAS',True):
+            self.assertEqual(shader_words(words),words)
+            for index,value in [(31+1023,0xff0000),(1065+20*32+22,0xff),(1065+20*32+10,0xff0000),(2,0)]:
+                changed=words.copy();changed[index]=value
+                with self.assertRaises(ValueError):shader_words(changed)
+            for changed in [words[:-1],words+[0]]:
+                with self.assertRaises(ValueError):shader_words(changed)
+
     def test_exact_frames_and_stack_extent(self):
         words=self.record();self.assertEqual(shader_words(words),words)
         for changed in [words[:-1],words+[0]]:

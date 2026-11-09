@@ -287,7 +287,9 @@ static DWORD streams_witness(IDirect3DVertexBuffer9* positions){
 #endif
 extern "C" DWORD entry(){
  DWORD before=stack();put(0x39534844);
-#ifdef FRESH_STENCIL
+#ifdef BIAS
+put(20);
+#elif defined(FRESH_STENCIL)
 put(19);
 #elif defined(STREAMS)
 put(18);
@@ -330,12 +332,12 @@ put(1);
  if(!RegisterClassExW(&wc))return 2;
  HWND window=CreateWindowExW(0,wc.lpszClassName,L"Original legacy shader execution",0x80000000,80,80,32,32,NULL,NULL,wc.hInstance,NULL);
  if(!window)return 3;
- #if defined(MODEL2)||defined(DEPTH)||defined(FONTS)||defined(FRESH_STENCIL)
+ #if defined(MODEL2)||defined(DEPTH)||defined(FONTS)||defined(FRESH_STENCIL)||defined(BIAS)
  g_pD3D=Direct3DCreate9(32);if(!g_pD3D)return 4;
  D3DPRESENT_PARAMETERS present={};present.BackBufferWidth=32;present.BackBufferHeight=32;present.BackBufferFormat=21;present.BackBufferCount=1;present.SwapEffect=1;present.hDeviceWindow=window;present.Windowed=TRUE;present.PresentationInterval=0x80000000;
- #if defined(DEPTH)||defined(FRESH_STENCIL)
+ #if defined(DEPTH)||defined(FRESH_STENCIL)||defined(BIAS)
  present.EnableAutoDepthStencil=TRUE;
- #if defined(STENCIL)||defined(FRESH_STENCIL)
+ #if defined(STENCIL)||defined(FRESH_STENCIL)||defined(BIAS)
  present.AutoDepthStencilFormat=75;
  #else
  present.AutoDepthStencilFormat=80;
@@ -385,7 +387,7 @@ put(1);
  ok(fresh_ok);if(!fresh_ok)return 35;
  #endif
  IDirect3DSurface9 *back=NULL,*copy=NULL;ok(g_pd3dDevice->GetBackBuffer(0,0,0,&back)==S_OK);ok(g_pd3dDevice->CreateOffscreenPlainSurface(32,32,
-#if defined(MODEL2)||defined(DEPTH)||defined(FONTS)||defined(FRESH_STENCIL)
+#if defined(MODEL2)||defined(DEPTH)||defined(FONTS)||defined(FRESH_STENCIL)||defined(BIAS)
 21,
 #else
 22,
@@ -499,6 +501,10 @@ put(1);
   #ifdef INDEXED
   if(frame){DWORD stage=wide_index_witness();if(stage)return fail(19,stage);}
   #endif
+  #ifdef BIAS
+  float bias=frame?-.125f:.125f;DWORD bits=0;for(UINT n=0;n<4;n++)((unsigned char*)&bits)[n]=((unsigned char*)&bias)[n];
+  DWORD observed_bias=0;if(g_pd3dDevice->SetRenderState(195,bits)!=S_OK||g_pd3dDevice->GetRenderState(195,&observed_bias)!=S_OK||observed_bias!=bits)return 40;
+  #endif
   matrix[3]=frame?.75f:0;
   put(0xfeed0000+frame);
   #ifdef STATES
@@ -516,7 +522,7 @@ put(1);
   #endif
   ok(g_pd3dDevice->SetVertexShaderConstantF(0,matrix,4)==S_OK);
   static float actual[16];ok(g_pd3dDevice->GetVertexShaderConstantF(0,actual,4)==S_OK&&actual[3]==matrix[3]);
-  #if defined(STENCIL)||defined(FRESH_STENCIL)
+  #if defined(STENCIL)||defined(FRESH_STENCIL)||defined(BIAS)
   // Clear uses the viewport rectangle, not its depth mapping interval.
   DWORD clear_viewport[6]={0,0,32,32,frame?0x3e800000u:0u,frame?0x3f400000u:0u};
   if(g_pd3dDevice->SetViewport(clear_viewport)!=S_OK)return 36;
@@ -524,6 +530,8 @@ put(1);
   ok(g_pd3dDevice->Clear(0,NULL,
  #ifdef STENCIL
  5,0xff0000ff,1,
+ #elif defined(BIAS)
+ 3,0xff0000ff,.5f,
  #elif defined(FRESH_STENCIL)
  3,0xff0000ff,1,
  #elif defined(DEPTH)
@@ -532,7 +540,7 @@ put(1);
  1,0xff0000ff,1,
  #endif
  0)==S_OK);
- #if defined(STENCIL)||defined(FRESH_STENCIL)
+ #if defined(STENCIL)||defined(FRESH_STENCIL)||defined(BIAS)
  DWORD draw_viewport[6]={0,0,32,32,0,0x3f800000};
  if(g_pd3dDevice->SetViewport(draw_viewport)!=S_OK)return 37;
  #endif

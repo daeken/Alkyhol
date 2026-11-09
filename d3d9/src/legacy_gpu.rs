@@ -143,7 +143,14 @@ impl Device {
         }
         let mut vs = legacy::lower_spirv(draw.vertex_spirv, legacy::Stage::Vertex)?;
         legacy::vertex_pixel_centers(&mut vs)?;
-        let ps = legacy::lower_spirv(draw.pixel_spirv, legacy::Stage::Pixel)?;
+        let mut ps = legacy::lower_spirv(draw.pixel_spirv, legacy::Stage::Pixel)?;
+        if depth.is_some() {
+            crate::depth_bias::lower(
+                &mut ps,
+                f32::from_bits(state.get(195)?),
+                f32::from_bits(state.get(175)?),
+            )?;
+        }
         let mut used = BTreeSet::new();
         resources(&vs, 0, &mut used)?;
         resources(&ps, 1, &mut used)?;
