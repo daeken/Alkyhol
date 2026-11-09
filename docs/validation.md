@@ -6887,3 +6887,39 @@ runtime is marked dirty before build and includes the exact source/binary hashes
 committing that identical source does not relabel the earlier capture as clean.
 The local app bundle/launch records and original captures remain ignored local
 data. The original-query scene replay is still in progress.
+
+### Precise query native agreement; original focus-change capture boundary
+
+CI [42691891879](https://github.com/daeken/Alkyhol/actions/runs/42691891879)
+on cc666a3 passes the Metal producer, software Vulkan GPU suite and native
+identical-PE occlusion comparison. All actual counters (552/276/0), COM assertions
+and complete frame words agree with native Windows D3D9. Precise counting is
+therefore physically observed on Metal and software Vulkan; the vendor's D3D12
+counting branch still has no independent execution evidence. The overall native
+job remains failed on separate-stream unbind metadata, StretchRect and POSITIONT.
+
+The original query-enabled run reaches the menu. Native desktop control then
+changes focus and the original game calls SetCapture while its window is not
+key. The old foreground-only backend stops there, before exercising query
+creation; no original query-game/scene success is yet claimed. This is distinct
+from the finite owned query evidence above.
+
+[Win32 SetCapture](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setcapture)
+also admits background capture, restricted to events over the visible owner.
+The backend now retains that restricted scope and its real Win32 ownership/
+callbacks. It routes only actual AppKit/WindowServer events; outside-client
+routing is admitted solely for established foreground capture. A real upgrade
+to foreground enables the existing drag/up stream; subsequent foreground loss,
+hide/destroy or another-window down clears it. No other process's clicks are
+intercepted and foreground/key state is never fabricated. Hidden/foreign-thread
+capture and complete Win32 focus/activation notification parity remain outside
+the implemented profile.
+
+The new two-window owned PE passes physically: background acquisition, transfers
+in both directions, GetCapture, three synchronous WM_CAPTURECHANGED callbacks,
+release, destruction and stack checks. The existing foreground lifecycle PE
+also passes unchanged assertions. All 219 PE units, PE Clippy and four capture
+observer units pass. Existing CI now compares the identical background PE on
+native Windows, pending. Native delivery of arbitrary background mouse sequences
+is not established by these lifecycle assertions. The next original replay
+checks whether focus transitions clear the observed startup barrier.

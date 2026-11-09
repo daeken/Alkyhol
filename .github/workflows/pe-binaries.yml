@@ -222,6 +222,10 @@ jobs:
         run: |
           python tools/observe_pe32_mouse_capture.py
           python tools/observe_pe32_mouse_capture.py --host
+      - name: Execute DAO background capture transfers and restricted ownership
+        run: |
+          python tools/observe_pe32_mouse_capture.py --background
+          python tools/observe_pe32_mouse_capture.py --background --host
       - name: Execute D3DX system CRT C locale queries and selection
         run: |
           python tools/observe_pe32_c_locale.py
@@ -355,6 +359,8 @@ jobs:
             local/pe/startup-microtests/file-family-host.json
             local/pe/startup-microtests/window-family-inputs.json
             local/pe/startup-microtests/window-family-host.json
+            local/pe/startup-microtests/mouse-background-capture-inputs.json
+            local/pe/startup-microtests/mouse-background-capture-host.json
             local/pe/startup-microtests/mouse-capture-inputs.json
             local/pe/startup-microtests/mouse-capture-host.json
             local/pe/startup-microtests/c-locale-inputs.json
@@ -566,6 +572,9 @@ jobs:
       - name: Observe identical capture lifecycle PE on native Windows
         if: ${{ success() || failure() }}
         run: python tools/observe_pe32_mouse_capture.py --native
+      - name: Observe identical background capture transfer PE on native Windows
+        if: ${{ success() || failure() }}
+        run: python tools/observe_pe32_mouse_capture.py --background --native
       - name: Observe identical system CRT C locale PE on native Windows
         if: ${{ success() || failure() }}
         run: python tools/observe_pe32_c_locale.py --native

@@ -6,6 +6,8 @@ from build_pe_fixture import ROOT,rust_tool
 from check_pe32_activation import SOURCE,digest
 from observe_pe32_activation_startup import runner
 SOURCES=['mouse-capture.c','mouse-capture.def','mouse-capture-user.def']
+PREFIX='mouse-capture'
+BACKGROUND=False
 FILES=['mouse-capture.exe']
 SYMBOLS=[('GetModuleHandleW',4),('GetStdHandle',4),('WriteFile',20),('Sleep',4),('RegisterClassExW',4),('CreateWindowExW',48),('DefWindowProcW',16),('ShowWindow',8),('DestroyWindow',4),('SetCapture',4),('ReleaseCapture',0),('GetCapture',0),('PeekMessageW',20),('DispatchMessageW',4)]
 def inputs(d):
@@ -14,28 +16,30 @@ def build(d):
  d.mkdir(parents=True,exist_ok=True);lld=rust_tool('rust-lld');libs=[]
  for role in ['mouse-capture','mouse-capture-user']:
   lib=d/(role+'.lib');libs.append(str(lib));subprocess.run([lld,'-flavor','link','/lib','/machine:x86','/def:'+str(SOURCE/(role+'.def')),'/out:'+str(lib)],check=True)
- obj=d/'mouse-capture.obj'
- subprocess.run([shutil.which('clang'),'--target=i686-pc-windows-msvc','-O1','-ffreestanding','-fno-builtin','-fno-stack-protector','-fno-unwind-tables','-fno-asynchronous-unwind-tables','-Wall','-Wextra','-Werror','-c',str(SOURCE/SOURCES[0]),'-o',str(obj)],check=True)
+ obj=d/(PREFIX+'.obj')
+ subprocess.run([shutil.which('clang'),'--target=i686-pc-windows-msvc','-O1','-ffreestanding','-fno-builtin','-fno-stack-protector','-fno-unwind-tables','-fno-asynchronous-unwind-tables','-Wall','-Wextra','-Werror',*(['-DBACKGROUND'] if BACKGROUND else []),'-c',str(SOURCE/SOURCES[0]),'-o',str(obj)],check=True)
  subprocess.run([lld,'-flavor','link','/nodefaultlib','/subsystem:console','/machine:x86','/dynamicbase','/fixed:no','/timestamp:0','/safeseh:no','/manifest:no','/entry:entry',str(obj),*libs,*[f'/alternatename:__imp__{n}@{s}=__imp__{n}' for n,s in SYMBOLS],'/out:'+str(d/FILES[0])],check=True)
- (d/'mouse-capture-inputs.json').write_text(json.dumps(inputs(d),indent=2)+'\n')
+ (d/(PREFIX+'-inputs.json')).write_text(json.dumps(inputs(d),indent=2)+'\n')
 def decode(data):
  if len(data)%4:raise ValueError('truncated capture report')
  words=list(struct.unpack('<'+'I'*(len(data)//4),data))
- if words!=[0x43415032,1]+[1]*16+[19]:raise ValueError('capture lifecycle, callback, query or stack differs: '+repr(words))
+ if words!=[0x43415032,2 if BACKGROUND else 1]+[1]*(18 if BACKGROUND else 16)+[21 if BACKGROUND else 19]:raise ValueError('capture lifecycle, callback, query or stack differs: '+repr(words))
  return words
 def execute(d,native=False):
  identity=inputs(d)
- if json.loads((d/'mouse-capture-inputs.json').read_text())!=identity:raise ValueError('capture source/PE identity changed')
+ if json.loads((d/(PREFIX+'-inputs.json')).read_text())!=identity:raise ValueError('capture source/PE identity changed')
  run=Path(tempfile.mkdtemp(prefix='capture-',dir=d));exe=run/FILES[0];shutil.copyfile(d/FILES[0],exe);command=[str(exe.resolve())]
  if not native:command=[str(runner(d)),*command,'--strict','--file-origins']
  r=subprocess.run(command,capture_output=True,timeout=30)
  report={'backend':'native Windows' if native else 'physical AppKit PE32','inputs':identity,'status':r.returncode,'stdout_hex':r.stdout.hex(),'stderr_hex':r.stderr.hex()}
- path=d/('native-mouse-capture.json' if native else 'mouse-capture-host.json');path.write_text(json.dumps(report,indent=2)+'\n')
+ path=d/(('native-' if native else '')+PREFIX+('.json' if native else '-host.json'));path.write_text(json.dumps(report,indent=2)+'\n')
  if r.returncode:raise ValueError('capture PE failed; raw output retained')
  report['words']=decode(r.stdout)
  if native:
-  peer=json.loads((d/'mouse-capture-host.json').read_text())
+  peer=json.loads((d/(PREFIX+'-host.json')).read_text())
   if peer['inputs']!=identity or peer['status'] or peer['stdout_hex']!=report['stdout_hex']:raise ValueError('identical PE native/host capture observations differ')
  path.write_text(json.dumps(report,indent=2)+'\n');print('Owned PE32 capture/release/query, WM_CAPTURECHANGED and stdcall stack validate')
 if __name__=='__main__':
- p=argparse.ArgumentParser(description=__doc__);p.add_argument('--output',type=Path,default=ROOT/'local/pe/startup-microtests');m=p.add_mutually_exclusive_group();m.add_argument('--host',action='store_true');m.add_argument('--native',action='store_true');a=p.parse_args();d=a.output.resolve();execute(d,a.native) if a.host or a.native else build(d)
+ p=argparse.ArgumentParser(description=__doc__);p.add_argument('--background',action='store_true');p.add_argument('--output',type=Path,default=ROOT/'local/pe/startup-microtests');m=p.add_mutually_exclusive_group();m.add_argument('--host',action='store_true');m.add_argument('--native',action='store_true');a=p.parse_args();d=a.output.resolve()
+ if a.background:BACKGROUND=True;PREFIX='mouse-background-capture';FILES=[PREFIX+'.exe']
+ execute(d,a.native) if a.host or a.native else build(d)

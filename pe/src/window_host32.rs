@@ -331,6 +331,12 @@ struct MouseQueue {
     buttons: u32,
     events: VecDeque<MouseEvent>,
     capture: Option<i64>,
+    capture_foreground: bool,
+}
+// Background capture remains local to the visible owning window. Only an
+// established foreground capture is lost on a subsequent real focus loss.
+fn capture_mode(was_foreground: bool, visible: bool, foreground: bool) -> Option<bool> {
+    (visible && (!was_foreground || foreground)).then_some(foreground)
 }
 fn mouse_message(kind: u64, button: u64, buttons: &mut u32, modifiers: u64) -> Option<(u32, u32)> {
     let (message, xbutton) = match kind {
@@ -520,12 +526,23 @@ impl App {
                 && unsafe { send0::<i8>(captured, "isKeyWindow") } != 0;
             let another_down = matches!(kind, 1 | 3 | 25)
                 && unsafe { send0::<i64>(window, "windowNumber") } != number;
-            if !active || another_down {
-                queue.capture = None;
+            let visible = !captured.is_null()
+                && unsafe { send0::<i8>(captured, "isVisible") } != 0
+                && unsafe { send0::<i8>(self.app, "isHidden") } == 0;
+            if let Some(foreground) =
+                capture_mode(queue.capture_foreground, visible, active).filter(|_| !another_down)
+            {
+                queue.capture_foreground = foreground;
+                // WindowServer delivers background events only over the visible
+                // owner. Do not reroute another window's events into this scope.
+                if foreground || unsafe { send0::<i64>(window, "windowNumber") } == number {
+                    window = captured;
+                    location =
+                        unsafe { send1::<Point, Point>(window, "convertPointFromScreen:", screen) };
+                }
             } else {
-                window = captured;
-                location =
-                    unsafe { send1::<Point, Point>(window, "convertPointFromScreen:", screen) };
+                queue.capture = None;
+                queue.capture_foreground = false;
             }
         }
         let view = unsafe { send0::<Id>(window, "contentView") };
@@ -565,7 +582,7 @@ impl App {
         };
         let modifiers = unsafe { send0::<u64>(event, "modifierFlags") };
         if let Some((message, keys)) = mouse_message(kind, button, &mut queue.buttons, modifiers) {
-            if queue.capture.is_none()
+            if !(queue.capture.is_some() && queue.capture_foreground)
                 && (x < 0.0 || y < 0.0 || x >= bounds.size.width || y >= bounds.size.height)
             {
                 return Ok(()); // Nonclient events still update the physical button state.
@@ -592,25 +609,29 @@ impl App {
     pub(super) fn take_mouse(&self) -> Vec<MouseEvent> {
         self.mouse.lock().unwrap().events.drain(..).collect()
     }
-    /// Foreground owned-window capture. AppKit/WindowServer retain the original
-    /// drag/up stream outside the window after a native button down. This routing
-    /// sends it to the selected Win32 window; it never intercepts another app's
-    /// clicks. Background capture is explicitly outside this backend's profile.
+    /// Foreground capture routes the native drag/up stream outside the owner.
+    /// Background capture is limited to actual WindowServer events over its
+    /// visible window; it never intercepts another process's mouse input.
     pub(super) fn set_mouse_capture(&self, number: Option<i64>) -> crate::Result<Option<i64>> {
         main_exec(move || {
-            if let Some(number) = number {
+            let foreground = if let Some(number) = number {
                 let window =
                     unsafe { send1::<_, Id>(self.app, "windowWithWindowNumber:", number as isize) };
                 if window.is_null()
-                    || unsafe { send0::<i8>(self.app, "isActive") } == 0
-                    || unsafe { send0::<i8>(window, "isKeyWindow") } == 0
+                    || unsafe { send0::<i8>(window, "isVisible") } == 0
+                    || unsafe { send0::<i8>(self.app, "isHidden") } != 0
                 {
-                    return Err("mouse capture requires an actual foreground owned window".into());
+                    return Err("mouse capture requires a visible owned window".into());
                 }
-            }
+                (unsafe { send0::<i8>(self.app, "isActive") }) != 0
+                    && (unsafe { send0::<i8>(window, "isKeyWindow") }) != 0
+            } else {
+                false
+            };
             let mut mouse = self.mouse.lock().unwrap();
             let previous = mouse.capture;
             mouse.capture = number;
+            mouse.capture_foreground = foreground;
             Ok(previous)
         })
     }
@@ -620,11 +641,17 @@ impl App {
             if let Some(number) = mouse.capture {
                 let window =
                     unsafe { send1::<_, Id>(self.app, "windowWithWindowNumber:", number as isize) };
-                if window.is_null()
-                    || unsafe { send0::<i8>(self.app, "isActive") } == 0
-                    || unsafe { send0::<i8>(window, "isKeyWindow") } == 0
-                {
+                let visible = !window.is_null()
+                    && unsafe { send0::<i8>(window, "isVisible") } != 0
+                    && unsafe { send0::<i8>(self.app, "isHidden") } == 0;
+                let foreground = visible
+                    && unsafe { send0::<i8>(self.app, "isActive") } != 0
+                    && unsafe { send0::<i8>(window, "isKeyWindow") } != 0;
+                if let Some(mode) = capture_mode(mouse.capture_foreground, visible, foreground) {
+                    mouse.capture_foreground = mode;
+                } else {
                     mouse.capture = None;
+                    mouse.capture_foreground = false;
                 }
             }
             mouse.capture
@@ -1159,6 +1186,18 @@ mod capture_tests {
 
 #[cfg(test)]
 mod handoff_tests {
+    #[test]
+    fn capture_tracks_background_upgrade_real_focus_loss_and_visibility() {
+        assert_eq!(super::capture_mode(false, true, false), Some(false));
+        assert_eq!(super::capture_mode(false, true, true), Some(true));
+        assert_eq!(super::capture_mode(true, true, true), Some(true));
+        assert_eq!(super::capture_mode(true, true, false), None);
+        for foreground in [false, true] {
+            for old in [false, true] {
+                assert_eq!(super::capture_mode(old, false, foreground), None);
+            }
+        }
+    }
     #[test]
     fn native_mouse_buttons_retain_transitions_and_win32_modifier_bits() {
         use super::mouse_message;
