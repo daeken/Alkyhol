@@ -5587,3 +5587,22 @@ four-vertex quad GPU test and all 2,100 words of an owned indexed PE, including
 both source index widths, DISCARD/NOOVERWRITE and storage after external Release.
 Native indexed comparison is pending. All 183 PE library tests, remaining targets
 and Clippy pass; no original game draw, frame or live input event is claimed.
+
+## Indexed comparison passes; DAO enters font setup
+
+CI 42586300117 passes all three D3D9 jobs on 890f0fe. Native Windows and hosted
+Metal agree on every indexed witness word; physical M4 has the same PE SHA and
+same full 2,100-word output, including 16/32-bit source indices and dynamic locks.
+
+The original EXE now passes implicit swapchain access, device/backbuffer metadata
+and further renderer initialization, then enters Scaleform font setup and stops
+at its actual unnamed CreateMutexA call. The new owned 235-word query PE passes
+on physical M4 and covers real chain identity/parent/backbuffer lifetime and chain
+Present, in addition to previous window/depth/viewport evidence. All 183 PE library
+tests, remaining targets and Clippy pass. Native swapchain comparison is pending.
+
+D3D9 failures are now explicitly logged even when ignored by the original caller.
+This run also retains failures for D24S8, three texture requests and 15 packed
+vertex declarations. Continuing through a handled failure does not implement
+that resource or establish rendering quality. No original DAO draw or game frame
+has yet been observed. These remaining resources must be implemented as needed.

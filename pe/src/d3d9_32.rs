@@ -21,7 +21,7 @@ const IID_RESOURCE: [u8; 16] = [
 const IID_BASE_TEXTURE: [u8; 16] = [
     0x7e, 0xa8, 0x0c, 0x58, 0x3c, 0x1d, 0x54, 0x4d, 0x99, 0x1d, 0xb7, 0xd3, 0xe3, 0xc2, 0x98, 0xce,
 ];
-const IIDS: [[u8; 16]; 9] = [
+const IIDS: [[u8; 16]; 10] = [
     [
         0xca, 0xcb, 0xbd, 0x81, 0xd4, 0x64, 0x6d, 0x42, 0xae, 0x8d, 0xad, 1, 0x47, 0xf4, 0x27, 0x5c,
     ],
@@ -56,6 +56,10 @@ const IIDS: [[u8; 16]; 9] = [
     [
         0x5e, 0xd6, 0x9d, 0x7c, 0xf7, 0xd3, 0x29, 0x45, 0xac, 0xee, 0x78, 0x58, 0x30, 0xac, 0xde,
         0x35,
+    ],
+    [
+        0xf2, 0x50, 0x49, 0x79, 0xfc, 0xad, 0x8a, 0x45, 0x90, 0x5e, 0x10, 0xa1, 0x0b, 0x0b, 0x50,
+        0x3b,
     ],
 ];
 struct Object {
@@ -93,6 +97,9 @@ enum Body {
         elements: Vec<[u32; 2]>,
         bindings: u32,
     },
+    SwapChain {
+        parent: u32,
+    },
     Factory(Rc<Gpu>, Rc<super::window_host32::DisplayModes>),
     Device {
         parent: u32,
@@ -101,6 +108,7 @@ enum Body {
         render_target: u32,
         depth_surface: u32,
         auto_depth: u32,
+        swapchain: u32,
         hwnd: u32,
         scene: bool,
         parameters: [u32; 14],
@@ -163,6 +171,7 @@ impl Body {
             Self::Surface { .. } => 2,
             Self::VertexBuffer { .. } => 3,
             Self::IndexBuffer { .. } => 8,
+            Self::SwapChain { .. } => 9,
             Self::Shader {
                 stage: Stage::Vertex,
                 ..
@@ -318,6 +327,7 @@ pub(super) fn signature(id: u32) -> Option<(&'static str, u16)> {
             1 => 119,
             2 => 17,
             3 | 8 => 14,
+            9 => 10,
             4..=6 => 5,
             7 => 22,
             _ => return None,
@@ -367,6 +377,13 @@ pub(super) fn signature(id: u32) -> Option<(&'static str, u16)> {
         (3, 11) => ("IDirect3DVertexBuffer9::Lock", 20),
         (3, 12) => ("IDirect3DVertexBuffer9::Unlock", 4),
         (3, 13) => ("IDirect3DVertexBuffer9::GetDesc", 8),
+        (9, 3) => ("IDirect3DSwapChain9::Present", 24),
+        (9, 4) => ("IDirect3DSwapChain9::GetFrontBufferData", 8),
+        (9, 5) => ("IDirect3DSwapChain9::GetBackBuffer", 16),
+        (9, 6) => ("IDirect3DSwapChain9::GetRasterStatus", 8),
+        (9, 7) => ("IDirect3DSwapChain9::GetDisplayMode", 8),
+        (9, 8) => ("IDirect3DSwapChain9::GetDevice", 8),
+        (9, 9) => ("IDirect3DSwapChain9::GetPresentParameters", 8),
         (8, 3) => ("IDirect3DIndexBuffer9::GetDevice", 8),
         (8, 10) => ("IDirect3DIndexBuffer9::GetType", 4),
         (8, 11) => ("IDirect3DIndexBuffer9::Lock", 20),
@@ -420,6 +437,7 @@ fn table(cpu: &Cpu32, state: &mut State, kind: u32) -> Result<u32> {
     let count = match kind {
         1 => 119,
         3 | 8 => 14,
+        9 => 10,
         4..=6 => 5,
         7 => 22,
         _ => 17,
@@ -498,6 +516,7 @@ fn release(s: &mut State, p: u32) -> u32 {
         | Body::Surface { parent, .. }
         | Body::VertexBuffer { parent, .. }
         | Body::IndexBuffer { parent, .. }
+        | Body::SwapChain { parent, .. }
         | Body::Shader { parent, .. }
         | Body::Declaration { parent, .. }
         | Body::Texture { parent, .. } => Some(*parent),
@@ -505,6 +524,7 @@ fn release(s: &mut State, p: u32) -> u32 {
     let cached = matches!(
         o.body,
         Body::Surface { back: true, .. }
+            | Body::SwapChain { .. }
             | Body::Surface {
                 implicit_depth: true,
                 ..
@@ -532,6 +552,7 @@ fn release(s: &mut State, p: u32) -> u32 {
             render_target,
             depth_surface,
             auto_depth,
+            swapchain,
             back,
             stream,
             indices,
@@ -558,6 +579,9 @@ fn release(s: &mut State, p: u32) -> u32 {
             }
             if auto_depth != 0 {
                 s.objects.remove(&auto_depth);
+            }
+            if swapchain != 0 {
+                s.objects.remove(&swapchain);
             }
             if back != 0 {
                 s.objects.remove(&back);
@@ -779,6 +803,7 @@ fn device(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
             render_target: 0,
             depth_surface: 0,
             auto_depth: 0,
+            swapchain: 0,
             hwnd,
             scene: false,
             parameters: p,
@@ -1111,7 +1136,9 @@ fn expose(s: &mut State, p: u32) {
             bindings,
             ..
         } => (*parent, if *bindings == 0 { *container } else { 0 }),
-        Body::Texture { parent, .. } | Body::IndexBuffer { parent, .. } => (*parent, 0),
+        Body::Texture { parent, .. }
+        | Body::IndexBuffer { parent, .. }
+        | Body::SwapChain { parent, .. } => (*parent, 0),
         _ => unsupported("unsupported retained interface exposure"),
     };
     o.refs = 1;
@@ -1594,6 +1621,43 @@ fn draw_indexed(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 
     args[2] = base as u32;
     args[3] = a[6];
     draw_buffer(image, s, &args, Some((a[4], normalized)))
+}
+fn swapchain(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
+    if a[2] == 0 {
+        return INVALID;
+    }
+    write(image, a[2], &[0]);
+    if a[1] != 0 {
+        return INVALID;
+    }
+    let Body::Device { swapchain, .. } = &s.objects[&a[0]].body else {
+        unreachable!()
+    };
+    let mut pointer = *swapchain;
+    if pointer == 0 {
+        pointer = object(&image.cpu, s, Body::SwapChain { parent: a[0] }, 0);
+        let Body::Device { swapchain, .. } = &mut s.objects.get_mut(&a[0]).unwrap().body else {
+            unreachable!()
+        };
+        *swapchain = pointer;
+    }
+    expose(s, pointer);
+    write(image, a[2], &[pointer]);
+    0
+}
+fn device_mode(image: &LoadedImage32<'_>, s: &State, device: u32, out: u32) -> u32 {
+    if out == 0 {
+        return INVALID;
+    }
+    let Body::Device { parent, .. } = &s.objects[&device].body else {
+        unreachable!()
+    };
+    let Body::Factory(_, modes) = &s.objects[parent].body else {
+        unreachable!()
+    };
+    let mode = modes.current;
+    write(image, out, &mode);
+    0
 }
 fn stream_source(s: &mut State, a: &[u32; 16]) -> u32 {
     if a[1] != 0 {
@@ -2552,6 +2616,7 @@ fn dispatch_inner(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32 {
                 | Body::Surface { parent, .. }
                 | Body::VertexBuffer { parent, .. }
                 | Body::IndexBuffer { parent, .. }
+                | Body::SwapChain { parent, .. }
                 | Body::Shader { parent, .. }
                 | Body::Declaration { parent, .. }
                 | Body::Texture { parent, .. } => parent,
@@ -2561,6 +2626,70 @@ fn dispatch_inner(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32 {
             write(image, a[1], &[parent]);
             0
         }
+        (1, 14) => swapchain(image, &mut s, a),
+        (1, 15) => 1,
+        (1, 8) => {
+            if a[1] == 0 {
+                device_mode(image, &s, a[0], a[2])
+            } else {
+                INVALID
+            }
+        }
+        (9, 3) => {
+            if a[5] != 0 {
+                return UNAVAILABLE;
+            }
+            let Body::SwapChain { parent } = &s.objects[&a[0]].body else {
+                unreachable!()
+            };
+            let mut args = *a;
+            args[0] = *parent;
+            drop(s);
+            dispatch_inner(image, BASE + 256 + 17, &args)
+        }
+        (9, 5) => {
+            let Body::SwapChain { parent } = &s.objects[&a[0]].body else {
+                unreachable!()
+            };
+            let mut args = [0; 16];
+            args[0] = *parent;
+            args[2] = a[1];
+            args[3] = a[2];
+            args[4] = a[3];
+            backbuffer(image, &mut s, &args)
+        }
+        (9, 7) => {
+            let Body::SwapChain { parent } = &s.objects[&a[0]].body else {
+                unreachable!()
+            };
+            device_mode(image, &s, *parent, a[1])
+        }
+        (9, 8) => {
+            if a[1] == 0 {
+                return INVALID;
+            }
+            let Body::SwapChain { parent } = &s.objects[&a[0]].body else {
+                unreachable!()
+            };
+            let parent = *parent;
+            addref(&mut s, parent);
+            write(image, a[1], &[parent]);
+            0
+        }
+        (9, 9) => {
+            if a[1] == 0 {
+                return INVALID;
+            }
+            let Body::SwapChain { parent } = &s.objects[&a[0]].body else {
+                unreachable!()
+            };
+            let Body::Device { parameters, .. } = &s.objects[parent].body else {
+                unreachable!()
+            };
+            write(image, a[1], parameters);
+            0
+        }
+        (9, 4 | 6) => UNAVAILABLE,
         (1, 9) => {
             let Body::Device {
                 hwnd,

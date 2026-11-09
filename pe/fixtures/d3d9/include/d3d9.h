@@ -27,6 +27,7 @@ struct D3DDISPLAYMODE{UINT Width,Height,RefreshRate,Format;};
 struct D3DVERTEXBUFFER_DESC{UINT Format,Type,Usage,Pool,Size,FVF;};
 struct D3DLOCKED_RECT{INT Pitch;void* pBits;};
 
+struct IDirect3DSwapChain9;
 struct IDirect3DIndexBuffer9;
 struct IDirect3DBaseTexture9;struct IDirect3DTexture9;
 struct IDirect3DVertexShader9;struct IDirect3DPixelShader9;struct IDirect3DVertexDeclaration9;
@@ -66,8 +67,8 @@ struct IDirect3DDevice9 {
  virtual void __stdcall UnsupportedSlot11()=0;
  virtual void __stdcall UnsupportedSlot12()=0;
  virtual void __stdcall UnsupportedSlot13()=0;
- virtual void __stdcall UnsupportedSlot14()=0;
- virtual void __stdcall UnsupportedSlot15()=0;
+ virtual HRESULT __stdcall GetSwapChain(UINT,IDirect3DSwapChain9**)=0;
+ virtual UINT __stdcall GetNumberOfSwapChains()=0;
  virtual void __stdcall UnsupportedSlot16()=0;
  virtual HRESULT __stdcall Present(const void*,const void*,HWND,const void*)=0;
  virtual HRESULT __stdcall GetBackBuffer(UINT,UINT,UINT,IDirect3DSurface9**)=0;
@@ -326,4 +327,17 @@ struct IDirect3DIndexBuffer9 {
  virtual HRESULT __stdcall Lock(UINT,UINT,void**,DWORD)=0;
  virtual HRESULT __stdcall Unlock()=0;
  virtual HRESULT __stdcall GetDesc(D3DINDEXBUFFER_DESC*)=0;
+};
+
+struct IDirect3DSwapChain9 {
+ virtual HRESULT __stdcall QueryInterface(const GUID&,void**)=0;
+ virtual ULONG __stdcall AddRef()=0;
+ virtual ULONG __stdcall Release()=0;
+ virtual HRESULT __stdcall Present(const void*,const void*,HWND,const void*,DWORD)=0;
+ virtual HRESULT __stdcall GetFrontBufferData(IDirect3DSurface9*)=0;
+ virtual HRESULT __stdcall GetBackBuffer(UINT,UINT,IDirect3DSurface9**)=0;
+ virtual HRESULT __stdcall GetRasterStatus(void*)=0;
+ virtual HRESULT __stdcall GetDisplayMode(D3DDISPLAYMODE*)=0;
+ virtual HRESULT __stdcall GetDevice(IDirect3DDevice9**)=0;
+ virtual HRESULT __stdcall GetPresentParameters(D3DPRESENT_PARAMETERS*)=0;
 };

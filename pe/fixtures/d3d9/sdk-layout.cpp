@@ -93,3 +93,11 @@ static_assert(offsetof(IDirect3DDevice9Vtbl,DrawIndexedPrimitive)==82*4);
 static_assert(offsetof(IDirect3DIndexBuffer9Vtbl,Lock)==11*4);
 static_assert(offsetof(IDirect3DIndexBuffer9Vtbl,Unlock)==12*4);
 static_assert(offsetof(IDirect3DIndexBuffer9Vtbl,GetDesc)==13*4);
+
+static_assert(offsetof(IDirect3DDevice9Vtbl,GetSwapChain)==14*4);
+static_assert(offsetof(IDirect3DDevice9Vtbl,GetNumberOfSwapChains)==15*4);
+static_assert(offsetof(IDirect3DSwapChain9Vtbl,Present)==3*4);
+static_assert(offsetof(IDirect3DSwapChain9Vtbl,GetBackBuffer)==5*4);
+static_assert(offsetof(IDirect3DSwapChain9Vtbl,GetDisplayMode)==7*4);
+static_assert(offsetof(IDirect3DSwapChain9Vtbl,GetDevice)==8*4);
+static_assert(offsetof(IDirect3DSwapChain9Vtbl,GetPresentParameters)==9*4);

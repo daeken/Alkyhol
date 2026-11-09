@@ -20,10 +20,25 @@ static DWORD words[90100],used;
 static void put(DWORD n){words[used++]=n;}
 static DWORD stack(){DWORD s;__asm__ volatile("movl %%esp,%0":"=r"(s));return s;}
 static LRESULT __stdcall witness_proc(HWND w,UINT m,WPARAM a,LPARAM b){return DefWindowProcW(w,m,a,b);}
+#ifdef QUERIES
+static BOOL swapchain_queries(){
+ IDirect3DSwapChain9 *swap=NULL,*again=NULL;IDirect3DDevice9* parent=NULL;
+ if(g_pd3dDevice->GetNumberOfSwapChains()!=1||g_pd3dDevice->GetSwapChain(0,&swap)!=S_OK||!swap)return FALSE;
+ if(g_pd3dDevice->GetSwapChain(0,&again)!=S_OK||again!=swap)return FALSE;again->Release();
+ const GUID swap_iid={0x794950f2,0xadfc,0x458a,{0x90,0x5e,0x10,0xa1,0xb,0xb,0x50,0x3b}};void* identity=NULL;
+ if(swap->QueryInterface(swap_iid,&identity)!=S_OK||identity!=swap)return FALSE;((IDirect3DSwapChain9*)identity)->Release();
+ if(swap->GetDevice(&parent)!=S_OK||parent!=g_pd3dDevice)return FALSE;parent->Release();
+ DWORD storage[16];for(UINT i=0;i<16;i++)storage[i]=0x715e7a11;
+ if(swap->GetPresentParameters((D3DPRESENT_PARAMETERS*)(storage+1))!=S_OK||storage[0]!=0x715e7a11||storage[15]!=0x715e7a11||storage[1]!=Width||storage[2]!=Height||storage[3]!=22||storage[4]!=1||storage[7]!=1||storage[9]!=1||storage[10]!=0)return FALSE;
+ D3DDISPLAYMODE first={},second={};if(swap->GetDisplayMode(&first)!=S_OK||g_pD3D->GetAdapterDisplayMode(0,&second)!=S_OK||first.Width!=second.Width||first.Height!=second.Height||first.RefreshRate!=second.RefreshRate||first.Format!=second.Format)return FALSE;
+ IDirect3DSurface9 *back=NULL,*other=NULL;if(swap->GetBackBuffer(0,0,&back)!=S_OK||g_pd3dDevice->GetBackBuffer(0,0,0,&other)!=S_OK||back!=other)return FALSE;back->Release();other->Release();
+ swap->Release();if(g_pd3dDevice->GetSwapChain(0,&again)!=S_OK||again!=swap)return FALSE;again->Release();return TRUE;
+}
+#endif
 extern "C" DWORD entry(){
  DWORD before=stack();put(0x44394433);
 #ifdef QUERIES
-put(7);
+put(8);
 #else
 put(4);
 #endif
@@ -39,6 +54,7 @@ put(4);
  IDirect3D9* parent=NULL;put(g_pd3dDevice->GetDirect3D(&parent)==S_OK&&parent==g_pD3D);if(parent)parent->Release();
  put(g_pd3dDevice->TestCooperativeLevel()==S_OK);
  #ifdef QUERIES
+ put(swapchain_queries());
  DWORD viewport[8]={0x715e7a11,0,0,0,0,0,0,0x715e7a11};put(g_pd3dDevice->GetViewport(viewport+1)==S_OK&&viewport[0]==0x715e7a11&&viewport[7]==0x715e7a11&&viewport[1]==0&&viewport[2]==0&&viewport[3]==Width&&viewport[4]==Height&&viewport[5]==0&&viewport[6]==0x3f800000&&g_pd3dDevice->SetViewport(viewport+1)==S_OK);
  IDirect3DSurface9* depth=(IDirect3DSurface9*)1;put(g_pd3dDevice->GetDepthStencilSurface(&depth)==(HRESULT)0x88760866&&depth==NULL);
  static DWORD window_info[17];window_info[0]=window_info[16]=0x715e7a11;window_info[1]=60;
@@ -73,6 +89,9 @@ put(4);
  put(g_pVB->Lock(0,60,&locked_vertex,0)==S_OK&&locked_vertex&&((FLOAT*)locked_vertex)[0]==150.f);put(g_pVB->Unlock()==S_OK);
 #endif
  ShowWindow(window,1);Render(); // Original Microsoft clear/scene/present body.
+ #ifdef QUERIES
+ IDirect3DSwapChain9* swap=NULL;put(g_pd3dDevice->GetSwapChain(0,&swap)==S_OK&&swap&&swap->Present(NULL,NULL,NULL,NULL,0)==S_OK);if(swap)swap->Release();
+ #endif
  #ifdef VERTICES
  // A bound vertex buffer must remain drawable after its external reference goes.
  g_pVB->Release();g_pVB=NULL;
