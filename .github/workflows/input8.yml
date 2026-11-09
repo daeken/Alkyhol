@@ -63,7 +63,7 @@ jobs:
             local/pe/disk-space-microtest/disk-space-inputs.json
             local/pe/disk-space-microtest/disk-space-host.json
           if-no-files-found: error
-      - name: Execute the original network worker's manual event-set Winsock wait
+      - name: Execute the original network worker's manual/automatic event-set Winsock waits
         run: |
           cargo test --target x86_64-apple-darwin --locked --offline event_set_tests
           python tools/observe_pe32_wsa_events.py

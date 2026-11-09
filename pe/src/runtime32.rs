@@ -52,6 +52,8 @@ mod gdi32;
 mod heap32;
 #[path = "icon32.rs"]
 mod icon32;
+#[path = "netbios32.rs"]
+mod netbios32;
 pub use icon32::IconImage32;
 #[path = "d3d9_32.rs"]
 mod d3d9_32;
@@ -127,7 +129,7 @@ unsafe extern "C" {
 }
 const PAGE: usize = 4096;
 const STACK: usize = 1024 * 1024;
-const APIS: [(&str, u16); 293] = [
+const APIS: [(&str, u16); 294] = [
     ("GetLastError", 0),
     ("SetLastError", 4),
     ("GetStdHandle", 4),
@@ -421,6 +423,7 @@ const APIS: [(&str, u16); 293] = [
     ("sendto", 24),
     ("recvfrom", 24),
     ("WSARecvFrom", 36),
+    ("Netbios", 4),
 ];
 // The first 120 API slots retain their original offsets. The second bank
 // begins after both x87 bodies, leaving their machine code and failure gates
@@ -492,6 +495,8 @@ fn api_id(module: &str, symbol: &ImportSymbol) -> Option<usize> {
                     "dinput8.dll"
                 } else if (272..=274).contains(id) || *id == 276 {
                     "ole32.dll"
+                } else if *id == 293 {
+                    "netapi32.dll"
                 } else if *id == 255 {
                     "d3d9.dll"
                 } else if matches!(*id, 8 | 120) {
@@ -2413,6 +2418,7 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
             288 | 289 => winsock32::endpoint(image, args, id == 289),
             290 | 291 => winsock32::datagram(image, args, id == 291),
             292 => winsock32::wsa_receive(image, &words),
+            293 => netbios32::reset_unavailable(image, args[0]),
             input8_32::BASE.. => input8_32::dispatch(image, id, &words),
             d3d9_32::BASE.. => d3d9_32::dispatch(image, id, &words),
             215 => {
@@ -2495,6 +2501,14 @@ mod tests {
             Some(285)
         );
         assert_eq!(APIS[285].1, 12);
+    }
+    #[test]
+    fn netbios_uses_netapi32_and_one_stdcall_pointer() {
+        let symbol = ImportSymbol::Name("Netbios".into());
+        assert_eq!(api_id("NETAPI32.dll", &symbol), Some(293));
+        assert_eq!(api_id("kernel32.dll", &symbol), None);
+        assert_eq!(APIS[293].1, 4);
+        assert_eq!(cleanup_bytes(293, APIS[293].1), 4);
     }
     #[test]
     fn cdecl_crt_gateways_keep_arguments_for_the_guest_caller() {

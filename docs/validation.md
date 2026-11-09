@@ -5911,3 +5911,41 @@ Its overlapped receive still returns an explicit WSAEOPNOTSUPP failure; no pendi
 operation, callback or completion is invented. No original DAO draw, Present,
 menu, gameplay or audio playback has been observed. Original game evidence stays
 local and the unchanged EXE identity is retained.
+
+## Original DAO proceeds through NetBIOS failure and automatic-event waits
+
+CI [42610901249](https://github.com/daeken/Alkyhol/actions/runs/42610901249)
+passes both jobs on 83bf613. The 41-word manual event-set witness now agrees on
+native Windows, hosted Rosetta and physical M4 with identical source/PE identity
+(PE SHA-256 3150485bcb0e06058a58e9c6ea34f41f9aa3248caceaf036a4334a60d271a0b6).
+The literal native artifact is retained locally. D3D9 CI 42610901334 also passes
+all three jobs on this revision.
+
+The reached synchronous Netbios NCBRESET now fails explicitly with NRC_OPENERR
+(63): Alkyhol has no NetBIOS transport. Checked 64-byte Win32 NCB storage receives
+only its failure/completion status; no adapter data, hardware identity or pending
+request is supplied. Other commands and asynchronous completion remain excluded.
+The original unchanged caller actually retries ten adapters, handles the failure
+and starts another network worker. This is failure-path compatibility, not an
+implemented NetBIOS service. The [NCB contract](https://learn.microsoft.com/en-us/windows/win32/api/nb30/ns-nb30-ncb)
+and [Netbios status contract](https://learn.microsoft.com/en-us/windows/win32/api/nb30/nf-nb30-netbios)
+are the public API references; a unit verifies preserved payloads and rejection
+without mutation of unsupported asynchronous/callback profiles.
+
+That worker revealed an automatic-reset event in its actual wait set. Single
+event and set waits now share one dispatcher, so each automatic signal can
+satisfy only one eligible wait and a partial wait-all does not reserve signals.
+Successful all-waits atomically consume automatic members while retaining manual
+members. Initial any-ready priority, saturated sets and completion latching remain
+preserved. Semaphore sets, APCs and wait-all through distinct aliases to one
+automatic object are explicitly outside this profile. Seven root event-set units
+cover these rules, actual competing waiters and host task delivery; complete root
+tests and root/PE Clippy pass. All 197 PE library tests pass locally. The expanded
+63-word owned WSA PE passes physical M4, including actual automatic-event worker
+signaling and mixed reset modes; new native comparison is pending.
+
+The integrated original game passes that wait, starts two further workers and
+reaches real recvfrom. The next unsupported import is Winsock ordinal 18 (select).
+The unchanged EXE SHA is retained with private source/probe/config/capture
+identities. No original game draw, Present, audio playback, menu or gameplay is
+established; asynchronous receive remains an explicit unsupported failure.

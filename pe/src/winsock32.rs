@@ -109,7 +109,7 @@ fn checked(image: &LoadedImage32<'_>, pointer: u32, len: usize, write: bool) {
     }
 }
 /// WSA event aliases use the same real manual-reset kernel objects as Win32.
-/// Manual event any/all sets are atomic; automatic events and APC dispatch remain explicit.
+/// Event any/all sets are atomic; semaphore sets and APC dispatch remain explicit.
 pub(super) fn event_api(image: &LoadedImage32<'_>, id: u32, a: &[u32; 8]) -> u32 {
     if id == 280 {
         return super::event32::dispatch(image, 116, &[0, 1, 0, 0, 0, 0, 0, 0]);
@@ -146,7 +146,7 @@ pub(super) fn event_api(image: &LoadedImage32<'_>, id: u32, a: &[u32; 8]) -> u32
         match thread32::wait_event_set(image, &handles, a[2] != 0, a[3]) {
             Ok(result) => return result,
             Err(error) if error.0 == 50 => {
-                unsupported("Winsock multi-wait currently requires manual-reset event objects")
+                unsupported("Winsock multi-wait contains an unsupported event alias or object kind")
             }
             Err(error) => return failure(error.0),
         }

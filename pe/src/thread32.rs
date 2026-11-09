@@ -582,7 +582,7 @@ pub(super) fn wait_handle(image: &LoadedImage32<'_>, handle: u32, milliseconds: 
     })
 }
 
-/// Manual event sets use the portable kernel dispatcher. Only synchronized host
+/// Event sets use the portable kernel dispatcher. Only synchronized host
 /// references cross the CPU release; AppKit handoff tasks still run on main.
 pub(super) fn wait_event_set(
     image: &LoadedImage32<'_>,
