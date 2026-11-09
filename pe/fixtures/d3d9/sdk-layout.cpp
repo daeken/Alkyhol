@@ -48,3 +48,12 @@ static_assert(offsetof(IDirect3DDevice9Vtbl,SetPixelShaderConstantF)==109*4);
 static_assert(offsetof(IDirect3DVertexShader9Vtbl,GetFunction)==4*4);
 static_assert(offsetof(IDirect3DPixelShader9Vtbl,GetFunction)==4*4);
 static_assert(offsetof(IDirect3DVertexDeclaration9Vtbl,GetDeclaration)==4*4);
+
+static_assert(offsetof(IDirect3DDevice9Vtbl,CreateTexture)==23*4);
+static_assert(offsetof(IDirect3DDevice9Vtbl,SetTexture)==65*4);
+static_assert(offsetof(IDirect3DDevice9Vtbl,SetSamplerState)==69*4);
+static_assert(offsetof(IDirect3DBaseTexture9Vtbl,GetLevelCount)==13*4);
+static_assert(offsetof(IDirect3DTexture9Vtbl,GetLevelDesc)==17*4);
+static_assert(offsetof(IDirect3DTexture9Vtbl,LockRect)==19*4);
+static_assert(offsetof(IDirect3DTexture9Vtbl,UnlockRect)==20*4);
+static_assert(offsetof(D3DCAPS9,PS20Caps)+offsetof(D3DPSHADERCAPS2_0,NumInstructionSlots)==280);

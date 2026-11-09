@@ -5380,3 +5380,16 @@ versions remain unadvertised. Actual DAO selection rejects an unsupported textur
 sRGB-format query before its later capability callback; the prior shader-version
 explanation was inference. No DAO device/frame has been observed. See d3d9.md for
 compiler pins, explicit configuration, tests and remaining scope.
+
+D3D9 CI 42567868544 at 039b7f9 passes hosted Metal, native Windows SDK/D3D9 and
+Mesa Vulkan-software. The identical owned legacy-shader PE agrees on every one
+of 2,099 output words, including both frames, and the transferred PE also agrees
+on physical M4 with the recorded current runtime. The earlier compiler-setup CI
+42567565446 failed before creating the PE/native observation and remains failed.
+New BGRA8 mip/sRGB texture COM and SM2/128-arithmetic-slot prerequisite witnesses
+pass locally on physical M4; their native comparisons are scheduled. Successful
+explicit open compiler initialization enables the bounded SM2 profile; unsupported
+operations continue to fail. Original DAO passes its real adapter gate and reaches
+CreateDevice, where unsupported presentation settings remain the next boundary.
+There is still no original-game shader/frame observation. The exact contracts,
+limits, source pins and retained diagnostics are in d3d9.md.

@@ -14,14 +14,29 @@ def check(directory):
  for name,digest in provenance['files'].items():
   if sha(fixture/name)!=digest:raise ValueError('fixture identity differs: '+name)
  output=ROOT/'local/d3d9/owned-regeneration';output.mkdir(parents=True,exist_ok=True)
- for stage in ['ps','vs']:
-  prefix='legacy-color.'+stage
-  subprocess.run([manifest['hlsl_compiler'],'-x','hlsl','-b','d3dbc','-p',stage+'_3_0',str(fixture/(prefix+'.hlsl')),'-o',str(output/(prefix+'.bin'))],check=True)
-  following=[str(output/'legacy-color.ps.bin')] if stage=='vs' else []
+ texture_provenance=json.loads((fixture/'legacy-texture-provenance.json').read_text())
+ if texture_provenance['helper_source_sha256']!=manifest['helper_source_sha256']:raise ValueError('texture helper identity differs')
+ for name,digest in texture_provenance['files'].items():
+  if sha(fixture/name)!=digest:raise ValueError('texture fixture identity differs: '+name)
+ for name,digest in json.loads((fixture/'legacy-model2-provenance.json').read_text())['files'].items():
+  if sha(fixture/name)!=digest:raise ValueError('SM2 fixture identity differs: '+name)
+ for prefix in ['legacy-color.ps','legacy-color.vs','legacy-texture.ps','legacy-slots128.ps','legacy-model2.vs']:
+  stage=prefix.rsplit('.',1)[1]
+  profile=stage+('_2_0' if prefix in ['legacy-slots128.ps','legacy-model2.vs'] else '_3_0')
+  subprocess.run([manifest['hlsl_compiler'],'-x','hlsl','-b','d3dbc','-p',profile,str(fixture/(prefix+'.hlsl')),'-o',str(output/(prefix+'.bin'))],check=True)
+  following=[str(output/('legacy-slots128.ps.bin' if prefix=='legacy-model2.vs' else 'legacy-color.ps.bin'))] if stage=='vs' else []
   subprocess.run([manifest['helper'],str(output/(prefix+'.bin')),str(output/(prefix+'.spv')),str(output/(prefix+'.json')),*following],check=True)
   for extension in ['bin','spv','json']:
    if (output/(prefix+'.'+extension)).read_bytes()!=(fixture/(prefix+'.'+extension)).read_bytes():raise ValueError('regenerated artifact differs: '+prefix+'.'+extension)
   binary=(fixture/(prefix+'.bin')).read_bytes()
+  if prefix=='legacy-slots128.ps':
+   words=struct.unpack('<'+'I'*(len(binary)//4),binary);at=1;counts={}
+   if words[0]!=0xffff0200:raise ValueError('SM2 header differs')
+   while words[at]!=0xffff:
+    token=words[at];at+=1;opcode=token&65535
+    if opcode==0xfffe:at+=(token>>16)&32767;continue
+    counts[opcode]=counts.get(opcode,0)+1;at+=(token>>24)&15
+   if counts.get(2)!=64 or counts.get(19)!=64:raise ValueError('owned shader no longer contains 128 ADD/FRC slots')
   include='// Owned MIT legacy bytecode: exact DWORDs from d3d9/tests/fixtures.\n'+',\n'.join('0x%08xu'%n for n in struct.unpack('<'+'I'*(len(binary)//4),binary))+'\n'
   if (ROOT/'pe/fixtures/d3d9'/(prefix+'.inc')).read_text()!=include:raise ValueError('PE embedded bytecode differs')
  print('Owned HLSL, bytecode, linked SPIR-V, reflection and PE bytecode agree exactly')

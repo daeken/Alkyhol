@@ -5,7 +5,9 @@ use wgpu::util::DeviceExt;
 pub mod compiler;
 pub mod legacy;
 mod legacy_gpu;
+mod texture;
 pub use legacy_gpu::LegacyDraw;
+pub use texture::{SamplerState, Texture2D, TextureBinding};
 pub use wgpu::{VertexAttribute, VertexFormat};
 pub type Result<T> = std::result::Result<T, String>;
 

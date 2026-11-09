@@ -1,6 +1,7 @@
 //! Real programmable draws over translated legacy bytecode. Initial binding
 //! profile: float constants, triangle lists and explicit float vertex attributes.
-use super::{Device, Result, Target, legacy};
+use super::{Device, Result, Target, TextureBinding, legacy};
+use std::collections::BTreeSet;
 use wgpu::util::DeviceExt;
 pub struct LegacyDraw<'a> {
     pub vertex_spirv: &'a [u8],
@@ -9,9 +10,10 @@ pub struct LegacyDraw<'a> {
     pub stride: u64,
     pub attributes: &'a [wgpu::VertexAttribute],
     pub vertex_constants: &'a [u8],
+    pub textures: &'a [TextureBinding<'a>],
     pub pixel_constants: &'a [u8],
 }
-fn resources(module: &naga::Module, stage: u32, used: &mut [bool; 3]) -> Result<()> {
+fn resources(module: &naga::Module, stage: u32, used: &mut BTreeSet<(u32, u32)>) -> Result<()> {
     let info = naga::valid::Validator::new(
         naga::valid::ValidationFlags::all(),
         naga::valid::Capabilities::all(),
@@ -26,13 +28,19 @@ fn resources(module: &naga::Module, stage: u32, used: &mut [bool; 3]) -> Result<
             continue;
         }
         if let Some(binding) = &var.binding {
-            if binding.binding != 0
-                || ![stage, 2].contains(&binding.group)
-                || var.space != naga::AddressSpace::Uniform
-            {
-                return Err("legacy draw binding outside float constants/viewport profile".into());
+            let uniform = binding.binding == 0
+                && [stage, 2].contains(&binding.group)
+                && var.space == naga::AddressSpace::Uniform;
+            let texture = stage == 1
+                && binding.group == 1
+                && (16..48).contains(&binding.binding)
+                && var.space == naga::AddressSpace::Handle;
+            if !uniform && !texture {
+                return Err(
+                    "legacy draw resource outside float constants/2D pixel texture profile".into(),
+                );
             }
-            used[binding.group as usize] = true;
+            used.insert((binding.group, binding.binding));
         }
     }
     Ok(())
@@ -52,7 +60,7 @@ impl Device {
         let mut vs = legacy::lower_spirv(draw.vertex_spirv, legacy::Stage::Vertex)?;
         legacy::vertex_pixel_centers(&mut vs)?;
         let ps = legacy::lower_spirv(draw.pixel_spirv, legacy::Stage::Pixel)?;
-        let mut used = [false; 3];
+        let mut used = BTreeSet::new();
         resources(&vs, 0, &mut used)?;
         resources(&ps, 1, &mut used)?;
         let vs_text = legacy::wgsl(&vs)?;
@@ -62,12 +70,41 @@ impl Device {
             .flat_map(|n| n.to_le_bytes())
             .collect();
         let data = [draw.vertex_constants, draw.pixel_constants, &viewport];
-        for n in 0..3 {
-            if used[n] && (data[n].is_empty() || !data[n].len().is_multiple_of(16)) {
+        for (n, bytes) in data.iter().enumerate() {
+            if used.contains(&(n as u32, 0))
+                && (bytes.is_empty() || !bytes.len().is_multiple_of(16))
+            {
                 return Err("missing/alignment-invalid legacy constant buffer".into());
             }
         }
+        let mut textures = BTreeSet::new();
+        for &(group, binding) in &used {
+            if group == 1 && binding >= 16 {
+                textures.insert((binding - 16) % 16);
+            }
+        }
+        for &slot in &textures {
+            let input = draw
+                .textures
+                .iter()
+                .find(|t| t.slot == slot)
+                .ok_or("pixel shader texture slot is not bound")?;
+            input.texture.view(input.sampler.srgb())?;
+        }
         self.scope();
+        let texture_resources: Vec<_> = textures
+            .iter()
+            .map(|&slot| {
+                let input = draw
+                    .textures
+                    .iter()
+                    .find(|t| t.slot == slot)
+                    .ok_or("pixel shader texture slot is not bound")?;
+                let view = input.texture.view(input.sampler.srgb())?;
+                let sampler = self.device.create_sampler(&input.sampler.descriptor());
+                Ok((slot, view, sampler))
+            })
+            .collect::<Result<_>>()?;
         let vertex = self
             .device
             .create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -117,7 +154,7 @@ impl Device {
             });
         let buffers: Vec<_> = (0..3)
             .map(|n| {
-                used[n].then(|| {
+                used.contains(&(n as u32, 0)).then(|| {
                     self.device
                         .create_buffer_init(&wgpu::util::BufferInitDescriptor {
                             label: Some("D3D9 actual constants"),
@@ -129,16 +166,31 @@ impl Device {
             .collect();
         let groups: Vec<_> = (0..3)
             .map(|n| {
-                let entries: Vec<_> = buffers[n]
-                    .as_ref()
-                    .map(|b| wgpu::BindGroupEntry {
+                let mut entries = Vec::new();
+                if let Some(buffer) = &buffers[n] {
+                    entries.push(wgpu::BindGroupEntry {
                         binding: 0,
-                        resource: b.as_entire_binding(),
-                    })
-                    .into_iter()
-                    .collect();
+                        resource: buffer.as_entire_binding(),
+                    });
+                }
+                if n == 1 {
+                    for (slot, view, sampler) in &texture_resources {
+                        if used.contains(&(1, 16 + slot)) {
+                            entries.push(wgpu::BindGroupEntry {
+                                binding: 16 + slot,
+                                resource: wgpu::BindingResource::TextureView(view),
+                            });
+                        }
+                        if used.contains(&(1, 32 + slot)) {
+                            entries.push(wgpu::BindGroupEntry {
+                                binding: 32 + slot,
+                                resource: wgpu::BindingResource::Sampler(sampler),
+                            });
+                        }
+                    }
+                }
                 self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                    label: Some("D3D9 stage constants"),
+                    label: Some("D3D9 actual stage resources"),
                     layout: &pipeline.get_bind_group_layout(n as u32),
                     entries: &entries,
                 })

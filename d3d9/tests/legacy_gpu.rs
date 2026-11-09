@@ -52,6 +52,7 @@ fn gpu_executes_legacy_shader_matrix_math_and_runtime_constant_changes() {
             .draw_legacy(
                 &mut target,
                 &LegacyDraw {
+                    textures: &[],
                     vertex_spirv: VS,
                     pixel_spirv: PS,
                     vertices: &vertices,
@@ -75,4 +76,158 @@ fn gpu_executes_legacy_shader_matrix_math_and_runtime_constant_changes() {
         );
         assert_eq!(at(22, 20), [0, 0, 255, 255]);
     }
+}
+
+#[test]
+#[ignore = "requires an actual GPU"]
+fn real_legacy_texture_sampling_applies_srgb_to_rgb_and_preserves_alpha() {
+    use alkyhol_d3d9::{SamplerState, TextureBinding};
+    let device = Device::new().unwrap();
+    let mut target = device.create_target(32, 32).unwrap();
+    let mut texture = device.create_texture(1, 1, 1).unwrap();
+    assert_eq!(texture.dimensions(0).unwrap(), (1, 1));
+    assert!(texture.dimensions(1).is_err());
+    assert!(device.upload_texture(&mut texture, 0, &[128; 3]).is_err());
+    let attributes = [
+        wgpu::VertexAttribute {
+            format: wgpu::VertexFormat::Float32x4,
+            offset: 0,
+            shader_location: 0,
+        },
+        wgpu::VertexAttribute {
+            format: wgpu::VertexFormat::Float32x4,
+            offset: 16,
+            shader_location: 1,
+        },
+    ];
+    let vertices: Vec<_> = [
+        0f32, 0.75, 0.5, 1., 1., 0., 0., 1., 0.75, -0.75, 0.5, 1., 1., 0., 0., 1., -0.75, -0.75,
+        0.5, 1., 1., 0., 0., 1.,
+    ]
+    .iter()
+    .flat_map(|f| f.to_le_bytes())
+    .collect();
+    let constants: Vec<_> = [
+        1f32, 0., 0., 0., 0., 1., 0., 0., 0., 0., 1., 0., 0., 0., 0., 1.,
+    ]
+    .iter()
+    .flat_map(|f| f.to_le_bytes())
+    .collect();
+    let pixel = include_bytes!("fixtures/legacy-texture.ps.spv");
+    let mut sampler = SamplerState::default();
+    device.clear(&mut target, 0xff0000ff).unwrap();
+    let draw = |texture: &alkyhol_d3d9::Texture2D, sampler, target: &mut alkyhol_d3d9::Target| {
+        device.draw_legacy(
+            target,
+            &LegacyDraw {
+                vertex_spirv: VS,
+                pixel_spirv: pixel,
+                vertices: &vertices,
+                stride: 32,
+                attributes: &attributes,
+                vertex_constants: &constants,
+                pixel_constants: &[],
+                textures: &[TextureBinding {
+                    slot: 0,
+                    texture,
+                    sampler,
+                }],
+            },
+        )
+    };
+    assert!(draw(&texture, sampler, &mut target).is_err()); // no zero-filled successful read
+    device
+        .upload_texture(&mut texture, 0, &[128, 128, 128, 128])
+        .unwrap();
+    for srgb in [0, 1] {
+        sampler.set(11, srgb).unwrap();
+        draw(&texture, sampler, &mut target).unwrap();
+        let pixels = device.readback(&target).unwrap();
+        let at = (20 * 32 + 22) * 4;
+        assert_eq!(
+            &pixels[at..at + 4],
+            if srgb == 0 {
+                &[128, 128, 128, 128]
+            } else {
+                &[55, 55, 55, 128]
+            }
+        );
+    }
+    device
+        .upload_texture(&mut texture, 0, &[10, 60, 120, 200])
+        .unwrap();
+    for srgb in [0, 1] {
+        sampler.set(11, srgb).unwrap();
+        draw(&texture, sampler, &mut target).unwrap();
+        let pixels = device.readback(&target).unwrap();
+        let at = (20 * 32 + 22) * 4;
+        assert_eq!(
+            &pixels[at..at + 4],
+            if srgb == 0 {
+                &[10, 60, 120, 200]
+            } else {
+                &[1, 12, 48, 200]
+            }
+        );
+    }
+    let mut mips = device.create_texture(4, 4, 0).unwrap();
+    assert_eq!(mips.levels(), 3);
+    assert!(device.create_texture(4, 4, 4).is_err());
+    for level in 0..3 {
+        let (w, h) = mips.dimensions(level).unwrap();
+        let color = [64, 128, 192][level as usize];
+        device
+            .upload_texture(&mut mips, level, &vec![color; (w * h * 4) as usize])
+            .unwrap();
+    }
+    sampler.set(11, 0).unwrap();
+    sampler.set(9, 2).unwrap();
+    draw(&mips, sampler, &mut target).unwrap();
+    let pixels = device.readback(&target).unwrap();
+    assert_eq!(
+        &pixels[(20 * 32 + 22) * 4..(20 * 32 + 22) * 4 + 4],
+        &[192; 4]
+    );
+}
+
+#[test]
+#[ignore = "requires an actual GPU"]
+fn shader_model2_executes_all_128_arithmetic_slots() {
+    let device = Device::new().unwrap();
+    let mut target = device.create_target(32, 32).unwrap();
+    let vertices: Vec<_> = [
+        0f32, 0.75, 0.5, 1., 1., 0., 0., 1., 0.75, -0.75, 0.5, 1., 1., 0., 0., 1., -0.75, -0.75,
+        0.5, 1., 1., 0., 0., 1.,
+    ]
+    .iter()
+    .flat_map(|f| f.to_le_bytes())
+    .collect();
+    let constants: Vec<_> = [
+        1f32, 0., 0., 0., 0., 1., 0., 0., 0., 0., 1., 0., 0., 0., 0., 1.,
+    ]
+    .iter()
+    .flat_map(|f| f.to_le_bytes())
+    .collect();
+    let attributes = wgpu::vertex_attr_array![0=>Float32x4,1=>Float32x4];
+    device.clear(&mut target, 0xff0000ff).unwrap();
+    device
+        .draw_legacy(
+            &mut target,
+            &LegacyDraw {
+                vertex_spirv: include_bytes!("fixtures/legacy-model2.vs.spv"),
+                pixel_spirv: include_bytes!("fixtures/legacy-slots128.ps.spv"),
+                vertices: &vertices,
+                stride: 32,
+                attributes: &attributes,
+                vertex_constants: &constants,
+                pixel_constants: &[],
+                textures: &[],
+            },
+        )
+        .unwrap();
+    let pixels = device.readback(&target).unwrap();
+    assert_eq!(
+        &pixels[(20 * 32 + 22) * 4..(20 * 32 + 22) * 4 + 4],
+        &[235, 71, 163, 143]
+    );
 }

@@ -3,11 +3,12 @@
 use super::{Cpu32, LoadedImage32, PAGE, unsupported};
 use crate::Result;
 use alkyhol_d3d9::{
-    Device as Gpu, LegacyDraw, Target, VertexAttribute, VertexFormat,
+    Device as Gpu, LegacyDraw, SamplerState, Target, Texture2D, TextureBinding, VertexAttribute,
+    VertexFormat,
     compiler::{self, Compiled, Compiler},
     legacy::Stage,
 };
-use std::{collections::BTreeMap, rc::Rc};
+use std::{cell::RefCell, collections::BTreeMap, rc::Rc};
 pub(super) const BASE: u32 = 0x9000;
 const INVALID: u32 = 0x8876086c;
 const UNAVAILABLE: u32 = 0x8876086a;
@@ -17,7 +18,10 @@ const IID_UNKNOWN: [u8; 16] = [0, 0, 0, 0, 0, 0, 0, 0, 0xc0, 0, 0, 0, 0, 0, 0, 0
 const IID_RESOURCE: [u8; 16] = [
     0x5d, 0xc0, 0xee, 0x05, 0x7d, 0x8f, 0x62, 0x43, 0xb9, 0x99, 0xd1, 0xba, 0xf3, 0x57, 0xc7, 0x04,
 ];
-const IIDS: [[u8; 16]; 7] = [
+const IID_BASE_TEXTURE: [u8; 16] = [
+    0x7e, 0xa8, 0x0c, 0x58, 0x3c, 0x1d, 0x54, 0x4d, 0x99, 0x1d, 0xb7, 0xd3, 0xe3, 0xc2, 0x98, 0xce,
+];
+const IIDS: [[u8; 16]; 8] = [
     [
         0xca, 0xcb, 0xbd, 0x81, 0xd4, 0x64, 0x6d, 0x42, 0xae, 0x8d, 0xad, 1, 0x47, 0xf4, 0x27, 0x5c,
     ],
@@ -45,12 +49,31 @@ const IIDS: [[u8; 16]; 7] = [
         0x9c, 0xc5, 0x13, 0xdd, 0xfa, 0x36, 0x98, 0x40, 0xa8, 0xfb, 0xc7, 0xed, 0x39, 0xdc, 0x85,
         0x46,
     ],
+    [
+        0x27, 0x12, 0xc3, 0x85, 0xe5, 0x3d, 0x00, 0x4f, 0x9b, 0x3a, 0xf1, 0x1a, 0xc3, 0x8c, 0x18,
+        0xb5,
+    ],
 ];
 struct Object {
     refs: u32,
     body: Body,
 }
+struct TextureLevel {
+    data: u32,
+    width: u32,
+    height: u32,
+    lock: Option<bool>,
+    initialized: bool,
+}
 enum Body {
+    Texture {
+        parent: u32,
+        gpu: Rc<RefCell<Texture2D>>,
+        levels: Vec<TextureLevel>,
+        format: u32,
+        pool: u32,
+        bindings: u32,
+    },
     Shader {
         parent: u32,
         stage: Stage,
@@ -67,13 +90,16 @@ enum Body {
     Device {
         parent: u32,
         gpu: Rc<Gpu>,
-        target: Target,
+        target: Box<Target>,
         hwnd: u32,
         scene: bool,
         parameters: [u32; 14],
+        creation_flags: u32,
         back: u32,
         fvf: u32,
         stream: Option<(u32, u32, u32)>,
+        textures: [u32; 16],
+        samplers: Box<[SamplerState; 16]>,
         vertex_shader: u32,
         pixel_shader: u32,
         declaration: u32,
@@ -116,6 +142,7 @@ impl Body {
                 ..
             } => 5,
             Self::Declaration { .. } => 6,
+            Self::Texture { .. } => 7,
         }
     }
 }
@@ -139,6 +166,7 @@ pub(super) fn signature(id: u32) -> Option<(&'static str, u16)> {
             2 => 17,
             3 => 14,
             4..=6 => 5,
+            7 => 22,
             _ => return None,
         }
     {
@@ -170,6 +198,17 @@ pub(super) fn signature(id: u32) -> Option<(&'static str, u16)> {
         (0, 16) => ("IDirect3D9::CreateDevice", 28),
         (1, 3) => ("IDirect3DDevice9::TestCooperativeLevel", 4),
         (1, 26) => ("IDirect3DDevice9::CreateVertexBuffer", 28),
+        (1, 23) => ("IDirect3DDevice9::CreateTexture", 36),
+        (1, 64) => ("IDirect3DDevice9::GetTexture", 12),
+        (1, 65) => ("IDirect3DDevice9::SetTexture", 12),
+        (1, 68) => ("IDirect3DDevice9::GetSamplerState", 16),
+        (1, 69) => ("IDirect3DDevice9::SetSamplerState", 16),
+        (7, 3) => ("IDirect3DTexture9::GetDevice", 8),
+        (7, 10) => ("IDirect3DTexture9::GetType", 4),
+        (7, 13) => ("IDirect3DTexture9::GetLevelCount", 4),
+        (7, 17) => ("IDirect3DTexture9::GetLevelDesc", 12),
+        (7, 19) => ("IDirect3DTexture9::LockRect", 20),
+        (7, 20) => ("IDirect3DTexture9::UnlockRect", 8),
         (1, 86) => ("IDirect3DDevice9::CreateVertexDeclaration", 12),
         (1, 87) => ("IDirect3DDevice9::SetVertexDeclaration", 8),
         (1, 88) => ("IDirect3DDevice9::GetVertexDeclaration", 8),
@@ -252,6 +291,7 @@ fn table(cpu: &Cpu32, state: &mut State, kind: u32) -> Result<u32> {
         1 => 119,
         3 => 14,
         4..=6 => 5,
+        7 => 22,
         _ => 17,
     };
     let m = cpu.mapping(2 * PAGE, PAGE, 0)?;
@@ -328,7 +368,8 @@ fn release(s: &mut State, p: u32) -> u32 {
         | Body::Surface { parent, .. }
         | Body::VertexBuffer { parent, .. }
         | Body::Shader { parent, .. }
-        | Body::Declaration { parent, .. } => Some(*parent),
+        | Body::Declaration { parent, .. }
+        | Body::Texture { parent, .. } => Some(*parent),
     };
     let cached = matches!(
         o.body,
@@ -336,6 +377,7 @@ fn release(s: &mut State, p: u32) -> u32 {
             | Body::VertexBuffer { bindings: 1.., .. }
             | Body::Shader { bindings: 1.., .. }
             | Body::Declaration { bindings: 1.., .. }
+            | Body::Texture { bindings: 1.., .. }
     );
     if !cached {
         s.programs.retain(|&(vs, ps), _| vs != p && ps != p);
@@ -346,10 +388,14 @@ fn release(s: &mut State, p: u32) -> u32 {
             vertex_shader,
             pixel_shader,
             declaration,
+            textures,
             ..
         } = removed.body
         {
-            for bound in [vertex_shader, pixel_shader, declaration] {
+            for bound in [vertex_shader, pixel_shader, declaration]
+                .into_iter()
+                .chain(textures)
+            {
                 if bound != 0 {
                     unbind(s, bound);
                 }
@@ -406,6 +452,26 @@ pub(super) fn create(image: &LoadedImage32<'_>, sdk: u32) -> u32 {
         modes.modes.len(),
         modes.current
     );
+    if std::env::var_os("ALKYHOL_D3D9_SHADER_COMPILER").is_some() {
+        let available = (|| {
+            let compiler = Compiler::from_environment()?;
+            compiler.compile(
+                include_bytes!("../../d3d9/tests/fixtures/legacy-model2.vs.bin"),
+                Stage::Vertex,
+                None,
+            )?;
+            compiler.compile(
+                include_bytes!("../../d3d9/tests/fixtures/legacy-slots128.ps.bin"),
+                Stage::Pixel,
+                None,
+            )?;
+            Ok::<_, String>(compiler)
+        })();
+        match available {
+            Ok(compiler) => image.cpu.d3d9.borrow_mut().compiler = Some(compiler),
+            Err(e) => eprintln!("D3D9 programmable profile unavailable: {e}"),
+        }
+    }
     object(
         &image.cpu,
         &mut image.cpu.d3d9.borrow_mut(),
@@ -444,7 +510,7 @@ fn identifier(image: &LoadedImage32<'_>, s: &State, a: &[u32; 16]) -> u32 {
 /// Only the operations already implemented by this adapter are exposed. In
 /// particular, an actual modern GPU is not evidence that our legacy bytecode
 /// frontend implements shader model 3, texture stages or arbitrary declarations.
-fn capabilities() -> [u32; 76] {
+fn capabilities(programmable: bool) -> [u32; 76] {
     let mut caps = [0; 76];
     caps[0] = 1; // HAL
     caps[7] = 0x80000 | 0x400 | 0x40; // real rasterization and TL system-memory vertices
@@ -455,6 +521,18 @@ fn capabilities() -> [u32; 76] {
     caps[48] = 20; // implemented XYZRHW|DIFFUSE stride
     caps[58] = 1; // one adapter in this adapter group
     caps[60] = 1; // one color target
+    if programmable {
+        // Bounded open SM2 compiler/draw profile, not a generic SM3 promise.
+        caps[15] = 2048;
+        caps[16] = 2048;
+        caps[48] = 2048;
+        caps[49] = 0xfffe0200;
+        caps[50] = 256;
+        caps[51] = 0xffff0200;
+        caps[64] = 12; // minimum SM2 vertex temporary registers
+        caps[68] = 12; // minimum SM2 pixel temporary registers
+        caps[70] = 128; // actual 128-ADD/FRC shader executes in the paired witness
+    }
     caps
 }
 fn device(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
@@ -462,10 +540,14 @@ fn device(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
         return INVALID;
     }
     write(image, a[6], &[0]);
-    if a[1] != 0 || a[2] != 1 || a[4] != 0x20 || a[5] == 0 {
+    if a[1] != 0 || a[2] != 1 || a[4] & !4 != 0x20 || a[5] == 0 {
         return UNAVAILABLE;
     }
     let mut p = read::<14>(image, a[5]);
+    eprintln!(
+        "D3D9 actual CreateDevice flags={:x} presentation={:x?}",
+        a[4], p
+    );
     if p[3] > 1
         || p[4] != 0
         || p[5] != 0
@@ -514,13 +596,16 @@ fn device(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
         Body::Device {
             parent: a[0],
             gpu,
-            target,
+            target: Box::new(target),
             hwnd,
             scene: false,
             parameters: p,
+            creation_flags: a[4],
             back: 0,
             fvf: 0,
             stream: None,
+            textures: [0; 16],
+            samplers: Box::new([SamplerState::default(); 16]),
             vertex_shader: 0,
             pixel_shader: 0,
             declaration: 0,
@@ -729,7 +814,8 @@ fn unbind(s: &mut State, p: u32) {
     let bindings = match &mut o.body {
         Body::VertexBuffer { bindings, .. }
         | Body::Shader { bindings, .. }
-        | Body::Declaration { bindings, .. } => bindings,
+        | Body::Declaration { bindings, .. }
+        | Body::Texture { bindings, .. } => bindings,
         _ => unreachable!(),
     };
     *bindings = bindings
@@ -884,6 +970,41 @@ fn draw(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
             });
         }
     }
+    let Body::Device {
+        textures, samplers, ..
+    } = &s.objects[&a[0]].body
+    else {
+        unreachable!()
+    };
+    let texture_handles: Vec<_> = textures
+        .iter()
+        .enumerate()
+        .filter_map(|(slot, &pointer)| {
+            if pointer == 0 {
+                return None;
+            }
+            let Body::Texture { gpu, levels, .. } = &s.objects[&pointer].body else {
+                unreachable!()
+            };
+            if levels.iter().any(|l| l.lock.is_some()) {
+                unsupported("D3D9 draw using a locked texture");
+            }
+            Some((slot as u32, gpu.clone(), samplers[slot]))
+        })
+        .collect();
+    let borrowed: Vec<_> = texture_handles
+        .iter()
+        .map(|(_, gpu, _)| gpu.borrow())
+        .collect();
+    let textures: Vec<_> = texture_handles
+        .iter()
+        .zip(&borrowed)
+        .map(|((slot, _, sampler), texture)| TextureBinding {
+            slot: *slot,
+            texture,
+            sampler: *sampler,
+        })
+        .collect();
     let program = s.programs.get(&(programmable.0, programmable.1));
     let pixel_spirv = if fixed {
         Vec::new()
@@ -913,6 +1034,7 @@ fn draw(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
         gpu.draw_legacy(
             target,
             &LegacyDraw {
+                textures: &textures,
                 vertex_spirv: &program.unwrap().spirv,
                 pixel_spirv: &pixel_spirv,
                 vertices: bytes,
@@ -1067,7 +1189,9 @@ fn set_program_binding(s: &mut State, a: &[u32; 16], slot: u32) -> u32 {
             return INVALID;
         };
         let parent = match o.body {
-            Body::Shader { parent, .. } | Body::Declaration { parent, .. } => parent,
+            Body::Shader { parent, .. }
+            | Body::Declaration { parent, .. }
+            | Body::Texture { parent, .. } => parent,
             _ => return INVALID,
         };
         if o.refs == 0 || o.body.kind() != kind || parent != a[0] {
@@ -1096,7 +1220,9 @@ fn set_program_binding(s: &mut State, a: &[u32; 16], slot: u32) -> u32 {
     *value = a[1];
     if a[1] != 0 {
         let bindings = match &mut s.objects.get_mut(&a[1]).unwrap().body {
-            Body::Shader { bindings, .. } | Body::Declaration { bindings, .. } => bindings,
+            Body::Shader { bindings, .. }
+            | Body::Declaration { bindings, .. }
+            | Body::Texture { bindings, .. } => bindings,
             _ => unreachable!(),
         };
         *bindings = bindings
@@ -1205,6 +1331,215 @@ fn constants(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16], slot: u32)
     0
 }
 
+fn create_texture(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
+    if a[7] == 0 {
+        return INVALID;
+    }
+    write(image, a[7], &[0]);
+    if a[4] != 0 || ![21, 22].contains(&a[5]) || ![0, 1].contains(&a[6]) || a[8] != 0 {
+        return UNAVAILABLE;
+    }
+    let Body::Device { gpu, .. } = &s.objects[&a[0]].body else {
+        unreachable!()
+    };
+    let texture = match gpu.create_texture(a[1], a[2], a[3]) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("D3D9 texture allocation: {e}");
+            return UNAVAILABLE;
+        }
+    };
+    let mut total = 0usize;
+    let mut levels = Vec::new();
+    for level in 0..texture.levels() {
+        let (width, height) = texture.dimensions(level).unwrap();
+        let bytes = width as usize * height as usize * 4;
+        total += bytes;
+        if total > 64 * 1024 * 1024 {
+            return UNAVAILABLE;
+        }
+        levels.push(TextureLevel {
+            data: memory(&image.cpu, &vec![0; bytes], true, false)
+                .unwrap_or_else(|e| unsupported(&e)),
+            width,
+            height,
+            lock: None,
+            initialized: false,
+        });
+    }
+    addref(s, a[0]);
+    let pointer = object(
+        &image.cpu,
+        s,
+        Body::Texture {
+            parent: a[0],
+            gpu: Rc::new(RefCell::new(texture)),
+            levels,
+            format: a[5],
+            pool: a[6],
+            bindings: 0,
+        },
+        1,
+    );
+    write(image, a[7], &[pointer]);
+    0
+}
+fn texture_binding(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16], get: bool) -> u32 {
+    if a[1] >= 16 {
+        return UNAVAILABLE;
+    }
+    let Body::Device { textures, .. } = &s.objects[&a[0]].body else {
+        unreachable!()
+    };
+    let old = textures[a[1] as usize];
+    if get {
+        if a[2] == 0 {
+            return INVALID;
+        }
+        if old != 0 {
+            let o = s.objects.get_mut(&old).unwrap();
+            if o.refs == 0 {
+                o.refs = 1;
+                addref(s, a[0]);
+            } else {
+                addref(s, old);
+            }
+        }
+        write(image, a[2], &[old]);
+        return 0;
+    }
+    if a[2] != 0 {
+        let Some(Object {
+            refs: 1..,
+            body: Body::Texture { parent, .. },
+        }) = s.objects.get(&a[2])
+        else {
+            return INVALID;
+        };
+        if *parent != a[0] {
+            return INVALID;
+        }
+    }
+    if old == a[2] {
+        return 0;
+    }
+    if a[2] != 0 {
+        let Body::Texture { bindings, .. } = &mut s.objects.get_mut(&a[2]).unwrap().body else {
+            unreachable!()
+        };
+        *bindings += 1;
+    }
+    if old != 0 {
+        unbind(s, old);
+    }
+    let Body::Device { textures, .. } = &mut s.objects.get_mut(&a[0]).unwrap().body else {
+        unreachable!()
+    };
+    textures[a[1] as usize] = a[2];
+    0
+}
+fn sampler_state(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16], get: bool) -> u32 {
+    if a[1] >= 16 {
+        return UNAVAILABLE;
+    }
+    let Body::Device { samplers, .. } = &mut s.objects.get_mut(&a[0]).unwrap().body else {
+        unreachable!()
+    };
+    let state = &mut samplers[a[1] as usize];
+    if get {
+        if a[3] == 0 {
+            return INVALID;
+        }
+        match state.get(a[2]) {
+            Ok(value) => {
+                write(image, a[3], &[value]);
+                0
+            }
+            Err(_) => INVALID,
+        }
+    } else {
+        match state.set(a[2], a[3]) {
+            Ok(()) => 0,
+            Err(_) => UNAVAILABLE,
+        }
+    }
+}
+fn texture_operation(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16], slot: u32) -> u32 {
+    let Body::Texture { parent, .. } = &s.objects[&a[0]].body else {
+        unreachable!()
+    };
+    let Body::Device { gpu: device, .. } = &s.objects[parent].body else {
+        unreachable!()
+    };
+    let device = device.clone();
+    let Body::Texture {
+        gpu,
+        levels,
+        format,
+        pool,
+        ..
+    } = &mut s.objects.get_mut(&a[0]).unwrap().body
+    else {
+        unreachable!()
+    };
+    if slot == 13 {
+        return levels.len() as u32;
+    }
+    let Some(level) = levels.get_mut(a[1] as usize) else {
+        return INVALID;
+    };
+    match slot {
+        17 => {
+            if a[2] == 0 {
+                return INVALID;
+            }
+            write(
+                image,
+                a[2],
+                &[*format, 1, 0, *pool, 0, 0, level.width, level.height],
+            );
+            0
+        }
+        19 => {
+            if a[2] == 0 || level.lock.is_some() {
+                return INVALID;
+            }
+            if a[3] != 0 || ![0, 16].contains(&a[4]) {
+                return UNAVAILABLE;
+            }
+            let readonly = a[4] == 16;
+            if readonly && !level.initialized {
+                unsupported("D3D9 read of uninitialized texture shadow");
+            }
+            write(image, a[2], &[level.width * 4, level.data]);
+            level.lock = Some(readonly);
+            0
+        }
+        20 => {
+            let Some(readonly) = level.lock.take() else {
+                return INVALID;
+            };
+            if !readonly {
+                let length = level.width as usize * level.height as usize * 4;
+                checked(image, level.data, length, false);
+                let mut bytes =
+                    unsafe { std::slice::from_raw_parts(level.data as *const u8, length) }.to_vec();
+                if *format == 22 {
+                    for pixel in bytes.as_chunks_mut::<4>().0 {
+                        pixel[3] = 255;
+                    }
+                }
+                device
+                    .upload_texture(&mut gpu.borrow_mut(), a[1], &bytes)
+                    .unwrap_or_else(|e| unsupported(&e));
+                level.initialized = true;
+            }
+            0
+        }
+        _ => unreachable!(),
+    }
+}
+
 pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32 {
     let kind = (id - BASE) / 256;
     let slot = (id - BASE) % 256;
@@ -1233,7 +1568,8 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32
             let iid = unsafe { (a[1] as *const [u8; 16]).read_unaligned() };
             if iid != IID_UNKNOWN
                 && iid != IIDS[kind as usize]
-                && !((kind == 2 || kind == 3) && iid == IID_RESOURCE)
+                && !((kind == 2 || kind == 3 || kind == 7) && iid == IID_RESOURCE)
+                && !(kind == 7 && iid == IID_BASE_TEXTURE)
             {
                 return NO_INTERFACE;
             }
@@ -1294,10 +1630,11 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32
             if a[1] != 0 || a[2] != 1 || a[3] != 22 {
                 return INVALID;
             }
-            // Only actual standalone system-memory surface formats are exposed.
-            // Texture, depth, filtering/sRGB and render-target queries stay false
-            // until their real resource/rendering paths are implemented.
-            if a[4] == 0 && a[5] == 1 && [21, 22].contains(&a[6]) {
+            // Actual BGRA8 system-memory surfaces and sampled texture/sRGB reads.
+            // Depth, render targets, vertex textures and other queries remain unavailable.
+            if (a[4] == 0 && a[5] == 1 || a[5] == 3 && a[4] & !0x80000 == 0)
+                && [21, 22].contains(&a[6])
+            {
                 0
             } else {
                 UNAVAILABLE
@@ -1323,7 +1660,7 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32
             if a[3] == 0 {
                 return INVALID;
             }
-            write(image, a[3], &capabilities());
+            write(image, a[3], &capabilities(s.compiler.is_some()));
             0
         }
         (0, 16) => device(image, &mut s, a),
@@ -1331,7 +1668,7 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32
             if a[1] == 0 {
                 return INVALID;
             }
-            write(image, a[1], &capabilities());
+            write(image, a[1], &capabilities(s.compiler.is_some()));
             0
         }
         (1, 3) => {
@@ -1346,7 +1683,7 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32
                 }
             }
         }
-        (1, 6) | (2..=6, 3) => {
+        (1, 6) | (2..=7, 3) => {
             if a[1] == 0 {
                 return INVALID;
             }
@@ -1355,7 +1692,8 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32
                 | Body::Surface { parent, .. }
                 | Body::VertexBuffer { parent, .. }
                 | Body::Shader { parent, .. }
-                | Body::Declaration { parent, .. } => parent,
+                | Body::Declaration { parent, .. }
+                | Body::Texture { parent, .. } => parent,
                 _ => unreachable!(),
             };
             addref(&mut s, parent);
@@ -1363,12 +1701,22 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32
             0
         }
         (1, 9) => {
-            let Body::Device { hwnd, .. } = &s.objects[&a[0]].body else {
+            let Body::Device {
+                hwnd,
+                creation_flags,
+                ..
+            } = &s.objects[&a[0]].body
+            else {
                 unreachable!()
             };
-            write(image, a[1], &[0, 1, *hwnd, 0x20]);
+            write(image, a[1], &[0, 1, *hwnd, *creation_flags]);
             0
         }
+        (1, 23) => create_texture(image, &mut s, a),
+        (1, 64 | 65) => texture_binding(image, &mut s, a, slot == 64),
+        (1, 68 | 69) => sampler_state(image, &mut s, a, slot == 68),
+        (7, 10) => 3,
+        (7, 13 | 17 | 19 | 20) => texture_operation(image, &mut s, a, slot),
         (1, 26) => vertex_buffer(image, &mut s, a),
         (1, 86) => create_declaration(image, &mut s, a),
         (1, 91 | 106) => create_shader(
@@ -1603,7 +1951,7 @@ mod tests {
     use super::*;
     #[test]
     fn capability_record_does_not_invent_unimplemented_shader_or_texture_support() {
-        let c = capabilities();
+        let c = capabilities(false);
         assert_eq!(c.len() * 4, 304);
         assert_eq!((c[0], c[47], c[48], c[58], c[60]), (1, 1, 20, 1, 1));
         assert_eq!(c[49], 0);
@@ -1614,6 +1962,12 @@ mod tests {
             assert_eq!(c[offset / 4], 0);
         }
         assert_eq!(c[7] & 0x100000, 0); // no pure-device promise
+        let p = capabilities(true);
+        assert_eq!(
+            (p[49], p[50], p[51], p[70]),
+            (0xfffe0200, 256, 0xffff0200, 128)
+        );
+        assert_eq!((p[60], p[71], p[74], p[75]), (1, 0, 0, 0)); // no MRT, vertex texture or SM3 claim
     }
     #[test]
     fn vertex_lock_ranges_enforce_owned_storage_without_overflow() {

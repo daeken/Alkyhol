@@ -1,0 +1,24 @@
+{
+  "origin": "Original MIT owned SM2 vertex and 128-ADD/FRC pixel shader; not game-derived",
+  "compiler": "vkd3d-shader 2.1",
+  "upstream_revision": "fb7f9ff3c1f8d972ee6f1b8c6a92caf6c8ba1e10",
+  "archive_sha256": "7510146aff2adfb4ae07ab890701a607e5ff7c66e57100cfc9f630ec92eeda6a",
+  "binding_profile": "VS set0, PS set1; constant sets bindings0..2, SRVs16..31, samplers32..47",
+  "interstage": "vertex output is compiled against the actual pixel input signature using vkd3d_shader_build_varying_map",
+  "files": {
+    "legacy-model2.vs.bin": "3fed22c51ef4a028f47933f93fb523b99cbf5a536a5359ebf7c8bfab57b2c47b",
+    "legacy-model2.vs.hlsl": "0e33c434e2e5b45c597cd948195dfad16b5694f58126cc4e40d7c8f9e226a65a",
+    "legacy-model2.vs.json": "efa168905d3f884e41295bf7191875e588e7f0fcc0e0e9f9e143f38ca8ae9c6b",
+    "legacy-model2.vs.spv": "00bfc147107195f755003c1cb6cdcac156ff1480f7b91b24daee7cac6ef3f331",
+    "legacy-slots128.ps.bin": "d3eb474ae3d3a161d263d460a21961b25b843d828af8bda1c2dfd47c90a9ace8",
+    "legacy-slots128.ps.hlsl": "4147c6f34ab38cb584fcbe6647a490a5f6150cceb1db9140577aa655c2c5e44f",
+    "legacy-slots128.ps.json": "e46d77ca5ea875e74c0c6438b9d0742eeba1c565586e3115930d7152d80d2e82",
+    "legacy-slots128.ps.spv": "3c77d5d1864362049dcda06392fb01ae57e082ad7e422a132e14a727bbc1aa21"
+  },
+  "helper_source_sha256": "8d627ecb485af26e905aa5dd5b4c91096707e9b3d2fc8cfa2b063e25ce049fa8",
+  "pixel_arithmetic_slots": {
+    "ADD": 64,
+    "FRC": 64,
+    "header": "0xffff0200"
+  }
+}

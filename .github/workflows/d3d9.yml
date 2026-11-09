@@ -33,6 +33,14 @@ jobs:
         run: |
           python tools/observe_d3d9_create_device.py --shaders
           ALKYHOL_D3D9_SHADER_COMPILER="$PWD/local/tools/shader9/alkyhol-shader9" ALKYHOL_D3D9_SHADER_DIRECTORY="$PWD/local/d3d9/compiled-owned" python tools/observe_d3d9_create_device.py --shaders --host
+      - name: Execute legacy texture and sRGB sampling through PE32 COM
+        run: |
+          python tools/observe_d3d9_create_device.py --textures
+          ALKYHOL_D3D9_SHADER_COMPILER="$PWD/local/tools/shader9/alkyhol-shader9" ALKYHOL_D3D9_SHADER_DIRECTORY="$PWD/local/d3d9/compiled-owned" python tools/observe_d3d9_create_device.py --textures --host
+      - name: Execute the SM2 and 128-arithmetic-slot prerequisite witness
+        run: |
+          python tools/observe_d3d9_create_device.py --model2
+          ALKYHOL_D3D9_SHADER_COMPILER="$PWD/local/tools/shader9/alkyhol-shader9" ALKYHOL_D3D9_SHADER_DIRECTORY="$PWD/local/d3d9/compiled-owned" python tools/observe_d3d9_create_device.py --model2 --host
       - name: Compile unchanged Microsoft Tutorial 01 bodies into a single PE
         run: python tools/observe_d3d9_create_device.py
       - name: Execute that PE through binary COM and Metal
@@ -59,6 +67,12 @@ jobs:
         with:
           name: d3d9-identical-pe
           path: |
+            local/pe/d3d9-microtests/d3d9-model2.exe
+            local/pe/d3d9-microtests/d3d9-model2-inputs.json
+            local/pe/d3d9-microtests/d3d9-model2-host.json
+            local/pe/d3d9-microtests/d3d9-textures.exe
+            local/pe/d3d9-microtests/d3d9-textures-inputs.json
+            local/pe/d3d9-microtests/d3d9-textures-host.json
             local/pe/d3d9-microtests/d3d9-shaders.exe
             local/pe/d3d9-microtests/d3d9-shaders-inputs.json
             local/pe/d3d9-microtests/d3d9-shaders-host.json
@@ -101,6 +115,12 @@ jobs:
       - name: Compare literal legacy shader bytecode and every pixel on native Windows
         if: success() || failure()
         run: python tools/observe_d3d9_create_device.py --shaders --native
+      - name: Compare exact legacy texture and sRGB frames on native Windows
+        if: success() || failure()
+        run: python tools/observe_d3d9_create_device.py --textures --native
+      - name: Compare exact SM2 128-slot frames on native Windows
+        if: success() || failure()
+        run: python tools/observe_d3d9_create_device.py --model2 --native
       - uses: actions/upload-artifact@v4
         if: always()
         with:

@@ -32,6 +32,26 @@ class LegacyShaderComparatorTests(unittest.TestCase):
             pixels[20*32+10]=0xff0000 if frame==0 else 0xff
             words += [0xfeed0000+frame]+[1]*8+pixels+[1]
         return words+[0xfeedffff]+[1]*7+[2099]
+    def test_texture_record_checks_srgb_and_its_separate_metadata_extent(self):
+        words=[0x39534844,2]+[1]*34
+        for frame,color in [(0,0x808080),(1,0x373737)]:
+            pixels=[0xff]*1024;pixels[20*32+22]=color
+            pixels[20*32+10]=color if frame==0 else 0xff
+            words += [0xfeed0000+frame]+[1]*10+pixels+[1]
+        words += [0xfeedffff]+[1]*7+[2117]
+        self.assertEqual(shader_words(words,True),words)
+        words[1083+20*32+22]=0x808080
+        with self.assertRaises(ValueError):shader_words(words,True)
+    def test_model2_record_requires_bounded_profile_and_long_shader_color(self):
+        words=[0x39534844,3]+[1]*21
+        for frame in range(2):
+            pixels=[0xff]*1024;pixels[20*32+22]=0xa347eb
+            pixels[20*32+10]=0xa347eb if frame==0 else 0xff
+            words += [0xfeed0000+frame]+[1]*8+pixels+[1]
+        words += [0xfeedffff]+[1]*7+[2100]
+        self.assertEqual(shader_words(words,model2=True),words)
+        words[2]=0
+        with self.assertRaises(ValueError):shader_words(words,model2=True)
     def test_exact_frames_and_stack_extent(self):
         words=self.record();self.assertEqual(shader_words(words),words)
         for changed in [words[:-1],words+[0]]:

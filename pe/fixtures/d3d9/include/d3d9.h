@@ -27,6 +27,7 @@ struct D3DDISPLAYMODE{UINT Width,Height,RefreshRate,Format;};
 struct D3DVERTEXBUFFER_DESC{UINT Format,Type,Usage,Pool,Size,FVF;};
 struct D3DLOCKED_RECT{INT Pitch;void* pBits;};
 
+struct IDirect3DBaseTexture9;struct IDirect3DTexture9;
 struct IDirect3DVertexShader9;struct IDirect3DPixelShader9;struct IDirect3DVertexDeclaration9;
 struct D3DVERTEXELEMENT9{unsigned short Stream,Offset;unsigned char Type,Method,Usage,UsageIndex;};
 struct IDirect3D9; struct IDirect3DDevice9; struct IDirect3DSurface9; struct IDirect3DVertexBuffer9;
@@ -73,7 +74,7 @@ struct IDirect3DDevice9 {
  virtual void __stdcall UnsupportedSlot20()=0;
  virtual void __stdcall UnsupportedSlot21()=0;
  virtual void __stdcall UnsupportedSlot22()=0;
- virtual void __stdcall UnsupportedSlot23()=0;
+ virtual HRESULT __stdcall CreateTexture(UINT,UINT,UINT,DWORD,UINT,UINT,IDirect3DTexture9**,void*)=0;
  virtual void __stdcall UnsupportedSlot24()=0;
  virtual void __stdcall UnsupportedSlot25()=0;
  virtual HRESULT __stdcall CreateVertexBuffer(UINT,DWORD,DWORD,UINT,IDirect3DVertexBuffer9**,void*)=0;
@@ -114,12 +115,12 @@ struct IDirect3DDevice9 {
  virtual void __stdcall UnsupportedSlot61()=0;
  virtual void __stdcall UnsupportedSlot62()=0;
  virtual void __stdcall UnsupportedSlot63()=0;
- virtual void __stdcall UnsupportedSlot64()=0;
- virtual void __stdcall UnsupportedSlot65()=0;
+ virtual HRESULT __stdcall GetTexture(DWORD,IDirect3DBaseTexture9**)=0;
+ virtual HRESULT __stdcall SetTexture(DWORD,IDirect3DBaseTexture9*)=0;
  virtual void __stdcall UnsupportedSlot66()=0;
  virtual void __stdcall UnsupportedSlot67()=0;
- virtual void __stdcall UnsupportedSlot68()=0;
- virtual void __stdcall UnsupportedSlot69()=0;
+ virtual HRESULT __stdcall GetSamplerState(DWORD,UINT,DWORD*)=0;
+ virtual HRESULT __stdcall SetSamplerState(DWORD,UINT,DWORD)=0;
  virtual void __stdcall UnsupportedSlot70()=0;
  virtual void __stdcall UnsupportedSlot71()=0;
  virtual void __stdcall UnsupportedSlot72()=0;
@@ -272,4 +273,31 @@ struct IDirect3DVertexDeclaration9 {
  virtual ULONG __stdcall Release()=0;
  virtual HRESULT __stdcall GetDevice(IDirect3DDevice9**)=0;
  virtual HRESULT __stdcall GetDeclaration(D3DVERTEXELEMENT9*,UINT*)=0;
+};
+
+struct IDirect3DBaseTexture9 {
+ virtual HRESULT __stdcall QueryInterface(const GUID&,void**)=0;
+ virtual ULONG __stdcall AddRef()=0;
+ virtual ULONG __stdcall Release()=0;
+ virtual HRESULT __stdcall GetDevice(IDirect3DDevice9**)=0;
+ virtual void __stdcall UnsupportedSlot4()=0;
+ virtual void __stdcall UnsupportedSlot5()=0;
+ virtual void __stdcall UnsupportedSlot6()=0;
+ virtual void __stdcall UnsupportedSlot7()=0;
+ virtual void __stdcall UnsupportedSlot8()=0;
+ virtual void __stdcall UnsupportedSlot9()=0;
+ virtual UINT __stdcall GetType()=0;
+ virtual void __stdcall UnsupportedSlot11()=0;
+ virtual void __stdcall UnsupportedSlot12()=0;
+ virtual UINT __stdcall GetLevelCount()=0;
+ virtual void __stdcall UnsupportedSlot14()=0;
+ virtual void __stdcall UnsupportedSlot15()=0;
+ virtual void __stdcall UnsupportedSlot16()=0;
+};
+struct IDirect3DTexture9 : IDirect3DBaseTexture9 {
+ virtual HRESULT __stdcall GetLevelDesc(UINT,D3DSURFACE_DESC*)=0;
+ virtual void __stdcall UnsupportedSlot18()=0;
+ virtual HRESULT __stdcall LockRect(UINT,D3DLOCKED_RECT*,const void*,DWORD)=0;
+ virtual HRESULT __stdcall UnlockRect(UINT)=0;
+ virtual void __stdcall UnsupportedSlot21()=0;
 };
