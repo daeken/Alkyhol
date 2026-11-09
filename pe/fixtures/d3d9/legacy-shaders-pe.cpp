@@ -14,7 +14,9 @@ static const DWORD vertex_code[]={
 #endif
 };
 static const DWORD pixel_code[]={
-#ifdef MODEL2
+#ifdef VOLUME
+#include "legacy-volume.ps.inc"
+#elif defined(MODEL2)
 #include "legacy-slots128.ps.inc"
 #elif defined(TEXTURES)||defined(FONTS)
 #include "legacy-texture.ps.inc"
@@ -32,7 +34,11 @@ static void ok(BOOL n){put(n?1:0);}
 static DWORD fail(DWORD status,HRESULT detail){put(0xdeadc0de);put(status);put((DWORD)detail);DWORD done=0;WriteFile(GetStdHandle((DWORD)-11),words,used*4,&done,NULL);return status;}
 static DWORD stack(){DWORD s;__asm__ volatile("movl %%esp,%0":"=r"(s));return s;}
 static LRESULT __stdcall proc(HWND w,UINT m,WPARAM a,LPARAM b){return DefWindowProcW(w,m,a,b);}
-#ifdef SHORT4
+#ifdef VOLUME
+static const float vertices[][8]={{0,.75f,.5f,1,.125f,.25f,.125f,1},{.75f,-.75f,.5f,1,.125f,.25f,.125f,1},{-.75f,-.75f,.5f,1,.125f,.25f,.125f,1}};
+static float matrix[16]={1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1};
+static const D3DVERTEXELEMENT9 elements[]={{0,0,3,0,0,0},{0,16,3,0,10,0},{255,0,17,0,0,0}};
+#elif defined(SHORT4)
 struct Short4Vertex { short position[4]; unsigned short color[4]; };
 static const Short4Vertex vertices[]={{{0,1,0,1},{0x3c00,0,0,0x3c00}},{{1,-1,0,1},{0x3c00,0,0,0x3c00}},{{-1,-1,0,1},{0x3c00,0,0,0x3c00}}};
 static float matrix[16]={.75f,0,0,0,0,.75f,0,0,0,0,1,0,0,0,0,1};
@@ -397,9 +403,14 @@ static HRESULT user_draw(UINT frame,IDirect3DVertexBuffer9* vb){
  ib->Release();return S_OK;
 }
 #endif
+#ifdef VOLUME
+#include "volume-witness.inc"
+#endif
 extern "C" DWORD entry(){
  DWORD before=stack();put(0x39534844);
-#ifdef XYZ_QUERY
+#ifdef VOLUME
+put(26);
+#elif defined(XYZ_QUERY)
 put(25);
 #elif defined(ALPHA_TEST)
 put(24);
@@ -523,6 +534,9 @@ put(1);
 22,
 #endif
 2,&copy,NULL)==S_OK);if(!back||!copy)return 10;
+ #ifdef VOLUME
+ DWORD volume_stage=volume_witness();ok(volume_stage==0);if(volume_stage)return fail(47,volume_stage);
+ #endif
  #ifdef FONTS
  DWORD font_stage=font_formats_witness();ok(font_stage==0);if(font_stage)return fail(31,font_stage);
  #endif
@@ -641,6 +655,13 @@ put(1);
   float bias=frame?-.125f:.125f;DWORD bits=0;for(UINT n=0;n<4;n++)((unsigned char*)&bits)[n]=((unsigned char*)&bias)[n];
   DWORD observed_bias=0;if(g_pd3dDevice->SetRenderState(195,bits)!=S_OK||g_pd3dDevice->GetRenderState(195,&observed_bias)!=S_OK||observed_bias!=bits)return 40;
   #endif
+  #ifdef VOLUME
+  IDirect3DVertexBuffer9* volume_vb=NULL;UINT volume_offset=0,volume_stride=0;
+  if(g_pd3dDevice->GetStreamSource(0,&volume_vb,&volume_offset,&volume_stride)!=S_OK||!volume_vb)return 48;
+  void* volume_data=NULL;if(volume_vb->Lock(0,0,&volume_data,0)!=S_OK||!volume_data)return 49;
+  for(UINT n=0;n<3;n++)((float*)volume_data)[n*8+6]=frame?.875f:.125f;
+  if(volume_vb->Unlock()!=S_OK)return 50;volume_vb->Release();
+  #endif
   #ifdef ALPHA_TEST
   // Half alpha is intentionally between the adjacent UNORM8 references.
   IDirect3DVertexBuffer9* alpha_vb=NULL;UINT alpha_offset=0,alpha_stride=0;
@@ -725,6 +746,9 @@ put(1);
   ok(copy->UnlockRect()==S_OK);
  }
  copy->Release();back->Release();
+ #ifdef VOLUME
+ if(g_pd3dDevice->SetTexture(0,NULL)!=S_OK)return 51;
+ #endif
  #ifdef USER_DRAW
  vb->Release();
  #endif

@@ -7079,3 +7079,42 @@ shader code. The shader-interface unit, 221 PE units, 20 observer units and both
 crates' Clippy pass. Native identical-PE XYZ comparison is wired into existing
 CI and pending. The original DAO replay is next; finite owned geometry is not
 yet evidence that the original box draws successfully.
+
+### Original XYZ draw confirmed; backed volume textures
+
+Clean cd599a8 on physical M4 submits the original XYZ/INDEX32 UP calls without
+the prior INVALIDCALL, reaches actual IDirect3DQuery9::GetData, and then stops at
+the same D3/D2 shader binding validation. This is original draw/query progression,
+not native DAO query-count or complete scene-frame parity. The earlier local
+trace shows original D3DX querying volume formats (resource type 4), all rejected,
+before the later invalid texture pointer. That sequence motivates real volume
+support but does not independently prove the pointer's origin.
+
+The backend now allocates actual uncompressed BGRA8 3D textures, bounded to 512
+per axis/64 MiB, and uploads all z slices of each independently shrunk mip. D3
+views, W addressing and existing point/linear/mip sampling use that allocation.
+No 2D view substitution is used. Uninitialized mips still fail sampling. The PE
+profile implements managed/default Usage=0 A8R8G8B8/X8R8G8B8 volume textures,
+GetLevelDesc/GetVolumeLevel/LockBox/UnlockBox and shared Volume9 aliases with
+correct container/device retention. Partial boxes retain full row/slice pitches.
+Read-only and NOSYSLOCK flags are bounded explicitly; compression, dynamic usage,
+render-target volumes, dirty-update APIs and other formats remain unsupported.
+Caps and CheckDeviceFormat now advertise only the backed finite volume profile.
+Private initial CPU bytes are an allocation policy, not a native-value promise.
+
+Physical M4 volume sampling passes distinct z slices, true linear z interpolation,
+mip selection, uninitialized-mip rejection and invalid extents/uploads. The owned
+--volume PE passes all 2100 words: all mips/voxel bytes, partial-box update, cached
+volume identity, shared locks, GetContainer/GetDevice, bound lifetime, stack and
+two complete frames sampling distinct red/green z slices with original owned
+SM2 bytecode. Independent SDK layouts/IIDs and identical-PE native comparison are
+added to existing CI; native/original DAO volume results remain pending. The
+legacy HLSL, bytecode, linked vertex SPIR-V/reflection, provenance hashes and PE
+include regenerate exactly using pinned open vkd3d. No game shader data is in
+those fixtures. All 222 PE units, 21 observer units, both Clippy checks and the
+unchanged six-face cube resource/lifetime regression pass.
+
+CI 42700895627 on 0fd342b passes hosted Metal, software Vulkan, native alpha-test
+and version-23 fresh-target/UP witnesses; the native job still fails earlier
+separate-stream, StretchRect and POSITIONT differences. These finite results do
+not imply game compatibility.

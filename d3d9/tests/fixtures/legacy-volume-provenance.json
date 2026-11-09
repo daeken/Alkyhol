@@ -1,0 +1,18 @@
+{
+  "origin": "Original MIT volume sampler for DAO resource validation; not game-derived",
+  "compiler": "vkd3d-shader 2.1",
+  "upstream_revision": "fb7f9ff3c1f8d972ee6f1b8c6a92caf6c8ba1e10",
+  "archive_sha256": "7510146aff2adfb4ae07ab890701a607e5ff7c66e57100cfc9f630ec92eeda6a",
+  "binding_profile": "VS set0, PS set1; constant sets bindings0..2, SRVs16..31, samplers32..47",
+  "interstage": "vertex output is compiled against the actual pixel input signature using vkd3d_shader_build_varying_map",
+  "files": {
+    "legacy-volume.ps.bin": "437632f1ae136ff775b1523a6df9e5c859eba13fd9fccfda4fed5d0ebced156b",
+    "legacy-volume.ps.hlsl": "ceebd0ce69726777c253b9da39a55d738c6abb4a19d7a6b4b727f4c21dac3ed6",
+    "legacy-volume.ps.json": "0e60fc5d8e17b0672b991d2ecae50d244841eb6154111af603673676c2078890",
+    "legacy-volume.ps.spv": "9fa88a91de50e430e72bf87e7a3fa3c553f3aca33a6b3cc9b86647344015150f",
+    "legacy-volume-linked.vs.spv": "36b5cc5c3275b61d7bedf44d4c81485794132a03f4fdc1498547764e66d584ca",
+    "legacy-volume-linked.vs.json": "21e092710838505034421d882150fbf98659497b2f8a4a47055da372925b93e0"
+  },
+  "helper_source_sha256": "8d627ecb485af26e905aa5dd5b4c91096707e9b3d2fc8cfa2b063e25ce049fa8",
+  "vertex_link": "legacy-color.vs.bin linked against legacy-volume.ps.bin"
+}

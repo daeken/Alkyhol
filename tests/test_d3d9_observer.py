@@ -131,6 +131,18 @@ class LegacyShaderComparatorTests(unittest.TestCase):
                 changed=words.copy();changed[index]=value
                 with self.assertRaises(ValueError):shader_words(changed)
 
+    def test_volume_requires_resource_checks_and_both_distinct_slice_frames(self):
+        words=[0x39534844,26]+[1]*21
+        for frame,color in enumerate([0xff0000,0xff00]):
+            pixels=[0xff]*1024;pixels[20*32+22]=color;pixels[20*32+10]=color if frame==0 else 0xff
+            words += [0xfeed0000+frame]+[1]*8+pixels+[1]
+        words += [0xfeedffff]+[1]*7+[2100]
+        with patch.object(observer,'VOLUME',True):
+            self.assertEqual(shader_words(words),words)
+            for index,value in [(22,0),(23+9+20*32+22,0xff00),(1057+9+20*32+22,0xff0000),(1057+9+20*32+22,0xff)]:
+                changed=words.copy();changed[index]=value
+                with self.assertRaises(ValueError):shader_words(changed)
+
     def test_exact_frames_and_stack_extent(self):
         words=self.record();self.assertEqual(shader_words(words),words)
         for changed in [words[:-1],words+[0]]:

@@ -139,13 +139,25 @@ pub struct SampledTexture {
     height: u32,
     levels: u32,
     layers: u32,
+    depth: u32,
+    volume: bool,
     initialized: Vec<Arc<AtomicBool>>,
 }
 /// Historical source-compatible name for the sampled storage container.
 pub type Texture2D = SampledTexture;
 impl SampledTexture {
     pub fn is_cube(&self) -> bool {
-        self.layers == 6
+        !self.volume && self.layers == 6
+    }
+    pub fn is_volume(&self) -> bool {
+        self.volume
+    }
+    pub fn volume_dimensions(&self, level: u32) -> Result<(u32, u32, u32)> {
+        if !self.volume {
+            return Err("not volume storage".into());
+        }
+        let (width, height) = self.dimensions(level)?;
+        Ok((width, height, (self.depth >> level).max(1)))
     }
     fn subresource(&self, level: u32, face: u32) -> Result<usize> {
         if level >= self.levels || face >= self.layers {
@@ -180,7 +192,9 @@ impl SampledTexture {
             return Err("sRGB sampling of L8/A8 requires native format evidence".into());
         }
         Ok(self.texture.create_view(&wgpu::TextureViewDescriptor {
-            dimension: Some(if self.is_cube() {
+            dimension: Some(if self.volume {
+                wgpu::TextureViewDimension::D3
+            } else if self.is_cube() {
                 wgpu::TextureViewDimension::Cube
             } else {
                 wgpu::TextureViewDimension::D2
@@ -211,9 +225,106 @@ impl Device {
             height,
             levels: 1,
             layers: 1,
+            depth: 1,
+            volume: false,
             initialized: vec![target.initialized.clone()],
         };
         Ok((sampled, target))
+    }
+    /// Single-sample, uncompressed BGRA8 3D storage; every mip must be uploaded.
+    pub fn create_volume_texture(
+        &self,
+        width: u32,
+        height: u32,
+        depth: u32,
+        levels: u32,
+    ) -> Result<SampledTexture> {
+        let limit = self.device.limits().max_texture_dimension_3d.min(512);
+        extent(width, height, limit)?;
+        if depth == 0 || depth > limit {
+            return Err("volume depth outside bounded device extent".into());
+        }
+        let maximum = 32 - width.max(height).max(depth).leading_zeros();
+        let levels = if levels == 0 { maximum } else { levels };
+        if levels > maximum {
+            return Err("too many volume mips".into());
+        }
+        let bytes = (0..levels).try_fold(0u64, |sum, level| {
+            sum.checked_add(
+                u64::from((width >> level).max(1))
+                    * u64::from((height >> level).max(1))
+                    * u64::from((depth >> level).max(1))
+                    * 4,
+            )
+        });
+        if bytes.is_none_or(|n| n > 64 * 1024 * 1024) {
+            return Err("volume exceeds storage budget".into());
+        }
+        self.scope();
+        let texture = self.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("D3D9 actual BGRA8 volume storage"),
+            size: wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: depth,
+            },
+            mip_level_count: levels,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D3,
+            format: wgpu::TextureFormat::Bgra8Unorm,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[wgpu::TextureFormat::Bgra8UnormSrgb],
+        });
+        self.finish()?;
+        Ok(SampledTexture {
+            texture,
+            format: SampleFormat::Bgra8,
+            width,
+            height,
+            depth,
+            volume: true,
+            layers: 1,
+            levels,
+            initialized: (0..levels)
+                .map(|_| Arc::new(AtomicBool::new(false)))
+                .collect(),
+        })
+    }
+    /// Upload a complete mip in tightly packed z-slice/row order.
+    pub fn upload_volume(
+        &self,
+        texture: &mut SampledTexture,
+        level: u32,
+        bytes: &[u8],
+    ) -> Result<()> {
+        let (width, height, depth) = texture.volume_dimensions(level)?;
+        let pitch = width * 4;
+        if bytes.len() as u64 != u64::from(pitch) * u64::from(height) * u64::from(depth) {
+            return Err("volume upload byte extent differs".into());
+        }
+        self.scope();
+        self.queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &texture.texture,
+                mip_level: level,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            bytes,
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(pitch),
+                rows_per_image: Some(height),
+            },
+            wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: depth,
+            },
+        );
+        self.finish()?;
+        texture.initialized[level as usize].store(true, Ordering::Release);
+        Ok(())
     }
     pub fn create_texture(&self, width: u32, height: u32, levels: u32) -> Result<Texture2D> {
         self.create_sampled_texture(width, height, levels, SampleFormat::Bgra8)
@@ -291,14 +402,16 @@ impl Device {
             height,
             levels,
             layers,
+            depth: 1,
+            volume: false,
             initialized: (0..levels * layers)
                 .map(|_| Arc::new(AtomicBool::new(false)))
                 .collect(),
         })
     }
     pub fn upload_texture(&self, texture: &mut Texture2D, level: u32, bytes: &[u8]) -> Result<()> {
-        if texture.is_cube() {
-            return Err("cube upload requires an explicit face".into());
+        if texture.is_cube() || texture.volume {
+            return Err("cube/volume upload requires its explicit method".into());
         }
         self.upload_sampled_layer(texture, 0, level, bytes)
     }

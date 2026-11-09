@@ -121,3 +121,10 @@ static_assert(offsetof(IDirect3DDevice9Vtbl,DrawIndexedPrimitiveUP)==84*4);
 
 static_assert(D3DRS_ALPHATESTENABLE==15&&D3DRS_ALPHAREF==24&&D3DRS_ALPHAFUNC==25);
 static_assert(D3DCMP_NEVER==1&&D3DCMP_ALWAYS==8&&D3DCMP_GREATEREQUAL==7);
+
+static_assert(sizeof(D3DVOLUME_DESC)==28&&sizeof(D3DLOCKED_BOX)==12&&sizeof(D3DBOX)==24);
+static_assert(offsetof(D3DBOX,Front)==16&&offsetof(D3DLOCKED_BOX,pBits)==8);
+static_assert(offsetof(IDirect3DDevice9Vtbl,CreateVolumeTexture)==24*4);
+static_assert(offsetof(IDirect3DVolumeTexture9Vtbl,LockBox)==19*4);
+static_assert(offsetof(IDirect3DVolume9Vtbl,GetContainer)==7*4&&offsetof(IDirect3DVolume9Vtbl,LockBox)==9*4);
+static_assert(offsetof(D3DCAPS9,VolumeTextureFilterCaps)==18*4&&offsetof(D3DCAPS9,MaxVolumeExtent)==24*4);

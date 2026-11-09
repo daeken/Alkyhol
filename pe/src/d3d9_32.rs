@@ -2,6 +2,8 @@
 //! Unsupported virtual methods stop before returning; no successful COM stubs.
 #[path = "d3d9_transforms32.rs"]
 mod transforms;
+#[path = "d3d9_volume32.rs"]
+mod volume;
 use super::{Cpu32, LoadedImage32, PAGE, unsupported};
 use crate::Result;
 use alkyhol_d3d9::{
@@ -24,7 +26,7 @@ const IID_RESOURCE: [u8; 16] = [
 const IID_BASE_TEXTURE: [u8; 16] = [
     0x7e, 0xa8, 0x0c, 0x58, 0x3c, 0x1d, 0x54, 0x4d, 0x99, 0x1d, 0xb7, 0xd3, 0xe3, 0xc2, 0x98, 0xce,
 ];
-const IIDS: [[u8; 16]; 12] = [
+const IIDS: [[u8; 16]; 14] = [
     [
         0xca, 0xcb, 0xbd, 0x81, 0xd4, 0x64, 0x6d, 0x42, 0xae, 0x8d, 0xad, 1, 0x47, 0xf4, 0x27, 0x5c,
     ],
@@ -72,12 +74,21 @@ const IIDS: [[u8; 16]; 12] = [
         0x60, 0x14, 0x77, 0xd9, 0x95, 0xa6, 0x26, 0x4f, 0xbb, 0xd3, 0x27, 0xb8, 0x40, 0xb5, 0x41,
         0xcc,
     ],
+    [
+        0x6c, 0x52, 0x18, 0x25, 0x89, 0xe7, 0x11, 0x41, 0xa7, 0xb9, 0x47, 0xef, 0x32, 0x8d, 0x13,
+        0xe6,
+    ],
+    [
+        0xe6, 0x16, 0xf4, 0x24, 0x67, 0x1f, 0xa7, 0x4a, 0xb8, 0x8e, 0xd3, 0x3f, 0x6f, 0x31, 0x28,
+        0xa1,
+    ],
 ];
 struct Object {
     refs: u32,
     body: Body,
 }
 struct TextureLevel {
+    depth: u32,
     data: u32,
     width: u32,
     height: u32,
@@ -88,12 +99,18 @@ struct TextureLevel {
     initialized: bool,
 }
 enum Body {
+    Volume {
+        parent: u32,
+        container: u32,
+        level: u32,
+    },
     Query {
         parent: u32,
         query: alkyhol_d3d9::OcclusionQuery,
     },
     Texture {
         cube: bool,
+        volume: bool,
         parent: u32,
         gpu: Rc<RefCell<Texture2D>>,
         levels: Vec<TextureLevel>,
@@ -188,6 +205,7 @@ impl Body {
     fn kind(&self) -> u32 {
         match self {
             Self::Query { .. } => 11,
+            Self::Volume { .. } => 13,
             Self::Factory(..) => 0,
             Self::Device { .. } => 1,
             Self::Surface { .. } => 2,
@@ -203,8 +221,10 @@ impl Body {
                 ..
             } => 5,
             Self::Declaration { .. } => 6,
-            Self::Texture { cube, .. } => {
-                if *cube {
+            Self::Texture { cube, volume, .. } => {
+                if *volume {
+                    12
+                } else if *cube {
                     10
                 } else {
                     7
@@ -360,7 +380,8 @@ pub(super) fn signature(id: u32) -> Option<(&'static str, u16)> {
             9 => 10,
             11 => 8,
             4..=6 => 5,
-            7 | 10 => 22,
+            7 | 10 | 12 => 22,
+            13 => 11,
             _ => return None,
         }
     {
@@ -379,6 +400,18 @@ pub(super) fn signature(id: u32) -> Option<(&'static str, u16)> {
         return Some(DEVICE_METHODS[slot as usize]);
     }
     Some(match (kind, slot) {
+        (12, 3) => ("IDirect3DVolumeTexture9::GetDevice", 8),
+        (12, 10) => ("IDirect3DVolumeTexture9::GetType", 4),
+        (12, 13) => ("IDirect3DVolumeTexture9::GetLevelCount", 4),
+        (12, 17) => ("IDirect3DVolumeTexture9::GetLevelDesc", 12),
+        (12, 18) => ("IDirect3DVolumeTexture9::GetVolumeLevel", 12),
+        (12, 19) => ("IDirect3DVolumeTexture9::LockBox", 20),
+        (12, 20) => ("IDirect3DVolumeTexture9::UnlockBox", 8),
+        (13, 3) => ("IDirect3DVolume9::GetDevice", 8),
+        (13, 7) => ("IDirect3DVolume9::GetContainer", 12),
+        (13, 8) => ("IDirect3DVolume9::GetDesc", 8),
+        (13, 9) => ("IDirect3DVolume9::LockBox", 16),
+        (13, 10) => ("IDirect3DVolume9::UnlockBox", 4),
         (11, 3) => ("IDirect3DQuery9::GetDevice", 8),
         (11, 4) => ("IDirect3DQuery9::GetType", 4),
         (11, 5) => ("IDirect3DQuery9::GetDataSize", 4),
@@ -483,7 +516,8 @@ fn table(cpu: &Cpu32, state: &mut State, kind: u32) -> Result<u32> {
         9 => 10,
         11 => 8,
         4..=6 => 5,
-        7 | 10 => 22,
+        7 | 10 | 12 => 22,
+        13 => 11,
         _ => 17,
     };
     let m = cpu.mapping(2 * PAGE, PAGE, 0)?;
@@ -577,11 +611,13 @@ fn release(s: &mut State, p: u32) -> u32 {
         | Body::Shader { parent, .. }
         | Body::Declaration { parent, .. }
         | Body::Texture { parent, .. }
-        | Body::Query { parent, .. } => Some(*parent),
+        | Body::Query { parent, .. }
+        | Body::Volume { parent, .. } => Some(*parent),
     };
     let cached = matches!(
         o.body,
         Body::Surface { back: true, .. }
+            | Body::Volume { .. }
             | Body::SwapChain { .. }
             | Body::Surface {
                 implicit_depth: true,
@@ -601,6 +637,7 @@ fn release(s: &mut State, p: u32) -> u32 {
             bindings: 0,
             ..
         } => *container,
+        Body::Volume { container, .. } => *container,
         _ => 0,
     };
     if !cached {
@@ -774,8 +811,11 @@ fn capabilities(programmable: bool) -> [u32; 76] {
     caps[60] = 1; // one color target
     if programmable {
         // Bounded open SM2 compiler/draw profile, not a generic SM3 promise.
-        caps[15] = 0x4004; // alpha and mipmapped texture resources
-        caps[16] = 0x03030300; // real point/linear min, mag and mip filtering
+        caps[15] = 0xe004; // alpha and mipmapped texture resources
+        caps[16] = 0x03030300;
+        caps[18] = 0x03030300;
+        caps[20] = 7;
+        caps[24] = 512; // real point/linear min, mag and mip filtering
         caps[19] = 7; // wrap, mirror and clamp; no border/mirror-once promise
         caps[22] = 2048;
         caps[23] = 2048;
@@ -1220,7 +1260,11 @@ fn remove_object(s: &mut State, p: u32) -> Object {
         for level in levels {
             if level.surface != 0 {
                 let o = &s.objects[&level.surface];
-                if !matches!(o.body, Body::Surface { bindings: 0, .. }) || o.refs != 0 {
+                if !matches!(
+                    o.body,
+                    Body::Surface { bindings: 0, .. } | Body::Volume { .. }
+                ) || o.refs != 0
+                {
                     unsupported("live surface lost its texture storage");
                 }
                 s.objects.remove(&level.surface);
@@ -1278,6 +1322,9 @@ fn expose(s: &mut State, p: u32) {
             bindings,
             ..
         } => (*parent, if *bindings == 0 { *container } else { 0 }),
+        Body::Volume {
+            parent, container, ..
+        } => (*parent, *container),
         Body::Texture { parent, .. }
         | Body::IndexBuffer { parent, .. }
         | Body::SwapChain { parent, .. } => (*parent, 0),
@@ -2602,7 +2649,8 @@ fn set_program_binding(s: &mut State, a: &[u32; 16], slot: u32) -> u32 {
             Body::Shader { parent, .. }
             | Body::Declaration { parent, .. }
             | Body::Texture { parent, .. }
-            | Body::Query { parent, .. } => parent,
+            | Body::Query { parent, .. }
+            | Body::Volume { parent, .. } => parent,
             _ => return INVALID,
         };
         if o.refs == 0 || o.body.kind() != kind || parent != a[0] {
@@ -2879,6 +2927,7 @@ fn create_texture(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16], cube:
     let levels = layout
         .into_iter()
         .map(|mip| TextureLevel {
+            depth: 1,
             data: if data == 0 { 0 } else { data + mip.offset },
             width: mip.width,
             height: mip.height,
@@ -2895,6 +2944,7 @@ fn create_texture(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16], cube:
         s,
         Body::Texture {
             cube,
+            volume: false,
             parent: a[0],
             gpu: Rc::new(RefCell::new(texture)),
             levels,
@@ -3151,8 +3201,8 @@ fn dispatch_inner(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32 {
             let iid = unsafe { (a[1] as *const [u8; 16]).read_unaligned() };
             if iid != IID_UNKNOWN
                 && iid != IIDS[kind as usize]
-                && !(matches!(kind, 2 | 3 | 7 | 8 | 10) && iid == IID_RESOURCE)
-                && !(matches!(kind, 7 | 10) && iid == IID_BASE_TEXTURE)
+                && !(matches!(kind, 2 | 3 | 7 | 8 | 10 | 12) && iid == IID_RESOURCE)
+                && !(matches!(kind, 7 | 10 | 12) && iid == IID_BASE_TEXTURE)
             {
                 return NO_INTERFACE;
             }
@@ -3238,6 +3288,9 @@ fn dispatch_inner(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32 {
                 };
                 return if gpu.supports_bc() { 0 } else { UNAVAILABLE };
             }
+            if a[4] == 0 && a[5] == 4 && [21, 22].contains(&a[6]) {
+                return 0;
+            }
             // Linear L8 luminance textures are real storage; render targets,
             // vertex-texture and sRGB queries for L8 remain unavailable.
             if a[4] == 0 && a[5] == 3 && [26, 28, 50].contains(&a[6]) {
@@ -3311,7 +3364,7 @@ fn dispatch_inner(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32 {
                 }
             }
         }
-        (1, 6) | (2..=8 | 10 | 11, 3) => {
+        (1, 6) | (2..=8 | 10..=13, 3) => {
             if a[1] == 0 {
                 return INVALID;
             }
@@ -3324,7 +3377,8 @@ fn dispatch_inner(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32 {
                 | Body::Shader { parent, .. }
                 | Body::Declaration { parent, .. }
                 | Body::Texture { parent, .. }
-                | Body::Query { parent, .. } => parent,
+                | Body::Query { parent, .. }
+                | Body::Volume { parent, .. } => parent,
                 _ => unreachable!(),
             };
             addref(&mut s, parent);
@@ -3511,6 +3565,9 @@ fn dispatch_inner(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32 {
             }
             0
         }
+        (1, 24) => volume::create(image, &mut s, a),
+        (12, 10) => 4,
+        (12, 13 | 17..=20) | (13, 7..=10) => volume::operation(image, &mut s, a, kind, slot),
         (1, 23 | 25) => create_texture(image, &mut s, a, slot == 25),
         (1, 64 | 65) => texture_binding(image, &mut s, a, slot == 64),
         (1, 68 | 69) => sampler_state(image, &mut s, a, slot == 68),
@@ -4092,7 +4149,7 @@ mod tests {
         let p = capabilities(true);
         assert_eq!(p[3], 0); // SetGammaRamp must have no effect in this profile
         assert_eq!((p[22], p[23]), (2048, 2048));
-        assert_eq!((p[15], p[16], p[19]), (0x4004, 0x03030300, 7));
+        assert_eq!((p[15], p[16], p[19]), (0xe004, 0x03030300, 7));
         assert_eq!(p[5], 0x80000000);
         assert_eq!(
             (p[49], p[50], p[51], p[70]),

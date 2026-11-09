@@ -27,6 +27,10 @@ struct D3DDISPLAYMODE{UINT Width,Height,RefreshRate,Format;};
 struct D3DVERTEXBUFFER_DESC{UINT Format,Type,Usage,Pool,Size,FVF;};
 struct D3DGAMMARAMP{unsigned short red[256],green[256],blue[256];};
 struct D3DLOCKED_RECT{INT Pitch;void* pBits;};
+struct D3DLOCKED_BOX{INT RowPitch,SlicePitch;void* pBits;};
+struct D3DBOX{UINT Left,Top,Right,Bottom,Front,Back;};
+struct D3DVOLUME_DESC{UINT Format,Type,Usage,Pool,Width,Height,Depth;};
+struct IDirect3DVolumeTexture9;struct IDirect3DVolume9;
 
 struct IDirect3DSwapChain9;
 struct IDirect3DIndexBuffer9;
@@ -79,7 +83,7 @@ struct IDirect3DDevice9 {
  virtual void __stdcall SetGammaRamp(UINT,DWORD,const D3DGAMMARAMP*)=0;
  virtual void __stdcall UnsupportedSlot22()=0;
  virtual HRESULT __stdcall CreateTexture(UINT,UINT,UINT,DWORD,UINT,UINT,IDirect3DTexture9**,void*)=0;
- virtual void __stdcall UnsupportedSlot24()=0;
+ virtual HRESULT __stdcall CreateVolumeTexture(UINT,UINT,UINT,UINT,DWORD,UINT,UINT,IDirect3DVolumeTexture9**,void*)=0;
  virtual HRESULT __stdcall CreateCubeTexture(UINT,UINT,DWORD,UINT,UINT,IDirect3DCubeTexture9**,void*)=0;
  virtual HRESULT __stdcall CreateVertexBuffer(UINT,DWORD,DWORD,UINT,IDirect3DVertexBuffer9**,void*)=0;
  virtual HRESULT __stdcall CreateIndexBuffer(UINT,DWORD,UINT,UINT,IDirect3DIndexBuffer9**,void*)=0;
@@ -360,4 +364,25 @@ struct IDirect3DQuery9 {
  virtual DWORD __stdcall GetDataSize()=0;
  virtual HRESULT __stdcall Issue(DWORD)=0;
  virtual HRESULT __stdcall GetData(void*,DWORD,DWORD)=0;
+};
+
+struct IDirect3DVolumeTexture9 : IDirect3DBaseTexture9 {
+ virtual HRESULT __stdcall GetLevelDesc(UINT,D3DVOLUME_DESC*)=0;
+ virtual HRESULT __stdcall GetVolumeLevel(UINT,IDirect3DVolume9**)=0;
+ virtual HRESULT __stdcall LockBox(UINT,D3DLOCKED_BOX*,const D3DBOX*,DWORD)=0;
+ virtual HRESULT __stdcall UnlockBox(UINT)=0;
+ virtual void __stdcall UnsupportedSlot21()=0;
+};
+struct IDirect3DVolume9 {
+ virtual HRESULT __stdcall QueryInterface(const GUID&,void**)=0;
+ virtual ULONG __stdcall AddRef()=0;
+ virtual ULONG __stdcall Release()=0;
+ virtual HRESULT __stdcall GetDevice(IDirect3DDevice9**)=0;
+ virtual void __stdcall UnsupportedSlot4()=0;
+ virtual void __stdcall UnsupportedSlot5()=0;
+ virtual void __stdcall UnsupportedSlot6()=0;
+ virtual HRESULT __stdcall GetContainer(const GUID&,void**)=0;
+ virtual HRESULT __stdcall GetDesc(D3DVOLUME_DESC*)=0;
+ virtual HRESULT __stdcall LockBox(D3DLOCKED_BOX*,const D3DBOX*,DWORD)=0;
+ virtual HRESULT __stdcall UnlockBox()=0;
 };
