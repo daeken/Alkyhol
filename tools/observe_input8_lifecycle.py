@@ -18,7 +18,10 @@ def build(d):
  (d/'input8-inputs.json').write_text(json.dumps(identity(d),indent=2)+'\n')
 def execute(d,native):
  ident=identity(d)
- if json.loads((d/'input8-inputs.json').read_text())!=ident:raise ValueError('input PE/source identity changed')
+ expected_identity=json.loads((d/'input8-inputs.json').read_text())
+ if expected_identity!=ident:
+  (d/('native-input8.json' if native else 'input8-host.json')).write_text(json.dumps({'status':'rejected before execution','expected':expected_identity,'observed':ident},indent=2)+'\n')
+  raise ValueError('input PE/source identity changed')
  command=[str(d/'input8.exe')] if native else [str(runner(d)),str(d/'input8.exe'),'--file-origins','--external','dinput8.dll']
  r=subprocess.run(command,capture_output=True,timeout=60)
  report={'backend':'native Windows DirectInput8' if native else 'Alkyhol PE32 DirectInput8 lifecycle','inputs':ident,'platform':platform.platform(),'hosted_ci':os.getenv('GITHUB_ACTIONS')=='true','status':r.returncode,'stdout_hex':r.stdout.hex(),'stderr_hex':r.stderr.hex()}

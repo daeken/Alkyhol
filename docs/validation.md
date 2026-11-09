@@ -5475,3 +5475,9 @@ default is retained, with native Windows comparison pending. The expanded D3D9
 query witness passes all 233 words locally, including absent depth and viewport
 queries. SDK declarations are independently checked in CI; original game data,
 traces and shaders remain ignored local. No DAO frame, menu or gameplay exists yet.
+
+Input CI 42579539422 passes hosted Rosetta and independent Windows SDK layout
+checks, then rejects before native execution: the new fixture directory lacked
+an LF checkout rule, so actual C++ source hashes differ on Windows. The explicit
+Git attribute now preserves the same source bytes; identity checks are retained,
+not normalized or relaxed. This failed run supplies no native input observation.

@@ -201,3 +201,6 @@ d3d9/tests/fixtures/*.spv -text
 d3d9/tests/fixtures/*.hlsl text eol=lf
 d3d9/tests/fixtures/*.json text eol=lf
 d3d9/licenses/* text eol=lf
+
+# The owned DAO input witness is transferred, never rebuilt, on Windows.
+pe/fixtures/input8/** text eol=lf
