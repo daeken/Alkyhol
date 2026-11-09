@@ -5519,3 +5519,33 @@ real colored interior in a subsequent draw. All 183 PE library tests and remaini
 integration/doctest targets pass; PE/backend Clippy pass. Native Windows and Linux
 software Vulkan comparisons for this new milestone are pending. CI 42579539633
 and 42580016729 passed all three earlier D3D9 jobs, before these render targets.
+
+## Input comparison passes; original D3DX allocation and memory path
+
+Input CI [42581759670](https://github.com/daeken/Alkyhol/actions/runs/42581759670)
+passes both hosted Rosetta and native Windows jobs on 9d6af8a. All 64 raw words
+agree, including canonical IUnknown, guarded A/W descriptors, mapped/reserved
+keyboard objects, raw APPDATA defaults, properties, nonacquired output and stack.
+The physical M4 report has the identical PE SHA and identical complete output;
+its unused shared-header revision differs from the CI source pin, so it is not
+presented as an identical source build. Subsequent input CI 42581978223 also passes.
+This is lifecycle/ABI evidence, not delivered native input or game compatibility.
+
+The original D3DX DLL now executes C++ scalar new, memcpy and actual shader
+constant-table setup. Scalar/array new and malloc share a real private CRT heap;
+matching delete/free release owned blocks, including null no-ops. Exhaustion,
+foreign pointers and unimplemented exception/new-handler policy stop explicitly.
+Checked memcpy/memmove/memset, strchr and unsigned-byte strncmp use actual guest
+storage and correct cdecl cleanup. Traversal/size bounds fail before pretending
+to complete. No game call is replaced by a successful zero return.
+
+The owned 121-word PE passes on physical M4: independent live allocations across
+zero/small/page-spanning sizes, preserved payload checksums, paired frees, null
+delete, copy returns/guards, overlapping moves, memset truncation/zero count,
+unsigned narrow comparisons/search and stack balance. All 183 PE library tests,
+remaining integration/doctest targets and Clippy pass. Native CRT comparison is
+pending. Original DAO now gets through many original vertex/pixel shader creation
+and D3DX constant-table calls, but no original draw is observed. It eventually
+expects a depth surface after our format queries reject all candidates; the
+resulting null dereference is the next actual blocker. A depth attachment must
+be implemented and negotiated, not fabricated in GetDepthStencilSurface.

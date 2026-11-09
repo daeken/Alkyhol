@@ -267,6 +267,94 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
     }
     pointer
 }
+// Scalar/array delete and free are void operations on the same real private
+// CRT heap as malloc/new. Invalid or foreign bases fail before mutation.
+pub(super) fn deallocate(image: &LoadedImage32<'_>, pointer: u32) -> u32 {
+    if pointer == 0 {
+        return 0;
+    }
+    let handle = image
+        .cpu
+        .crt
+        .borrow()
+        .heap
+        .unwrap_or_else(|| unsupported("CRT delete/free requires an owned allocation"));
+    image
+        .cpu
+        .heap
+        .borrow_mut()
+        .free(handle, 0, pointer)
+        .unwrap_or_else(|e| unsupported(&e));
+    0 // void ABI; the owned allocation was actually freed.
+}
+fn checked_byte(image: &LoadedImage32<'_>, base: u32, index: u32) -> u8 {
+    let address = base
+        .checked_add(index)
+        .unwrap_or_else(|| unsupported("CRT string address overflow"));
+    if !image.permits(address as usize, 1, false) {
+        unsupported("CRT string outside owned readable storage");
+    }
+    unsafe { (address as *const u8).read() }
+}
+pub(super) fn memory(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u32 {
+    if id >= 268 {
+        let limit = if id == 269 { args[2] } else { 1024 * 1024 };
+        if limit > 1024 * 1024 {
+            unsupported("CRT string traversal budget exhausted");
+        }
+        for i in 0..limit {
+            let a = checked_byte(image, args[0], i);
+            if id == 268 {
+                if a == args[1] as u8 {
+                    return args[0] + i;
+                }
+                if a == 0 {
+                    return 0;
+                }
+            } else {
+                let b = checked_byte(image, args[1], i);
+                if a != b {
+                    return (a as i32 - b as i32) as u32;
+                }
+                if a == 0 {
+                    return 0;
+                }
+            }
+        }
+        if id == 269 {
+            return 0;
+        }
+        unsupported("CRT strchr traversal budget exhausted");
+    }
+    let n = args[2] as usize;
+    if n > 64 * 1024 * 1024 {
+        unsupported("CRT memory extent budget exhausted");
+    }
+    if n == 0 {
+        return args[0];
+    }
+    if !image.permits(args[0] as usize, n, true)
+        || id != 267 && !image.permits(args[1] as usize, n, false)
+    {
+        unsupported("CRT memory transfer outside owned storage");
+    }
+    unsafe {
+        match id {
+            265 => {
+                let destination = args[0] as usize;
+                let source = args[1] as usize;
+                if destination < source + n && source < destination + n {
+                    unsupported("CRT memcpy overlapping ranges require memmove");
+                }
+                std::ptr::copy_nonoverlapping(source as *const u8, destination as *mut u8, n);
+            }
+            266 => std::ptr::copy(args[1] as *const u8, args[0] as *mut u8, n),
+            267 => std::ptr::write_bytes(args[0] as *mut u8, args[1] as u8, n),
+            _ => unreachable!(),
+        }
+    }
+    args[0]
+}
 #[cfg(test)]
 mod tests {
     use super::*;

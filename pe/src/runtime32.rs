@@ -119,7 +119,7 @@ unsafe extern "C" {
 }
 const PAGE: usize = 4096;
 const STACK: usize = 1024 * 1024;
-const APIS: [(&str, u16); 260] = [
+const APIS: [(&str, u16); 270] = [
     ("GetLastError", 0),
     ("SetLastError", 4),
     ("GetStdHandle", 4),
@@ -380,6 +380,16 @@ const APIS: [(&str, u16); 260] = [
     ("GetWindowInfo", 8),
     ("ClipCursor", 4),
     ("DirectInput8Create", 20),
+    ("??2@YAPAXI@Z", 4),
+    ("??3@YAXPAX@Z", 4),
+    ("??_U@YAPAXI@Z", 4),
+    ("??_V@YAXPAX@Z", 4),
+    ("free", 4),
+    ("memcpy", 12),
+    ("memmove", 12),
+    ("memset", 12),
+    ("strchr", 8),
+    ("strncmp", 12),
 ];
 // The first 120 API slots retain their original offsets. The second bank
 // begins after both x87 bodies, leaving their machine code and failure gates
@@ -473,7 +483,7 @@ fn api_id(module: &str, symbol: &ImportSymbol) -> Option<usize> {
         .map(|(id, _)| id)
 }
 fn cdecl_api(id: usize) -> bool {
-    matches!(id, 78..=86 | 88..=96)
+    matches!(id, 78..=86 | 88..=96 | 260..=269)
 }
 fn cleanup_bytes(id: usize, arguments: u16) -> u16 {
     if cdecl_api(id) { 0 } else { arguments }
@@ -2320,6 +2330,9 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
             257 => ui32::window_info(image, args[0], args[1]),
             258 => cursor32::clip(image, args[0]),
             259 => input8_32::create(image, &words),
+            260 | 262 => crt32::dispatch(image, 78, args),
+            261 | 263 | 264 => crt32::deallocate(image, args[0]),
+            265..=269 => crt32::memory(image, id, args),
             input8_32::BASE.. => input8_32::dispatch(image, id, &words),
             d3d9_32::BASE.. => d3d9_32::dispatch(image, id, &words),
             215 => {
@@ -2399,6 +2412,11 @@ mod tests {
         assert_eq!(APIS[atan].1, 0);
         for name in [
             "malloc",
+            "??2@YAPAXI@Z",
+            "??3@YAXPAX@Z",
+            "??_U@YAPAXI@Z",
+            "??_V@YAXPAX@Z",
+            "free",
             "_set_error_mode",
             "?set_terminate@@YAP6AXXZP6AXXZ@Z",
             "__set_app_type",
