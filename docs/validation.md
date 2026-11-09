@@ -5879,3 +5879,35 @@ after successful native execution. The raw native/hosted 31-word palette outputs
 and PE/source identities already agree exactly; the comparator path is corrected
 here, with full workflow retry pending. This does not add support for the
 separately excluded Windows RGB-to-indexed quantizer.
+
+## DAO advances through atomic network-worker event sets
+
+CI [42609033378](https://github.com/daeken/Alkyhol/actions/runs/42609033378)
+passes both jobs on 2096e47. The identical owned case-insensitive open, 35-word
+UDP, disk-space, single-event, relative INI, NULL-module export, COM and admitted
+31-word palette-DIB comparisons pass on hosted Rosetta and native Windows.
+The palette comparator correction is therefore verified. This does not add
+Windows RGB-to-indexed quantization or asynchronous UDP support.
+
+Manual-reset event any/all waits now register as one set under a shared kernel
+dispatcher. Initial any-ready priority is the lowest index; registered waits
+latch the completing signal at set time, and wait-all requires actual overlapping
+signaled states. Timeout and registration are ordered with set/reset. Host main
+thread tasks run between wait slices while the same registration stays live;
+there is no polling gap that discards a completed pulse. Events retain their
+manual signal and every registration is removed on completion/timeout. Automatic
+events, semaphore sets and alertable/APC delivery remain outside this profile.
+
+Four root units check priority, timeout/error cleanup, duplicate rules, actual
+registered any/all signaling and signal/reset within host task delivery. The
+extended owned WSA PE passes all 41 words on physical M4, including two actual
+worker signals, any/all states, timeouts, duplicate error and guest stack balance.
+All 195 PE library tests, remaining targets and Clippy passed during this
+milestone; full root tests and Clippy also passed. Native comparison of the new
+41-word event-set witness is pending. Previous native 23-word evidence is retained.
+
+Original DAO passes its two-event network wait and next stops at Netapi32 Netbios.
+Its overlapped receive still returns an explicit WSAEOPNOTSUPP failure; no pending
+operation, callback or completion is invented. No original DAO draw, Present,
+menu, gameplay or audio playback has been observed. Original game evidence stays
+local and the unchanged EXE identity is retained.

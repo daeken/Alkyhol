@@ -109,7 +109,7 @@ fn checked(image: &LoadedImage32<'_>, pointer: u32, len: usize, write: bool) {
     }
 }
 /// WSA event aliases use the same real manual-reset kernel objects as Win32.
-/// The reached wait is one event; general wait sets and APC dispatch remain explicit.
+/// Manual event any/all sets are atomic; automatic events and APC dispatch remain explicit.
 pub(super) fn event_api(image: &LoadedImage32<'_>, id: u32, a: &[u32; 8]) -> u32 {
     if id == 280 {
         return super::event32::dispatch(image, 116, &[0, 1, 0, 0, 0, 0, 0, 0]);
@@ -121,20 +121,35 @@ pub(super) fn event_api(image: &LoadedImage32<'_>, id: u32, a: &[u32; 8]) -> u32
         if !(1..=64).contains(&a[0]) {
             return failure(87);
         }
-        if a[0] != 1 {
-            unsupported(
-                "Winsock wait sets with multiple objects require an atomic multi-wait implementation",
-            );
-        }
         if a[4] != 0 {
             unsupported("alertable Winsock waits require APC delivery");
         }
-        checked(image, a[1], 4, false);
-        let event = unsafe { (a[1] as *const u32).read_unaligned() };
-        if !image.cpu.events.borrow().is_event(event) {
-            return failure(6);
+        checked(image, a[1], a[0] as usize * 4, false);
+        let handles: Vec<_> = (0..a[0] as usize)
+            .map(|index| unsafe { (a[1] as *const u32).add(index).read_unaligned() })
+            .collect();
+        for &handle in &handles {
+            let state = image.cpu.events.borrow();
+            if !state.is_event(handle) && !image.cpu.threads.borrow().contains(handle) {
+                if state.contains(handle) {
+                    unsupported(
+                        "Winsock wait sets currently require manual events or guest-thread completion handles",
+                    );
+                }
+                return failure(6);
+            }
         }
-        return thread32::wait_handle(image, event, a[3]);
+        if handles.len() == 1 {
+            return thread32::wait_handle(image, handles[0], a[3]);
+        }
+        let handles: Vec<_> = handles.into_iter().map(|handle| handle as usize).collect();
+        match thread32::wait_event_set(image, &handles, a[2] != 0, a[3]) {
+            Ok(result) => return result,
+            Err(error) if error.0 == 50 => {
+                unsupported("Winsock multi-wait currently requires manual-reset event objects")
+            }
+            Err(error) => return failure(error.0),
+        }
     }
     if !image.cpu.events.borrow().is_event(a[0]) {
         alkyhol::ffi::SetLastError(6);

@@ -1,4 +1,4 @@
-/* Original MIT: single-event WSA waits and manual-reset aliases reached by DAO. */
+/* Original MIT: manual event-set WSA waits and manual-reset aliases reached by DAO. */
 typedef unsigned int U;typedef void* H;
 __declspec(dllimport) U __stdcall WSAStartup(U,void*);
 __declspec(dllimport) U __stdcall WSACleanup(void);
@@ -16,14 +16,19 @@ __declspec(dllimport) void __stdcall Sleep(U);
 __declspec(dllimport) H __stdcall GetStdHandle(U);
 __declspec(dllimport) int __stdcall WriteFile(H,const void*,U,U*,H);
 __declspec(dllimport) void __stdcall ExitProcess(U);
-static U data[100],out[40],used;static void put(U n){out[used++]=n;}
+static U data[100],out[80],used;static void put(U n){out[used++]=n;}
 static U stack(void){U n;__asm__ volatile("movl %%esp,%0":"=r"(n));return n;}
 static U __stdcall worker(H event){Sleep(2);return WSASetEvent(event)?5:9;}
-U entry(void){U before=stack();put(0x45534157);put(1);put(WSAStartup(0x202,data));H a=WSACreateEvent(),b=WSACreateEvent();put(a&&b);if(!a||!b)ExitProcess(2);
+U entry(void){U before=stack();put(0x45534157);put(2);put(WSAStartup(0x202,data));H a=WSACreateEvent(),b=WSACreateEvent();put(a&&b);if(!a||!b)ExitProcess(2);
  put(WSAWaitForMultipleEvents(1,&a,0,0,0));put(WSASetEvent(a));put(WSAWaitForMultipleEvents(1,&a,0,0,0));put(WSAWaitForMultipleEvents(1,&a,1,0,0));put(WSAResetEvent(a));
  U id=0;H thread=CreateThread(0,0,worker,a,0,&id);put(thread!=0&&id!=0);if(!thread)ExitProcess(3);
  put(WSAWaitForMultipleEvents(1,&a,0,5000,0));U code=0;put(WaitForSingleObject(thread,5000)==0&&GetExitCodeThread(thread,&code)&&code==5);
  put(WSAWaitForMultipleEvents(0,&a,0,0,0));put(WSAGetLastError());put(WSAWaitForMultipleEvents(1,&b,0,2,0));
+ H both[2]={a,b},duplicate[2]={a,a};put(WSAResetEvent(a));put(WSAWaitForMultipleEvents(2,both,0,0,0));put(WSASetEvent(b));put(WSAWaitForMultipleEvents(2,both,0,0,0));
+ put(WSASetEvent(a));put(WSAWaitForMultipleEvents(2,both,0,0,0));put(WSAWaitForMultipleEvents(2,both,1,0,0));put(WSAResetEvent(a));put(WSAWaitForMultipleEvents(2,both,1,2,0));
+ put(WSASetEvent(a));put(WSAWaitForMultipleEvents(2,both,1,0,0));put(WSAWaitForMultipleEvents(2,duplicate,0,0,0));put(WSAWaitForMultipleEvents(2,duplicate,1,0,0));put(WSAGetLastError());
+ put(WSAResetEvent(a)&&WSAResetEvent(b));U second_id=0;H second=CreateThread(0,0,worker,a,0,&second_id);put(second!=0&&second_id!=0);if(!second)ExitProcess(4);
+ put(WSAWaitForMultipleEvents(2,both,0,5000,0));code=0;put(WaitForSingleObject(second,5000)==0&&GetExitCodeThread(second,&code)&&code==5&&CloseHandle(second));
  put(WSACloseEvent(a));put(WSACloseEvent(b));put(WSACloseEvent(a));put(WSAGetLastError());put(WSACleanup());put(CloseHandle(thread));put(stack()==before);put(used+1);
  U done=0;int ok=WriteFile(GetStdHandle((U)-11),out,used*4,&done,0);ExitProcess(ok&&done==used*4?0:8);return 8;
 }

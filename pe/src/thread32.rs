@@ -582,6 +582,26 @@ pub(super) fn wait_handle(image: &LoadedImage32<'_>, handle: u32, milliseconds: 
     })
 }
 
+/// Manual event sets use the portable kernel dispatcher. Only synchronized host
+/// references cross the CPU release; AppKit handoff tasks still run on main.
+pub(super) fn wait_event_set(
+    image: &LoadedImage32<'_>,
+    handles: &[usize],
+    all: bool,
+    milliseconds: u32,
+) -> alkyhol::kernel::WinResult<u32> {
+    without_cpu(image, || {
+        if !super::window_host32::is_main_thread() || milliseconds == 0 {
+            return alkyhol::kernel::kernel().wait_events(handles, all, milliseconds);
+        }
+        alkyhol::kernel::kernel().wait_events_with_tasks(
+            handles,
+            all,
+            milliseconds,
+            &mut super::window_host32::pump_tasks,
+        )
+    })
+}
 pub(super) fn switch_to_thread(image: &LoadedImage32<'_>) -> u32 {
     let before = super::CPU_TICKETS.lock().unwrap().1;
     without_cpu(image, std::thread::yield_now);

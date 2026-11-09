@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Identical PE32 single-event Winsock waits reached by DAO."""
+"""Identical PE32 manual event-set Winsock waits reached by DAO."""
 import argparse,hashlib,json,os,platform,shutil,struct,subprocess
 from pathlib import Path
 from build_pe_fixture import ROOT,rust_tool
@@ -31,13 +31,13 @@ def execute(d,native):
  if r.returncode:raise ValueError('WSA event witness failed; raw capture retained: '+r.stderr.decode(errors='replace')[-1500:])
  if len(r.stdout)%4:raise ValueError('truncated WSA event report')
  words=list(struct.unpack('<'+'I'*(len(r.stdout)//4),r.stdout));report['words']=words
- expected=[0x45534157,1,0,1,258,1,0,0,1,1,0,1,0xffffffff,87,258,1,1,0,6,0,1,1]
+ expected=[0x45534157,2,0,1,258,1,0,0,1,1,0,1,0xffffffff,87,258]+[1,258,1,1,1,0,0,1,258,1,0,0,0xffffffff,87,1,1,0,1]+[1,1,0,6,0,1,1]
  expected += [len(expected)+1]
  path.write_text(json.dumps(report,indent=2)+'\n')
  if native:
   peer=json.loads((d/'wsa-events-host.json').read_text())
   if peer['inputs']!=ident or peer['status'] or peer['stdout_hex']!=r.stdout.hex():raise ValueError('identical WSA event PE differs; raw native and host observations retained')
  if words!=expected:raise ValueError('WSA event witness differs: '+repr(words))
- print('Identical PE32 WSA event aliases, real worker signaling, timeouts and stack balance pass')
+ print('Identical PE32 WSA event aliases, real worker signaling, any/all event sets, timeouts and stack balance pass')
 if __name__=='__main__':
  p=argparse.ArgumentParser(description=__doc__);p.add_argument('--output',type=Path,default=ROOT/'local/pe/wsa-events-microtest');g=p.add_mutually_exclusive_group();g.add_argument('--host',action='store_true');g.add_argument('--native',action='store_true');a=p.parse_args();d=a.output.resolve();execute(d,a.native) if a.host or a.native else build(d)

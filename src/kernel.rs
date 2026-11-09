@@ -6,7 +6,7 @@ use std::{
     io::{Read, Seek, SeekFrom, Write},
     path::Path,
     sync::{
-        Arc, Condvar, Mutex, OnceLock,
+        Arc, Condvar, Mutex, OnceLock, Weak,
         atomic::{AtomicU32, AtomicUsize, Ordering},
         mpsc,
     },
@@ -93,11 +93,24 @@ struct FileObject {
     read: bool,
     write: bool,
 }
+#[derive(Clone)]
+struct EventWaitLink {
+    waiter: Weak<EventWaitRecord>,
+    index: u32,
+}
+struct EventWaitRecord {
+    all: bool,
+    members: Vec<Weak<Object>>,
+    result: Mutex<Option<u32>>,
+    changed: Condvar,
+}
 struct EventState {
     signaled: bool,
     generation: u64,
+    waiters: Vec<EventWaitLink>,
 }
 struct EventObject {
+    dispatcher: Arc<Mutex<()>>,
     manual: bool,
     state: Mutex<EventState>,
     changed: Condvar,
@@ -179,21 +192,51 @@ impl EventNotifier {
     }
 }
 fn signal_event(event: &EventObject) {
-    let mut state = event.state.lock().unwrap();
-    if !state.signaled {
+    // A single dispatcher orders set/reset, wait registration and timeouts.
+    // Wait records are completed at the signal, not by a later polling snapshot.
+    let _dispatcher = event.dispatcher.lock().unwrap();
+    let links = {
+        let mut state = event.state.lock().unwrap();
+        if state.signaled {
+            return;
+        }
         state.signaled = true;
         state.generation = state.generation.wrapping_add(1);
-        if event.manual {
-            event.changed.notify_all();
-        } else {
-            event.changed.notify_one();
+        state.waiters.clone()
+    };
+    for link in links {
+        let Some(waiter) = link.waiter.upgrade() else {
+            continue;
+        };
+        let mut result = waiter.result.lock().unwrap();
+        if result.is_some() {
+            continue;
         }
+        let satisfied = !waiter.all
+            || waiter.members.iter().all(|member| {
+                member.upgrade().is_some_and(|object| {
+                    let Object::Event(member) = &*object else {
+                        unreachable!()
+                    };
+                    member.state.lock().unwrap().signaled
+                })
+            });
+        if satisfied {
+            *result = Some(if waiter.all { 0 } else { link.index });
+            waiter.changed.notify_one();
+        }
+    }
+    if event.manual {
+        event.changed.notify_all();
+    } else {
+        event.changed.notify_one();
     }
 }
 
 #[derive(Default)]
 pub struct Kernel {
     objects: Mutex<HashMap<Handle, Arc<Object>>>,
+    event_dispatcher: Arc<Mutex<()>>,
 }
 // Global token allocation prevents accidental handle aliasing between Kernel instances.
 static NEXT_HANDLE: AtomicUsize = AtomicUsize::new(1);
@@ -381,10 +424,12 @@ impl Kernel {
     }
     pub fn create_event(&self, manual: bool, initial: bool) -> Handle {
         self.insert(Object::Event(EventObject {
+            dispatcher: self.event_dispatcher.clone(),
             manual,
             state: Mutex::new(EventState {
                 signaled: initial,
                 generation: 0,
+                waiters: Vec::new(),
             }),
             changed: Condvar::new(),
         }))
@@ -407,6 +452,7 @@ impl Kernel {
         let Object::Event(event) = &*object else {
             return Err(WinError(ERROR_INVALID_HANDLE));
         };
+        let _dispatcher = event.dispatcher.lock().unwrap();
         event.state.lock().unwrap().signaled = false;
         Ok(())
     }
@@ -486,6 +532,131 @@ impl Kernel {
             .transpose()?
             .unwrap_or(STILL_ACTIVE))
     }
+    /// Atomic any/all waits on 1..64 manual-reset events. Other object types,
+    /// automatic events and APC delivery are outside this method's profile.
+    /// A successful wait retains event state; all-wait duplicate handles fail.
+    pub fn wait_events(&self, handles: &[Handle], all: bool, milliseconds: u32) -> WinResult<u32> {
+        self.wait_events_inner(handles, all, milliseconds, None)
+    }
+    /// Keep one atomic wait registered while servicing calling-thread host tasks.
+    /// The callback runs without dispatcher/event/result locks between millisecond
+    /// wait slices. Signaling during a callback is still latched.
+    pub fn wait_events_with_tasks(
+        &self,
+        handles: &[Handle],
+        all: bool,
+        milliseconds: u32,
+        tasks: &mut dyn FnMut(),
+    ) -> WinResult<u32> {
+        self.wait_events_inner(handles, all, milliseconds, Some(tasks))
+    }
+    fn wait_events_inner(
+        &self,
+        handles: &[Handle],
+        all: bool,
+        milliseconds: u32,
+        mut tasks: Option<&mut dyn FnMut()>,
+    ) -> WinResult<u32> {
+        if handles.is_empty() || handles.len() > 64 {
+            return Err(WinError(ERROR_INVALID_PARAMETER));
+        }
+        let mut unique = std::collections::HashSet::new();
+        if all && handles.iter().any(|&h| !unique.insert(h)) {
+            return Err(WinError(ERROR_INVALID_PARAMETER));
+        }
+        let objects: Vec<_> = handles
+            .iter()
+            .map(|&h| self.object(h))
+            .collect::<WinResult<_>>()?;
+        let events: Vec<_> = objects
+            .iter()
+            .map(|object| match &**object {
+                Object::Event(event) if event.manual => Ok(event),
+                _ => Err(WinError(ERROR_NOT_SUPPORTED)),
+            })
+            .collect::<WinResult<_>>()?;
+        let deadline = (milliseconds != INFINITE)
+            .then(|| Instant::now() + Duration::from_millis(milliseconds.into()));
+        let waiter = {
+            let _dispatcher = self.event_dispatcher.lock().unwrap();
+            let states: Vec<_> = events
+                .iter()
+                .map(|event| event.state.lock().unwrap().signaled)
+                .collect();
+            let ready = if all {
+                states.iter().all(|&state| state).then_some(0)
+            } else {
+                states
+                    .iter()
+                    .position(|&state| state)
+                    .map(|index| index as u32)
+            };
+            if let Some(index) = ready {
+                return Ok(index);
+            }
+            if milliseconds == 0 {
+                return Ok(WAIT_TIMEOUT);
+            }
+            let waiter = Arc::new(EventWaitRecord {
+                all,
+                members: objects.iter().map(Arc::downgrade).collect(),
+                result: Mutex::new(None),
+                changed: Condvar::new(),
+            });
+            for (index, event) in events.iter().enumerate() {
+                event.state.lock().unwrap().waiters.push(EventWaitLink {
+                    waiter: Arc::downgrade(&waiter),
+                    index: index as u32,
+                });
+            }
+            waiter
+        };
+        let result = loop {
+            if let Some(tasks) = tasks.as_mut() {
+                tasks();
+            }
+            let state = waiter.result.lock().unwrap();
+            if let Some(result) = *state {
+                break result;
+            }
+            if let Some(deadline) = deadline {
+                let remaining = deadline.saturating_duration_since(Instant::now());
+                if remaining.is_zero() {
+                    drop(state);
+                    let _dispatcher = self.event_dispatcher.lock().unwrap();
+                    let mut state = waiter.result.lock().unwrap();
+                    break *state.get_or_insert(WAIT_TIMEOUT);
+                }
+                let slice = if tasks.is_some() {
+                    remaining.min(Duration::from_millis(1))
+                } else {
+                    remaining
+                };
+                drop(waiter.changed.wait_timeout(state, slice).unwrap());
+            } else if tasks.is_some() {
+                drop(
+                    waiter
+                        .changed
+                        .wait_timeout(state, Duration::from_millis(1))
+                        .unwrap(),
+                );
+            } else {
+                drop(waiter.changed.wait(state).unwrap());
+            }
+        };
+        // Remove all links, including duplicate wait-any members, before the
+        // record dies. Timeout loops cannot accumulate dormant registrations.
+        let _dispatcher = self.event_dispatcher.lock().unwrap();
+        for event in events {
+            event
+                .state
+                .lock()
+                .unwrap()
+                .waiters
+                .retain(|link| link.waiter.as_ptr() != Arc::as_ptr(&waiter));
+        }
+        Ok(result)
+    }
     pub fn wait(&self, handle: Handle, milliseconds: u32) -> WinResult<u32> {
         let object = self.object(handle)?;
         if let Object::Semaphore(semaphore) = &*object {
@@ -536,5 +707,123 @@ pub fn sleep(milliseconds: u32) {
         std::thread::yield_now();
     } else {
         std::thread::sleep(Duration::from_millis(milliseconds.into()));
+    }
+}
+
+#[cfg(test)]
+mod event_set_tests {
+    use super::*;
+    fn links(kernel: &Kernel, handle: Handle) -> usize {
+        let object = kernel.object(handle).unwrap();
+        let Object::Event(event) = &*object else {
+            panic!("event expected")
+        };
+        event.state.lock().unwrap().waiters.len()
+    }
+    fn registered(kernel: &Kernel, handle: Handle) {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while links(kernel, handle) == 0 {
+            assert!(Instant::now() < deadline, "wait did not register");
+            thread::yield_now();
+        }
+    }
+    #[test]
+    fn manual_event_sets_keep_index_priority_all_state_and_timeout_cleanup() {
+        let kernel = Kernel::default();
+        let a = kernel.create_event(true, false);
+        let b = kernel.create_event(true, false);
+        assert_eq!(kernel.wait_events(&[a, b], false, 0).unwrap(), WAIT_TIMEOUT);
+        kernel.set_event(b).unwrap();
+        assert_eq!(kernel.wait_events(&[a, b], false, 0).unwrap(), 1);
+        kernel.set_event(a).unwrap();
+        assert_eq!(kernel.wait_events(&[a, b], false, 0).unwrap(), 0);
+        assert_eq!(kernel.wait_events(&[a, b], true, 0).unwrap(), 0);
+        kernel.reset_event(a).unwrap();
+        assert_eq!(kernel.wait_events(&[a, b], true, 2).unwrap(), WAIT_TIMEOUT);
+        assert_eq!(links(&kernel, a), 0);
+        assert_eq!(links(&kernel, b), 0);
+        assert_eq!(kernel.wait(b, 0).unwrap(), 0);
+        assert_eq!(kernel.wait_events(&[b, b], false, 0).unwrap(), 0);
+        assert_eq!(
+            kernel.wait_events(&[b, b], true, 0).unwrap_err().0,
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            kernel.wait_events(&[], false, 0).unwrap_err().0,
+            ERROR_INVALID_PARAMETER
+        );
+        assert_eq!(
+            kernel.wait_events(&[a; 65], false, 0).unwrap_err().0,
+            ERROR_INVALID_PARAMETER
+        );
+        let auto = kernel.create_event(false, true);
+        assert_eq!(
+            kernel.wait_events(&[a, auto], false, 0).unwrap_err().0,
+            ERROR_NOT_SUPPORTED
+        );
+        assert_eq!(kernel.wait(auto, 0).unwrap(), 0);
+        kernel.close_handle(a).unwrap();
+        assert_eq!(
+            kernel.wait_events(&[a], false, 0).unwrap_err().0,
+            ERROR_INVALID_HANDLE
+        );
+    }
+    #[test]
+    fn host_tasks_preserve_one_registration_and_latched_signals() {
+        let kernel = Kernel::default();
+        let a = kernel.create_event(true, false);
+        let b = kernel.create_event(true, false);
+        let mut calls = 0;
+        let result = kernel
+            .wait_events_with_tasks(&[a, b], false, 5000, &mut || {
+                calls += 1;
+                assert_eq!(links(&kernel, a), 1);
+                if calls == 2 {
+                    kernel.set_event(b).unwrap();
+                    kernel.set_event(a).unwrap();
+                    kernel.reset_event(b).unwrap();
+                    kernel.reset_event(a).unwrap();
+                }
+            })
+            .unwrap();
+        assert_eq!(calls, 2);
+        assert_eq!(result, 1);
+        assert_eq!(links(&kernel, a), 0);
+        assert_eq!(links(&kernel, b), 0);
+    }
+    #[test]
+    fn a_registered_wait_any_latches_the_first_signal_not_a_later_snapshot() {
+        let kernel = Arc::new(Kernel::default());
+        let a = kernel.create_event(true, false);
+        let b = kernel.create_event(true, false);
+        let worker_kernel = kernel.clone();
+        let worker =
+            thread::spawn(move || worker_kernel.wait_events(&[a, b], false, 5000).unwrap());
+        registered(&kernel, a);
+        kernel.set_event(b).unwrap();
+        kernel.set_event(a).unwrap();
+        kernel.reset_event(b).unwrap();
+        assert_eq!(worker.join().unwrap(), 1);
+        assert_eq!(links(&kernel, a), 0);
+        assert_eq!(links(&kernel, b), 0);
+    }
+    #[test]
+    fn a_registered_wait_all_latches_overlap_but_not_disjoint_pulses() {
+        let kernel = Arc::new(Kernel::default());
+        let a = kernel.create_event(true, false);
+        let b = kernel.create_event(true, false);
+        let worker_kernel = kernel.clone();
+        let worker = thread::spawn(move || worker_kernel.wait_events(&[a, b], true, 5000).unwrap());
+        registered(&kernel, a);
+        kernel.set_event(a).unwrap();
+        kernel.reset_event(a).unwrap();
+        kernel.set_event(b).unwrap();
+        assert!(links(&kernel, a) > 0); // A was reset before B became signaled.
+        kernel.set_event(a).unwrap();
+        kernel.reset_event(a).unwrap();
+        kernel.reset_event(b).unwrap();
+        assert_eq!(worker.join().unwrap(), 0); // Both were ready at the set operation.
+        assert_eq!(links(&kernel, a), 0);
+        assert_eq!(links(&kernel, b), 0);
     }
 }
