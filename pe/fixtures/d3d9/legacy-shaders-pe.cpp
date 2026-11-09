@@ -363,7 +363,9 @@ static HRESULT user_draw(UINT frame,IDirect3DVertexBuffer9* vb){
 #endif
 extern "C" DWORD entry(){
  DWORD before=stack();put(0x39534844);
-#ifdef USER_DRAW
+#ifdef ALPHA_TEST
+put(24);
+#elif defined(USER_DRAW)
 put(23);
 #elif defined(OCCLUSION)
 put(21);
@@ -600,6 +602,16 @@ put(1);
   #ifdef BIAS
   float bias=frame?-.125f:.125f;DWORD bits=0;for(UINT n=0;n<4;n++)((unsigned char*)&bits)[n]=((unsigned char*)&bias)[n];
   DWORD observed_bias=0;if(g_pd3dDevice->SetRenderState(195,bits)!=S_OK||g_pd3dDevice->GetRenderState(195,&observed_bias)!=S_OK||observed_bias!=bits)return 40;
+  #endif
+  #ifdef ALPHA_TEST
+  // Half alpha is intentionally between the adjacent UNORM8 references.
+  IDirect3DVertexBuffer9* alpha_vb=NULL;UINT alpha_offset=0,alpha_stride=0;
+  if(g_pd3dDevice->GetStreamSource(0,&alpha_vb,&alpha_offset,&alpha_stride)!=S_OK||!alpha_vb)return 43;
+  void* alpha_data=NULL;if(alpha_vb->Lock(0,0,&alpha_data,0)!=S_OK||!alpha_data)return 44;
+  for(UINT n=0;n<3;n++)((float*)alpha_data)[n*8+7]=0.5f;
+  if(alpha_vb->Unlock()!=S_OK)return 45;alpha_vb->Release();
+  DWORD compare=0,reference=0,enabled=0;
+  if(g_pd3dDevice->SetRenderState(25,7)!=S_OK||g_pd3dDevice->SetRenderState(24,frame?127:128)!=S_OK||g_pd3dDevice->SetRenderState(15,1)!=S_OK||g_pd3dDevice->GetRenderState(15,&enabled)!=S_OK||g_pd3dDevice->GetRenderState(24,&reference)!=S_OK||g_pd3dDevice->GetRenderState(25,&compare)!=S_OK||enabled!=1||reference!=(frame?127u:128u)||compare!=7)return 46;
   #endif
   matrix[3]=frame?.75f:0;
   put(0xfeed0000+frame);

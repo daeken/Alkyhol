@@ -118,3 +118,6 @@ static_assert(offsetof(IDirect3DQuery9Vtbl,Issue)==6*4&&offsetof(IDirect3DQuery9
 
 static_assert(offsetof(IDirect3DDevice9Vtbl,DrawPrimitiveUP)==83*4);
 static_assert(offsetof(IDirect3DDevice9Vtbl,DrawIndexedPrimitiveUP)==84*4);
+
+static_assert(D3DRS_ALPHATESTENABLE==15&&D3DRS_ALPHAREF==24&&D3DRS_ALPHAFUNC==25);
+static_assert(D3DCMP_NEVER==1&&D3DCMP_ALWAYS==8&&D3DCMP_GREATEREQUAL==7);

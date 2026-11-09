@@ -131,7 +131,10 @@ impl Device {
         {
             return Err(format!(
                 "legacy draw extent/state outside bounded triangle profile: initialized={} bytes={} stride={} indexed={}",
-                target.initialized.load(Ordering::Acquire), draw.vertices.len(), draw.stride, draw.indices.is_some()
+                target.initialized.load(Ordering::Acquire),
+                draw.vertices.len(),
+                draw.stride,
+                draw.indices.is_some()
             ));
         }
         if let Some(indices) = draw.indices
@@ -154,6 +157,7 @@ impl Device {
                 f32::from_bits(state.get(175)?),
             )?;
         }
+        crate::alpha_test::lower(&mut ps, state.get(15)? != 0, state.get(25)?, state.get(24)?)?;
         let mut used = BTreeSet::new();
         resources(&vs, 0, &mut used)?;
         resources(&ps, 1, &mut used)?;

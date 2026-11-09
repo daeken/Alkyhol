@@ -9,6 +9,7 @@ use std::{
     time::Duration,
 };
 use wgpu::util::DeviceExt;
+mod alpha_test;
 pub mod compiler;
 mod depth;
 mod depth_bias;
@@ -324,10 +325,18 @@ impl Device {
         let mut shader_text = include_str!("transformed.wgsl").to_owned();
         let bias = f32::from_bits(state.get(195)?);
         let slope = f32::from_bits(state.get(175)?);
-        if depth.is_some() && (bias != 0. || slope != 0.) {
+        if depth.is_some() && (bias != 0. || slope != 0.) || state.get(15)? != 0 {
             let mut module =
                 naga::front::wgsl::parse_str(&shader_text).map_err(|e| e.to_string())?;
-            depth_bias::lower(&mut module, bias, slope)?;
+            if depth.is_some() {
+                depth_bias::lower(&mut module, bias, slope)?;
+            }
+            alpha_test::lower(
+                &mut module,
+                state.get(15)? != 0,
+                state.get(25)?,
+                state.get(24)?,
+            )?;
             shader_text = legacy::wgsl(&module)?;
         }
         let shader = self
@@ -378,6 +387,8 @@ impl Device {
                 multiview: None,
                 cache: None,
             });
+        self.finish()?;
+        self.scope();
         let bind = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("D3D9 viewport"),
             layout: &pipeline.get_bind_group_layout(0),

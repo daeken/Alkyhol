@@ -6992,3 +6992,33 @@ comparator units and Clippy for both crates pass. The fullscreen frame overwrite
 every pixel, so its pending identical-PE native comparison does not depend on
 unspecified native allocation contents. Version-22's four-frame evidence remains
 reproducible at 1983dbe. Original character creation/gameplay is still unverified.
+
+### Original fresh-target progress and alpha-test boundary
+
+Clean c77d399 passes the original fresh-render-texture guard and proceeds to
+further scene/postprocess state. The next explicit stop is ALPHATESTENABLE=1;
+preceding original state selects ALPHAFUNC=GREATEREQUAL (7), ALPHAREF=8. The trace
+also records SetTexture(stage 0,pointer 3) returning INVALIDCALL; that invalid
+pointer is not remapped or accepted. Its cause remains an independent unknown.
+No completed character-creation scene/frame is established.
+
+Alpha testing now wraps the original fragment body, compares COLOR0 alpha with
+ALPHAREF/255 using the selected one of eight comparisons, and discards before
+color/depth/stencil/query contributions. All original outputs, including an
+existing depth output, remain intact. Disabled/ALWAYS preserves module identity.
+Explicit early-depth-test mode, absent COLOR0 and invalid parameters fail. Both
+fixed transformed-color and translated original pixel shaders use the adapter.
+The NEVER case uses a structured discard and typed return because Metal's
+discard_fragment is not noreturn; the initial direct-discard form failed actual
+Metal pipeline compilation and is not retained as passing evidence.
+
+Physical M4 executes 64 fixed/translated combinations across all comparisons and
+zero, half-alpha/adjacent references and one-alpha boundaries. Every pixel and
+actual occlusion count matches the expected surviving coverage. The owned
+--alpha-test literal PE passes 2099 words, original bytecode, retained state,
+stack and two complete RGB frames: half alpha rejects at reference 128 and
+survives at 127 under GREATEREQUAL. Native identical-PE comparison is pending;
+this is finite float-reference evidence, not a claim about all native precision
+or game materials. All 27 backend units (two GPU units separately ignored),
+both crates' Clippy and 19 observer units pass. Existing CI runs the new GPU test
+and native comparator; original DAO replay with alpha testing is next.

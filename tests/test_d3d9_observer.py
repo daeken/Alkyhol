@@ -87,6 +87,14 @@ class LegacyShaderComparatorTests(unittest.TestCase):
             for changed in [words[:-1],words+[0]]:
                 with self.assertRaises(ValueError):shader_words(changed)
 
+    def test_alpha_test_rejection_requires_both_frames_and_exact_rgb(self):
+        words=self.record();words[1]=24;words[31:31+1024]=[0xff]*1024
+        with patch.object(observer,'ALPHA_TEST',True):
+            self.assertEqual(shader_words(words),words)
+            for index,value in [(31+1023,0xff0000),(1065+20*32+22,0xff),(1065+1023,0x123456),(2,0)]:
+                changed=words.copy();changed[index]=value
+                with self.assertRaises(ValueError):shader_words(changed)
+
     def test_occlusion_counter_report_requires_overlap_and_hidden_samples(self):
         words=self.record();words[1]=21;words[20:20]=[1,552,276,0];words[-1]=2103
         with patch.object(observer,'OCCLUSION',True):
