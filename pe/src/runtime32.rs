@@ -89,6 +89,8 @@ mod thread32;
 mod time32;
 #[path = "ui32.rs"]
 mod ui32;
+#[path = "unnamed_mutex32.rs"]
+mod unnamed_mutex32;
 #[path = "watch32.rs"]
 mod watch32;
 #[path = "window_host32.rs"]
@@ -119,7 +121,7 @@ unsafe extern "C" {
 }
 const PAGE: usize = 4096;
 const STACK: usize = 1024 * 1024;
-const APIS: [(&str, u16); 270] = [
+const APIS: [(&str, u16); 271] = [
     ("GetLastError", 0),
     ("SetLastError", 4),
     ("GetStdHandle", 4),
@@ -390,6 +392,7 @@ const APIS: [(&str, u16); 270] = [
     ("memset", 12),
     ("strchr", 8),
     ("strncmp", 12),
+    ("CreateMutexA", 12),
 ];
 // The first 120 API slots retain their original offsets. The second bank
 // begins after both x87 bodies, leaving their machine code and failure gates
@@ -832,6 +835,7 @@ struct Cpu32 {
     images: RefCell<image32::State>,
     d3d9: RefCell<d3d9_32::State>,
     input8: RefCell<input8_32::State>,
+    unnamed_mutexes: RefCell<unnamed_mutex32::State>,
     com_storage: RefCell<Vec<(LowMapping, bool)>>,
 }
 impl Cpu32 {
@@ -852,6 +856,7 @@ impl Cpu32 {
             unsupported("PE32 thread-exit FLS callbacks are unsupported; pending values remain");
         }
         self.fls.borrow_mut().clear();
+        self.unnamed_mutexes.borrow_mut().clear();
         self.heap.borrow_mut().clear();
         *self.crt.borrow_mut() = Default::default();
     }
@@ -957,6 +962,7 @@ impl Cpu32 {
             images: RefCell::new(Default::default()),
             d3d9: RefCell::new(Default::default()),
             input8: RefCell::new(Default::default()),
+            unnamed_mutexes: RefCell::new(Default::default()),
             com_storage: RefCell::new(Default::default()),
         })
     }
@@ -2229,6 +2235,9 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
             109 => mutex32::create(image, args),
             111 => directory32::set(image, args[0]),
             112 => directory32::get(image, args),
+            113 | 114 if image.cpu.unnamed_mutexes.borrow().contains(args[0]) => {
+                unnamed_mutex32::operation(image, args, id == 113)
+            }
             113 if image.cpu.watches.borrow().contains(args[0]) => thread32::wait(image, args),
             113 if image.cpu.threads.borrow().contains(args[0]) => thread32::wait(image, args),
             113 if image.cpu.events.borrow().contains(args[0]) => {
@@ -2252,6 +2261,9 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
             133 => directory32::get_ansi(image, args),
             134 | 135 => bulk32::attributes(image, args[0], id == 135),
             136 => {
+                if image.cpu.unnamed_mutexes.borrow().contains(args[0]) {
+                    return unnamed_mutex32::operation(image, args, true);
+                }
                 if image.cpu.threads.borrow().contains(args[0])
                     || image.cpu.watches.borrow().contains(args[0])
                 {
@@ -2333,6 +2345,7 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
             260 | 262 => crt32::dispatch(image, 78, args),
             261 | 263 | 264 => crt32::deallocate(image, args[0]),
             265..=269 => crt32::memory(image, id, args),
+            270 => mutex32::create_ansi(image, args),
             input8_32::BASE.. => input8_32::dispatch(image, id, &words),
             d3d9_32::BASE.. => d3d9_32::dispatch(image, id, &words),
             215 => {
@@ -2527,6 +2540,7 @@ mod tests {
                 images: RefCell::new(Default::default()),
                 d3d9: RefCell::new(Default::default()),
                 input8: RefCell::new(Default::default()),
+                unnamed_mutexes: RefCell::new(Default::default()),
                 com_storage: RefCell::new(Default::default()),
             }),
             tls: None,

@@ -5606,3 +5606,26 @@ This run also retains failures for D24S8, three texture requests and 15 packed
 vertex declarations. Continuing through a handled failure does not implement
 that resource or establish rendering quality. No original DAO draw or game frame
 has yet been observed. These remaining resources must be implemented as needed.
+
+## Original DAO font mutex and real thread ownership
+
+D3D9 CI 42587447080 passes all three jobs on b0abac8, including the expanded
+235-word swapchain query/presentation witness. No original frame is implied.
+
+Original DAO now executes its unnamed CreateMutexA call and progresses through
+further font/resource setup to another file-open profile boundary. The new A/W
+unnamed mutexes have inaccessible low handle tokens, actual per-thread recursive
+ownership, timed/non-alertable waits that release the CPU lease, correct foreign
+release failure and ownership abandonment during real worker teardown. Closing a
+handle releases its actual record; closing during a pending wait remains outside
+the defined profile. Existing named-W/session/file-lock contracts and their frozen
+observations are preserved; named ANSI conversion and APC waits fail explicitly.
+
+The owned PE passes all 39 words on physical M4: real x86 worker contention,
+zero/timed waits, recursion preventing early handoff, wrong-owner error 288,
+acquisition after release, actual worker-exit abandonment, initial ownership,
+A/W entry points, handle closure and stack balance. Two ownership units and all
+185 PE library tests, remaining integration/doctest targets and Clippy pass.
+Native Windows comparison is pending. New texture failures are retained rather
+than counted as successful loads: original DXT5 requests remain unsupported.
+The game still has no observed draw, menu or gameplay.

@@ -310,6 +310,9 @@ pub(super) fn create(image: &LoadedImage32<'_>, args: &[u32; 8]) -> u32 {
         || (args[0].is_multiple_of(4)
             && image.permits(args[0] as usize, 12, false)
             && unsafe { (args[0] as *const [u32; 3]).read() } == [12, 0, 0]);
+    if defaults && args[2] == 0 {
+        return super::unnamed_mutex32::create(image, args[1] != 0);
+    }
     if !defaults || args[1] != 0 {
         unsupported("mutex security attributes or initial ownership are unsupported");
     }
@@ -329,6 +332,13 @@ pub(super) fn create(image: &LoadedImage32<'_>, args: &[u32; 8]) -> u32 {
         .unwrap_or_else(|e| unsupported(&e));
     alkyhol::ffi::SetLastError(if existing { 183 } else { 0 });
     handle
+}
+
+pub(super) fn create_ansi(image: &LoadedImage32<'_>, args: &[u32; 8]) -> u32 {
+    if args[2] != 0 {
+        unsupported("named ANSI mutex conversion is not implemented");
+    }
+    create(image, args)
 }
 
 #[cfg(test)]

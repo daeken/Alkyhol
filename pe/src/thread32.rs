@@ -418,6 +418,11 @@ unsafe fn run(
     if let Some(activation) = image.cpu.bound_activation.borrow_mut().as_mut() {
         activation.exit_thread().unwrap_or_else(|e| unsupported(&e));
     }
+    image
+        .cpu
+        .unnamed_mutexes
+        .borrow_mut()
+        .abandon(alkyhol::ffi::GetCurrentThreadId());
     record.control.exit.store(status, Ordering::Release);
     // Signal the independently retained object even if the guest closed its handle.
     if alkyhol::ffi::SetEvent(record.control.retained as usize) == 0 {
