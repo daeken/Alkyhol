@@ -7206,3 +7206,29 @@ SM2 temporary-destination and coordinate-register restrictions. A separately
 identified legal shader witness is needed; do not relabel the rejected binary
 as native success. Existing streams/StretchRect/POSITIONT native mismatches also
 remain. CI 42709101205 tests 845c2a2; results are still pending at this record.
+
+### User exploration: client double-click stop and performance observations
+
+The 845c2a2 run stops after the user reports clicking a skill's +1 control.
+The observed fatal boundary is DefWindowProc receiving WM_LBUTTONDBLCLK (0x203),
+not an established failure in skill-allocation logic. Status is 78 after 347.37 s.
+The adapter now handles the default no-action return for left/right/middle
+client double-click notifications; nonclient and other mouse defaults remain
+separate rather than receiving a blanket successful return. Existing native
+mouse queue generation already respects CS_DBLCLKS. Two focused host units and
+a new 22-word owned --client-default PE pass, including all three default
+returns, unchanged capture ownership, capture callbacks and stack cleanup.
+Clippy passes. Identical native Windows comparison is wired and pending; the
+original +1 path is not yet reverified with this change.
+
+Performance is visibly poor but no frame-rate measurement has been made. The
+optimized original run emits 268,887,676 diagnostic bytes (first-unique retained
+stderr is 14,399,224 bytes); pipe formatting/deduplication therefore remains
+work even when repeated lines are not written to disk. Code inspection separately
+shows SPIR-V parsing/lowering, WGSL generation, shader-module/pipeline creation,
+new vertex/index/constant/binding resources and one submission per legacy draw.
+Every Present performs a full GPU-to-CPU framebuffer readback before AppKit
+presentation. These are concrete optimization targets, not measured percentage
+attributions. Cache shader/pipeline preparation first, then measure logging and
+presentation independently; preserve all geometry, shaders and image quality.
+The user's interaction is the driver; keep originals/captures local.

@@ -19,7 +19,9 @@ static L __stdcall procedure(H h,U msg,U w,L l){
 }
 U entry(void){
  U before=stack();put(0x43415032);
-#ifdef BACKGROUND
+#ifdef CLIENT_DEFAULT
+ put(3);
+#elif defined(BACKGROUND)
  put(2);
 #else
  put(1);
@@ -29,6 +31,9 @@ U entry(void){
  put(RegisterClassExW(wc)!=0);
  H h=CreateWindowExW(0,L"AlkyholCaptureWitness",L"Alkyhol PE32 capture witness",0xcf0000,100,100,320,240,0,0,instance,0);
  put(h!=0);ShowWindow(h,1);
+#ifdef CLIENT_DEFAULT
+ for(U message=0x203;message<=0x209;message+=3)put(DefWindowProcW(h,message,1,0x00020003)==0&&GetCapture()==0);
+#endif
 #ifdef BACKGROUND
  H other=CreateWindowExW(0,L"AlkyholCaptureWitness",L"Alkyhol capture foreground owner",0xcf0000,500,100,320,240,0,0,instance,0);
  put(other!=0);ShowWindow(other,1);

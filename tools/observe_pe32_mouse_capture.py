@@ -8,6 +8,7 @@ from observe_pe32_activation_startup import runner
 SOURCES=['mouse-capture.c','mouse-capture.def','mouse-capture-user.def']
 PREFIX='mouse-capture'
 BACKGROUND=False
+CLIENT_DEFAULT=False
 FILES=['mouse-capture.exe']
 SYMBOLS=[('GetModuleHandleW',4),('GetStdHandle',4),('WriteFile',20),('Sleep',4),('RegisterClassExW',4),('CreateWindowExW',48),('DefWindowProcW',16),('ShowWindow',8),('DestroyWindow',4),('SetCapture',4),('ReleaseCapture',0),('GetCapture',0),('PeekMessageW',20),('DispatchMessageW',4)]
 def inputs(d):
@@ -17,13 +18,13 @@ def build(d):
  for role in ['mouse-capture','mouse-capture-user']:
   lib=d/(role+'.lib');libs.append(str(lib));subprocess.run([lld,'-flavor','link','/lib','/machine:x86','/def:'+str(SOURCE/(role+'.def')),'/out:'+str(lib)],check=True)
  obj=d/(PREFIX+'.obj')
- subprocess.run([shutil.which('clang'),'--target=i686-pc-windows-msvc','-O1','-ffreestanding','-fno-builtin','-fno-stack-protector','-fno-unwind-tables','-fno-asynchronous-unwind-tables','-Wall','-Wextra','-Werror',*(['-DBACKGROUND'] if BACKGROUND else []),'-c',str(SOURCE/SOURCES[0]),'-o',str(obj)],check=True)
+ subprocess.run([shutil.which('clang'),'--target=i686-pc-windows-msvc','-O1','-ffreestanding','-fno-builtin','-fno-stack-protector','-fno-unwind-tables','-fno-asynchronous-unwind-tables','-Wall','-Wextra','-Werror',*(['-DBACKGROUND'] if BACKGROUND else []),*(['-DCLIENT_DEFAULT'] if CLIENT_DEFAULT else []),'-c',str(SOURCE/SOURCES[0]),'-o',str(obj)],check=True)
  subprocess.run([lld,'-flavor','link','/nodefaultlib','/subsystem:console','/machine:x86','/dynamicbase','/fixed:no','/timestamp:0','/safeseh:no','/manifest:no','/entry:entry',str(obj),*libs,*[f'/alternatename:__imp__{n}@{s}=__imp__{n}' for n,s in SYMBOLS],'/out:'+str(d/FILES[0])],check=True)
  (d/(PREFIX+'-inputs.json')).write_text(json.dumps(inputs(d),indent=2)+'\n')
 def decode(data):
  if len(data)%4:raise ValueError('truncated capture report')
  words=list(struct.unpack('<'+'I'*(len(data)//4),data))
- if words!=[0x43415032,2 if BACKGROUND else 1]+[1]*(18 if BACKGROUND else 16)+[21 if BACKGROUND else 19]:raise ValueError('capture lifecycle, callback, query or stack differs: '+repr(words))
+ if words!=[0x43415032,3 if CLIENT_DEFAULT else 2 if BACKGROUND else 1]+[1]*(19 if CLIENT_DEFAULT else 18 if BACKGROUND else 16)+[22 if CLIENT_DEFAULT else 21 if BACKGROUND else 19]:raise ValueError('capture lifecycle, callback, query or stack differs: '+repr(words))
  return words
 def execute(d,native=False):
  identity=inputs(d)
@@ -40,6 +41,8 @@ def execute(d,native=False):
   if peer['inputs']!=identity or peer['status'] or peer['stdout_hex']!=report['stdout_hex']:raise ValueError('identical PE native/host capture observations differ')
  path.write_text(json.dumps(report,indent=2)+'\n');print('Owned PE32 capture/release/query, WM_CAPTURECHANGED and stdcall stack validate')
 if __name__=='__main__':
- p=argparse.ArgumentParser(description=__doc__);p.add_argument('--background',action='store_true');p.add_argument('--output',type=Path,default=ROOT/'local/pe/startup-microtests');m=p.add_mutually_exclusive_group();m.add_argument('--host',action='store_true');m.add_argument('--native',action='store_true');a=p.parse_args();d=a.output.resolve()
+ p=argparse.ArgumentParser(description=__doc__);p.add_argument('--background',action='store_true');p.add_argument('--client-default',action='store_true');p.add_argument('--output',type=Path,default=ROOT/'local/pe/startup-microtests');m=p.add_mutually_exclusive_group();m.add_argument('--host',action='store_true');m.add_argument('--native',action='store_true');a=p.parse_args();d=a.output.resolve()
+ if a.client_default and a.background:p.error('choose one mouse witness variant')
+ if a.client_default:CLIENT_DEFAULT=True;PREFIX='mouse-client-default';FILES=[PREFIX+'.exe']
  if a.background:BACKGROUND=True;PREFIX='mouse-background-capture';FILES=[PREFIX+'.exe']
  execute(d,a.native) if a.host or a.native else build(d)

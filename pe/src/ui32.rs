@@ -457,7 +457,15 @@ fn destroy(image: &LoadedImage32<'_>, hwnd: u32) -> u32 {
     ui.active.retain(|_, active| *active != hwnd);
     1
 }
+// Client double-click notifications have no default action. In particular they
+// are not nonclient title-bar double clicks (which can maximize a window).
+fn default_client_double_click(message: u32) -> Option<u32> {
+    matches!(message, 0x203 | 0x206 | 0x209).then_some(0)
+}
 fn default_proc(image: &LoadedImage32<'_>, a: &[u32; 16]) -> u32 {
+    if let Some(result) = default_client_double_click(a[1]) {
+        return result;
+    }
     match a[1] {
         0x81 => 1,
         0x10 => {
@@ -1285,6 +1293,15 @@ pub(super) fn ensure_app(image: &LoadedImage32<'_>) {
 #[cfg(test)]
 mod mouse_tests {
     use super::*;
+    #[test]
+    fn default_client_double_clicks_do_not_invent_other_mouse_or_nonclient_behavior() {
+        for message in [0x203, 0x206, 0x209] {
+            assert_eq!(default_client_double_click(message), Some(0));
+        }
+        for message in [0x200, 0x201, 0x202, 0x205, 0x20d, 0xa3, 0xa6, 0xa9, 0x8000] {
+            assert_eq!(default_client_double_click(message), None);
+        }
+    }
     #[test]
     fn queued_mouse_coordinates_and_double_clicks_follow_the_registered_class() {
         let mut event = host::MouseEvent {
