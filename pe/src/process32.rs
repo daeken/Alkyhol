@@ -13,6 +13,8 @@ struct Plan<'a> {
     order: Vec<usize>,
     edges: Vec<Vec<usize>>,
     deferred: Vec<(String, String, ImportSymbol)>,
+    static_dlls: usize,
+    deferred_roots: Vec<usize>,
 }
 struct AssemblyInputs<'a> {
     manifests: &'a [std::path::PathBuf],
@@ -87,6 +89,15 @@ impl<'a> Plan<'a> {
         dlls: &[(&str, &'a [u8])],
         rebase: bool,
         external: Option<&[String]>,
+    ) -> Result<Self> {
+        Self::with_roots(executable, dlls, rebase, external, &[])
+    }
+    fn with_roots(
+        executable: (&str, &'a [u8]),
+        dlls: &[(&str, &'a [u8])],
+        rebase: bool,
+        external: Option<&[String]>,
+        roots: &[String],
     ) -> Result<Self> {
         let mut external_names = std::collections::BTreeSet::new();
         for name in external.unwrap_or(&[]) {
@@ -203,7 +214,23 @@ impl<'a> Plan<'a> {
             }
         }
         let mut order = Vec::new();
-        visit(0, &edges, &mut vec![0; nodes.len()], &mut order)?;
+        let mut states = vec![0; nodes.len()];
+        visit(0, &edges, &mut states, &mut order)?;
+        let static_dlls = order.len() - 1;
+        assert_eq!(order.pop(), Some(0));
+        let mut deferred_roots = Vec::new();
+        for root in roots {
+            let name = crate::runtime::dll_basename(root)?;
+            let index = *indices
+                .get(&name)
+                .ok_or("deferred DLL root lacks supplied bytes")?;
+            if states[index] != 0 || deferred_roots.contains(&index) {
+                return Err("deferred DLL root is already reachable or duplicated".into());
+            }
+            deferred_roots.push(index);
+            visit(index, &edges, &mut states, &mut order)?;
+        }
+        order.push(0);
         if order.len() != nodes.len() {
             return Err("unreferenced DLL in explicit PE32 process".into());
         }
@@ -212,6 +239,8 @@ impl<'a> Plan<'a> {
             order,
             edges,
             deferred,
+            static_dlls,
+            deferred_roots,
         })
     }
 }
@@ -244,6 +273,10 @@ pub struct ProcessImage32<'a> {
 /// this does not install Windows files or establish side-by-side bindings.
 #[derive(Default)]
 pub struct ProcessOptions32 {
+    /// Explicit dormant DLL roots and their complete supplied dependency graph.
+    /// Their mappings are prepared up front; original initializers run only at
+    /// LoadLibrary. This is not filesystem search or unrestricted lazy loading.
+    pub deferred_dlls: Vec<(String, std::path::PathBuf)>,
     pub system_directory: Option<std::path::PathBuf>,
     /// A separate verified shared Windows-directory role. It is never inferred
     /// from System32, DLL origins or the host's own operating-system directories.
@@ -472,7 +505,12 @@ impl<'a> ProcessImage32<'a> {
         let mut paths = BTreeMap::new();
         paths.insert(executable_name(name)?, exe_origin.clone());
         let mut files = Vec::new();
-        for &(name, path) in dlls {
+        for (name, path) in dlls.iter().copied().chain(
+            options
+                .deferred_dlls
+                .iter()
+                .map(|(n, p)| (n.as_str(), p.as_path())),
+        ) {
             let name = crate::runtime::dll_basename(name)?;
             let (bytes, origin) = super::module_path32::read(path)?;
             if paths.insert(name.clone(), origin).is_some() {
@@ -484,7 +522,12 @@ impl<'a> ProcessImage32<'a> {
             .iter()
             .map(|(name, bytes)| (name.as_str(), bytes.as_slice()))
             .collect();
-        let plan = Plan::with_external((name, &exe_bytes), &dlls, rebase, external)?;
+        let roots = options
+            .deferred_dlls
+            .iter()
+            .map(|(n, _)| n.clone())
+            .collect::<Vec<_>>();
+        let plan = Plan::with_roots((name, &exe_bytes), &dlls, rebase, external, &roots)?;
         unsafe {
             Self::load_plan(
                 plan,
@@ -616,7 +659,11 @@ impl<'a> ProcessImage32<'a> {
                 .map(|(i, n)| inventory.template(&n.image, i == 0))
                 .collect();
             let own: Vec<_> = templates.iter().map(|t| !matches!(t, Ok(None))).collect();
-            let owners = scope_owners(&plan.edges, &own)?;
+            // Explicit dormant roots use the EXE's configured activation scope
+            // unless they carry an original manifest of their own.
+            let mut scope_edges = plan.edges.clone();
+            scope_edges[0].extend(plan.deferred_roots.iter().copied());
+            let owners = scope_owners(&scope_edges, &own)?;
             let templates = plan
                 .nodes
                 .iter()
@@ -636,15 +683,37 @@ impl<'a> ProcessImage32<'a> {
             )?);
         }
         *cpu.modules.borrow_mut() = modules
-            .into_iter()
+            .iter()
             .map(|(name, index)| Module32 {
-                origin: origins.get(&name).cloned(),
-                name,
-                base: mappings[index].image.base as u32,
-                size: mappings[index].image.len,
-                exports: mappings[index].exports.clone(),
-                thread_notifications: true,
-                entry: mappings[index].entry,
+                origin: origins.get(name).cloned(),
+                name: name.clone(),
+                base: mappings[*index].image.base as u32,
+                size: mappings[*index].image.len,
+                exports: mappings[*index].exports.clone(),
+                thread_notifications: *index < plan.static_dlls || *index + 1 == mappings.len(),
+                loaded: *index < plan.static_dlls || *index + 1 == mappings.len(),
+                references: u32::from(*index < plan.static_dlls || *index + 1 == mappings.len()),
+                pinned: *index < plan.static_dlls || *index + 1 == mappings.len(),
+                retired: false,
+                dependencies: {
+                    let node = plan
+                        .nodes
+                        .iter()
+                        .position(|n| n.name == *name)
+                        .expect("mapped node");
+                    plan.edges[node]
+                        .iter()
+                        .map(|&d| {
+                            let target = &plan.nodes[d].name;
+                            modules
+                                .iter()
+                                .find(|(n, _)| n == target)
+                                .map(|(_, i)| mappings[*i].image.base as u32)
+                                .expect("mapped dependency")
+                        })
+                        .collect()
+                },
+                entry: mappings[*index].entry,
             })
             .collect();
         let mut result = Self {
@@ -653,7 +722,7 @@ impl<'a> ProcessImage32<'a> {
             started: false,
             finished: false,
         };
-        for index in 0..result.mappings.len() - 1 {
+        for index in 0..plan.static_dlls {
             if unsafe { result.dll_entry(index, 1, true) }? == 0 {
                 // A failed initializer is not an acquired successful module.
                 unsafe { result.dll_entry(index, 0, false) }?;
@@ -691,6 +760,25 @@ impl<'a> ProcessImage32<'a> {
         }
         let cpu = self.mappings.last().expect("root mapping").cpu.clone();
         cpu.phase.set(Phase32::Detaching);
+        let dynamic = cpu.dynamic_order.borrow().clone();
+        for base in dynamic.into_iter().rev() {
+            if cpu
+                .modules
+                .borrow()
+                .iter()
+                .any(|m| m.base == base && m.loaded && !m.pinned)
+            {
+                let index = self
+                    .mappings
+                    .iter()
+                    .position(|m| m.image.base as u32 == base)
+                    .expect("owned dynamic mapping");
+                unsafe { self.dll_entry(index, 0, terminating) }?;
+                if let Some(module) = cpu.modules.borrow_mut().iter_mut().find(|m| m.base == base) {
+                    module.loaded = false;
+                }
+            }
+        }
         while self.attached > 0 {
             self.attached -= 1;
             unsafe { self.dll_entry(self.attached, 0, terminating) }?;
@@ -841,6 +929,11 @@ mod tests {
                 size: 0x10000,
                 exports: None,
                 origin: None,
+                loaded: true,
+                references: 1,
+                pinned: true,
+                retired: false,
+                dependencies: Vec::new(),
                 thread_notifications: true,
                 entry: 0,
             },
@@ -850,6 +943,11 @@ mod tests {
                 size: 0x10000,
                 exports: Some(table.clone()),
                 origin: None,
+                loaded: true,
+                references: 1,
+                pinned: true,
+                retired: false,
+                dependencies: Vec::new(),
                 thread_notifications: true,
                 entry: 0,
             },

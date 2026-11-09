@@ -417,7 +417,13 @@ unsafe fn run(
     super::ACTIVE.set(ptr::null());
     CURRENT.set(ptr::null());
 }
-fn notify(image: &LoadedImage32<'_>, reason: u32) {
+pub(super) struct LoaderLock<'a>(&'a Cpu32);
+impl Drop for LoaderLock<'_> {
+    fn drop(&mut self) {
+        self.0.threads.borrow_mut().notification_owner = None;
+    }
+}
+pub(super) fn loader_lock<'a>(image: &'a LoadedImage32<'_>) -> LoaderLock<'a> {
     let id = alkyhol::ffi::GetCurrentThreadId();
     loop {
         let owner = image.cpu.threads.borrow().notification_owner;
@@ -432,19 +438,21 @@ fn notify(image: &LoadedImage32<'_>, reason: u32) {
             std::thread::sleep(std::time::Duration::from_millis(1))
         });
     }
-    struct Notifications<'a>(&'a Cpu32);
-    impl Drop for Notifications<'_> {
-        fn drop(&mut self) {
-            self.0.threads.borrow_mut().notification_owner = None;
-        }
-    }
-    let _notifications = Notifications(&image.cpu);
+    LoaderLock(&image.cpu)
+}
+fn notify(image: &LoadedImage32<'_>, reason: u32) {
+    let _notifications = loader_lock(image);
     let mut entries: Vec<_> = image
         .cpu
         .modules
         .borrow()
         .iter()
-        .filter(|m| m.base != image.cpu.executable.get() && m.thread_notifications && m.entry != 0)
+        .filter(|m| {
+            m.loaded
+                && m.base != image.cpu.executable.get()
+                && m.thread_notifications
+                && m.entry != 0
+        })
         .map(|m| (m.base, m.entry))
         .collect();
     if reason == 3 {
@@ -552,4 +560,13 @@ pub(super) fn wait_handle(image: &LoadedImage32<'_>, handle: u32, milliseconds: 
             }
         }
     })
+}
+
+pub(super) fn switch_to_thread(image: &LoadedImage32<'_>) -> u32 {
+    let before = super::CPU_TICKETS.lock().unwrap().1;
+    without_cpu(image, std::thread::yield_now);
+    let after = super::CPU_TICKETS.lock().unwrap().1;
+    // Releasing and immediately reacquiring costs one ticket. More than one
+    // means another guest thread actually ran under the FIFO CPU lease.
+    u32::from(after - before > 1)
 }

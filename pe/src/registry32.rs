@@ -9,6 +9,33 @@ use std::{
 const HKCU: u32 = 0x80000001;
 const HKLM: u32 = 0x80000002;
 const READ: u32 = 0x20019;
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum Value {
+    Text(String),
+    Dword(u32),
+    Binary(Vec<u8>),
+}
+impl Value {
+    fn bytes(&self, ansi: bool) -> Result<(u32, Vec<u8>)> {
+        Ok(match self {
+            Self::Text(text) if ansi => {
+                if !text.is_ascii() {
+                    return Err("ANSI registry text requires ASCII data".into());
+                }
+                (1, text.bytes().chain([0]).collect())
+            }
+            Self::Text(text) => (
+                1,
+                text.encode_utf16()
+                    .chain([0])
+                    .flat_map(u16::to_le_bytes)
+                    .collect(),
+            ),
+            Self::Dword(value) => (4, value.to_le_bytes().to_vec()),
+            Self::Binary(bytes) => (3, bytes.clone()),
+        })
+    }
+}
 struct Scope {
     hive: u32,
     path: String,
@@ -23,6 +50,7 @@ pub(super) struct State {
     scopes: Vec<Scope>,
     keys: BTreeSet<(u32, String)>,
     handles: BTreeMap<u32, OpenKey>,
+    values: BTreeMap<(u32, String, String), Value>,
 }
 fn path(value: &str) -> Result<String> {
     if value.is_empty()
@@ -86,6 +114,7 @@ impl State {
             scopes: Vec::new(),
             keys: BTreeSet::new(),
             handles: BTreeMap::new(),
+            values: BTreeMap::new(),
         };
         for scope in root.children().filter(|n| n.is_element()) {
             attributes(scope, &["hive", "path", "exists"])?;
@@ -138,6 +167,41 @@ impl State {
             return Err("registry key depth budget exceeded".into());
         }
         for child in node.children().filter(|n| n.is_element()) {
+            if child.tag_name().name() == "value" {
+                attributes(child, &["name", "type", "data"])?;
+                if child.children().any(|n| n.is_element()) {
+                    return Err("registry values cannot have children".into());
+                }
+                let name = child.attribute("name").unwrap();
+                if name.len() > 16383 || !name.is_ascii() || name.contains('\0') {
+                    return Err("registry value name outside ASCII bounds".into());
+                }
+                let data = child.attribute("data").unwrap();
+                let value = match child.attribute("type").unwrap() {
+                    "sz" if !data.contains('\0') => Value::Text(data.into()),
+                    "dword" => Value::Dword(data.parse().map_err(|_| "invalid registry DWORD")?),
+                    "binary" if data.len().is_multiple_of(2) && data.is_ascii() => Value::Binary(
+                        (0..data.len())
+                            .step_by(2)
+                            .map(|n| {
+                                u8::from_str_radix(&data[n..n + 2], 16)
+                                    .map_err(|_| "invalid registry binary byte")
+                            })
+                            .collect::<std::result::Result<_, _>>()?,
+                    ),
+                    _ => return Err("unsupported registry value type/data".into()),
+                };
+                if value.bytes(false)?.1.len() > 65536
+                    || self.values.len() >= 512
+                    || self
+                        .values
+                        .insert((hive, parent.into(), name.to_ascii_lowercase()), value)
+                        .is_some()
+                {
+                    return Err("registry value size/count/duplicate bound".into());
+                }
+                continue;
+            }
             attributes(child, &["name"])?;
             if child.tag_name().name() != "key" {
                 return Err("unsupported registry catalog element".into());
@@ -198,13 +262,25 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
     if !args[4].is_multiple_of(4) || !image.permits(args[4] as usize, 4, true) {
         unsupported("registry result handle outside aligned writable guest storage");
     }
-    let key = startup32::read_units::<u16>(image, args[1], -1)
-        .unwrap_or_else(|| unsupported("registry subkey outside readable guest string storage"));
-    let text = String::from_utf16(&key[..key.len() - 1])
-        .unwrap_or_else(|_| unsupported("invalid registry subkey UTF-16"));
+    let text = if id == 216 {
+        super::bulk32::ascii(image, args[1])
+    } else {
+        let key = startup32::read_units::<u16>(image, args[1], -1).unwrap_or_else(|| {
+            unsupported("registry subkey outside readable guest string storage")
+        });
+        String::from_utf16(&key[..key.len() - 1])
+            .unwrap_or_else(|_| unsupported("invalid registry subkey UTF-16"))
+    };
+    let text = text.trim_end_matches('\\');
+    if image.cpu.diagnostic.is_some() {
+        eprintln!(
+            "PE32 registry open: hive={:x}; path={text:?}; access={:x}",
+            args[0], args[3]
+        );
+    }
     let mut state = catalog.borrow_mut();
     let (hive, key) = state
-        .target(args[0], &text)
+        .target(args[0], text)
         .unwrap_or_else(|e| unsupported(&e));
     let exists = state.known(hive, &key).unwrap_or_else(|e| unsupported(&e));
     let handle = if exists {
@@ -237,10 +313,108 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
     }
     if exists { 0 } else { 2 }
 }
+pub(super) fn query(image: &LoadedImage32<'_>, a: &[u32; 8], ansi: bool) -> u32 {
+    if a[2] != 0 || (a[4] != 0 && a[5] == 0) {
+        return 87;
+    }
+    let name = if a[1] == 0 {
+        String::new()
+    } else if ansi {
+        super::bulk32::ascii(image, a[1])
+    } else {
+        let units = startup32::read_units::<u16>(image, a[1], -1)
+            .unwrap_or_else(|| unsupported("registry value name outside checked storage"));
+        String::from_utf16(&units[..units.len() - 1])
+            .unwrap_or_else(|_| unsupported("registry value name is not UTF-16"))
+    };
+    if !name.is_ascii() || name.len() > 16383 {
+        unsupported("registry value name outside ASCII bounds");
+    }
+    let catalog =
+        image.cpu.registry.as_ref().unwrap_or_else(|| {
+            unsupported("registry API requires an explicit scoped backing catalog")
+        });
+    let state = catalog.borrow();
+    let Some(key) = state.handles.get(&a[0]) else {
+        return 6;
+    };
+    if key._access & 1 == 0 {
+        return 5;
+    }
+    if image.cpu.diagnostic.is_some() {
+        eprintln!(
+            "PE32 registry value: key={:?}; name={name:?}; ansi={ansi}",
+            key.path
+        );
+    }
+    let Some(value) = state
+        .values
+        .get(&(key.hive, key.path.clone(), name.to_ascii_lowercase()))
+    else {
+        return 2;
+    };
+    let (kind, bytes) = value.bytes(ansi).unwrap_or_else(|e| unsupported(&e));
+    for &pointer in &[a[3], a[5]] {
+        if pointer != 0 && (!pointer.is_multiple_of(4) || !image.permits(pointer as usize, 4, true))
+        {
+            unsupported("registry type/size output outside checked storage");
+        }
+    }
+    let capacity = if a[5] == 0 {
+        0
+    } else {
+        unsafe { (a[5] as *const u32).read() }
+    };
+    if a[4] != 0 && !image.permits(a[4] as usize, capacity as usize, true) {
+        unsupported("registry data buffer outside checked writable storage");
+    }
+    unsafe {
+        if a[3] != 0 {
+            (a[3] as *mut u32).write(kind);
+        }
+        if a[5] != 0 {
+            (a[5] as *mut u32).write(bytes.len() as u32);
+        }
+        if a[4] != 0 {
+            if (capacity as usize) < bytes.len() {
+                return 234;
+            }
+            std::ptr::copy_nonoverlapping(bytes.as_ptr(), a[4] as *mut u8, bytes.len());
+        }
+    }
+    0
+}
 #[cfg(test)]
 mod tests {
     use super::*;
     const SOURCE: &str = include_str!("../fixtures/pe32-startup/registry-open.xml");
+    #[test]
+    fn typed_values_keep_unicode_width_byte_counts_and_little_endian_data() {
+        let xml = r#"<registry view="32"><scope hive="HKCU" path="Software\OwnedValues" exists="true"><value name="Path" type="sz" data="Z:\actual"/><value name="Number" type="dword" data="4294967295"/><value name="Raw" type="binary" data="00ff23"/></scope></registry>"#;
+        let state = State::parse(xml).unwrap();
+        let get = |name: &str| {
+            state
+                .values
+                .get(&(HKCU, "software\\ownedvalues".into(), name.into()))
+                .unwrap()
+        };
+        assert_eq!(
+            get("path").bytes(true).unwrap(),
+            (1, b"Z:\\actual\0".to_vec())
+        );
+        assert_eq!(get("path").bytes(false).unwrap().1.len(), 20);
+        assert_eq!(get("number").bytes(false).unwrap(), (4, vec![255; 4]));
+        assert_eq!(get("raw").bytes(false).unwrap(), (3, vec![0, 255, 35]));
+        assert!(Value::Text("wideλ".into()).bytes(true).is_err());
+        for bad in [
+            xml.replace("4294967295", "4294967296"),
+            xml.replace("00ff23", "00xz23"),
+            xml.replace("00ff23", "00f"),
+            xml.replace("type=\"sz\"", "type=\"unknown\""),
+        ] {
+            assert!(State::parse(&bad).is_err());
+        }
+    }
     #[test]
     fn concrete_keys_and_known_absence_are_separate_from_unknown_scopes() {
         let state = State::parse(SOURCE).unwrap();

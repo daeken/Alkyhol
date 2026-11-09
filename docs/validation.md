@@ -5225,3 +5225,17 @@ messages as well as the owned test messages. The new fixture now requests its
 specific custom/paint message ranges, retaining the same content, ownership,
 callback, guard and lifetime assertions. The older observation remains a failed
 comparison; a new native run is required before claiming agreement.
+
+
+The next physical DAO run reaches original PhysXCore.dll initialization, including
+its original CUDA-runtime dependency startup, through a checked explicit dormant
+DLL graph. Original initializers run at LoadLibrary, not at preparation time.
+The current actual stop is WS2_32 ordinal 115 (WSAStartup), before D3D9. The owned
+DLL witness executes original attach/export/worker/detach code and rejected attach;
+its new native comparison is scheduled. Read-only typed scoped registry queries
+and mixed A/W handles pass their owned PE. All 172 PE library tests and Clippy pass.
+GetAdaptersInfo is an explicit unsupported API failure, not successful networking.
+Additional host-service gates leave all previous offsets intact. Full-path,
+message/worker/GDI and software-context native mismatches remain recorded in CI
+42546413828; that run's directory notification step passed. No new full-game,
+GPU PhysX or native game equivalence claim follows from this startup progress.

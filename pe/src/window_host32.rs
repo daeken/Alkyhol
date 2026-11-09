@@ -640,6 +640,77 @@ impl Drop for Window {
     }
 }
 
+fn alert_buttons(flags: u32) -> crate::Result<Vec<(u32, &'static str)>> {
+    if flags & !0x0005137f != 0 {
+        return Err("message box modality/help/desktop flags are unsupported".into());
+    }
+    let buttons = match flags & 15 {
+        0 => vec![(1, "OK")],
+        1 => vec![(1, "OK"), (2, "Cancel")],
+        2 => vec![(3, "Abort"), (4, "Retry"), (5, "Ignore")],
+        3 => vec![(6, "Yes"), (7, "No"), (2, "Cancel")],
+        4 => vec![(6, "Yes"), (7, "No")],
+        5 => vec![(4, "Retry"), (2, "Cancel")],
+        6 => vec![(2, "Cancel"), (10, "Try Again"), (11, "Continue")],
+        _ => return Err("invalid message box button group".into()),
+    };
+    if (flags >> 8 & 3) as usize >= buttons.len() {
+        return Err("message box default button outside its group".into());
+    }
+    Ok(buttons)
+}
+pub(super) fn message_box(title: Vec<u16>, text: Vec<u16>, flags: u32) -> crate::Result<u32> {
+    let buttons = alert_buttons(flags)?;
+    main_exec(move || unsafe {
+        let alert: Id = send0(send0::<Id>(class("NSAlert")?, "alloc"), "init");
+        if alert.is_null() {
+            return Err("AppKit alert allocation failed".into());
+        }
+        send1::<_, ()>(alert, "setMessageText:", string(&title)?);
+        send1::<_, ()>(alert, "setInformativeText:", string(&text)?);
+        let style: isize = match flags & 0x70 {
+            0x10 => 2,
+            0x30 => 1,
+            _ => 0,
+        };
+        send1::<_, ()>(alert, "setAlertStyle:", style);
+        for (index, (_, label)) in buttons.iter().enumerate() {
+            let button: Id = send1(
+                alert,
+                "addButtonWithTitle:",
+                string(&label.encode_utf16().collect::<Vec<_>>())?,
+            );
+            let key = if index == (flags >> 8 & 3) as usize {
+                "\r"
+            } else if buttons[index].0 == 2 {
+                "\u{1b}"
+            } else {
+                ""
+            };
+            send1::<_, ()>(
+                button,
+                "setKeyEquivalent:",
+                string(&key.encode_utf16().collect::<Vec<_>>())?,
+            );
+        }
+        if flags & 0x41000 != 0 {
+            let window: Id = send0(alert, "window");
+            send1::<_, ()>(window, "setLevel:", CGWindowLevelForKey(5) as i64);
+        }
+        let app: Id = send0(class("NSApplication")?, "sharedApplication");
+        send1::<_, ()>(app, "activateIgnoringOtherApps:", 1i8);
+        let response: isize = send0(alert, "runModal");
+        send0::<()>(alert, "release");
+        let index = response
+            .checked_sub(1000)
+            .and_then(|n| usize::try_from(n).ok());
+        index
+            .and_then(|i| buttons.get(i))
+            .map(|p| p.0)
+            .ok_or_else(|| format!("native alert returned unknown response {response}"))
+    })
+}
+
 #[cfg(test)]
 mod capture_tests {
     #[test]
@@ -650,6 +721,21 @@ mod capture_tests {
 
 #[cfg(test)]
 mod handoff_tests {
+    #[test]
+    fn message_box_button_ids_and_default_selection_are_bounded() {
+        assert_eq!(super::alert_buttons(0).unwrap(), vec![(1, "OK")]);
+        assert_eq!(
+            super::alert_buttons(0x134).unwrap(),
+            vec![(6, "Yes"), (7, "No")]
+        );
+        assert_eq!(
+            super::alert_buttons(6).unwrap(),
+            vec![(2, "Cancel"), (10, "Try Again"), (11, "Continue")]
+        );
+        for flags in [7, 0x100, 0x201, 0x2000, 0x400] {
+            assert!(super::alert_buttons(flags).is_err());
+        }
+    }
     #[test]
     fn submitting_thread_can_destroy_each_completed_request_immediately() {
         let worker = std::thread::spawn(|| {

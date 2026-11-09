@@ -49,6 +49,8 @@ mod icon32;
 pub use icon32::IconImage32;
 #[path = "ini32.rs"]
 mod ini32;
+#[path = "loader32.rs"]
+mod loader32;
 #[path = "machine32.rs"]
 mod machine32;
 #[path = "math32.rs"]
@@ -107,7 +109,7 @@ unsafe extern "C" {
 }
 const PAGE: usize = 4096;
 const STACK: usize = 1024 * 1024;
-const APIS: [(&str, u16); 215] = [
+const APIS: [(&str, u16); 225] = [
     ("GetLastError", 0),
     ("SetLastError", 4),
     ("GetStdHandle", 4),
@@ -323,6 +325,16 @@ const APIS: [(&str, u16); 215] = [
     ("ReadDirectoryChangesW", 32),
     ("GetOverlappedResult", 16),
     ("CancelIo", 4),
+    ("GetAdaptersInfo", 8),
+    ("RegOpenKeyExA", 20),
+    ("SwitchToThread", 0),
+    ("MessageBoxW", 16),
+    ("MessageBoxA", 16),
+    ("RegQueryValueExA", 24),
+    ("RegQueryValueExW", 24),
+    ("LoadLibraryA", 4),
+    ("LoadLibraryW", 4),
+    ("FreeLibrary", 4),
 ];
 // The first 120 API slots retain their original offsets. The second bank
 // begins after both x87 bodies, leaving their machine code and failure gates
@@ -331,8 +343,11 @@ const fn api_offset(id: usize) -> usize {
     const FIRST_BANK: usize = (math32::OFFSET - 256) / 32;
     if id < FIRST_BANK {
         256 + id * 32
-    } else {
+    } else if id < 232 {
         math32::ATAN_OFFSET + 256 + (id - FIRST_BANK) * 32
+    } else {
+        // Keep the captured-context SEH body and its private service slot fixed.
+        raise32::OFFSET + 512 + (id - 232) * 32
     }
 }
 const EXIT_API: u32 = 14;
@@ -364,10 +379,13 @@ fn api_id(module: &str, symbol: &ImportSymbol) -> Option<usize> {
                     || (148..177).contains(id)
                     || (198..=201).contains(id)
                     || (203..=211).contains(id)
+                    || (218..=219).contains(id)
                 {
                     "user32.dll"
-                } else if matches!(*id, 107 | 108) {
+                } else if matches!(*id, 107 | 108 | 216 | 220 | 221) {
                     "advapi32.dll"
+                } else if *id == 215 {
+                    "iphlpapi.dll"
                 } else if *id == 110 {
                     "winmm.dll"
                 } else {
@@ -655,6 +673,7 @@ enum Phase32 {
     Detaching,
     Exited,
 }
+#[derive(Clone)]
 struct Module32 {
     name: String,
     base: u32,
@@ -665,6 +684,11 @@ struct Module32 {
     // dispatch must consult this per-module policy; process notifications remain.
     thread_notifications: bool,
     entry: u32,
+    loaded: bool,
+    references: u32,
+    pinned: bool,
+    retired: bool,
+    dependencies: Vec<u32>,
 }
 struct Cpu32 {
     stack: LowMapping,
@@ -678,11 +702,14 @@ struct Cpu32 {
     searches: RefCell<std::collections::BTreeMap<u32, files32::Search>>,
     phase: Cell<Phase32>,
     modules: RefCell<Vec<Module32>>,
+    dynamic_order: RefCell<Vec<u32>>,
     // Real owned tokens for imported host-service namespaces. Their pages are
     // inaccessible: treating a service token as a Windows PE header must fault.
     builtins: RefCell<std::collections::BTreeMap<String, LowMapping>>,
     executable: Cell<u32>,
     diagnostic: Option<diagnostic32::Traps>,
+    trace_first_calls: bool,
+    trace_seen: RefCell<[bool; APIS.len()]>,
     heap: RefCell<heap32::Heap>,
     crt: RefCell<crt32::State>,
     fls: RefCell<fiber32::Slots>,
@@ -789,9 +816,15 @@ impl Cpu32 {
             searches: RefCell::new(Default::default()),
             phase: Cell::new(Phase32::Isolated),
             modules: RefCell::new(Vec::new()),
+            dynamic_order: RefCell::new(Vec::new()),
             builtins: RefCell::new(Default::default()),
             executable: Cell::new(0),
             diagnostic: None,
+            trace_first_calls: matches!(
+                std::env::var("ALKYHOL_PE32_TRACE_CALLS").as_deref(),
+                Ok("first")
+            ),
+            trace_seen: RefCell::new([false; APIS.len()]),
             heap: RefCell::new(heap32::Heap::with_bounds(bounds)),
             crt: RefCell::new(Default::default()),
             fls: RefCell::new(Default::default()),
@@ -1095,7 +1128,7 @@ impl<'a> LoadedImage32<'a> {
         });
         template[64 + slot..72 + slot]
             .copy_from_slice(&(dispatch as *const () as u64).to_le_bytes());
-        if api_offset(APIS.len() - 1) + 32 > raise32::OFFSET {
+        if api_offset(APIS.len() - 1) + 32 > math32::GATE_SIZE {
             return Err("API table exceeds its checked gateway banks".into());
         }
         for (id, &(_, argument_bytes)) in APIS.iter().enumerate() {
@@ -1400,7 +1433,7 @@ impl<'a> LoadedImage32<'a> {
             .modules
             .borrow()
             .iter()
-            .find(|m| m.name.eq_ignore_ascii_case(&name))
+            .find(|m| m.loaded && m.name.eq_ignore_ascii_case(&name))
             .map(|m| m.base))
     }
     fn export_address(&self, module: u32, symbol: u32) -> Result<Option<u32>> {
@@ -1911,7 +1944,14 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
             *value = unsafe { arguments.add(index).read_unaligned() };
         }
         let args: &[u32; 8] = words[..8].try_into().expect("fixed gateway prefix");
-        if image.cpu.diagnostic.is_some() {
+        let trace_call = image.cpu.diagnostic.is_some()
+            && (!image.cpu.trace_first_calls || {
+                let mut seen = image.cpu.trace_seen.borrow_mut();
+                let first = !seen[id as usize];
+                seen[id as usize] = true;
+                first
+            });
+        if trace_call {
             let return_address = (arguments as usize)
                 .checked_sub(4)
                 .filter(|&p| image.permits(p, 4, false))
@@ -2064,7 +2104,7 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
                 .lock(args[0], alkyhol::ffi::GetCurrentThreadId(), id == 104)
                 .unwrap_or_else(|e| unsupported(&e)),
             106 => machine32::information(image, args[0]),
-            107 | 108 => registry32::dispatch(image, id, args),
+            107 | 108 | 216 => registry32::dispatch(image, id, args),
             109 => mutex32::create(image, args),
             111 => directory32::set(image, args[0]),
             112 => directory32::get(image, args),
@@ -2145,6 +2185,18 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
             212 => watch32::read(image, args),
             213 => watch32::result(image, args),
             214 => watch32::cancel(image, args[0]),
+            217 => thread32::switch_to_thread(image),
+            218 | 219 => ui32::message_box(image, args, id == 219),
+            220 | 221 => registry32::query(image, args, id == 220),
+            222 | 223 => loader32::load(image, args[0], id == 222),
+            224 => loader32::free(image, args[0]),
+            215 => {
+                // No adapter/DHCP projection is implemented. Return the explicit
+                // API failure and let the original caller handle it; never invent
+                // an empty adapter list or successful hardware identity.
+                eprintln!("PE32 GetAdaptersInfo unavailable: ERROR_NOT_SUPPORTED (50)");
+                50
+            }
             _ => unreachable!(),
         }
     })
@@ -2160,11 +2212,14 @@ mod tests {
         }
         assert_eq!(api_offset(120), math32::ATAN_OFFSET + 256);
         assert_eq!(api_offset(231) + 32, raise32::OFFSET);
-        assert!(api_offset(232) + 32 > raise32::OFFSET);
+        assert_eq!(api_offset(232), raise32::OFFSET + 512);
+        assert_eq!(api_offset(343) + 32, math32::GATE_SIZE);
+        assert!(api_offset(344) + 32 > math32::GATE_SIZE);
         for id in 0..APIS.len() {
             let at = api_offset(id);
             assert!(at >= 256 && at + 32 <= math32::GATE_SIZE);
             assert!(at + 32 <= math32::OFFSET || at >= math32::ATAN_OFFSET + 256);
+            assert!(at + 32 <= raise32::OFFSET || at >= raise32::OFFSET + 512);
             if id > 0 {
                 assert!(api_offset(id - 1) + 32 <= at);
             }
@@ -2272,9 +2327,15 @@ mod tests {
                 searches: RefCell::new(Default::default()),
                 phase: Cell::new(Phase32::Isolated),
                 modules: RefCell::new(Vec::new()),
+                dynamic_order: RefCell::new(Vec::new()),
                 builtins: RefCell::new(Default::default()),
                 executable: Cell::new(0),
                 diagnostic: None,
+                trace_first_calls: matches!(
+                    std::env::var("ALKYHOL_PE32_TRACE_CALLS").as_deref(),
+                    Ok("first")
+                ),
+                trace_seen: RefCell::new([false; APIS.len()]),
                 heap: RefCell::new(Default::default()),
                 crt: RefCell::new(Default::default()),
                 fls: RefCell::new(Default::default()),

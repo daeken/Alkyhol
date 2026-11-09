@@ -1029,3 +1029,33 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32
         _ => unreachable!(),
     }
 }
+
+pub(super) fn message_box(image: &LoadedImage32<'_>, a: &[u32; 8], ansi: bool) -> u32 {
+    let text = if a[1] == 0 {
+        String::new()
+    } else {
+        string(image, a[1], ansi)
+    };
+    let title = if a[2] == 0 {
+        "Error".into()
+    } else {
+        string(image, a[2], ansi)
+    };
+    eprintln!(
+        "PE32 original message box: title={title:?}; text={text:?}; flags={:x}",
+        a[3]
+    );
+    if a[0] != 0 {
+        unsupported("owned-parent message box modality is not implemented");
+    }
+    image
+        .cpu
+        .ui
+        .borrow_mut()
+        .app()
+        .unwrap_or_else(|e| unsupported(&e));
+    let title = title.encode_utf16().collect();
+    let text = text.encode_utf16().collect();
+    super::thread32::without_cpu(image, || host::message_box(title, text, a[3]))
+        .unwrap_or_else(|e| unsupported(&e))
+}

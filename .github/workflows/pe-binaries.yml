@@ -157,6 +157,12 @@ jobs:
         run: |
           python tools/observe_pe32_search_family.py
           python tools/observe_pe32_search_family.py --host
+      - name: Execute deferred original DLL lifecycle and mixed registry views
+        run: |
+          python tools/observe_pe32_deferred_family.py
+          python tools/observe_pe32_deferred_family.py --host
+          python tools/observe_pe32_registry_ansi.py
+          python tools/observe_pe32_registry_ansi.py --host
       - name: Execute real asynchronous directory changes and cancellation
         run: |
           python tools/observe_pe32_watch_family.py
@@ -202,6 +208,8 @@ jobs:
           name: pe32-startup-microtests
           path: |
             local/pe/startup-microtests/*.exe
+            local/pe/startup-microtests/owned-deferred.dll
+            local/pe/startup-microtests/owned-rejected.dll
             local/pe/startup-microtests/owned-context.dll
             local/pe/startup-microtests/module-path.dll
             local/pe/startup-microtests/microtest-inputs.json
@@ -291,6 +299,10 @@ jobs:
             local/pe/startup-microtests/full-path-host.json
             local/pe/startup-microtests/search-family-inputs.json
             local/pe/startup-microtests/search-family-host.json
+            local/pe/startup-microtests/deferred-family-inputs.json
+            local/pe/startup-microtests/deferred-family-host.json
+            local/pe/startup-microtests/registry-ansi-inputs.json
+            local/pe/startup-microtests/registry-ansi-host.json
             local/pe/startup-microtests/watch-family-inputs.json
             local/pe/startup-microtests/watch-family-host.json
             local/pe/startup-microtests/message-family-inputs.json
@@ -455,6 +467,11 @@ jobs:
       - name: Check GUI layouts against the independent Windows SDK
         if: ${{ success() || failure() }}
         run: cl /nologo /c /W4 /WX /std:c++17 pe/fixtures/pe32-startup/gui-layout.cpp /Folocal/pe/startup-microtests/gui-layout.obj
+      - name: Compare identical deferred DLL lifecycle and mixed registry PE on Windows
+        if: ${{ success() || failure() }}
+        run: |
+          python tools/observe_pe32_deferred_family.py --native
+          python tools/observe_pe32_registry_ansi.py --native
       - name: Compare identical asynchronous directory notification PE on Windows
         if: ${{ success() || failure() }}
         run: python tools/observe_pe32_watch_family.py --native

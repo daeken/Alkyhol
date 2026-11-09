@@ -20,6 +20,13 @@ fn main() {
                     let (name, path) = value.split_once('=').ok_or("--dll requires NAME=PATH")?;
                     modules.push((name.to_owned(), path.to_owned()));
                 }
+                "--deferred-dll" => {
+                    let value = options.next().ok_or("--deferred-dll requires NAME=PATH")?;
+                    let (name, path) = value
+                        .split_once('=')
+                        .ok_or("--deferred-dll requires NAME=PATH")?;
+                    profile.deferred_dlls.push((name.into(), path.into()));
+                }
                 "--external" => external.push(
                     options
                         .next()
@@ -111,7 +118,8 @@ fn main() {
                 _ => return Err("unknown startup diagnostic option".into()),
             }
         }
-        if (profile.system_directory.is_some()
+        if (!profile.deferred_dlls.is_empty()
+            || profile.system_directory.is_some()
             || profile.system_windows_directory.is_some()
             || profile.windows_directory.is_some()
             || profile.documents_directory.is_some()
