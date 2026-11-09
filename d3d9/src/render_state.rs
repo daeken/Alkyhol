@@ -63,7 +63,27 @@ impl Default for RenderState {
                 (160, 0),
                 (161, 1),
                 (162, u32::MAX),
+                (163, 0),
+                (165, 0),
                 (166, 0x42800000),
+                (167, 0),
+                (172, 3),
+                (173, 1),
+                (178, 0x3f800000),
+                (179, 0x3f800000),
+                (180, 0),
+                (181, 0),
+                (182, 0x3f800000),
+                (183, 0),
+                (184, 0),
+                (185, 0),
+                (186, 1),
+                (187, 1),
+                (188, 1),
+                (189, 8),
+                (190, 15),
+                (191, 15),
+                (192, 15),
                 (168, 15),
                 (170, 0),
                 (171, 1),
@@ -136,24 +156,41 @@ impl RenderState {
             | 128..=135
             | 151
             | 152
+            | 167
             | 174
             | 175
             | 176
+            | 184
+            | 185
             | 195
             | 198..=205 => value == 0,
             19 | 20 | 207 | 208 => factor(value).is_ok(),
             22 => (1..=3).contains(&value),
             23 | 25 | 56 => (1..=8).contains(&value),
             24 => value <= 255,
-            168 => value & !15 == 0,
+            168 | 190..=192 => value & !15 == 0,
             171 | 209 => operation(value).is_ok(),
             // No depth/stencil attachment is supported yet, so its state cannot
             // affect our target. Any future depth attachment must consume it.
-            53..=55 => (1..=8).contains(&value),
+            53..=55 | 186..=189 => (1..=8).contains(&value),
             57..=60 => true,
             // Fog/lighting and point parameters are retained; those paths are
             // bypassed by programmable/TL triangle vertices or disabled above.
-            34..=38 | 139 | 140 | 145..=148 | 154 | 155 | 158..=160 | 162 | 166 | 193 => true,
+            34..=38
+            | 139
+            | 140
+            | 145..=148
+            | 154
+            | 155
+            | 158..=160
+            | 162
+            | 163
+            | 165
+            | 166
+            | 172
+            | 173
+            | 178..=183
+            | 193 => true,
             _ => false,
         };
         if !supported {
@@ -212,7 +249,10 @@ impl RenderState {
     }
     pub(crate) fn multisample(&self) -> wgpu::MultisampleState {
         wgpu::MultisampleState {
-            mask: self.values[&162] as u64,
+            // D3D9 MULTISAMPLEMASK has no effect on a single-sample target.
+            // Vulkan applies a one-sample mask whereas Metal ignores it; map
+            // the D3D9 rule explicitly rather than inheriting backend behavior.
+            mask: u64::MAX,
             ..Default::default()
         }
     }
@@ -239,6 +279,16 @@ impl RenderState {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn every_declared_default_can_be_restored_without_enabling_an_unknown_path() {
+        let mut state = RenderState::default();
+        for (ty, value) in state.values.clone() {
+            state
+                .set(ty, value)
+                .unwrap_or_else(|e| panic!("default state {ty}: {e}"));
+            assert_eq!(state.get(ty).unwrap(), value);
+        }
+    }
     #[test]
     fn unsupported_enabled_effects_do_not_mutate_state() {
         let mut state = RenderState::default();

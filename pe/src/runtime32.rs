@@ -117,7 +117,7 @@ unsafe extern "C" {
 }
 const PAGE: usize = 4096;
 const STACK: usize = 1024 * 1024;
-const APIS: [(&str, u16); 257] = [
+const APIS: [(&str, u16); 258] = [
     ("GetLastError", 0),
     ("SetLastError", 4),
     ("GetStdHandle", 4),
@@ -375,6 +375,7 @@ const APIS: [(&str, u16); 257] = [
     ("GetCursor", 0),
     ("Direct3DCreate9", 4),
     ("UnregisterClassW", 8),
+    ("GetWindowInfo", 8),
 ];
 // The first 120 API slots retain their original offsets. The second bank
 // begins after both x87 bodies, leaving their machine code and failure gates
@@ -448,7 +449,7 @@ fn api_id(module: &str, symbol: &ImportSymbol) -> Option<usize> {
                     || (203..=211).contains(id)
                     || (218..=219).contains(id)
                     || (249..=254).contains(id)
-                    || *id == 256
+                    || matches!(*id, 256 | 257)
                 {
                     "user32.dll"
                 } else if matches!(*id, 107 | 108 | 216 | 220 | 221) {
@@ -2307,6 +2308,7 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
             254 => image32::current(image),
             255 => d3d9_32::create(image, args[0]),
             256 => ui32::dispatch(image, 42, &words),
+            257 => ui32::window_info(image, args[0], args[1]),
             d3d9_32::BASE.. => d3d9_32::dispatch(image, id, &words),
             215 => {
                 // No adapter/DHCP projection is implemented. Return the explicit
@@ -2323,6 +2325,13 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn window_info_keeps_existing_gate_indices_and_user32_ownership() {
+        let symbol = ImportSymbol::Name("GetWindowInfo".into());
+        assert_eq!(api_id("USER32.dll", &symbol), Some(257));
+        assert_eq!(api_id("kernel32.dll", &symbol), None);
+        assert_eq!(APIS[257], ("GetWindowInfo", 8));
+    }
     #[test]
     fn cdecl_crt_gateways_keep_arguments_for_the_guest_caller() {
         for id in 0..120 {

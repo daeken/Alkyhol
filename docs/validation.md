@@ -5410,3 +5410,19 @@ regeneration/provenance records it, and raw failure HRESULTs are retained on new
 runs. Original game shaders are not rewritten. Native corrected-SM2 and state
 comparisons remain pending. A separate new caps field-offset mistake is fixed
 and covered by independent SDK offset assertions. See d3d9.md for exact evidence.
+
+Original DAO's initial renderer state/texture-stage/sampler/stream/index reset now
+completes and it executes real native window information, position and style work.
+WINDOWINFO has a bounded 60-byte layout; its creator version explicitly names the
+bridge's Win32 4.0 class profile. Owned physical checks cover actual frame/client
+transitions and same-owner positioning. No game frame exists yet. All 181 PE
+library tests and Clippy pass before the next input/resource blocker; the new
+native comparisons remain pending.
+
+CI 42570648162 passes the native 2,125-word blend/write-mask state witness and
+previous witnesses but fails overall: the long ps_2_0 shader still returns native
+0x8876086c (retained), and Vulkan-software exposes a single-sample mask difference.
+The owned stress input now uses ps_2_a's extended budget with the required output
+MOV; no math/tolerance is relaxed. The backend explicitly ignores MULTISAMPLEMASK
+on single-sample targets per D3D9, and the updated native witness tests that rule.
+The revised PE checks pass on physical M4; complete new CI is pending.

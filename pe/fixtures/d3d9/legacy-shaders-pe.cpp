@@ -96,12 +96,17 @@ put(1);
  #endif
  #ifdef STATES
  ok(g_pd3dDevice->SetRenderState(27,1)==S_OK);ok(g_pd3dDevice->SetRenderState(19,5)==S_OK);ok(g_pd3dDevice->SetRenderState(20,6)==S_OK);
+ DWORD frequency=0;ok(g_pd3dDevice->SetStreamSourceFreq(0,1)==S_OK&&g_pd3dDevice->GetStreamSourceFreq(0,&frequency)==S_OK&&frequency==1);
+ IDirect3DIndexBuffer9* index=NULL;ok(g_pd3dDevice->SetIndices(NULL)==S_OK&&g_pd3dDevice->GetIndices(&index)==S_OK&&index==NULL);
+ DWORD operation=0;ok(g_pd3dDevice->GetTextureStageState(0,1,&operation)==S_OK&&operation==4&&g_pd3dDevice->SetTextureStageState(0,1,1)==S_OK);
+ ok(g_pd3dDevice->GetTextureStageState(0,1,&operation)==S_OK&&operation==1);
  DWORD blend=0;ok(g_pd3dDevice->GetRenderState(7,&blend)==S_OK&&blend==0&&g_pd3dDevice->GetRenderState(27,&blend)==S_OK&&blend==1);
  #endif
  for(UINT frame=0;frame<2;frame++){
   matrix[3]=frame?.75f:0;
   put(0xfeed0000+frame);
   #ifdef STATES
+  ok(g_pd3dDevice->SetRenderState(162,frame?0xffffffffu:0)==S_OK);DWORD mask=1;ok(g_pd3dDevice->GetRenderState(162,&mask)==S_OK&&mask==(frame?0xffffffffu:0));
   ok(g_pd3dDevice->SetRenderState(168,frame?1:15)==S_OK);DWORD writes=0;ok(g_pd3dDevice->GetRenderState(168,&writes)==S_OK&&writes==(frame?1u:15u));
   #endif
   #ifdef TEXTURES

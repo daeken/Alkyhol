@@ -24,6 +24,7 @@ struct Window {
     procedure: u32,
     style: u32,
     ex_style: u32,
+    frame_style: u64,
     instance: u32,
     user: u32,
     id: u32,
@@ -302,6 +303,7 @@ fn create(image: &LoadedImage32<'_>, a: &[u32; 16], ansi: bool) -> u32 {
                 procedure: class.procedure,
                 style: a[3],
                 ex_style: a[0],
+                frame_style: mask(a[3]),
                 instance: a[10],
                 user: 0,
                 id: a[9],
@@ -702,6 +704,38 @@ pub(super) fn present(
         .ok_or("GDI output window was destroyed")?;
     window.native.present(width, height, pixels)
 }
+/// WINDOWINFO for a real owned window. The creator field names this bridge's
+/// Win32 4.0 window-class compatibility profile, not a queried native Windows OS.
+pub(super) fn window_info(image: &LoadedImage32<'_>, hwnd: u32, output: u32) -> u32 {
+    if output == 0 {
+        return error(87);
+    }
+    if read::<1>(image, output)[0] != 60 {
+        return error(87);
+    }
+    let ui = image.cpu.ui.borrow();
+    let Some(window) = ui.windows.get(&hwnd) else {
+        return error(1400);
+    };
+    let outer = frame(window.native.frame());
+    let client = frame(stop(window.native.client_frame()));
+    let border_x = (client[0] as i32).saturating_sub(outer[0] as i32).max(0) as u32;
+    // The top nonclient extent may contain a title bar; bottom identifies the
+    // native border itself. Host decorations need not match Windows dimensions.
+    let border_y = (outer[3] as i32).saturating_sub(client[3] as i32).max(0) as u32;
+    let mut words = [0u32; 15];
+    words[0] = 60;
+    words[1..5].copy_from_slice(&outer);
+    words[5..9].copy_from_slice(&client);
+    words[9] = window.style;
+    words[10] = window.ex_style;
+    words[11] = window.native.key() as u32;
+    words[12] = border_x;
+    words[13] = border_y;
+    words[14] = window.class | 0x04000000;
+    write(image, output, &words);
+    1
+}
 pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32 {
     match id {
         0 => register(image, a[0], false),
@@ -792,10 +826,22 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32
             let Some(w) = ui.windows.get_mut(&a[0]) else {
                 return error(1400);
             };
-            if ![0, 0xffffffff, 0xfffffffe].contains(&a[1]) || a[6] & !0x7f7 != 0 {
+            if a[6] & 0x4000 != 0 && w.owner != alkyhol::ffi::GetCurrentThreadId() {
+                drop(ui);
+                unsupported(
+                    "cross-thread SWP_ASYNCWINDOWPOS requires a posted owner-thread request",
+                );
+            }
+            if ![0, 0xffffffff, 0xfffffffe].contains(&a[1]) || a[6] & !0x47f7 != 0 {
+                drop(ui);
                 unsupported(
                     "window position ordering/flags are outside the native bootstrap profile",
                 );
+            }
+            if a[6] & 0x20 != 0 && w.frame_style != mask(w.style) {
+                let next = mask(w.style);
+                stop(w.native.frame_style(next));
+                w.frame_style = next;
             }
             let r = w.native.frame();
             let x = if a[6] & 2 != 0 {
@@ -819,6 +865,7 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32
                 a[5] as i32
             };
             if width <= 0 || height <= 0 {
+                drop(ui);
                 unsupported("native window position requires positive dimensions");
             }
             if a[6] & 4 == 0 && [0xffffffff, 0xfffffffe].contains(&a[1]) {
@@ -921,12 +968,15 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32
                 -6 => &mut w.instance,
                 -12 => &mut w.id,
                 -16 => {
+                    let old = w.style;
                     if id == 21 {
-                        unsupported(
-                            "window style replacement requires native frame transition support",
-                        );
+                        if (a[2] ^ old) & 0x40000000 != 0 {
+                            drop(ui);
+                            unsupported("changing a window's child/parent role is unimplemented");
+                        }
+                        w.style = a[2];
                     }
-                    return w.style;
+                    return old;
                 }
                 -20 => {
                     if id == 21 {

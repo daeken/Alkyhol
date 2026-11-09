@@ -27,6 +27,7 @@ struct D3DDISPLAYMODE{UINT Width,Height,RefreshRate,Format;};
 struct D3DVERTEXBUFFER_DESC{UINT Format,Type,Usage,Pool,Size,FVF;};
 struct D3DLOCKED_RECT{INT Pitch;void* pBits;};
 
+struct IDirect3DIndexBuffer9;
 struct IDirect3DBaseTexture9;struct IDirect3DTexture9;
 struct IDirect3DVertexShader9;struct IDirect3DPixelShader9;struct IDirect3DVertexDeclaration9;
 struct D3DVERTEXELEMENT9{unsigned short Stream,Offset;unsigned char Type,Method,Usage,UsageIndex;};
@@ -117,8 +118,8 @@ struct IDirect3DDevice9 {
  virtual void __stdcall UnsupportedSlot63()=0;
  virtual HRESULT __stdcall GetTexture(DWORD,IDirect3DBaseTexture9**)=0;
  virtual HRESULT __stdcall SetTexture(DWORD,IDirect3DBaseTexture9*)=0;
- virtual void __stdcall UnsupportedSlot66()=0;
- virtual void __stdcall UnsupportedSlot67()=0;
+ virtual HRESULT __stdcall GetTextureStageState(DWORD,UINT,DWORD*)=0;
+ virtual HRESULT __stdcall SetTextureStageState(DWORD,UINT,DWORD)=0;
  virtual HRESULT __stdcall GetSamplerState(DWORD,UINT,DWORD*)=0;
  virtual HRESULT __stdcall SetSamplerState(DWORD,UINT,DWORD)=0;
  virtual void __stdcall UnsupportedSlot70()=0;
@@ -152,11 +153,11 @@ struct IDirect3DDevice9 {
  virtual void __stdcall UnsupportedSlot98()=0;
  virtual void __stdcall UnsupportedSlot99()=0;
  virtual HRESULT __stdcall SetStreamSource(UINT,IDirect3DVertexBuffer9*,UINT,UINT)=0;
- virtual void __stdcall UnsupportedSlot101()=0;
- virtual void __stdcall UnsupportedSlot102()=0;
- virtual void __stdcall UnsupportedSlot103()=0;
- virtual void __stdcall UnsupportedSlot104()=0;
- virtual void __stdcall UnsupportedSlot105()=0;
+ virtual HRESULT __stdcall GetStreamSource(UINT,IDirect3DVertexBuffer9**,UINT*,UINT*)=0;
+ virtual HRESULT __stdcall SetStreamSourceFreq(UINT,UINT)=0;
+ virtual HRESULT __stdcall GetStreamSourceFreq(UINT,UINT*)=0;
+ virtual HRESULT __stdcall SetIndices(IDirect3DIndexBuffer9*)=0;
+ virtual HRESULT __stdcall GetIndices(IDirect3DIndexBuffer9**)=0;
  virtual HRESULT __stdcall CreatePixelShader(const DWORD*,IDirect3DPixelShader9**)=0;
  virtual HRESULT __stdcall SetPixelShader(IDirect3DPixelShader9*)=0;
  virtual HRESULT __stdcall GetPixelShader(IDirect3DPixelShader9**)=0;
@@ -213,6 +214,13 @@ __declspec(dllimport) BOOL __stdcall TranslateMessage(const MSG*);
 __declspec(dllimport) LRESULT __stdcall DispatchMessageW(const MSG*);
 __declspec(dllimport) BOOL __stdcall UnregisterClassW(const WCHAR*,HINSTANCE);
 __declspec(dllimport) BOOL __stdcall DestroyWindow(HWND);
+__declspec(dllimport) BOOL __stdcall GetWindowInfo(HWND,void*);
+__declspec(dllimport) BOOL __stdcall GetWindowRect(HWND,void*);
+__declspec(dllimport) BOOL __stdcall GetClientRect(HWND,void*);
+__declspec(dllimport) BOOL __stdcall ClientToScreen(HWND,void*);
+__declspec(dllimport) LRESULT __stdcall GetWindowLongW(HWND,INT);
+__declspec(dllimport) LRESULT __stdcall SetWindowLongW(HWND,INT,LRESULT);
+__declspec(dllimport) BOOL __stdcall SetWindowPos(HWND,HWND,INT,INT,INT,INT,UINT);
 }
 #define GetModuleHandle GetModuleHandleW
 #define RegisterClassEx RegisterClassExW

@@ -1,10 +1,10 @@
 // Owned MIT legacy bytecode: exact DWORDs from d3d9/tests/fixtures.
-0xffff0200u,
+0xffff0201u,
 0x000dfffeu,
 0x42415443u,
 0x0000001cu,
 0x0000001cu,
-0xffff0200u,
+0xffff0201u,
 0x00000000u,
 0x0000001cu,
 0x00000000u,

@@ -12,7 +12,7 @@ def normalize_owned_ps2_output(path):
  This is fixture generation only; runtime game bytecode is never rewritten.
  """
  raw=path.read_bytes();words=list(struct.unpack('<'+'I'*(len(raw)//4),raw))
- if words[0]!=0xffff0200 or words[-4:]!=[0x02000013,0x800f0800,0x80e40000,0xffff]:raise ValueError('unexpected owned SM2 output pattern')
+ if words[0]!=0xffff0201 or words[-4:]!=[0x02000013,0x800f0800,0x80e40000,0xffff]:raise ValueError('unexpected owned SM2 output pattern')
  words[-3]=0x800f0000
  words[-1:]=[0x02000001,0x800f0800,0x80e40000,0xffff]
  path.write_bytes(struct.pack('<'+'I'*len(words),*words))
@@ -32,7 +32,7 @@ def check(directory):
   if sha(fixture/name)!=digest:raise ValueError('SM2 fixture identity differs: '+name)
  for prefix in ['legacy-color.ps','legacy-color.vs','legacy-texture.ps','legacy-slots128.ps','legacy-model2.vs']:
   stage=prefix.rsplit('.',1)[1]
-  profile=stage+('_2_0' if prefix in ['legacy-slots128.ps','legacy-model2.vs'] else '_3_0')
+  profile='ps_2_a' if prefix=='legacy-slots128.ps' else stage+('_2_0' if prefix=='legacy-model2.vs' else '_3_0')
   subprocess.run([manifest['hlsl_compiler'],'-x','hlsl','-b','d3dbc','-p',profile,str(fixture/(prefix+'.hlsl')),'-o',str(output/(prefix+'.bin'))],check=True)
   if prefix=='legacy-slots128.ps':normalize_owned_ps2_output(output/(prefix+'.bin'))
   following=[str(output/('legacy-slots128.ps.bin' if prefix=='legacy-model2.vs' else 'legacy-color.ps.bin'))] if stage=='vs' else []
@@ -42,7 +42,7 @@ def check(directory):
   binary=(fixture/(prefix+'.bin')).read_bytes()
   if prefix=='legacy-slots128.ps':
    words=struct.unpack('<'+'I'*(len(binary)//4),binary);at=1;counts={}
-   if words[0]!=0xffff0200:raise ValueError('SM2 header differs')
+   if words[0]!=0xffff0201:raise ValueError('SM2 header differs')
    while words[at]!=0xffff:
     token=words[at];at+=1;opcode=token&65535
     if opcode==0xfffe:at+=(token>>16)&32767;continue

@@ -53,14 +53,14 @@ class LegacyShaderComparatorTests(unittest.TestCase):
         words[2]=0
         with self.assertRaises(ValueError):shader_words(words,model2=True)
     def test_render_state_record_requires_actual_blending_and_write_mask(self):
-        words=[0x39534844,4]+[1]*38
+        words=[0x39534844,4]+[1]*42
         for frame,color in [(0,0x4040bf),(1,0x1c00ff)]:
             pixels=[0xff]*1024;pixels[20*32+22]=color
             pixels[20*32+10]=color if frame==0 else 0xff
-            words += [0xfeed0000+frame]+[1]*12+pixels+[1]
-        words += [0xfeedffff]+[1]*7+[2125]
+            words += [0xfeed0000+frame]+[1]*14+pixels+[1]
+        words += [0xfeedffff]+[1]*7+[2133]
         self.assertEqual(shader_words(words,True,states=True),words)
-        words[40+13+20*32+22]=0x808080
+        words[44+15+20*32+22]=0x808080
         with self.assertRaises(ValueError):shader_words(words,True,states=True)
     def test_exact_frames_and_stack_extent(self):
         words=self.record();self.assertEqual(shader_words(words),words)

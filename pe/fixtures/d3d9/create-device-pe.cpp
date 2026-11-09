@@ -21,9 +21,14 @@ static void put(DWORD n){words[used++]=n;}
 static DWORD stack(){DWORD s;__asm__ volatile("movl %%esp,%0":"=r"(s));return s;}
 static LRESULT __stdcall witness_proc(HWND w,UINT m,WPARAM a,LPARAM b){return DefWindowProcW(w,m,a,b);}
 extern "C" DWORD entry(){
- DWORD before=stack();put(0x44394433);put(4);
+ DWORD before=stack();put(0x44394433);
+#ifdef QUERIES
+put(5);
+#else
+put(4);
+#endif
  WNDCLASSEX wc={};wc.cbSize=sizeof(wc);wc.lpfnWndProc=witness_proc;wc.hInstance=GetModuleHandleW(NULL);wc.lpszClassName=L"Alkyhol D3D9 witness";
- if(!RegisterClassExW(&wc))return 2;
+ UINT class_atom=RegisterClassExW(&wc);if(!class_atom)return 2;
  HWND window=CreateWindowExW(0,wc.lpszClassName,L"Microsoft D3D9 Tutorial 01",0x80000000,80,80,Width,Height,NULL,NULL,wc.hInstance,NULL);
  if(!window)return 3;
  HRESULT hr=InitD3D(window);put(hr);if(FAILED(hr))return 4;
@@ -34,6 +39,16 @@ extern "C" DWORD entry(){
  IDirect3D9* parent=NULL;put(g_pd3dDevice->GetDirect3D(&parent)==S_OK&&parent==g_pD3D);if(parent)parent->Release();
  put(g_pd3dDevice->TestCooperativeLevel()==S_OK);
  #ifdef QUERIES
+ static DWORD window_info[17];window_info[0]=window_info[16]=0x715e7a11;window_info[1]=60;
+ put(GetWindowInfo(window,window_info+1)!=0&&window_info[0]==0x715e7a11&&window_info[16]==0x715e7a11&&window_info[1]==60);
+ INT outer[4]={},client[4]={},origin[2]={};
+ BOOL same_bounds=GetWindowRect(window,outer)&&GetClientRect(window,client)&&ClientToScreen(window,origin);
+ for(UINT i=0;i<4;i++)if(window_info[2+i]!=(DWORD)outer[i])same_bounds=FALSE;
+ put(same_bounds&&window_info[6]==(DWORD)origin[0]&&window_info[7]==(DWORD)origin[1]&&window_info[8]-window_info[6]==(DWORD)(client[2]-client[0])&&window_info[9]-window_info[7]==(DWORD)(client[3]-client[1]));
+ put(window_info[10]==(DWORD)GetWindowLongW(window,-16)&&window_info[11]==(DWORD)GetWindowLongW(window,-20)&&window_info[12]<=1&&window_info[13]==0&&window_info[14]==0&&(window_info[15]&65535)==class_atom&&(window_info[15]>>16)>=0x300);
+ put(SetWindowPos(window,(HWND)0xfffffffe,83,84,Width,Height,0x4000)!=0&&GetWindowRect(window,outer)!=0&&outer[0]==83&&outer[1]==84);
+ HWND framed=CreateWindowExW(0,wc.lpszClassName,L"Window frame transition",0xcf0000,100,100,200,160,NULL,NULL,wc.hInstance,NULL);
+ BOOL transition=framed!=NULL;if(framed){LRESULT previous=GetWindowLongW(framed,-16);transition=SetWindowLongW(framed,-16,(LRESULT)0x80000000)==previous&&SetWindowPos(framed,NULL,0,0,0,0,0x27)!=0&&GetWindowRect(framed,outer)!=0&&GetClientRect(framed,client)!=0&&outer[0]==100&&outer[1]==100&&outer[2]-outer[0]==200&&outer[3]-outer[1]==160&&client[2]==200&&client[3]==160;transition=DestroyWindow(framed)!=0&&transition;}put(transition);
  const UINT mode_count=g_pD3D->GetAdapterModeCount(0,D3DFMT_X8R8G8B8);put(mode_count<=4096);
  static DWORD mode_words[6];mode_words[0]=mode_words[5]=0x715e7a11;
  put(g_pD3D->GetAdapterDisplayMode(0,(D3DDISPLAYMODE*)(mode_words+1))==S_OK&&mode_words[1]>0&&mode_words[2]>0&&mode_words[4]!=0&&mode_words[0]==0x715e7a11&&mode_words[5]==0x715e7a11);

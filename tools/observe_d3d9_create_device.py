@@ -13,7 +13,7 @@ SHADERS=False
 TEXTURES=False
 MODEL2=False
 STATES=False
-SYMBOLS={'kernel32.dll':[('GetModuleHandleW',4),('GetStdHandle',4),('WriteFile',20)],'user32.dll':[('RegisterClassExW',4),('CreateWindowExW',48),('DefWindowProcW',16),('PostQuitMessage',4),('ValidateRect',8),('ShowWindow',8),('UpdateWindow',4),('GetMessageW',16),('TranslateMessage',4),('DispatchMessageW',4),('UnregisterClassW',8),('DestroyWindow',4),('PeekMessageW',20)],'d3d9.dll':[('Direct3DCreate9',4)]}
+SYMBOLS={'kernel32.dll':[('GetModuleHandleW',4),('GetStdHandle',4),('WriteFile',20)],'user32.dll':[('RegisterClassExW',4),('CreateWindowExW',48),('DefWindowProcW',16),('PostQuitMessage',4),('ValidateRect',8),('ShowWindow',8),('UpdateWindow',4),('GetMessageW',16),('TranslateMessage',4),('DispatchMessageW',4),('UnregisterClassW',8),('DestroyWindow',4),('PeekMessageW',20),('GetWindowInfo',8),('GetWindowRect',8),('GetClientRect',8),('ClientToScreen',8),('GetWindowLongW',8),('SetWindowPos',28),('SetWindowLongW',12)],'d3d9.dll':[('Direct3DCreate9',4)]}
 def sha(p):return hashlib.sha256(p.read_bytes()).hexdigest()
 def identity(d):return {'source':{p.relative_to(ROOT).as_posix():sha(p) for p in [SOURCE/'create-device-pe.cpp',SOURCE/'include/d3d9.h',SOURCE/'include/strsafe.h',ROOT/'samples/d3d9/create_device/CreateDevice.cpp',ROOT/'samples/d3d9/vertices/Vertices.cpp',ROOT/'samples/d3d9/provenance.json',*([SOURCE/'legacy-shaders-pe.cpp',SOURCE/'legacy-color.vs.inc',SOURCE/'legacy-color.ps.inc',ROOT/'d3d9/tests/fixtures/legacy-color.vs.bin',ROOT/'d3d9/tests/fixtures/legacy-color.ps.bin',*([SOURCE/'legacy-texture.ps.inc',ROOT/'d3d9/tests/fixtures/legacy-texture.ps.bin'] if TEXTURES else []),*([SOURCE/'legacy-model2.vs.inc',SOURCE/'legacy-slots128.ps.inc',ROOT/'d3d9/tests/fixtures/legacy-model2.vs.bin',ROOT/'d3d9/tests/fixtures/legacy-slots128.ps.bin'] if MODEL2 else [])] if SHADERS else [])]},'pe':sha(d/FILES[0])}
 def build(d):
@@ -35,7 +35,7 @@ def compare_triangle_pixels(first,second):
  for i,(a,b) in enumerate(zip(first,second)):
   if (a==0xff)!=(b==0xff) or any(abs(((a>>n)&255)-((b>>n)&255))>1 for n in [0,8,16]):raise ValueError(f'native triangle coverage or RGB tolerance 1 failed at {i%300},{i//300}')
 def shader_words(words,textured=False,model2=False,states=False):
- prefix=40 if states else 23 if model2 else 36 if textured else 22;checks=12 if states else 10 if textured else 8
+ prefix=44 if states else 23 if model2 else 36 if textured else 22;checks=14 if states else 10 if textured else 8
  block=1+checks+1024+1;footer=prefix+2*block;length=footer+9
  if len(words)!=length or words[:prefix]!=[0x39534844,4 if states else 3 if model2 else 2 if textured else 1]+[1]*(prefix-2) or words[footer:]!=[0xfeedffff]+[1]*7+[length]:raise ValueError('legacy shader COM/metadata/stack witness differs')
  for frame in range(2):
@@ -56,7 +56,7 @@ def decode(data):
   pixels=triangle_pixels(words)
   if not 19000<sum(n!=0xff for n in pixels)<21001 or pixels[150*300+150]==0xff or any(pixels[n]!=0xff for n in [0,299,299*300,300*300-1]):raise ValueError('triangle coverage/background failed')
   return words
- expected=[0x44394433,4,0]+[1]*(19 if QUERIES else 10)+[0xff]*195+[1]*8+[226 if QUERIES else 217]
+ expected=[0x44394433,5 if QUERIES else 4,0]+[1]*(24 if QUERIES else 10)+[0xff]*195+[1]*8+[231 if QUERIES else 217]
  if words!=expected:raise ValueError('D3D9 COM, scene state, full GPU blue pixels, cleanup or stack differ: '+repr(words))
  return words
 

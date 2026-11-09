@@ -33,8 +33,14 @@ pub fn bytecode(read: impl Fn(usize) -> Result<u32>, stage: Stage) -> Result<Vec
         Stage::Vertex => 0xfffe,
         Stage::Pixel => 0xffff,
     };
-    if header >> 16 != tag || ![2, 3].contains(&((header >> 8) & 255)) || header & 255 != 0 {
-        return Err("legacy bytecode reader supports SM2.0/3.0 only".into());
+    if header >> 16 != tag
+        || !match ((header >> 8) & 255, header & 255) {
+            (2, minor) => minor <= if stage == Stage::Pixel { 2 } else { 1 },
+            (3, 0) => true,
+            _ => false,
+        }
+    {
+        return Err("legacy bytecode reader supports SM2/2a/2b and SM3.0 only".into());
     }
     let mut words = vec![header];
     while words.len() < 65536 {

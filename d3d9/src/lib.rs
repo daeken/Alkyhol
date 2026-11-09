@@ -8,8 +8,10 @@ mod legacy_gpu;
 mod render_state;
 pub use render_state::RenderState;
 mod texture;
+mod texture_stages;
 pub use legacy_gpu::LegacyDraw;
 pub use texture::{SamplerState, Texture2D, TextureBinding};
+pub use texture_stages::TextureStages;
 pub use wgpu::{VertexAttribute, VertexFormat};
 pub type Result<T> = std::result::Result<T, String>;
 

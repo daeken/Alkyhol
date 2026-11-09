@@ -4,7 +4,7 @@ use super::{Cpu32, LoadedImage32, PAGE, unsupported};
 use crate::Result;
 use alkyhol_d3d9::{
     Device as Gpu, LegacyDraw, RenderState, SamplerState, Target, Texture2D, TextureBinding,
-    VertexAttribute, VertexFormat,
+    TextureStages, VertexAttribute, VertexFormat,
     compiler::{self, Compiled, Compiler},
     legacy::Stage,
 };
@@ -96,10 +96,11 @@ enum Body {
         parameters: [u32; 14],
         creation_flags: u32,
         render_state: RenderState,
+        texture_stages: TextureStages,
         back: u32,
         fvf: u32,
         stream: Option<(u32, u32, u32)>,
-        textures: [u32; 16],
+        textures: Box<[u32; 16]>,
         samplers: Box<[SamplerState; 16]>,
         vertex_shader: u32,
         pixel_shader: u32,
@@ -156,6 +157,129 @@ pub(super) struct State {
 }
 // Exact stack sizes for implemented slots. Unknown slots never return to the
 // guest, so their unsupported gate only snapshots this and terminates explicitly.
+// Documented IDirect3DDevice9 method order and i386 stack extents. These
+// metadata entries expose useful diagnostics, not implemented method semantics.
+const DEVICE_METHODS: [(&str, u16); 119] = [
+    ("IDirect3DDevice9::QueryInterface", 12),
+    ("IDirect3DDevice9::AddRef", 4),
+    ("IDirect3DDevice9::Release", 4),
+    ("IDirect3DDevice9::TestCooperativeLevel", 4),
+    ("IDirect3DDevice9::GetAvailableTextureMem", 4),
+    ("IDirect3DDevice9::EvictManagedResources", 4),
+    ("IDirect3DDevice9::GetDirect3D", 8),
+    ("IDirect3DDevice9::GetDeviceCaps", 8),
+    ("IDirect3DDevice9::GetDisplayMode", 12),
+    ("IDirect3DDevice9::GetCreationParameters", 8),
+    ("IDirect3DDevice9::SetCursorProperties", 16),
+    ("IDirect3DDevice9::SetCursorPosition", 16),
+    ("IDirect3DDevice9::ShowCursor", 8),
+    ("IDirect3DDevice9::CreateAdditionalSwapChain", 12),
+    ("IDirect3DDevice9::GetSwapChain", 12),
+    ("IDirect3DDevice9::GetNumberOfSwapChains", 4),
+    ("IDirect3DDevice9::Reset", 8),
+    ("IDirect3DDevice9::Present", 20),
+    ("IDirect3DDevice9::GetBackBuffer", 20),
+    ("IDirect3DDevice9::GetRasterStatus", 12),
+    ("IDirect3DDevice9::SetDialogBoxMode", 8),
+    ("IDirect3DDevice9::SetGammaRamp", 16),
+    ("IDirect3DDevice9::GetGammaRamp", 12),
+    ("IDirect3DDevice9::CreateTexture", 36),
+    ("IDirect3DDevice9::CreateVolumeTexture", 40),
+    ("IDirect3DDevice9::CreateCubeTexture", 32),
+    ("IDirect3DDevice9::CreateVertexBuffer", 28),
+    ("IDirect3DDevice9::CreateIndexBuffer", 28),
+    ("IDirect3DDevice9::CreateRenderTarget", 36),
+    ("IDirect3DDevice9::CreateDepthStencilSurface", 36),
+    ("IDirect3DDevice9::UpdateSurface", 20),
+    ("IDirect3DDevice9::UpdateTexture", 12),
+    ("IDirect3DDevice9::GetRenderTargetData", 12),
+    ("IDirect3DDevice9::GetFrontBufferData", 12),
+    ("IDirect3DDevice9::StretchRect", 24),
+    ("IDirect3DDevice9::ColorFill", 16),
+    ("IDirect3DDevice9::CreateOffscreenPlainSurface", 28),
+    ("IDirect3DDevice9::SetRenderTarget", 12),
+    ("IDirect3DDevice9::GetRenderTarget", 12),
+    ("IDirect3DDevice9::SetDepthStencilSurface", 8),
+    ("IDirect3DDevice9::GetDepthStencilSurface", 8),
+    ("IDirect3DDevice9::BeginScene", 4),
+    ("IDirect3DDevice9::EndScene", 4),
+    ("IDirect3DDevice9::Clear", 28),
+    ("IDirect3DDevice9::SetTransform", 12),
+    ("IDirect3DDevice9::GetTransform", 12),
+    ("IDirect3DDevice9::MultiplyTransform", 12),
+    ("IDirect3DDevice9::SetViewport", 8),
+    ("IDirect3DDevice9::GetViewport", 8),
+    ("IDirect3DDevice9::SetMaterial", 8),
+    ("IDirect3DDevice9::GetMaterial", 8),
+    ("IDirect3DDevice9::SetLight", 12),
+    ("IDirect3DDevice9::GetLight", 12),
+    ("IDirect3DDevice9::LightEnable", 12),
+    ("IDirect3DDevice9::GetLightEnable", 12),
+    ("IDirect3DDevice9::SetClipPlane", 12),
+    ("IDirect3DDevice9::GetClipPlane", 12),
+    ("IDirect3DDevice9::SetRenderState", 12),
+    ("IDirect3DDevice9::GetRenderState", 12),
+    ("IDirect3DDevice9::CreateStateBlock", 12),
+    ("IDirect3DDevice9::BeginStateBlock", 4),
+    ("IDirect3DDevice9::EndStateBlock", 8),
+    ("IDirect3DDevice9::SetClipStatus", 8),
+    ("IDirect3DDevice9::GetClipStatus", 8),
+    ("IDirect3DDevice9::GetTexture", 12),
+    ("IDirect3DDevice9::SetTexture", 12),
+    ("IDirect3DDevice9::GetTextureStageState", 16),
+    ("IDirect3DDevice9::SetTextureStageState", 16),
+    ("IDirect3DDevice9::GetSamplerState", 16),
+    ("IDirect3DDevice9::SetSamplerState", 16),
+    ("IDirect3DDevice9::ValidateDevice", 8),
+    ("IDirect3DDevice9::SetPaletteEntries", 12),
+    ("IDirect3DDevice9::GetPaletteEntries", 12),
+    ("IDirect3DDevice9::SetCurrentTexturePalette", 8),
+    ("IDirect3DDevice9::GetCurrentTexturePalette", 8),
+    ("IDirect3DDevice9::SetScissorRect", 8),
+    ("IDirect3DDevice9::GetScissorRect", 8),
+    ("IDirect3DDevice9::SetSoftwareVertexProcessing", 8),
+    ("IDirect3DDevice9::GetSoftwareVertexProcessing", 4),
+    ("IDirect3DDevice9::SetNPatchMode", 8),
+    ("IDirect3DDevice9::GetNPatchMode", 4),
+    ("IDirect3DDevice9::DrawPrimitive", 16),
+    ("IDirect3DDevice9::DrawIndexedPrimitive", 28),
+    ("IDirect3DDevice9::DrawPrimitiveUP", 20),
+    ("IDirect3DDevice9::DrawIndexedPrimitiveUP", 36),
+    ("IDirect3DDevice9::ProcessVertices", 28),
+    ("IDirect3DDevice9::CreateVertexDeclaration", 12),
+    ("IDirect3DDevice9::SetVertexDeclaration", 8),
+    ("IDirect3DDevice9::GetVertexDeclaration", 8),
+    ("IDirect3DDevice9::SetFVF", 8),
+    ("IDirect3DDevice9::GetFVF", 8),
+    ("IDirect3DDevice9::CreateVertexShader", 12),
+    ("IDirect3DDevice9::SetVertexShader", 8),
+    ("IDirect3DDevice9::GetVertexShader", 8),
+    ("IDirect3DDevice9::SetVertexShaderConstantF", 16),
+    ("IDirect3DDevice9::GetVertexShaderConstantF", 16),
+    ("IDirect3DDevice9::SetVertexShaderConstantI", 16),
+    ("IDirect3DDevice9::GetVertexShaderConstantI", 16),
+    ("IDirect3DDevice9::SetVertexShaderConstantB", 16),
+    ("IDirect3DDevice9::GetVertexShaderConstantB", 16),
+    ("IDirect3DDevice9::SetStreamSource", 20),
+    ("IDirect3DDevice9::GetStreamSource", 20),
+    ("IDirect3DDevice9::SetStreamSourceFreq", 12),
+    ("IDirect3DDevice9::GetStreamSourceFreq", 12),
+    ("IDirect3DDevice9::SetIndices", 8),
+    ("IDirect3DDevice9::GetIndices", 8),
+    ("IDirect3DDevice9::CreatePixelShader", 12),
+    ("IDirect3DDevice9::SetPixelShader", 8),
+    ("IDirect3DDevice9::GetPixelShader", 8),
+    ("IDirect3DDevice9::SetPixelShaderConstantF", 16),
+    ("IDirect3DDevice9::GetPixelShaderConstantF", 16),
+    ("IDirect3DDevice9::SetPixelShaderConstantI", 16),
+    ("IDirect3DDevice9::GetPixelShaderConstantI", 16),
+    ("IDirect3DDevice9::SetPixelShaderConstantB", 16),
+    ("IDirect3DDevice9::GetPixelShaderConstantB", 16),
+    ("IDirect3DDevice9::DrawRectPatch", 16),
+    ("IDirect3DDevice9::DrawTriPatch", 16),
+    ("IDirect3DDevice9::DeletePatch", 8),
+    ("IDirect3DDevice9::CreateQuery", 12),
+];
 pub(super) fn signature(id: u32) -> Option<(&'static str, u16)> {
     let n = id.checked_sub(BASE)?;
     let kind = n / 256;
@@ -182,6 +306,9 @@ pub(super) fn signature(id: u32) -> Option<(&'static str, u16)> {
     if slot == 2 {
         return Some(("D3D9 Release", 4));
     }
+    if kind == 1 {
+        return Some(DEVICE_METHODS[slot as usize]);
+    }
     Some(match (kind, slot) {
         (0, 3) => ("IDirect3D9::RegisterSoftwareDevice", 8),
         (0, 4) => ("IDirect3D9::GetAdapterCount", 4),
@@ -197,55 +324,20 @@ pub(super) fn signature(id: u32) -> Option<(&'static str, u16)> {
         (0, 15) => ("IDirect3D9::GetAdapterMonitor", 8),
         (0, 5) => ("IDirect3D9::GetAdapterIdentifier", 16),
         (0, 16) => ("IDirect3D9::CreateDevice", 28),
-        (1, 3) => ("IDirect3DDevice9::TestCooperativeLevel", 4),
-        (1, 26) => ("IDirect3DDevice9::CreateVertexBuffer", 28),
-        (1, 57) => ("IDirect3DDevice9::SetRenderState", 12),
-        (1, 58) => ("IDirect3DDevice9::GetRenderState", 12),
-        (1, 23) => ("IDirect3DDevice9::CreateTexture", 36),
-        (1, 64) => ("IDirect3DDevice9::GetTexture", 12),
-        (1, 65) => ("IDirect3DDevice9::SetTexture", 12),
-        (1, 68) => ("IDirect3DDevice9::GetSamplerState", 16),
-        (1, 69) => ("IDirect3DDevice9::SetSamplerState", 16),
         (7, 3) => ("IDirect3DTexture9::GetDevice", 8),
         (7, 10) => ("IDirect3DTexture9::GetType", 4),
         (7, 13) => ("IDirect3DTexture9::GetLevelCount", 4),
         (7, 17) => ("IDirect3DTexture9::GetLevelDesc", 12),
         (7, 19) => ("IDirect3DTexture9::LockRect", 20),
         (7, 20) => ("IDirect3DTexture9::UnlockRect", 8),
-        (1, 86) => ("IDirect3DDevice9::CreateVertexDeclaration", 12),
-        (1, 87) => ("IDirect3DDevice9::SetVertexDeclaration", 8),
-        (1, 88) => ("IDirect3DDevice9::GetVertexDeclaration", 8),
-        (1, 91) => ("IDirect3DDevice9::CreateVertexShader", 12),
-        (1, 92) => ("IDirect3DDevice9::SetVertexShader", 8),
-        (1, 93) => ("IDirect3DDevice9::GetVertexShader", 8),
-        (1, 94) => ("IDirect3DDevice9::SetVertexShaderConstantF", 16),
-        (1, 95) => ("IDirect3DDevice9::GetVertexShaderConstantF", 16),
-        (1, 106) => ("IDirect3DDevice9::CreatePixelShader", 12),
-        (1, 107) => ("IDirect3DDevice9::SetPixelShader", 8),
-        (1, 108) => ("IDirect3DDevice9::GetPixelShader", 8),
-        (1, 109) => ("IDirect3DDevice9::SetPixelShaderConstantF", 16),
-        (1, 110) => ("IDirect3DDevice9::GetPixelShaderConstantF", 16),
         (4..=6, 3) => ("D3D9 shader/declaration GetDevice", 8),
         (4 | 5, 4) => ("D3D9 shader GetFunction", 12),
         (6, 4) => ("D3D9 declaration GetDeclaration", 12),
-        (1, 81) => ("IDirect3DDevice9::DrawPrimitive", 16),
-        (1, 89) => ("IDirect3DDevice9::SetFVF", 8),
-        (1, 100) => ("IDirect3DDevice9::SetStreamSource", 20),
         (3, 3) => ("IDirect3DVertexBuffer9::GetDevice", 8),
         (3, 10) => ("IDirect3DVertexBuffer9::GetType", 4),
         (3, 11) => ("IDirect3DVertexBuffer9::Lock", 20),
         (3, 12) => ("IDirect3DVertexBuffer9::Unlock", 4),
         (3, 13) => ("IDirect3DVertexBuffer9::GetDesc", 8),
-        (1, 6) => ("IDirect3DDevice9::GetDirect3D", 8),
-        (1, 7) => ("IDirect3DDevice9::GetDeviceCaps", 8),
-        (1, 9) => ("IDirect3DDevice9::GetCreationParameters", 8),
-        (1, 17) => ("IDirect3DDevice9::Present", 20),
-        (1, 18) => ("IDirect3DDevice9::GetBackBuffer", 20),
-        (1, 32) => ("IDirect3DDevice9::GetRenderTargetData", 12),
-        (1, 36) => ("IDirect3DDevice9::CreateOffscreenPlainSurface", 28),
-        (1, 41) => ("IDirect3DDevice9::BeginScene", 4),
-        (1, 42) => ("IDirect3DDevice9::EndScene", 4),
-        (1, 43) => ("IDirect3DDevice9::Clear", 28),
         (2, 3) => ("IDirect3DSurface9::GetDevice", 8),
         (2, 10) => ("IDirect3DSurface9::GetType", 4),
         (2, 12) => ("IDirect3DSurface9::GetDesc", 8),
@@ -397,7 +489,7 @@ fn release(s: &mut State, p: u32) -> u32 {
         {
             for bound in [vertex_shader, pixel_shader, declaration]
                 .into_iter()
-                .chain(textures)
+                .chain(*textures)
             {
                 if bound != 0 {
                     unbind(s, bound);
@@ -612,10 +704,11 @@ fn device(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
             parameters: p,
             creation_flags: a[4],
             render_state: RenderState::default(),
+            texture_stages: TextureStages::default(),
             back: 0,
             fvf: 0,
             stream: None,
-            textures: [0; 16],
+            textures: Box::new([0; 16]),
             samplers: Box::new([SamplerState::default(); 16]),
             vertex_shader: 0,
             pixel_shader: 0,
@@ -841,6 +934,9 @@ fn stream_source(s: &mut State, a: &[u32; 16]) -> u32 {
     if a[1] != 0 {
         return UNAVAILABLE;
     }
+    if a[2] == 0 && (a[3] != 0 || a[4] != 0) {
+        return UNAVAILABLE;
+    }
     if a[2] != 0 {
         let Some(Object {
             refs: 1..,
@@ -891,6 +987,8 @@ fn draw(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
     }
     let Body::Device {
         scene,
+        texture_stages,
+        textures,
         fvf,
         stream,
         vertex_shader,
@@ -906,6 +1004,11 @@ fn draw(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
     }
     let programmable = (*vertex_shader, *pixel_shader, *declaration);
     let fixed = *fvf == 0x44 && programmable.0 == 0 && programmable.1 == 0;
+    if fixed {
+        texture_stages
+            .validate_transformed_color(textures[0] != 0)
+            .unwrap_or_else(|e| unsupported(&e));
+    }
     if !fixed && (programmable.0 == 0 || programmable.1 == 0 || programmable.2 == 0) {
         return INVALID;
     }
@@ -1725,6 +1828,26 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32
             write(image, a[1], &[0, 1, *hwnd, *creation_flags]);
             0
         }
+        (1, 66 | 67) => {
+            let Body::Device { texture_stages, .. } = &mut s.objects.get_mut(&a[0]).unwrap().body
+            else {
+                unreachable!()
+            };
+            if slot == 67 {
+                texture_stages
+                    .set(a[1], a[2], a[3])
+                    .unwrap_or_else(|e| unsupported(&e));
+            } else {
+                if a[3] == 0 {
+                    return INVALID;
+                }
+                let value = texture_stages
+                    .get(a[1], a[2])
+                    .unwrap_or_else(|e| unsupported(&e));
+                write(image, a[3], &[value]);
+            }
+            0
+        }
         (1, 57 | 58) => {
             let Body::Device { render_state, .. } = &mut s.objects.get_mut(&a[0]).unwrap().body
             else {
@@ -1783,6 +1906,62 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32
             0
         }
         (1, 100) => stream_source(&mut s, a),
+        (1, 101) => {
+            if a[1] != 0 || [a[2], a[3], a[4]].contains(&0) {
+                return INVALID;
+            }
+            let Body::Device { stream, .. } = &s.objects[&a[0]].body else {
+                unreachable!()
+            };
+            let (buffer, offset, stride) = stream.unwrap_or((0, 0, 0));
+            if buffer != 0 {
+                let o = s.objects.get_mut(&buffer).unwrap();
+                if o.refs == 0 {
+                    o.refs = 1;
+                    addref(&mut s, a[0]);
+                } else {
+                    addref(&mut s, buffer);
+                }
+            }
+            for (pointer, value) in [(a[2], buffer), (a[3], offset), (a[4], stride)] {
+                write(image, pointer, &[value]);
+            }
+            0
+        }
+        (1, 102) => {
+            if a[1] != 0 {
+                INVALID
+            } else if a[2] == 1 {
+                0
+            } else {
+                eprintln!(
+                    "D3D9 unsupported instanced/divided stream frequency {}",
+                    a[2]
+                );
+                UNAVAILABLE
+            }
+        }
+        (1, 103) => {
+            if a[1] != 0 || a[2] == 0 {
+                return INVALID;
+            }
+            write(image, a[2], &[1]);
+            0
+        }
+        (1, 104) => {
+            if a[1] == 0 {
+                0
+            } else {
+                UNAVAILABLE
+            }
+        }
+        (1, 105) => {
+            if a[1] == 0 {
+                return INVALID;
+            }
+            write(image, a[1], &[0]);
+            0
+        }
         (1, 81) => draw(image, &mut s, a),
         (3, 10) => 6,
         (3, 11) => {

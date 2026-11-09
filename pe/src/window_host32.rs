@@ -692,6 +692,25 @@ impl Window {
             Ok(())
         })
     }
+    /// Apply a real title/border/resizability transition while keeping the outer
+    /// desktop rectangle. Win32 invokes this when SWP_FRAMECHANGED is requested.
+    pub(super) fn frame_style(&self, style: u64) -> crate::Result<()> {
+        main_exec(move || {
+            let frame = unsafe { rectangle(self.window, "frame") };
+            unsafe {
+                send1::<_, ()>(self.window, "setStyleMask:", style);
+            }
+            let call: unsafe extern "C" fn(Id, Sel, Rect, i8) =
+                unsafe { std::mem::transmute(objc_msgSend as *const ()) };
+            unsafe {
+                call(self.window, selector("setFrame:display:"), frame, 0);
+            }
+            if unsafe { send0::<u64>(self.window, "styleMask") } != style {
+                return Err("native window style transition was not observed".into());
+            }
+            Ok(())
+        })
+    }
     pub(super) fn position(&self, x: i32, y: i32, width: i32, height: i32) {
         main_exec(move || {
             let frame = Rect {
