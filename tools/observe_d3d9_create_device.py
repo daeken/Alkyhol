@@ -23,7 +23,7 @@ def build(d):
 def decode(data):
  if len(data)%4:raise ValueError('truncated D3D9 report')
  words=list(struct.unpack('<'+'I'*(len(data)//4),data))
- expected=[0x44394433,4,0]+[1]*9+[0xff]*195+[1]*8+[216]
+ expected=[0x44394433,4,0]+[1]*10+[0xff]*195+[1]*8+[217]
  if words!=expected:raise ValueError('D3D9 COM, scene state, full GPU blue pixels, cleanup or stack differ: '+repr(words))
  return words
 

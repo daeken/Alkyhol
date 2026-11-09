@@ -6,7 +6,7 @@
 static_assert(sizeof(void*)==4);
 static_assert(sizeof(D3DPRESENT_PARAMETERS)==56);
 static_assert(offsetof(D3DPRESENT_PARAMETERS,hDeviceWindow)==28);
-static_assert(sizeof(D3DADAPTER_IDENTIFIER9)==1104);
+static_assert(sizeof(D3DADAPTER_IDENTIFIER9)==1100);
 static_assert(offsetof(D3DADAPTER_IDENTIFIER9,VendorId)==1064);
 static_assert(offsetof(D3DADAPTER_IDENTIFIER9,DeviceIdentifier)==1080);
 static_assert(sizeof(D3DSURFACE_DESC)==32);

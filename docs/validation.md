@@ -5293,3 +5293,11 @@ views retain backing data after all handles close, but not the name. Runtime
 namespace leases now belong to handles; a new logical object uses a new backing
 inode so existing views remain independent. The owned test checks that measured
 behavior and locally passes; new native confirmation is still required.
+
+The clean original DAO rerun at `71ef46e` confirms the factory/adapter path and
+GetAdapterModeCount stop. CI 42559007382 passed hosted Metal and the identical-PE
+producer, but its independent Windows SDK assertion rejected the adapter record
+size: PE32 D3DADAPTER_IDENTIFIER9 is 1100 bytes, not the initially assumed 1104.
+All checked member offsets passed. The runtime write and assertion are corrected,
+and the PE witness now guards both ends of the exact 1100-byte output. The initial
+failed native job remains recorded; the native pixel step did not run in it.

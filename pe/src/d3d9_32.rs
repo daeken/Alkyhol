@@ -281,7 +281,7 @@ fn identifier(image: &LoadedImage32<'_>, s: &State, a: &[u32; 16]) -> u32 {
     let Body::Factory(gpu) = &s.objects[&a[0]].body else {
         unreachable!()
     };
-    let mut bytes = [0u8; 1104];
+    let mut bytes = [0u8; 1100];
     for (at, cap, text) in [
         (0, 512, "Alkyhol wgpu D3D9".to_string()),
         (512, 512, gpu.adapter_name().to_owned()),
