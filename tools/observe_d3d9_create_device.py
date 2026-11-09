@@ -61,7 +61,7 @@ def decode(data):
   pixels=triangle_pixels(words)
   if not 19000<sum(n!=0xff for n in pixels)<21001 or pixels[150*300+150]==0xff or any(pixels[n]!=0xff for n in [0,299,299*300,300*300-1]):raise ValueError('triangle coverage/background failed')
   return words
- expected=[0x44394433,8 if QUERIES else 4,0]+[1]*(28 if QUERIES else 10)+[0xff]*195+[1]*8+[235 if QUERIES else 217]
+ expected=[0x44394433,9 if QUERIES else 4,0]+[1]*(30 if QUERIES else 10)+[0xff]*195+[1]*8+[237 if QUERIES else 217]
  if words!=expected:raise ValueError('D3D9 COM, scene state, full GPU blue pixels, cleanup or stack differ: '+repr(words))
  return words
 

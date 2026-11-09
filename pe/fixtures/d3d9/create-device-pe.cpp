@@ -38,7 +38,7 @@ static BOOL swapchain_queries(){
 extern "C" DWORD entry(){
  DWORD before=stack();put(0x44394433);
 #ifdef QUERIES
-put(8);
+put(9);
 #else
 put(4);
 #endif
@@ -77,6 +77,12 @@ put(4);
  put(modes_valid);put(g_pD3D->GetAdapterModeCount(99,D3DFMT_X8R8G8B8)==0);put(g_pD3D->GetAdapterModeCount(0,D3DFMT_UNKNOWN)==0);
  static DWORD caps[78];caps[0]=caps[77]=0x715e7a11;
  put(g_pD3D->GetDeviceCaps(0,D3DDEVTYPE_HAL,caps+1)==S_OK&&caps[0]==0x715e7a11&&caps[77]==0x715e7a11&&caps[1]==D3DDEVTYPE_HAL&&caps[48]>=1&&caps[49]>=20&&caps[61]>=1);
+ // Test the void ABI and const input, not a claim of applied display gamma.
+ static_assert(sizeof(D3DGAMMARAMP)==1536,"SDK gamma ramp extent");
+ static struct {DWORD before;D3DGAMMARAMP ramp;DWORD after;} gamma;
+ gamma.before=gamma.after=0x715e7a11;for(UINT i=0;i<256;i++)gamma.ramp.red[i]=gamma.ramp.green[i]=gamma.ramp.blue[i]=(unsigned short)(i*257);
+ DWORD gamma_stack=stack();g_pd3dDevice->SetGammaRamp(0,0,&gamma.ramp);g_pd3dDevice->SetGammaRamp(0,1,&gamma.ramp);put(stack()==gamma_stack);
+ BOOL gamma_intact=gamma.before==0x715e7a11&&gamma.after==0x715e7a11;for(UINT i=0;i<256;i++)if(gamma.ramp.red[i]!=i*257||gamma.ramp.green[i]!=i*257||gamma.ramp.blue[i]!=i*257)gamma_intact=FALSE;put(gamma_intact);
  put(g_pD3D->CheckDeviceType(0,D3DDEVTYPE_HAL,D3DFMT_X8R8G8B8,D3DFMT_X8R8G8B8,TRUE)==S_OK);
  put(g_pD3D->CheckDeviceFormat(0,D3DDEVTYPE_HAL,D3DFMT_X8R8G8B8,0,1,21)==S_OK);
  DWORD quality=0;put(g_pD3D->CheckDeviceMultiSampleType(0,D3DDEVTYPE_HAL,D3DFMT_X8R8G8B8,TRUE,0,&quality)==S_OK&&quality>=1);

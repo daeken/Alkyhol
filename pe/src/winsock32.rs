@@ -34,6 +34,15 @@ unsafe extern "C" {
         truncated: *mut i32,
         error: *mut i32,
     ) -> i64;
+    fn alkyhol_socket_select(
+        fds: *const i32,
+        counts: *const u32,
+        seconds: i32,
+        microseconds: i32,
+        finite: i32,
+        selected: *mut u8,
+        error: *mut i32,
+    ) -> i32;
     fn socket(domain: i32, kind: i32, protocol: i32) -> i32;
     fn bind(fd: i32, address: *const u8, length: u32) -> i32;
     fn getsockname(fd: i32, address: *mut u8, length: *mut u32) -> i32;
@@ -63,6 +72,7 @@ struct Socket {
     fd: Arc<OwnedFd>,
     kind: u32,
     bound: bool,
+    connected: bool,
 }
 #[derive(Default)]
 pub(super) struct State {
@@ -70,6 +80,8 @@ pub(super) struct State {
     next: u32,
     sockets: BTreeMap<u32, Socket>,
     busy: BTreeSet<u32>,
+    selecting: BTreeMap<u32, usize>,
+    logged_select_limit: bool,
     hosts: BTreeMap<u32, LowMapping>,
     logged_receive_limit: bool,
 }
@@ -218,7 +230,7 @@ fn cleanup(image: &LoadedImage32<'_>) -> u32 {
     if state.references == 0 {
         return failure(10093);
     }
-    if state.references == 1 && !state.busy.is_empty() {
+    if state.references == 1 && (!state.busy.is_empty() || !state.selecting.is_empty()) {
         return failure(10036);
     }
     state.references -= 1;
@@ -300,6 +312,146 @@ pub(super) fn broadcast_option(image: &LoadedImage32<'_>, a: &[u32; 8], get: boo
     }
     0
 }
+/// Win32 counted socket arrays become SDK fd_sets; no guest handle is a host FD.
+/// Pending/failed TCP connect completion needs separate exception/SO_ERROR state.
+pub(super) fn select_sockets(image: &LoadedImage32<'_>, a: &[u32; 8]) -> u32 {
+    if !ready(image) {
+        return failure(10093);
+    }
+    let mut groups: [Vec<u32>; 3] = std::array::from_fn(|_| Vec::new());
+    let mut ranges = Vec::new();
+    for (index, &address) in a[1..4].iter().enumerate() {
+        if address == 0 {
+            continue;
+        }
+        checked(image, address, 4, true);
+        let count = unsafe { (address as *const u32).read_unaligned() } as usize;
+        if count > 64 {
+            unsupported("select fd_set exceeds the admitted 64-socket extent");
+        }
+        let bytes = 4 + count * 4;
+        checked(image, address, bytes, true);
+        let range = address as usize..address as usize + bytes;
+        if ranges.iter().any(|prior: &std::ops::Range<usize>| {
+            range.start < prior.end && prior.start < range.end
+        }) {
+            unsupported("select descriptor output sets overlap");
+        }
+        ranges.push(range);
+        let mut unique = BTreeSet::new();
+        for item in 0..count {
+            let handle = unsafe { (address as *const u32).add(item + 1).read_unaligned() };
+            if !unique.insert(handle) {
+                unsupported(
+                    "select duplicate entries in one fd_set are outside the admitted profile",
+                );
+            }
+            groups[index].push(handle);
+        }
+    }
+    if groups.iter().all(Vec::is_empty) {
+        return failure(10022);
+    }
+    let (seconds, microseconds) = if a[4] == 0 {
+        (0, 0)
+    } else {
+        checked(image, a[4], 8, false);
+        let range = a[4] as usize..a[4] as usize + 8;
+        if ranges
+            .iter()
+            .any(|prior| range.start < prior.end && prior.start < range.end)
+        {
+            unsupported("select timeout aliases a descriptor output");
+        }
+        let seconds = unsafe { (a[4] as *const i32).read_unaligned() };
+        let micros = unsafe { (a[4] as *const i32).add(1).read_unaligned() };
+        if seconds < 0 || !(0..1_000_000).contains(&micros) {
+            return failure(10022);
+        }
+        (seconds, micros)
+    };
+    let mut leases = BTreeMap::new();
+    {
+        let mut state = image.cpu.winsock.borrow_mut();
+        for &handle in groups.iter().flatten() {
+            let Some(socket) = state.sockets.get(&handle) else {
+                return failure(10038);
+            };
+            if socket.kind == 1 && !socket.connected {
+                if !state.logged_select_limit {
+                    eprintln!(
+                        "PE32 select TCP connection completion unavailable: WSAEOPNOTSUPP (10045)"
+                    );
+                    state.logged_select_limit = true;
+                }
+                return failure(10045);
+            }
+            leases.entry(handle).or_insert_with(|| socket.fd.clone());
+        }
+        for &handle in leases.keys() {
+            *state.selecting.entry(handle).or_default() += 1;
+        }
+    }
+    let fds: Vec<_> = groups
+        .iter()
+        .flatten()
+        .map(|h| leases[h].as_raw_fd())
+        .collect();
+    let counts = groups.each_ref().map(|group| group.len() as u32);
+    let mut selected = vec![0u8; fds.len()];
+    let (result, error) = thread32::without_cpu(image, || {
+        let mut error = 0;
+        let result = unsafe {
+            alkyhol_socket_select(
+                fds.as_ptr(),
+                counts.as_ptr(),
+                seconds,
+                microseconds,
+                i32::from(a[4] != 0),
+                selected.as_mut_ptr(),
+                &mut error,
+            )
+        };
+        (result, error)
+    });
+    {
+        let mut state = image.cpu.winsock.borrow_mut();
+        for &handle in leases.keys() {
+            let count = state.selecting.get_mut(&handle).unwrap();
+            *count -= 1;
+            if *count == 0 {
+                state.selecting.remove(&handle);
+            }
+        }
+    }
+    if result < 0 {
+        return failure(errno(error));
+    }
+    if result as usize != selected.iter().filter(|&&entry| entry != 0).count() {
+        unsupported("native select result differs from its actual selected descriptor sets");
+    }
+    for range in &ranges {
+        checked(image, range.start as u32, range.len(), true);
+    }
+    let mut offset = 0;
+    for (group, &address) in groups.iter().zip(&a[1..4]) {
+        if address != 0 {
+            let entries: Vec<_> = group
+                .iter()
+                .enumerate()
+                .filter_map(|(index, &handle)| (selected[offset + index] != 0).then_some(handle))
+                .collect();
+            unsafe {
+                (address as *mut u32).write_unaligned(entries.len() as u32);
+                for (index, handle) in entries.into_iter().enumerate() {
+                    (address as *mut u32).add(index + 1).write_unaligned(handle);
+                }
+            }
+        }
+        offset += group.len();
+    }
+    result as u32
+}
 fn create(image: &LoadedImage32<'_>, a: &[u32; 8]) -> u32 {
     if !ready(image) {
         return failure(10093);
@@ -347,6 +499,7 @@ fn create(image: &LoadedImage32<'_>, a: &[u32; 8]) -> u32 {
             fd: Arc::new(fd),
             kind: a[1],
             bound: false,
+            connected: false,
         },
     );
     handle
@@ -356,7 +509,7 @@ fn close(image: &LoadedImage32<'_>, h: u32) -> u32 {
     if state.references == 0 {
         return failure(10093);
     }
-    if state.busy.contains(&h) {
+    if state.busy.contains(&h) || state.selecting.contains_key(&h) {
         return failure(10036);
     }
     if state.sockets.remove(&h).is_none() {
@@ -458,7 +611,17 @@ fn connect_to(image: &LoadedImage32<'_>, a: &[u32; 8]) -> u32 {
         if n < 0 { Err(native_error()) } else { Ok(n) }
     });
     match finish(image, a[0], result) {
-        Ok(n) => n as u32,
+        Ok(n) => {
+            image
+                .cpu
+                .winsock
+                .borrow_mut()
+                .sockets
+                .get_mut(&a[0])
+                .unwrap()
+                .connected = true;
+            n as u32
+        }
         Err(e) => failure(e),
     }
 }

@@ -49,6 +49,19 @@ jobs:
             local/pe/socket-broadcast-microtest/socket-broadcast-host.json
             local/pe/socket-broadcast-microtest/socket-async-exclusion-host.json
           if-no-files-found: error
+      - name: Execute socket readiness and Win32 descriptor sets reached by DAO
+        run: |
+          python tools/observe_pe32_socket_select.py
+          python tools/observe_pe32_socket_select.py --host
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: socket-select-identical-pe
+          path: |
+            local/pe/socket-select-microtest/socket-select.exe
+            local/pe/socket-select-microtest/socket-select-inputs.json
+            local/pe/socket-select-microtest/socket-select-host.json
+          if-no-files-found: error
       - name: Execute actual filesystem-space accounting reached by DAO
         run: |
           cargo test --manifest-path pe/Cargo.toml --target x86_64-apple-darwin --locked --offline disk32
@@ -241,6 +254,19 @@ jobs:
         with:
           name: socket-broadcast-identical-pe
           path: local/pe/socket-broadcast-microtest
+      - uses: actions/download-artifact@v4
+        with:
+          name: socket-select-identical-pe
+          path: local/pe/socket-select-microtest
+      - name: Compare identical socket readiness PE on native Windows
+        if: success() || failure()
+        run: python tools/observe_pe32_socket_select.py --native
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: socket-select-native-observation
+          path: local/pe/socket-select-microtest/native-socket-select.json
+          if-no-files-found: warn
       - name: Compare identical case-insensitive file-open PE on native Windows
         if: success() || failure()
         run: python tools/observe_pe32_casefold_open.py --native

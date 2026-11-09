@@ -25,6 +25,7 @@ struct D3DPRESENT_PARAMETERS{UINT BackBufferWidth,BackBufferHeight,BackBufferFor
 struct D3DSURFACE_DESC{UINT Format,Type,Usage,Pool,MultiSampleType,MultiSampleQuality,Width,Height;};
 struct D3DDISPLAYMODE{UINT Width,Height,RefreshRate,Format;};
 struct D3DVERTEXBUFFER_DESC{UINT Format,Type,Usage,Pool,Size,FVF;};
+struct D3DGAMMARAMP{unsigned short red[256],green[256],blue[256];};
 struct D3DLOCKED_RECT{INT Pitch;void* pBits;};
 
 struct IDirect3DSwapChain9;
@@ -74,7 +75,7 @@ struct IDirect3DDevice9 {
  virtual HRESULT __stdcall GetBackBuffer(UINT,UINT,UINT,IDirect3DSurface9**)=0;
  virtual void __stdcall UnsupportedSlot19()=0;
  virtual void __stdcall UnsupportedSlot20()=0;
- virtual void __stdcall UnsupportedSlot21()=0;
+ virtual void __stdcall SetGammaRamp(UINT,DWORD,const D3DGAMMARAMP*)=0;
  virtual void __stdcall UnsupportedSlot22()=0;
  virtual HRESULT __stdcall CreateTexture(UINT,UINT,UINT,DWORD,UINT,UINT,IDirect3DTexture9**,void*)=0;
  virtual void __stdcall UnsupportedSlot24()=0;

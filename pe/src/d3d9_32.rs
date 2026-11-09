@@ -2552,6 +2552,22 @@ fn dispatch_inner(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32 {
         _ => (),
     }
     match (kind, slot) {
+        (1, 21) => {
+            if a[1] != 0 || a[2] > 1 {
+                unsupported(
+                    "SetGammaRamp supports only implicit swap chain zero and documented flags",
+                );
+            }
+            checked(image, a[3], 3 * 256 * 2, false);
+            // D3D9 specifies no effect and no error for a presentation mode
+            // without gamma-ramp support. Caps2 advertises neither gamma bit.
+            // This is a void method: no HRESULT or successful display change.
+            assert_eq!(capabilities(s.compiler.is_some())[3], 0);
+            eprintln!(
+                "PE32 D3D9 SetGammaRamp: gamma support is not advertised; documented no effect, no display change"
+            );
+            0
+        }
         (0, 4) => 1,
         (0, 5) => identifier(image, &s, a),
         (0, 6) => {
@@ -3155,6 +3171,7 @@ mod tests {
         let c = capabilities(false);
         assert_eq!(c.len() * 4, 304);
         assert_eq!((c[0], c[47], c[48], c[58], c[60]), (1, 1, 20, 1, 1));
+        assert_eq!(c[3], 0); // no gamma-ramp/calibration support
         assert_eq!(c[49], 0);
         assert_eq!(c[51], 0); // shader versions
         for offset in [
@@ -3164,6 +3181,7 @@ mod tests {
         }
         assert_eq!(c[7] & 0x100000, 0); // no pure-device promise
         let p = capabilities(true);
+        assert_eq!(p[3], 0); // SetGammaRamp must have no effect in this profile
         assert_eq!((p[22], p[23]), (2048, 2048));
         assert_eq!((p[15], p[16], p[19]), (0x4004, 0x03030300, 7));
         assert_eq!(p[5], 0x80000000);
@@ -3191,6 +3209,10 @@ mod tests {
     #[test]
     fn com_stack_contracts_and_bounds() {
         assert_eq!(signature(BASE + 16), Some(("IDirect3D9::CreateDevice", 28)));
+        assert_eq!(
+            signature(BASE + 256 + 21),
+            Some(("IDirect3DDevice9::SetGammaRamp", 16))
+        );
         assert_eq!(
             signature(BASE + 256 + 43),
             Some(("IDirect3DDevice9::Clear", 28))

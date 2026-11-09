@@ -129,7 +129,7 @@ unsafe extern "C" {
 }
 const PAGE: usize = 4096;
 const STACK: usize = 1024 * 1024;
-const APIS: [(&str, u16); 294] = [
+const APIS: [(&str, u16); 295] = [
     ("GetLastError", 0),
     ("SetLastError", 4),
     ("GetStdHandle", 4),
@@ -424,6 +424,7 @@ const APIS: [(&str, u16); 294] = [
     ("recvfrom", 24),
     ("WSARecvFrom", 36),
     ("Netbios", 4),
+    ("select", 20),
 ];
 // The first 120 API slots retain their original offsets. The second bank
 // begins after both x87 bodies, leaving their machine code and failure gates
@@ -466,6 +467,7 @@ fn api_id(module: &str, symbol: &ImportSymbol) -> Option<usize> {
             6 => Some(289),
             20 => Some(290),
             17 => Some(291),
+            18 => Some(294),
             21 => Some(286),
             7 => Some(287),
             23 => Some(228),
@@ -517,6 +519,7 @@ fn api_id(module: &str, symbol: &ImportSymbol) -> Option<usize> {
                 } else if (225..=237).contains(id)
                     || (279..=283).contains(id)
                     || (286..=292).contains(id)
+                    || *id == 294
                 {
                     "ws2_32.dll"
                 } else if *id == 215 {
@@ -2419,6 +2422,7 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
             290 | 291 => winsock32::datagram(image, args, id == 291),
             292 => winsock32::wsa_receive(image, &words),
             293 => netbios32::reset_unavailable(image, args[0]),
+            294 => winsock32::select_sockets(image, args),
             input8_32::BASE.. => input8_32::dispatch(image, id, &words),
             d3d9_32::BASE.. => d3d9_32::dispatch(image, id, &words),
             215 => {
@@ -2476,6 +2480,7 @@ mod tests {
             (6, 289),
             (20, 290),
             (17, 291),
+            (18, 294),
         ] {
             assert_eq!(
                 api_id("ws2_32.dll", &ImportSymbol::Ordinal(ordinal)),

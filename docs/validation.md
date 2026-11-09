@@ -5949,3 +5949,58 @@ reaches real recvfrom. The next unsupported import is Winsock ordinal 18 (select
 The unchanged EXE SHA is retained with private source/probe/config/capture
 identities. No original game draw, Present, audio playback, menu or gameplay is
 established; asynchronous receive remains an explicit unsupported failure.
+
+## DAO socket readiness, gamma capability and worker-return contracts
+
+CI [42612102370](https://github.com/daeken/Alkyhol/actions/runs/42612102370)
+passes both startup/API jobs on 24dd10d. All 63 mixed-event output words, source
+and literal PE identity agree with physical M4 (PE SHA-256
+7b7f9602a385e31cb765f0fea4b051386693c7e228c82e4b77ee69cf826fd1d9).
+D3D9 CI 42612102250 passes all three jobs, and conformance 42612102213 passes.
+
+Winsock select now translates checked 32-bit counted descriptor arrays to actual
+SDK fd_sets, waits on retained BSD socket descriptors with the CPU lease released,
+and writes only genuinely ready members and counts. Timeout input remains
+unchanged; empty sets/invalid sockets/invalid timeouts fail. Unique descriptors
+can participate in different sets, so readable+writable membership counts twice.
+In-flight selectors retain descriptors and make unsupported close/final-cleanup
+cancellation fail explicitly. Pending/failed TCP connect completion and its
+Windows exception/SO_ERROR projection remain unavailable (WSAEOPNOTSUPP), without
+changed output arrays or invented readiness. UDP and synchronously connected
+loopback TCP are admitted; arbitrary descriptor aliases, oversized sets and
+nonzero message/async profiles remain separate. The public
+[select](https://learn.microsoft.com/en-us/windows/win32/api/winsock2/nf-winsock2-select)
+and [fd_set](https://learn.microsoft.com/en-us/windows/win32/api/winsock2/ns-winsock2-fd_set)
+contracts describe the source representation. The actual original TCP status poll
+receives the explicit unsupported error and handles it; this does not establish
+working original game networking.
+
+The owned 42-word PE passes on physical M4: real loopback send/receive readiness,
+write readiness, counted-array guards, empty/invalid errors, read-only timeval,
+CPU-released blocking wait with a real sending worker, and caller-cleaned worker
+return. Native comparison is added to the existing identical-PE workflow and is
+pending. The worker entry uses literal RET rather than RET 4; its actual return
+value becomes GetExitCodeThread without rewriting its machine code. Original
+DAO independently exposed the same caller-cleaned entry form. The startup
+trampoline now admits exactly the observed argument-retaining and stdcall
+one-argument return extents; other stack returns still stop. General nested
+callback convention checks are unchanged.
+
+Original DAO also reaches SetGammaRamp. This is a void D3D9 method, and the
+[documented unsupported-mode behavior](https://learn.microsoft.com/en-us/windows/win32/api/d3d9/nf-d3d9-idirect3ddevice9-setgammaramp)
+is no effect and no error return. Alkyhol advertises neither gamma capability and
+now checks the implicit chain, flags and complete 1,536-byte const ramp, then
+explicitly logs that no display change occurred. No gamma/calibration support or
+successful display operation is invented; GetGammaRamp remains unsupported. The
+extended original-tutorial query witness passes 237 words and all 195 blue GPU
+pixels on physical M4, including both void-call flag forms, ramp guards and stack
+cleanup. This tests the ABI and input preservation, not applied display gamma.
+All 197 PE units, Clippy and nine observer tests pass locally. New native query
+comparison is pending; the original tutorial sources remain unchanged.
+
+PE workflow 42612102237 still has the earlier native full-path, message, GDI copy
+and software-context discrepancies. Its Linux comparison job also failed before
+testing because a macOS-only dependency-fetch condition left Naga absent in
+offline resolution. That job now fetches locked dependencies after installing
+Rust on Linux as well; retry is pending. Frozen native criteria are unchanged.
+No original DAO draw, Present, audio playback, menu or gameplay is established.

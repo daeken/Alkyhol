@@ -407,8 +407,19 @@ unsafe fn run(
             .filter(|&v| v == result as u32)
             .unwrap_or_else(|| unsupported("worker escaped without matching ExitThread"))
     } else {
-        if observed != frame + 8 {
-            unsupported("worker entry did not restore stdcall parameter stack");
+        // The startup trampoline owns and retires the complete guest stack.
+        // Accept both observed one-argument return forms: RET 4 (stdcall) and
+        // RET (caller cleanup). This does not relax nested callback contracts.
+        if observed != frame + 8 && observed != frame + 4 {
+            unsupported(&format!(
+                "worker return stack outside supported one-argument forms: frame={frame:08x} observed={observed:08x}"
+            ));
+        }
+        if observed == frame + 4 && image.cpu.diagnostic.is_some() {
+            eprintln!(
+                "PE32 worker returned with caller-cleaned argument: entry={entry:08x}; exit={:08x}",
+                result as u32
+            );
         }
         result as u32
     };
