@@ -3473,6 +3473,10 @@ fn dispatch_inner(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32 {
                 unreachable!()
             };
             if *viewport != [0, 0, width, height, 0, 1f32.to_bits()] {
+                eprintln!(
+                    "D3D9 unavailable clear region: viewport={viewport:x?}; target={width}x{height}; flags={:x}",
+                    a[3]
+                );
                 return UNAVAILABLE;
             }
             let depth = depth_target(&s, a[0]);

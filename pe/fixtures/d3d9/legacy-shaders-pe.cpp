@@ -273,7 +273,8 @@ static DWORD streams_witness(IDirect3DVertexBuffer9* positions){
  REQUIRE_STREAM(g_pd3dDevice->SetStreamSource(0,NULL,0,0)==S_OK,9);
  IDirect3DVertexBuffer9* retained=NULL;UINT offset=99,stride=99;
  REQUIRE_STREAM(g_pd3dDevice->GetStreamSource(1,&retained,&offset,&stride)==S_OK&&retained==color&&offset==32&&stride==24,10);retained->Release();
- REQUIRE_STREAM(g_pd3dDevice->GetStreamSource(0,&retained,&offset,&stride)==S_OK&&!retained&&offset==0&&stride==0,11);
+ HRESULT unbound_hr=g_pd3dDevice->GetStreamSource(0,&retained,&offset,&stride);
+ if(unbound_hr!=S_OK||retained||offset!=0||stride!=0){put(0x5354524d);put((DWORD)unbound_hr);put((DWORD)retained);put(offset);put(stride);return 11;}
  REQUIRE_STREAM(g_pd3dDevice->SetStreamSource(16,NULL,0,0)<0&&g_pd3dDevice->GetStreamSource(16,&retained,&offset,&stride)<0&&g_pd3dDevice->SetStreamSourceFreq(16,1)<0&&g_pd3dDevice->GetStreamSourceFreq(16,&stride)<0,12);
  const D3DVERTEXELEMENT9 split[]={{15,0,3,0,0,0},{1,4,3,0,10,0},{255,0,17,0,0,0}};
  IDirect3DVertexDeclaration9* declaration=NULL;REQUIRE_STREAM(g_pd3dDevice->CreateVertexDeclaration(split,&declaration)==S_OK&&declaration,13);

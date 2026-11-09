@@ -6727,3 +6727,25 @@ references are released. The separate-stream ordinary/indexed complete-frame
 PE also passes with arena storage. CI transfers the identical allocation PE for
 native comparison, pending. The next clean original replay determines whether
 this clears the observed allocation stop; no original game files were committed.
+
+## Buffer arenas reach an original scene draw; stencil initialization stops it
+
+Clean d974dba passes the prior buffer allocation guard and original cleanup,
+loads more character resources, and reaches a new indexed scene draw. It stops
+because the active depth/stencil object's stencil aspect is not marked
+initialized. The preceding original call clears color/depth (flags 3), not
+stencil. No scene frame is yet verified. Existing first-unique logging cannot
+reconstruct all repeated render-state transitions; a focused diagnostic now
+records the actual failing stencil state and distinguishes absent stencil from
+uninitialized stencil. Unsupported Clear regions also report their viewport and
+target dimensions. These diagnostics change no draw/clear success criteria.
+
+The new separate-stream native comparison on 63f3169 in CI 42682096185 fails
+at its unbound-stream query assertion (stage 11), before either rendered frame.
+This is distinct from the older POSITIONT/StretchRect failures. The exact native
+report is frozen at `pe/reference/pe32-separate-streams-unbind-windows-v1.json`
+(SHA-256 `42cd5cbd4db78bb5a654e5fd84c057cee4e3cb10920e6a78bc7be119786c26c5`). The report
+establishes that the combined NULL/offset/stride assertion differs, but does not
+identify which returned field differs. The witness now emits those raw fields
+on this same failure without weakening its assertion. Native multi-stream
+full-frame agreement remains unestablished until this contract is diagnosed.
