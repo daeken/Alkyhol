@@ -5676,3 +5676,32 @@ linear/sRGB frames. Direct GPU tests independently cover BC1/2/3 with alpha,
 all four mip levels including 1x1/2x2 tails and shared initialization guards.
 New native Windows/software Vulkan BC comparisons are pending; no game data or
 derived shader/texture inventory is uploaded by these CI steps.
+
+
+## DAO indexed font bitmaps and continued archive loading
+
+D3D9 CI 42593980363 passes all three jobs on 7c6472d, including native Windows
+execution of the identical BC3 PE and software Vulkan GPU tests. Input/startup
+CI 42592868000 passes the corrected 36-word file security witness and the existing
+input, CRT and mutex comparisons. These are finite API observations, not DAO
+frame parity.
+
+DAO's actual font setup requests top-down 8-bit BI_RGB DIB sections with 256
+RGBQUAD colors. These now own real indexed bytes with DWORD row stride,
+orientation, palette decoding and exact-color writeback. Padding and unchanged
+indices are preserved; unsupported quantization, other compression and palette
+modes stop explicitly. The owned 33-word PE checks guarded DIB metadata, raw
+indices/padding, GetPixel, exact FillRect writes, both orientations, RGB copies
+in both directions and object/stack lifetime. It passes on physical M4 along
+with all 185 PE library tests, remaining targets and Clippy; native comparison
+is pending.
+
+The private guest now has an explicit empty COM class registration catalog:
+no optional guest COM servers have been registered. This is selected virtual
+installation state, not a captured Windows registry and not an inference that
+unknown keys are absent. All queries outside declared scopes still stop. The
+private run records profile/catalog hashes alongside runtime and original EXE
+identities. With that configuration the unchanged original EXE continues into
+its original archive searches/opens and a larger original shader batch. No
+original draw, Present or game frame is established yet. Original files and
+all derived traces remain local.

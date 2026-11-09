@@ -20,6 +20,19 @@ jobs:
           cargo test --manifest-path pe/Cargo.toml --target x86_64-apple-darwin --locked --offline input
           python tools/observe_input8_lifecycle.py
           python tools/observe_input8_lifecycle.py --host
+      - name: Execute the indexed DIB operations reached by DAO font setup
+        run: |
+          python tools/observe_pe32_palette_dib.py
+          python tools/observe_pe32_palette_dib.py --host
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: palette-dib-identical-pe
+          path: |
+            local/pe/palette-dib-microtest/palette-dib.exe
+            local/pe/palette-dib-microtest/palette-dib-inputs.json
+            local/pe/palette-dib-microtest/palette-dib-host.json
+          if-no-files-found: error
       - name: Execute the file security attributes reached by DAO settings writes
         run: |
           python tools/observe_pe32_file_family.py --output local/pe/file-security-microtest
@@ -96,6 +109,18 @@ jobs:
         with:
           name: file-security-identical-pe
           path: local/pe/file-security-microtest
+      - uses: actions/download-artifact@v4
+        with:
+          name: palette-dib-identical-pe
+          path: local/pe/palette-dib-microtest
+      - name: Compare identical indexed DIB PE on native Windows
+        run: python tools/observe_pe32_palette_dib.py --native
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: palette-dib-native-observation
+          path: local/pe/palette-dib-microtest/native-palette-dib.json
+          if-no-files-found: warn
       - name: Compare identical file PE, bytes and inheritance metadata
         run: python tools/observe_pe32_file_family.py --native --output local/pe/file-security-microtest
       - uses: actions/upload-artifact@v4

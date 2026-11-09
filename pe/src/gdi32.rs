@@ -14,6 +14,8 @@ struct Bitmap {
 struct Dib {
     memory: Rc<super::LowMapping>,
     size: usize,
+    pitch: usize,
+    palette: Vec<[u8; 4]>,
     top_down: bool,
     header: [u32; 10],
 }
@@ -22,40 +24,71 @@ impl Bitmap {
         let Some(dib) = &self.dib else {
             return self.pixels.clone();
         };
-        let mut pixels = vec![0; dib.size];
-        let row = self.width as usize * 4;
+        let mut pixels = vec![0; self.width as usize * self.height as usize * 4];
         for y in 0..self.height as usize {
             let source = if dib.top_down {
                 y
             } else {
                 self.height as usize - 1 - y
             };
-            unsafe {
-                std::ptr::copy_nonoverlapping(
-                    dib.memory.base.add(source * row),
-                    pixels.as_mut_ptr().add(y * row),
-                    row,
-                );
+            if self.bits == 8 {
+                for x in 0..self.width as usize {
+                    let index =
+                        unsafe { dib.memory.base.add(source * dib.pitch + x).read() } as usize;
+                    let color = dib.palette.get(index).unwrap_or_else(|| {
+                        unsupported("DIB palette index outside supplied colors")
+                    });
+                    pixels
+                        [(y * self.width as usize + x) * 4..(y * self.width as usize + x) * 4 + 4]
+                        .copy_from_slice(color);
+                }
+            } else {
+                unsafe {
+                    std::ptr::copy_nonoverlapping(
+                        dib.memory.base.add(source * dib.pitch),
+                        pixels.as_mut_ptr().add(y * self.width as usize * 4),
+                        self.width as usize * 4,
+                    );
+                }
             }
         }
         pixels
     }
     fn commit(&mut self, pixels: Vec<u8>) {
         if let Some(dib) = &self.dib {
-            let row = self.width as usize * 4;
+            let mut encoded =
+                unsafe { std::slice::from_raw_parts(dib.memory.base, dib.size) }.to_vec();
             for y in 0..self.height as usize {
                 let dest = if dib.top_down {
                     y
                 } else {
                     self.height as usize - 1 - y
                 };
-                unsafe {
-                    std::ptr::copy_nonoverlapping(
-                        pixels.as_ptr().add(y * row),
-                        dib.memory.base.add(dest * row),
-                        row,
-                    );
+                if self.bits == 8 {
+                    for x in 0..self.width as usize {
+                        let pixel = &pixels[(y * self.width as usize + x) * 4
+                            ..(y * self.width as usize + x) * 4 + 4];
+                        let address = dest * dib.pitch + x;
+                        // Keep the original index for unchanged RGB values, including
+                        // duplicate palette entries and pixels outside the write rectangle.
+                        if !dib
+                            .palette
+                            .get(encoded[address] as usize)
+                            .is_some_and(|color| color[..3] == pixel[..3])
+                        {
+                            let index = dib.palette.iter().position(|color|color[..3] == pixel[..3]).unwrap_or_else(||unsupported("DIB indexed writes require an exact supplied palette color; quantization is unimplemented"));
+                            encoded[address] = index as u8;
+                        }
+                    }
+                } else {
+                    encoded[dest * dib.pitch..dest * dib.pitch + self.width as usize * 4]
+                        .copy_from_slice(
+                            &pixels[y * self.width as usize * 4..(y + 1) * self.width as usize * 4],
+                        );
                 }
+            }
+            unsafe {
+                std::ptr::copy_nonoverlapping(encoded.as_ptr(), dib.memory.base, dib.size);
             }
         } else {
             self.pixels = pixels;
@@ -259,7 +292,12 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32
                 return fail(87);
             }
             checked(image, a[2], 24);
-            let row = (b.width * b.bits as u32).div_ceil(16) * 2;
+            let row = b
+                .dib
+                .as_ref()
+                .map_or((b.width * b.bits as u32).div_ceil(16) * 2, |dib| {
+                    dib.pitch as u32
+                });
             let out = [
                 0,
                 b.width,
@@ -691,21 +729,50 @@ pub(super) fn dib_section(image: &LoadedImage32<'_>, a: &[u32; 8]) -> u32 {
     }
     checked(image, a[3], 4);
     let header = unsafe { (a[1] as *const [u32; 10]).read() };
+    if image.cpu.diagnostic.is_some() {
+        eprintln!("PE32 diagnostic DIB header: {header:x?}");
+    }
     let width = header[1];
     let height = (header[2] as i32).unsigned_abs();
     if header[0] != 40
         || (width as i32) <= 0
         || header[2] as i32 == i32::MIN
         || height == 0
-        || header[3] != 0x200001
+        || ![0x200001, 0x080001].contains(&header[3])
         || header[4] != 0
-        || header[8] != 0
+        || header[3] == 0x200001 && header[8] != 0
+        || header[3] == 0x080001 && header[8] > 256
     {
-        unsupported("DIB section requires a bounded 32-bit BI_RGB header");
+        unsupported("DIB section requires a bounded 8/32-bit BI_RGB header");
     }
-    let bytes = blank(width, height)
+    let _canonical_bytes = blank(width, height)
         .unwrap_or_else(|e| unsupported(&e))
         .len();
+    let bits = (header[3] >> 16) as u16;
+    let pitch = if bits == 8 {
+        (width as usize).div_ceil(4) * 4
+    } else {
+        width as usize * 4
+    };
+    let bytes = pitch * height as usize;
+    let palette = if bits == 8 {
+        let count = if header[8] == 0 {
+            256
+        } else {
+            header[8] as usize
+        };
+        if !image.permits(a[1] as usize + 40, count * 4, false) {
+            unsupported("DIB palette outside readable guest storage");
+        }
+        let data =
+            unsafe { std::slice::from_raw_parts((a[1] as usize + 40) as *const [u8; 4], count) };
+        if data.iter().any(|color| color[3] != 0) {
+            unsupported("DIB RGBQUAD reserved fields must be zero");
+        }
+        data.to_vec()
+    } else {
+        Vec::new()
+    };
     if a[0] != 0 && !image.cpu.gdi.borrow().dcs.contains_key(&a[0]) {
         return fail(6);
     }
@@ -725,11 +792,13 @@ pub(super) fn dib_section(image: &LoadedImage32<'_>, a: &[u32; 8]) -> u32 {
         Bitmap {
             width,
             height,
-            bits: 32,
+            bits,
             pixels: Vec::new(),
             dib: Some(Dib {
                 memory,
                 size: bytes,
+                pitch,
+                palette,
                 top_down: (header[2] as i32) < 0,
                 header,
             }),
