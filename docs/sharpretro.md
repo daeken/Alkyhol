@@ -528,3 +528,25 @@ units also verify a fault on the second source of a later iteration and invalid
 sources skipped by zero repeat count. All 67 default CPU tests and runner Clippy
 pass; seven external observers remain separately invoked. This is finite host
 CPU evidence, not an original game frame or parity with Rosetta's cutscene.
+
+The subsequent original run reaches CMPPD in runtime math at 1,617,727,162
+loading-thread instructions, after further settings setup (227.5s uncontrolled
+wall time, original inputs unchanged). No Present was observed. The eight legacy
+scalar/packed predicate and COMI/UCOMI comparison forms now use software
+binary32/64 classification/order, guest DAZ/MXCSR and atomic result/flags commit.
+Bounds, alignment, aliasing, ignored high immediate bits and explicit unmasked
+#XM exclusion have native unit coverage.
+
+The independent matrix exposed a real evidence difference. Native x64 Windows
+Server on AuthenticAMD in [CI 42765765607](https://github.com/daeken/Alkyhol/actions/runs/42765765607)
+and actual Rosetta agree on all 18,432 comparison masks and EFLAGS results, but
+differ on MXCSR DE in 152 ORD/UNORD NaN/denormal rows. Both complete raw tables
+and provenance are frozen under jit32/reference; neither was rewritten. The
+runner follows that measured native Windows AMD profile. All 18,432 Windows
+rows agree via `tools/check_jit32_compare_windows.py`; the separate strict
+`tools/check_jit32_compare.py` Rosetta comparison remains failed and records its
+failure. This is not physical Intel evidence or universal CPU-model parity.
+Windows CRLF versus macOS LF observer source identities are recorded explicitly;
+the Windows stdout transport uses binary mode. All 71 default native CPU tests
+and runner Clippy pass, with eight external observations invoked separately.
+The next original replay retains the explicit ten-billion budget.

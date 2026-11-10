@@ -1,0 +1,72 @@
+{
+  "backend": "native Windows x64 original SIMD assembly",
+  "source_sha256": "06115a596f0dfc70900100aae978d528bd3887fefb23367b33207b48f9faaa08",
+  "observer_sha256": "1dcdc17f855115ef4266930ad62149771b45fdb20f1c59697cd27c9a4d1f29db",
+  "observation_sha256": "668ad960788af5dfbaae4f265635672a5afc98b25867519b8c5909e1b1b6f2c3",
+  "rows": 18432,
+  "native_machine": 34404,
+  "process_machine": 0,
+  "host": "Windows-2025Server-10.0.26100-SP0",
+  "processor": "AMD64 Family 25 Model 1 Stepping 1, AuthenticAMD",
+  "stderr_hex": "",
+  "revision": "7dbc9701a8a60dd6c3a93668605875972b987070",
+  "schema": 1,
+  "source": "jit32/tests/sse_compare_reference.c",
+  "source_lf_sha256": "82c997f9d879c59e4c9d94e56f5d233fce515dce17da4f697dde0049dea3e3c8",
+  "source_transport": "Native Windows raw source CRLF hash preserved; LF-normalized identity verified by exact CRLF transform.",
+  "fixture": "jit32/reference/sse-compare-windows-amd64-v1.bin.gz",
+  "fixture_sha256": "977e4ad26926a7febe5d15d6ad7129810f6b56b3c13db36e93982be94c8ed021",
+  "observation_bytes": 1327104,
+  "workflow_run": "https://github.com/daeken/Alkyhol/actions/runs/42765765607",
+  "scope": "Finite native Windows AMD64 observation; not physical Intel or full ISA/game proof.",
+  "rosetta_differences": {
+    "rows": 152,
+    "fields": "MXCSR DE only; vector results and EFLAGS agree",
+    "predicates": [
+      3,
+      7
+    ],
+    "counts": [
+      {
+        "kind": 0,
+        "predicate": 3,
+        "rows": 12
+      },
+      {
+        "kind": 0,
+        "predicate": 7,
+        "rows": 12
+      },
+      {
+        "kind": 1,
+        "predicate": 3,
+        "rows": 12
+      },
+      {
+        "kind": 1,
+        "predicate": 7,
+        "rows": 12
+      },
+      {
+        "kind": 2,
+        "predicate": 3,
+        "rows": 30
+      },
+      {
+        "kind": 2,
+        "predicate": 7,
+        "rows": 30
+      },
+      {
+        "kind": 3,
+        "predicate": 3,
+        "rows": 22
+      },
+      {
+        "kind": 3,
+        "predicate": 7,
+        "rows": 22
+      }
+    ]
+  }
+}

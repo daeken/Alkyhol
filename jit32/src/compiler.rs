@@ -933,7 +933,8 @@ pub(crate) fn compile(pc: u32, bytes: &[u8]) -> Result<Instruction> {
         && !ADMITTED.contains(&mnemonic)
         && !VARIABLE_SHIFTS.contains(&mnemonic)
         && crate::fpu_ops::operation(mnemonic).is_none()
-        && crate::sse_arithmetic::operation(mnemonic).is_none())
+        && crate::sse_arithmetic::operation(mnemonic).is_none()
+        && crate::sse_compare::operation(mnemonic).is_none())
         || (d.p.lock
             && ![
                 "ADD", "SUB", "AND", "OR", "XOR", "INC", "DEC", "NEG", "NOT", "CMPXCHG", "XADD",
@@ -1221,6 +1222,28 @@ pub(crate) fn compile(pc: u32, bytes: &[u8]) -> Result<Instruction> {
                 };
                 write_operand(&mut bd, &dest, value);
             }
+        } else if let Some(operation) = crate::sse_compare::operation(mnemonic) {
+            let address = if d.m.is_reg {
+                bd.literal(IlType::U32, 0)
+            } else {
+                xfusion_recomp::operand::addr_from_modrm(&mut bd, &d, pc as u64, XMode::Bits32)
+            };
+            let address = bd.address(address, false);
+            let description = operation
+                | ((d.m.reg as u64 & 7) << 8)
+                | ((d.m.rm as u64 & 7) << 12)
+                | ((d.m.is_reg as u64) << 16)
+                | (((d.imm0 as u64) & 7) << 20);
+            let e = &mut bd.inner.enc;
+            e.ldr_x(0, 28, 90 * 8);
+            e.mov_r(1, 28);
+            e.mov_imm64(2, description);
+            e.ldr_x(3, 27, address * 8);
+            e.mov_imm64(16, crate::sse_compare::execute as *const () as u64);
+            e.put_raw(0xd63f0200);
+            let at = e.here();
+            e.cbz(0, 0);
+            shared.guards.borrow_mut().push(at);
         } else if let Some(operation) = crate::sse_arithmetic::operation(mnemonic) {
             let address = if d.m.is_reg {
                 bd.literal(IlType::U32, 0)

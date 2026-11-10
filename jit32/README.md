@@ -164,3 +164,10 @@ immediate-mask, segment/wrap and excluded-form checks.
 x86/Rosetta assembly across operand widths, repeat conditions/counts and DF
 directions. Memory-fault commitment and zero-count invalid-source tests run in
 the default native suite.
+
+`python3 tools/check_jit32_compare_windows.py` checks all 18,432 frozen native
+Windows AMD comparison rows. Both native Windows and Rosetta raw tables are
+preserved under reference/. Their masks/EFLAGS agree, but 152 NaN/denormal DE
+status rows differ. The runner follows the measured Windows AMD profile;
+`tools/check_jit32_compare.py` remains a strict Rosetta diagnostic and currently
+fails on those differences. Neither table is a universal CPU/game proof.

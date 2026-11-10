@@ -7761,3 +7761,25 @@ message/paint, SEH and capture observations still report differences; those
 failures are retained, not suppressed or relabeled as passes. The new standalone
 native x64 SIMD observation job measures the owned comparison matrix without
 game inputs and refuses ARM/translated Windows hosts. Its result is pending.
+
+Native SIMD observation run 42765765607 succeeds on native x64 Windows Server
+2025, AuthenticAMD Family 25 Model 1. The first attempt stopped at a binary
+stdout transport-size check; Windows binary mode corrects that transport, without
+changing any matrix inputs/results. The complete 18,432-row raw table SHA-256 is
+668ad960788af5dfbaae4f265635672a5afc98b25867519b8c5909e1b1b6f2c3.
+Its source's native CRLF hash and verified LF-normalized hash are both preserved.
+The frozen table and provenance are jit32/reference/sse-compare-windows-amd64-v1.*;
+the complete Rosetta counterpart is frozen separately. Results/masks and EFLAGS
+agree for every row; MXCSR DE differs in 152 ORD/UNORD NaN/denormal rows. The
+runner implements the measured native Windows AMD profile, matching every row
+with `tools/check_jit32_compare_windows.py`. The strict Rosetta comparator still
+fails; it does not drop or bless those differences. No physical Intel or general
+CPU model equivalence is inferred.
+
+The latest original run reaches CMPPD after settings initialization at
+1,617,727,162 loading-thread instructions (227.5s uncontrolled wall time, original
+inputs unchanged); no Present was observed. The eight legacy SIMD comparison
+forms now pass 71 default CPU tests/Clippy, with memory/alignment, aliasing,
+immediate-mask and explicit unmasked-exception failure coverage. Eight external
+observers are invoked separately. Original replay follows; game-frame and
+Rosetta cutscene progress parity remain unestablished.

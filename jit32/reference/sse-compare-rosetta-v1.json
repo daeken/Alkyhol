@@ -1,0 +1,22 @@
+{
+  "backend": "physical native ARM JIT vs actual x86/Rosetta assembly",
+  "source_sha256": "82c997f9d879c59e4c9d94e56f5d233fce515dce17da4f697dde0049dea3e3c8",
+  "observer_sha256": "479c6060c8a8ac7de11f5203ffbea09cde2f6840be88f75298962fcf4be8a97d",
+  "observation_sha256": "b91abe4e6739cae305d277afbd7c31d6d2c649373d17d5565deb8eaadcfc6709",
+  "rows": 18432,
+  "model_status": 101,
+  "all_rows_match": false,
+  "host": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+  "revision": "7dbc9701a8a60dd6c3a93668605875972b987070",
+  "schema": 1,
+  "source": "jit32/tests/sse_compare_reference.c",
+  "fixture": "jit32/reference/sse-compare-rosetta-v1.bin.gz",
+  "fixture_sha256": "15149220c1c6cb5f76ff4410d199895a633bc9495edb859b2b2a3650264db1cd",
+  "observation_bytes": 1327104,
+  "native_counterpart": "jit32/reference/sse-compare-windows-amd64-v1.json",
+  "scope": "Actual Rosetta-translated x86 assembly observations, not native Windows or physical Intel.",
+  "native_windows_amd_differences": {
+    "rows": 152,
+    "fields": "MXCSR DE only in ORD/UNORD; comparison results and EFLAGS agree"
+  }
+}
