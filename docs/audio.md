@@ -85,3 +85,14 @@ deferred position/commit, invalid-factor rejection and retained release. Its
 71 fixed words pass normal/rebased on physical Rosetta/CoreAudio. A separate
 unit checks immediate/deferred field coexistence and atomic rejection. Original
 FMOD streaming after this change is still pending replay.
+
+### Original FMOD streaming observed
+
+Clean 7943c38's original Rosetta replay creates the primary listener and an
+original FMOD PCM16 stereo streaming buffer (98,304 bytes), sets its playback
+frequency to 48 kHz and calls Play(looping). Original Bink also creates real
+115,712-byte PCM16 stereo output buffers. Original listener SetAllParameters and
+CommitDeferredSettings execute. Physical AudioQueue reports millions of consumed
+frames with increasing nonzero PCM counts while the original menu renders.
+This is physical original-binary output evidence; listener audibility/quality
+confirmation and exact native Windows waveform parity remain separate.

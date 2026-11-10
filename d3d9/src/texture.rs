@@ -1,10 +1,10 @@
 //! Actual BGRA8 mip storage and D3D9 sampling state. Unknown state fails.
 use crate::{Device, Result, Target, extent};
 use std::sync::{
-    Arc,
+    Arc, OnceLock,
     atomic::{AtomicBool, Ordering},
 };
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct SamplerState {
     values: [u32; 14],
 }
@@ -142,6 +142,7 @@ pub struct SampledTexture {
     depth: u32,
     volume: bool,
     initialized: Vec<Arc<AtomicBool>>,
+    views: [OnceLock<wgpu::TextureView>; 2],
 }
 /// Historical source-compatible name for the sampled storage container.
 pub type Texture2D = SampledTexture;
@@ -200,21 +201,25 @@ impl SampledTexture {
         if matches!(self.format, SampleFormat::Luminance8 | SampleFormat::Alpha8) && srgb {
             return Err("sRGB sampling of L8/A8 requires native format evidence".into());
         }
-        Ok(self.texture.create_view(&wgpu::TextureViewDescriptor {
-            dimension: Some(if self.volume {
-                wgpu::TextureViewDimension::D3
-            } else if self.is_cube() {
-                wgpu::TextureViewDimension::Cube
-            } else {
-                wgpu::TextureViewDimension::D2
-            }),
-            format: Some(if srgb {
-                self.format.native().add_srgb_suffix()
-            } else {
-                self.format.native()
-            }),
-            ..Default::default()
-        }))
+        Ok(self.views[usize::from(srgb)]
+            .get_or_init(|| {
+                self.texture.create_view(&wgpu::TextureViewDescriptor {
+                    dimension: Some(if self.volume {
+                        wgpu::TextureViewDimension::D3
+                    } else if self.is_cube() {
+                        wgpu::TextureViewDimension::Cube
+                    } else {
+                        wgpu::TextureViewDimension::D2
+                    }),
+                    format: Some(if srgb {
+                        self.format.native().add_srgb_suffix()
+                    } else {
+                        self.format.native()
+                    }),
+                    ..Default::default()
+                })
+            })
+            .clone())
     }
 }
 pub struct TextureBinding<'a> {
@@ -222,7 +227,43 @@ pub struct TextureBinding<'a> {
     pub texture: &'a Texture2D,
     pub sampler: SamplerState,
 }
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct LegacyResourceStats {
+    pub sampler_builds: u64,
+    pub sampler_hits: u64,
+    pub sampler_evictions: u64,
+    pub sampler_entries: usize,
+}
+#[derive(Default)]
+pub(crate) struct Samplers {
+    entries: std::collections::BTreeMap<SamplerState, wgpu::Sampler>,
+    order: std::collections::VecDeque<SamplerState>,
+    stats: LegacyResourceStats,
+}
 impl Device {
+    pub fn legacy_resource_cache_stats(&self) -> LegacyResourceStats {
+        self.legacy_samplers.lock().unwrap().stats
+    }
+    pub(crate) fn legacy_sampler(&self, state: SamplerState) -> Result<wgpu::Sampler> {
+        let mut cache = self.legacy_samplers.lock().unwrap();
+        if let Some(sampler) = cache.entries.get(&state).cloned() {
+            cache.stats.sampler_hits += 1;
+            return Ok(sampler);
+        }
+        self.scope();
+        let sampler = self.device.create_sampler(&state.descriptor());
+        self.finish()?;
+        if cache.entries.len() >= 64 {
+            let oldest = cache.order.pop_front().unwrap();
+            cache.entries.remove(&oldest);
+            cache.stats.sampler_evictions += 1;
+        }
+        cache.entries.insert(state, sampler.clone());
+        cache.order.push_back(state);
+        cache.stats.sampler_builds += 1;
+        cache.stats.sampler_entries = cache.entries.len();
+        Ok(sampler)
+    }
     /// D3D9 NULL float pixel samplers read (0,0,0,1). These private, initialized
     /// views implement that API state only; a bound invalid/uninitialized
     /// texture is never replaced. Views retain the declared image dimension.
@@ -274,6 +315,7 @@ impl Device {
             depth: 1,
             volume: false,
             initialized: vec![target.initialized.clone()],
+            views: Default::default(),
         };
         Ok((sampled, target))
     }
@@ -348,6 +390,7 @@ impl Device {
             initialized: (0..levels)
                 .map(|_| Arc::new(AtomicBool::new(false)))
                 .collect(),
+            views: Default::default(),
         })
     }
     /// Upload a complete mip in tightly packed z-slice/row order.
@@ -470,6 +513,7 @@ impl Device {
             initialized: (0..levels * layers)
                 .map(|_| Arc::new(AtomicBool::new(false)))
                 .collect(),
+            views: Default::default(),
         })
     }
     pub fn upload_texture(&self, texture: &mut Texture2D, level: u32, bytes: &[u8]) -> Result<()> {
@@ -578,6 +622,57 @@ fn expand_luminance(bytes: &[u8]) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    #[ignore = "requires an actual GPU"]
+    fn immutable_resource_cache_is_bounded_and_never_bypasses_mip_validation() {
+        let device = Device::new().unwrap();
+        assert_eq!(
+            device.legacy_resource_cache_stats(),
+            LegacyResourceStats::default()
+        );
+        for n in 0..66 {
+            let mut state = SamplerState::default();
+            state.set(1, 1 + n % 3).unwrap();
+            state.set(2, 1 + (n / 3) % 3).unwrap();
+            state.set(3, 1 + (n / 9) % 3).unwrap();
+            state.set(9, n / 27).unwrap();
+            device.legacy_sampler(state).unwrap();
+        }
+        let stats = device.legacy_resource_cache_stats();
+        assert_eq!(
+            (
+                stats.sampler_builds,
+                stats.sampler_entries,
+                stats.sampler_evictions
+            ),
+            (66, 64, 2)
+        );
+        device.legacy_sampler(SamplerState::default()).unwrap();
+        device.legacy_sampler(SamplerState::default()).unwrap();
+        let stats = device.legacy_resource_cache_stats();
+        assert_eq!(
+            (
+                stats.sampler_builds,
+                stats.sampler_hits,
+                stats.sampler_entries,
+                stats.sampler_evictions
+            ),
+            (67, 1, 64, 3)
+        );
+        let mut texture = device.create_texture(2, 2, 2).unwrap();
+        assert!(texture.view(false).is_err());
+        assert!(texture.views[0].get().is_none());
+        device.upload_texture(&mut texture, 0, &[128; 16]).unwrap();
+        assert!(texture.view(false).is_err());
+        device.upload_texture(&mut texture, 1, &[64; 4]).unwrap();
+        texture.view(false).unwrap();
+        texture.view(true).unwrap();
+        assert!(texture.views.iter().all(|view| view.get().is_some()));
+        texture.initialized[1].store(false, Ordering::Release);
+        assert!(texture.view(false).is_err());
+        assert!(texture.view(true).is_err());
+    }
+
     #[test]
     fn alpha_and_argb4444_keep_raw_pitches_and_every_channel_value() {
         assert_eq!(SampleFormat::Alpha8.block_layout(3, 2).unwrap(), (3, 2));

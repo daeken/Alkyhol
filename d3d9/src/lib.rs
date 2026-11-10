@@ -28,7 +28,9 @@ mod texture_stages;
 pub use legacy_gpu::{LegacyDraw, LegacyPipelineStats, viewport_from_words};
 pub mod fixed_vertex;
 pub mod fixed_xyz;
-pub use texture::{SampleFormat, SampledTexture, SamplerState, Texture2D, TextureBinding};
+pub use texture::{
+    LegacyResourceStats, SampleFormat, SampledTexture, SamplerState, Texture2D, TextureBinding,
+};
 pub use texture_stages::TextureStages;
 pub use wgpu::{VertexAttribute, VertexFormat};
 pub type Result<T> = std::result::Result<T, String>;
@@ -41,6 +43,7 @@ pub struct Device {
     null_textures: OnceLock<Result<[SampledTexture; 3]>>,
     legacy_pipelines: std::sync::Mutex<legacy_gpu::PipelineCache>,
     legacy_uploads: std::sync::Mutex<legacy_upload::Uploads>,
+    legacy_samplers: std::sync::Mutex<texture::Samplers>,
 }
 #[derive(Clone)]
 pub struct Target {
@@ -109,6 +112,7 @@ impl Device {
             null_textures: OnceLock::new(),
             legacy_pipelines: Default::default(),
             legacy_uploads: Default::default(),
+            legacy_samplers: Default::default(),
         })
     }
     pub fn adapter_name(&self) -> &str {

@@ -2960,7 +2960,7 @@ mod tests {
             let symbol = ImportSymbol::Name(name.into());
             assert_eq!(api_id("kernel32.dll", &symbol), Some(id));
             assert_eq!(api_id("user32.dll", &symbol), None);
-            assert_eq!(APIS[id as usize].1, 4);
+            assert_eq!(APIS[id].1, 4);
             assert_eq!(cleanup_bytes(id, 4), 4);
         }
     }

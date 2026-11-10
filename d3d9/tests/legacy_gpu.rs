@@ -181,6 +181,11 @@ fn real_legacy_texture_sampling_applies_srgb_to_rgb_and_preserves_alpha() {
             }
         );
     }
+    let cached = device.legacy_resource_cache_stats();
+    assert_eq!(cached.sampler_builds, 2);
+    assert_eq!(cached.sampler_hits, 2);
+    assert_eq!(cached.sampler_entries, 2);
+    assert_eq!(cached.sampler_evictions, 0);
     let mut luminance = device
         .create_sampled_texture(3, 2, 0, alkyhol_d3d9::SampleFormat::Luminance8)
         .unwrap();

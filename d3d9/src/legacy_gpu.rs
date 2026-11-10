@@ -408,11 +408,7 @@ impl Device {
                             crate::SamplerState::default(),
                         )
                     };
-                Ok((
-                    slot,
-                    view,
-                    self.device.create_sampler(&sampler.descriptor()),
-                ))
+                Ok((slot, view, self.legacy_sampler(sampler)?))
             })
             .collect::<Result<_>>()?;
         if data.iter().enumerate().any(|(n, bytes)| {

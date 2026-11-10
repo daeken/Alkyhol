@@ -8794,3 +8794,18 @@ That finite listener state is now implemented and covered by the version-3
 71-word COM/playback witness and a parameter-state unit. Spatial sound buffers
 remain explicitly unsupported. The original game's sound remains unverified
 until a subsequent replay submits actual nonzero PCM.
+
+The 7943c38 replay (PID 12820) now executes original FMOD streaming/Play and
+original Bink output through the real DirectSound bridge. AudioQueue counters
+show increasing consumed/nonzero frames; see [audio.md](audio.md). User hearing
+confirmation is pending. The scheduler's actual game improvement is not isolated
+from other changes or the newly active audio work.
+
+CI 42904367696 on 73ace75 passes the new identical-PE native Windows render-target
+capability/allocation comparison, and its Metal producer passes. The overall run
+still fails other native pixel/fixture checks and a Vulkan volume-rounding check
+(128,0,127 versus expected 128,0,128). No fixtures/acceptance criteria were changed.
+PE CI 42904367406 identifies an unnecessary usize cast in the earlier deletion
+unit; that test-only cast is removed, and all-target Clippy is rerun locally.
+Other native startup comparison failures remain distinct from the new feature
+evidence; the whole CI suite is not claimed green.
