@@ -13,6 +13,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Check immutable native execution section bounds without a GUI
+        run: |
+          mkdir -p local/jit32
+          rustc --edition 2024 --test -D warnings pe/probe_exec_ranges.rs -o local/jit32/executable-range-tests
+          local/jit32/executable-range-tests
       - name: Fetch locked dependencies before offline PE builds
         if: runner.os == 'macOS'
         run: cargo fetch --manifest-path pe/Cargo.toml --locked
