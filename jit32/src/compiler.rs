@@ -901,6 +901,8 @@ pub(crate) fn compile(pc: u32, bytes: &[u8]) -> Result<Instruction> {
         "SAL",
         "ROL",
         "ROR",
+        "SHLD",
+        "SHRD",
         "XLAT",
         "BSWAP",
         "BSF",
@@ -1010,6 +1012,9 @@ pub(crate) fn compile(pc: u32, bytes: &[u8]) -> Result<Instruction> {
     }
     if ["DIV", "IDIV"].contains(&mnemonic) && (d.op == 0xf6 || d.p.v_width(XMode::Bits32) != 32) {
         return Err(format!("non-32-bit division not admitted at {pc:#x}"));
+    }
+    if ["SHLD", "SHRD"].contains(&mnemonic) && d.p.v_width(XMode::Bits32) != 32 {
+        return Err("double shifts currently require 32-bit operands".into());
     }
     if ["MUL", "IMUL1"].contains(&mnemonic) && (d.op == 0xf6 || d.p.v_width(XMode::Bits32) != 32) {
         return Err(format!(
@@ -1129,6 +1134,72 @@ pub(crate) fn compile(pc: u32, bytes: &[u8]) -> Result<Instruction> {
                     ah,
                 );
             }
+        } else if ["SHLD", "SHRD"].contains(&mnemonic) {
+            use xfusion_recomp::operand::{
+                bind_modrm_reg, bind_modrm_rm, read_operand, write_operand,
+            };
+            let dest = bind_modrm_rm(&mut bd, &d, pc as u64, XMode::Bits32, 32);
+            let old = read_operand(&mut bd, &dest);
+            let source = read_operand(&mut bd, &bind_modrm_reg(&d, 32));
+            let count = if d.op & 1 == 0 {
+                bd.literal(IlType::U32, d.imm0 as u8 as u128)
+            } else {
+                bd.reg_read(RegFile(0), 1, IlType::U32)
+            };
+            let mask = bd.literal(IlType::U32, 31);
+            let count = bd.and(count, mask);
+            let high = bd.cast(if mnemonic == "SHRD" { source } else { old }, IlType::U64);
+            let low = bd.cast(if mnemonic == "SHRD" { old } else { source }, IlType::U64);
+            let width = bd.literal(IlType::U64, 32);
+            let high = bd.shl(high, width);
+            let pair = bd.or(high, low);
+            let value = if mnemonic == "SHRD" {
+                bd.shr(pair, count)
+            } else {
+                let shifted = bd.shl(pair, count);
+                bd.shr(shifted, width)
+            };
+            let value = bd.cast(value, IlType::U32);
+            write_operand(&mut bd, &dest, value);
+            let zero = bd.literal(IlType::U32, 0);
+            let active = bd.ne(count, zero);
+            bd.cond(
+                active,
+                &mut |bd| {
+                    let one = bd.literal(IlType::U32, 1);
+                    let bit = if mnemonic == "SHRD" {
+                        bd.sub(count, one)
+                    } else {
+                        let width = bd.literal(IlType::U32, 32);
+                        bd.sub(width, count)
+                    };
+                    let carry = bd.shr(old, bit);
+                    bd.flag_bit(0, carry, 0);
+                    let zf = bd.eq(value, zero);
+                    bd.reg_write(RegFile(1), 6, zf);
+                    bd.flag_bit(7, value, 31);
+                    let byte = bd.cast(value, IlType::U8);
+                    let byte = bd.cast(byte, IlType::U32);
+                    let four = bd.literal(IlType::U32, 4);
+                    let upper = bd.shr(byte, four);
+                    let folded = bd.xor(byte, upper);
+                    let mask = bd.literal(IlType::U32, 15);
+                    let folded = bd.and(folded, mask);
+                    let table = bd.literal(IlType::U32, 0x9669);
+                    let parity = bd.shr(table, folded);
+                    bd.flag_bit(2, parity, 0);
+                    let single = bd.eq(count, one);
+                    bd.cond(
+                        single,
+                        &mut |bd| {
+                            let changed = bd.xor(old, value);
+                            bd.flag_bit(11, changed, 31);
+                        },
+                        &mut |_| {},
+                    );
+                },
+                &mut |_| {},
+            );
         } else if ["BT", "BTS", "BTR", "BTC"].contains(&mnemonic) {
             use xfusion_recomp::operand::{
                 Operand, bind_modrm_reg, bind_modrm_rm, ilty, read_operand, write_operand,

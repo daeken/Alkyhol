@@ -189,3 +189,8 @@ AMD register-arithmetic rows, including masked exceptions and 24/53/64-bit x87
 precision. `tools/check_jit32_x87_arithmetic.py` separately runs actual Rosetta
 assembly and remains a strict failing diagnostic for its one differing division
 result/C1 row. Both complete observations and provenance are preserved.
+
+`python3 tools/check_jit32_double_shifts.py` compares DWORD SHLD/SHRD with
+8,320 actual Rosetta rows (both immediate/CL native forms) and four read-only
+protection probes. `tools/check_jit32_x87_memory_windows.py` checks the separate
+1,440-row native Windows Intel memory-arithmetic fixture, identical to Rosetta.

@@ -1386,3 +1386,6 @@ mod rotate_tests;
 
 #[cfg(test)]
 mod xlat_tests;
+
+#[cfg(test)]
+mod double_shift_tests;

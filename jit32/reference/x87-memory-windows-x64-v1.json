@@ -1,0 +1,22 @@
+{
+  "backend": "native Windows x64 x87 memory assembly",
+  "source_sha256": "b567e695a3b5a158f01bac37d671e7ce773c37b710f8d6c28eb68e3923f8b616",
+  "observer_sha256": "ee401d6ad862d744c732bda4924ca6a26f20e9acacff63183adbaf9ebe02dfa4",
+  "observation_sha256": "ae89f9b552533defa92726bd694ddacd970ad06cc47283bd37de7d2360e0526b",
+  "rows": 1440,
+  "native_machine": 34404,
+  "process_machine": 0,
+  "host": "Windows-2025Server-10.0.26100-SP0",
+  "processor": "Intel64 Family 6 Model 106 Stepping 6, GenuineIntel",
+  "stderr_hex": "",
+  "revision": "8dcee084bb153753eefbbd1ce2bb55332d891e7c",
+  "schema": 1,
+  "source": "jit32/tests/x87_memory_reference.c",
+  "source_lf_sha256": "eb215d4128d6a6095a0916112cf7c95ded012ff14d361b2d089448119107401f",
+  "fixture": "jit32/reference/x87-memory-windows-x64-v1.bin.gz",
+  "fixture_sha256": "9e1a92f78479bcabd49042e1be31474a1ce55055e20fc90bd182719e0c9ff6d6",
+  "observation_bytes": 57600,
+  "workflow_run": "https://github.com/daeken/Alkyhol/actions/runs/42771552614",
+  "rosetta_raw_sha256": "ae89f9b552533defa92726bd694ddacd970ad06cc47283bd37de7d2360e0526b",
+  "scope": "Finite native Windows x64 GenuineIntel hosted observation; Rosetta rows identical; not physical Intel or game equivalence."
+}

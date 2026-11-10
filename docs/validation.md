@@ -7859,3 +7859,25 @@ observation job is added; its result is pending. Separate native units cover
 binary32/64 quiet-versus-signaling priority and sticky flags. The unchanged
 19,200-row native Windows register matrix still passes. The running original
 host is retained while a separate output path holds the new build.
+
+Native Windows memory CI 42771552614 succeeds on hosted GenuineIntel x64 Windows
+Server. All 1,440 m64 rows are byte-identical to Rosetta and agree with native ARM
+through `tools/check_jit32_x87_memory_windows.py`; the complete owned table and
+provenance are frozen in jit32/reference/x87-memory-windows-x64-v1.*. This does
+not turn the separate one-row AMD/Rosetta register-division difference into a
+pass, or provide physical Intel/game equivalence evidence.
+
+The next original replay clears the division and enters the original Bink video
+decoder, reaching SHRD in binkw32.dll after 1,825,258,068 loading-thread
+instructions and 27 entry invocations. Original input hashes remain unchanged;
+there is still no observed Present. SHLD/SHRD DWORD forms now concatenate checked
+operands in software IR, mask count to five bits, and set defined CF/SF/ZF/PF and
+single-step OF. Count zero preserves flags; undefined AF/multi-step OF are not
+claimed. Sixteen-bit forms remain explicitly excluded. All 8,320 actual Rosetta
+rows agree for immediate and CL forms (16,640 native cases), including register
+and memory destinations. Four separate actual Rosetta protection probes confirm
+read-only memory faults for counts zero and one in both directions. Native tests
+cover source/destination/count aliasing and no partial state on write faults.
+All 78 default native tests and runner Clippy pass; fourteen external observations
+are invoked separately. The next original replay includes the memory-priority
+follow-up and the new shifts; no video/menu/cutscene parity is yet claimed.
