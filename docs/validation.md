@@ -7646,3 +7646,21 @@ subsequent stop is a real denormal SIMD operand. Loading reached the preceding
 math boundary in 91.6s versus 577.6s at the previous nearby boundary, with
 uncontrolled host load; no FPS/game equivalence claim follows. Original input
 binary hashes remain unchanged and there is still no native JIT window/frame.
+
+Masked SIMD edge semantics now pass 6,144 additional independent actual Rosetta/
+native ARM rows, retaining all 512 conversion and 1,024 normal arithmetic rows.
+The fixed edge matrix covers denormal inputs, DAZ/FTZ, NaN payload priority,
+invalid/divide/overflow responses and unbounded-exponent rounding boundaries.
+55 default CPU tests pass (four external observers invoked separately), plus
+Clippy and unchanged shared frozen Windows ABI/TLS/heap comparisons. Unmasked
+#XM delivery remains unsupported; no full CPU or native Windows parity follows.
+
+The native WNDPROC validator now normalizes guest code addresses against biased
+host ranges. The unchanged owned window witness passes all 32 words and 13
+original callback invocations; its previously zero process status alone was not
+a pass. Original DAO subsequently creates/shows its own native splash, draws the
+original bitmap and runs its message procedures. A physical window-specific
+capture visually confirms the splash artwork while original resource loading
+continues. This is the first original native-JIT splash window, not a D3D9 game
+frame/menu/cutscene or Rosetta progress parity. Raw captures and game data remain
+local; no game assets are committed.

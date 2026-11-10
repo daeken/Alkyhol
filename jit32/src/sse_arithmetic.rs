@@ -1,8 +1,8 @@
 //! Bounded legacy SSE arithmetic. Floating results never use host FP control.
 use crate::memory::{Memory, READ};
 use rustc_apfloat::{
-    Float, Round, Status,
-    ieee::{Double, Single},
+    Float, FloatConvert, Round, Status, StatusAnd,
+    ieee::{Double, IeeeFloat, Semantics, Single},
 };
 pub fn operation(name: &str) -> Option<u64> {
     let (prefix, form) = if let Some(p) = name.strip_suffix("SS") {
@@ -23,10 +23,52 @@ pub fn operation(name: &str) -> Option<u64> {
     };
     Some(op | (form << 4))
 }
-fn calculate<F: Float>(a: u128, b: u128, op: u64, mxcsr: u32) -> Result<(u128, u32), &'static str> {
+// Same destination significand, wider exponent: Intel tininess is tested
+// after rounding at destination precision with an unbounded exponent range.
+// Fifteen exponent bits cover all finite binary32/64 add/multiply/divide results.
+struct Wide32;
+impl Semantics for Wide32 {
+    const BITS: usize = 39;
+    const EXP_BITS: usize = 15;
+    const PRECISION: usize = 24;
+}
+struct Wide64;
+impl Semantics for Wide64 {
+    const BITS: usize = 68;
+    const EXP_BITS: usize = 15;
+    const PRECISION: usize = 53;
+}
+fn arithmetic<F: Float>(a: F, b: F, op: u64, round: Round) -> Result<StatusAnd<F>, &'static str> {
+    Ok(match op {
+        0 => a.add_r(b, round),
+        1 => a.sub_r(b, round),
+        2 => a.mul_r(b, round),
+        3 => a.div_r(b, round),
+        _ => return Err("unknown SIMD arithmetic operation"),
+    })
+}
+fn finish(bits: u128, flags: u32, mxcsr: u32) -> Result<(u128, u32), &'static str> {
+    if flags & !(mxcsr >> 7) & 0x3f != 0 {
+        return Err("unmasked SIMD arithmetic exception requires #XM delivery");
+    }
+    Ok((bits, mxcsr | flags))
+}
+fn calculate<F, S>(a: u128, b: u128, op: u64, mxcsr: u32) -> Result<(u128, u32), &'static str>
+where
+    F: Float + FloatConvert<IeeeFloat<S>>,
+    S: Semantics,
+{
     let (mut a, mut b) = (F::from_bits(a), F::from_bits(b));
-    if !a.is_finite() || !b.is_finite() {
-        return Err("nonfinite SIMD arithmetic operands are not implemented");
+    if a.is_nan() || b.is_nan() {
+        // NaNs suppress lower-priority denormal exceptions. Prefer the first
+        // NaN operand, quieting it without discarding its sign/payload.
+        let flags = u32::from(a.is_signaling() || b.is_signaling());
+        let selected = if a.is_nan() { a } else { b };
+        return finish(
+            selected.to_bits() | (1u128 << (F::PRECISION - 2)),
+            flags,
+            mxcsr,
+        );
     }
     if mxcsr & 0x40 != 0 {
         if a.is_denormal() {
@@ -36,35 +78,60 @@ fn calculate<F: Float>(a: u128, b: u128, op: u64, mxcsr: u32) -> Result<(u128, u
             b = F::ZERO.copy_sign(b);
         }
     }
-    if a.is_denormal() || b.is_denormal() {
-        return Err("unflushed denormal SIMD arithmetic operands are not implemented");
-    }
+    let mut flags = if a.is_denormal() || b.is_denormal() {
+        2
+    } else {
+        0
+    };
     let rc = match mxcsr >> 13 & 3 {
         0 => Round::NearestTiesToEven,
         1 => Round::TowardNegative,
         2 => Round::TowardPositive,
         _ => Round::TowardZero,
     };
-    let result = match op {
-        0 => a.add_r(b, rc),
-        1 => a.sub_r(b, rc),
-        2 => a.mul_r(b, rc),
-        3 => a.div_r(b, rc),
-        _ => return Err("unknown SIMD arithmetic operation"),
+    let result = arithmetic(a, b, op, rc)?;
+    for (status, bit) in [
+        (Status::INVALID_OP, 1),
+        (Status::DIV_BY_ZERO, 4),
+        (Status::OVERFLOW, 8),
+        (Status::INEXACT, 32),
+    ] {
+        if result.status.contains(status) {
+            flags |= bit;
+        }
+    }
+    let (tiny, huge) = if a.is_finite() && b.is_finite() {
+        let wa: IeeeFloat<S> = a.convert(&mut false).value;
+        let wb: IeeeFloat<S> = b.convert(&mut false).value;
+        let rounded = arithmetic(wa, wb, op, rc)?.value;
+        let minimum: IeeeFloat<S> = F::smallest_normalized().convert(&mut false).value;
+        let overflow = IeeeFloat::<S>::from_u128(1).value.scalbn(F::MAX_EXP + 1);
+        (
+            rounded.is_finite() && !rounded.is_zero() && rounded.abs() < minimum,
+            rounded.is_finite() && rounded.abs() >= overflow,
+        )
+    } else {
+        (false, false)
     };
-    if result
-        .status
-        .intersects(Status::INVALID_OP | Status::DIV_BY_ZERO | Status::OVERFLOW | Status::UNDERFLOW)
-        || result.value.is_denormal()
-    {
-        return Err("exceptional/underflow SIMD arithmetic is not implemented");
+    if huge {
+        flags |= 0x28;
     }
-    let flags = u32::from(result.status.contains(Status::INEXACT)) << 5;
-    if flags & !(mxcsr >> 7) != 0 {
-        return Err("unmasked SIMD arithmetic exception requires #XM delivery");
+    let underflow_masked = mxcsr & (1 << 11) != 0;
+    let mut value = result.value;
+    if tiny && mxcsr & 0x8000 != 0 && underflow_masked {
+        value = F::ZERO.copy_sign(value);
+        flags |= 0x30;
+    } else if tiny && (flags & 32 != 0 || !underflow_masked) {
+        flags |= 16;
     }
-    Ok((result.value.to_bits(), mxcsr | flags))
+    let bits = if result.status.contains(Status::INVALID_OP) {
+        F::NAN.to_bits() | (1u128 << (F::BITS - 1))
+    } else {
+        value.to_bits()
+    };
+    finish(bits, flags, mxcsr)
 }
+
 fn perform(
     memory: &mut Memory,
     registers: &mut [u64],
@@ -103,9 +170,9 @@ fn perform(
         let a = old >> shift & mask;
         let b = source >> shift & mask;
         let (value, next) = if width == 32 {
-            calculate::<Single>(a, b, op, mxcsr)?
+            calculate::<Single, Wide32>(a, b, op, mxcsr)?
         } else {
-            calculate::<Double>(a, b, op, mxcsr)?
+            calculate::<Double, Wide64>(a, b, op, mxcsr)?
         };
         output = (output & !(mask << shift)) | ((value & mask) << shift);
         mxcsr = next;
@@ -260,12 +327,18 @@ mod reference {
     #[test]
     #[ignore = "run tools/check_jit32_sse.py for independent actual x86 observations"]
     fn actual_x86_arithmetic_observations() {
-        let data = std::fs::read(
-            std::env::var_os("ALKYHOL_SSE_ARITHMETIC_REFERENCE")
-                .expect("actual x86 observer output required"),
-        )
-        .unwrap();
-        assert_eq!(data.len(), 1024 * 64);
+        compare("ALKYHOL_SSE_ARITHMETIC_REFERENCE", 1024);
+    }
+    #[test]
+    #[ignore = "run tools/check_jit32_sse.py for independent actual x86 edge observations"]
+    fn actual_x86_exception_observations() {
+        compare("ALKYHOL_SSE_EXCEPTION_REFERENCE", 6144);
+    }
+    fn compare(variable: &str, rows: usize) {
+        let data =
+            std::fs::read(std::env::var_os(variable).expect("actual x86 observer output required"))
+                .unwrap();
+        assert_eq!(data.len(), rows * 64);
         for row in data.chunks_exact(64) {
             let op = u32::from_le_bytes(row[..4].try_into().unwrap());
             let form = u32::from_le_bytes(row[4..8].try_into().unwrap());
@@ -304,5 +377,110 @@ mod reference {
                 "op={op} form={form} mxcsr={mxcsr:x}"
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod edge_tests {
+    use crate::{Stop, tests::cpu};
+    #[test]
+    fn masked_denormals_nan_priority_and_rounding_boundaries_are_real_state() {
+        let cases = [
+            (
+                0xf2,
+                0x59,
+                0x0010000000000000,
+                0x3fe0000000000000,
+                0x1f80,
+                0x0008000000000000,
+                0x1f80,
+            ),
+            (
+                0xf2,
+                0x59,
+                0x0010000000000000,
+                0x3fe0000000000000,
+                0x9f80,
+                0,
+                0x9fb0,
+            ),
+            (
+                0xf2,
+                0x59,
+                0x0010000000000000,
+                0x3fefffffffffffff,
+                0x1f80,
+                0x0010000000000000,
+                0x1fb0,
+            ),
+            (
+                0xf2,
+                0x59,
+                0x0010000000000000,
+                0x3fefffffffffffff,
+                0x9f80,
+                0,
+                0x9fb0,
+            ),
+            (
+                0xf2,
+                0x5e,
+                0x3ff0000000000000,
+                1,
+                0x1f80,
+                0x7ff0000000000000,
+                0x1faa,
+            ),
+            (
+                0xf2,
+                0x5e,
+                0x3ff0000000000000,
+                1,
+                0x1fc0,
+                0x7ff0000000000000,
+                0x1fc4,
+            ),
+            (
+                0xf2,
+                0x58,
+                0x7ff8000000001234,
+                1,
+                0x1f80,
+                0x7ff8000000001234,
+                0x1f80,
+            ),
+            (
+                0xf2,
+                0x58,
+                0x7ff8000000001234,
+                0x7ff0000000005678,
+                0x1f80,
+                0x7ff8000000001234,
+                0x1f81,
+            ),
+            (0xf2, 0x5e, 0, 0, 0x1f80, 0xfff8000000000000, 0x1f81),
+            (
+                0xf3, 0x59, 0x7f7fffff, 0x40000000, 0x3f80, 0x7f7fffff, 0x3fa8,
+            ),
+        ];
+        for (prefix, opcode, a, b, before, value, after) in cases {
+            let mut r = cpu(&[prefix, 0x0f, opcode, 0xc1, 0xc3]);
+            r.state[24] = a;
+            r.state[26] = b;
+            r.state[16] = 0xad7;
+            r.memory.fpu.borrow_mut().mxcsr = before;
+            assert_eq!(r.run(3), Stop::Returned(0));
+            assert_eq!(r.state[24], value);
+            assert_eq!(r.memory.fpu.borrow().mxcsr, after);
+            assert_eq!(r.state[16], 0xad7);
+        }
+        let mut r = cpu(&[0xf2, 0x0f, 0x58, 0xc1, 0xc3]);
+        r.state[24] = 1;
+        r.state[26] = 1f64.to_bits();
+        r.memory.fpu.borrow_mut().mxcsr = 0x1e80;
+        let before = r.state;
+        assert!(matches!(r.run(3), Stop::CpuFault { pc: 0x10000, .. }));
+        assert_eq!(r.state, before);
+        assert_eq!(r.memory.fpu.borrow().mxcsr, 0x1e80);
     }
 }

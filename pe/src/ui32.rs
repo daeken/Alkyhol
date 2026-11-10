@@ -127,10 +127,11 @@ fn write(image: &LoadedImage32<'_>, at: u32, v: &[u32]) {
     }
 }
 fn executable(image: &LoadedImage32<'_>, at: u32) -> bool {
+    let at=super::host_code_address(at);
     image
         .regions
         .iter()
-        .any(|&(a, b, r)| r & 0x20000000 != 0 && at as usize >= a && (at as usize) < b)
+        .any(|&(a, b, r)| r & 0x20000000 != 0 && at >= a && at < b)
 }
 fn mask(style: u32) -> u64 {
     if style & 0x00c00000 == 0 {

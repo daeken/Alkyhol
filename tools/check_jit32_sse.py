@@ -21,5 +21,12 @@ def check():
     env['ALKYHOL_SSE_ARITHMETIC_REFERENCE']=str(data)
     subprocess.run([str(Path.home()/'.cargo/bin/cargo'),'test','--manifest-path',str(ROOT/'jit32/Cargo.toml'),'--features','shared-runtime','--locked','--offline','--lib','sse_arithmetic::reference::actual_x86_arithmetic_observations','--','--ignored','--exact'],env=env,cwd=ROOT,check=True)
     (output/'arithmetic-report.json').write_text(json.dumps({'backend':'physical native ARM JIT vs actual x86/Rosetta assembly','source_sha256':sha(source),'observer_sha256':sha(host),'observation_sha256':sha(data),'rows':1024,'host':platform.platform(),'revision':subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip()},indent=2)+'\n')
-    print('512 conversion + 1024 arithmetic actual Rosetta/native ARM rows agree, including MXCSR flags')
+    source=ROOT/'jit32/tests/sse_exceptions_reference.c';host=output/'x86-exceptions-observer';data=output/'x86-exceptions.bin'
+    subprocess.run(['clang','-arch','x86_64','-O1','-Wall','-Wextra','-Werror',str(source),'-o',str(host)],check=True)
+    with data.open('wb') as stream:subprocess.run(['arch','-x86_64',str(host)],stdout=stream,check=True,timeout=30)
+    if data.stat().st_size!=6144*64:raise ValueError('incomplete actual x86 exception observation')
+    env['ALKYHOL_SSE_EXCEPTION_REFERENCE']=str(data)
+    subprocess.run([str(Path.home()/'.cargo/bin/cargo'),'test','--manifest-path',str(ROOT/'jit32/Cargo.toml'),'--features','shared-runtime','--locked','--offline','--lib','sse_arithmetic::reference::actual_x86_exception_observations','--','--ignored','--exact'],env=env,cwd=ROOT,check=True)
+    (output/'exception-report.json').write_text(json.dumps({'backend':'physical native ARM JIT vs actual x86/Rosetta assembly','source_sha256':sha(source),'included_source_sha256':sha(ROOT/'jit32/tests/sse_arithmetic_reference.c'),'observer_sha256':sha(host),'observation_sha256':sha(data),'rows':6144,'host':platform.platform(),'revision':subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip()},indent=2)+'\n')
+    print('512 conversion + 1024 arithmetic + 6144 exception actual Rosetta/native ARM rows agree, including MXCSR flags')
 if __name__=='__main__':check()

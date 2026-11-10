@@ -369,3 +369,39 @@ load was uncontrolled and stop points differ slightly; this is an observed
 loading improvement, not an FPS benchmark or a claim of game equivalence.
 A following replay reaches a real denormal operand, the next numerical boundary.
 Original binary hashes agree before/after. No JIT window/frame is claimed yet.
+
+### Masked SIMD edge semantics and original native splash
+
+The actual denormal-operand stop now runs through software binary32/64
+arithmetic, including DAZ, masked overflow/divide/invalid results, NaN sign/
+payload priority and FTZ. Tininess/overflow classification uses the destination
+significand with a wider exponent range, as specified in
+[Intel SDM §4.9.1.5 / §11.5](https://cdrdv2-public.intel.com/868137/325462-089-sdm-vol-1-2abcd-3abcd-4.pdf),
+while final values round directly to the real destination format. This avoids
+confusing the rounded normal/subnormal boundary with the unbounded-exponent
+rounding step. Unmasked #XM delivery remains explicit unsupported.
+
+A fixed independent x86 assembly matrix adds 6,144 actual Rosetta/native ARM
+result/status comparisons over denormals, DAZ/FTZ settings, signed zeros,
+NaN priority, infinities and overflow/underflow boundaries. All rows agree,
+alongside the unchanged 512 conversion / 1,024 normal arithmetic rows. The native
+suite passes 55 tests with four separately invoked external observation tests.
+Clippy and all unchanged shared frozen Windows ABI/TLS/heap comparisons pass.
+These are finite host observations, not a new native Windows/Intel measurement.
+
+Original DAO then reached GraphicsSystems initialization but window registration
+failed: ui32's executable-procedure check compared a guest DWORD to biased host
+image bounds. Using the existing host_code_address normalization retains all
+permission/range checks and fixes the native path; Rosetta's identity address
+behavior is unchanged. The unchanged owned 32-word window/callback witness now
+passes on native ARM (13 actual original callback invocations); the old host's
+zero exit status had not passed its output contract. Reproduce with
+`tools/check_jit32_window.py`.
+
+The following original-input replay creates and shows DAO's actual splash
+window, executes its original bitmap/DIB drawing and message procedures, and
+continues resource loading. A window-specific physical screen capture confirms
+the original Dragon Age splash artwork. Captures remain local. This establishes
+an original native-JIT splash, not a D3D9 game frame, menu, cutscene or parity with
+the preserved Rosetta Orzammar boundary. The original binary files remain local
+and unchanged; shader quality/assets/source profiles are preserved.
