@@ -8758,3 +8758,24 @@ PE Clippy passes (existing vendored dependency warnings remain). These tests
 establish finite host behavior, not an original-game FPS improvement.
 The previous PID 17783 is already terminal (-15); no live user instance was
 replaced by these component tests, and its controls remain revoked.
+
+Original c76fb1d replay PID 42256 reached Castle Cousland again, with completed
+world intervals roughly 5–7 FPS and subjective user improvement. This is not a
+controlled baseline or a claim of playability. It called DirectSound enumeration
+but never created a sound voice; the default-only enumeration omission is now
+corrected and covered by the version-2 63-word physical playback witness.
+The user's save attempt then stopped at original EXE RVA 0x47989f, after creating
+three new Slot_1 files. All preexisting character/save files remain unchanged;
+all current files are backed up locally. The observed call is through the
+original D3DXCreateTexture import, with RENDERTARGET usage. The bridge incorrectly
+rejected the capability query despite implementing real BGRA render-target
+allocation. The new four-allocation/clear witness passes the corrected query
+contract on physical M4; native CI and original save completion remain pending.
+Original EXE/DLL hashes remain unchanged. PID 42256 is terminal (78), and its
+controls are revoked.
+
+AppKit ordinary key-down/up events for owned guest windows are now consumed
+locally after DirectInput's independent Quartz observation, preventing the
+unhandled-key responder path. Command shortcuts, native-dialog events, modifier
+changes and mouse events retain native dispatch. The routing unit passes;
+absence of the beep in the original app remains for user confirmation.

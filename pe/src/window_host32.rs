@@ -1,7 +1,7 @@
 //! Direct AppKit window ownership for the PE32 main-thread GUI adapter.
 //! No guest pointer is used as an Objective-C object or native window handle.
 use std::{
-    collections::VecDeque,
+    collections::{BTreeSet, VecDeque},
     ffi::{CString, c_void},
     ptr,
     sync::{
@@ -11,6 +11,26 @@ use std::{
     time::{Duration, Instant},
 };
 pub(super) type Id = *mut c_void;
+static GUEST_WINDOWS: Mutex<BTreeSet<usize>> = Mutex::new(BTreeSet::new());
+// DirectInput reads Quartz key state independently. Forwarding ordinary game
+// keys to NSWindow's responder chain also invokes AppKit's unhandled-key beep.
+// Native dialogs and Command shortcuts must retain their normal event routing.
+fn consume_game_key(owned: bool, kind: u64, modifiers: u64) -> bool {
+    owned && matches!(kind, 10 | 11) && modifiers & (1 << 20) == 0
+}
+#[test]
+fn game_key_routing_retains_shortcuts_dialogs_and_nonkeyboard_events() {
+    for kind in [10, 11] {
+        for modifiers in [0, 1 << 17, 1 << 18, 1 << 19] {
+            assert!(consume_game_key(true, kind, modifiers));
+            assert!(!consume_game_key(false, kind, modifiers));
+            assert!(!consume_game_key(true, kind, modifiers | (1 << 20)));
+        }
+    }
+    for kind in [1, 2, 5, 12, 22, 25, 26, 27] {
+        assert!(!consume_game_key(true, kind, 0));
+    }
+}
 type Sel = *const c_void;
 #[derive(Clone, Copy, Debug, Default)]
 #[repr(C)]
@@ -508,6 +528,7 @@ impl App {
                 send1::<_, ()>(window, "setAcceptsMouseMovedEvents:", 1i8);
                 send1::<_, ()>(window, "setTitle:", string(title)?)
             };
+            GUEST_WINDOWS.lock().unwrap().insert(window as usize);
             Ok(Window { window })
         })
     }
@@ -532,7 +553,17 @@ impl App {
                     break;
                 }
                 self.capture_mouse(event)?;
-                unsafe { send1::<_, ()>(self.app, "sendEvent:", event) };
+                let kind = unsafe { send0::<u64>(event, "type") };
+                let consume = if matches!(kind, 10 | 11) {
+                    let window = unsafe { send0::<Id>(event, "window") };
+                    let owned = GUEST_WINDOWS.lock().unwrap().contains(&(window as usize));
+                    consume_game_key(owned, kind, unsafe { send0::<u64>(event, "modifierFlags") })
+                } else {
+                    false
+                };
+                if !consume {
+                    unsafe { send1::<_, ()>(self.app, "sendEvent:", event) };
+                }
             }
             unsafe { send0::<()>(self.app, "updateWindows") };
             Ok(())
@@ -1012,6 +1043,7 @@ impl Drop for Window {
     fn drop(&mut self) {
         let window = self.window as usize;
         main_exec(move || unsafe {
+            GUEST_WINDOWS.lock().unwrap().remove(&window);
             send0::<()>(window as Id, "close");
             send0::<()>(window as Id, "release")
         });

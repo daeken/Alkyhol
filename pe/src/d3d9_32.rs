@@ -244,6 +244,7 @@ pub(super) struct State {
     programs: BTreeMap<(u32, u32), Compiled>,
     headers: Vec<(u32, u32)>,
     buffer_arenas: Vec<(u32, u32)>,
+    failures: BTreeMap<u32, Vec<(u32, [u32; 16])>>,
 }
 // Exact stack sizes for implemented slots. Unknown slots never return to the
 // guest, so their unsupported gate only snapshots this and terminates explicitly.
@@ -2548,8 +2549,10 @@ fn profile_present(gpu: &Gpu, image: &LoadedImage32<'_>) {
             let stats=gpu.legacy_pipeline_cache_stats();
             let uploads=gpu.legacy_upload_stats();
             super::dsound32::report(image);
-            let (service_seconds, service_calls) = super::perf32::take();
-            eprintln!("PE32 D3D9 service timing [Win32,draw,other-D3D9,CPU-handoff]: seconds={service_seconds:?} calls={service_calls:?}");
+            if super::perf32::enabled() {
+                let (service_seconds, service_calls) = super::perf32::take();
+                eprintln!("PE32 D3D9 service timing [Win32,draw,other-D3D9,CPU-handoff]: seconds={service_seconds:?} calls={service_calls:?}");
+            }
             eprintln!("PE32 D3D9 completed Present profile: frames={frames} seconds={seconds:.6} fps={:.3} pipelines={stats:?} uploads={uploads:?}",*frames as f64/seconds);
             *start=std::time::Instant::now();*frames=0;
         }
@@ -3263,10 +3266,23 @@ fn texture_operation(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16], sl
 
 pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32 {
     let result = dispatch_inner(image, id, a);
-    if (result as i32) < 0 {
+    let log = if (result as i32) < 0 && image.cpu.trace_first_calls {
+        let mut s = image.cpu.d3d9.borrow_mut();
+        let seen = s.failures.entry(id).or_default();
+        if seen.len() >= 16 || seen.contains(&(result, *a)) {
+            false
+        } else {
+            seen.push((result, *a));
+            true
+        }
+    } else {
+        (result as i32) < 0
+    };
+    if log {
+        let (name, bytes) = signature(id).unwrap();
         eprintln!(
-            "PE32 D3D9 failure: {} -> {result:08x}",
-            signature(id).unwrap().0
+            "PE32 D3D9 failure: {name} -> {result:08x}; args={:x?}",
+            &a[..usize::from(bytes) / 4]
         );
     }
     result
@@ -3401,7 +3417,7 @@ fn dispatch_inner(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32 {
                 return 0;
             }
             // Vertex textures and other formats remain unavailable.
-            if (a[4] == 0 && a[5] == 1 || a[5] == 3 && a[4] & !0x80000 == 0)
+            if (a[5] == 1 && a[4] <= 1 || a[5] == 3 && a[4] & !0x80001 == 0)
                 && [21, 22].contains(&a[6])
             {
                 0

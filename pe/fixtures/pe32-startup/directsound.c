@@ -15,8 +15,8 @@ typedef U (__stdcall *F0)(void *);typedef U (__stdcall *F1)(void *,U);typedef U 
 #define C3(o,n,a,b,c) ((F3)V(o,n))(o,(U)(a),(U)(b),(U)(c))
 #define C4(o,n,a,b,c,d) ((F4)V(o,n))(o,(U)(a),(U)(b),(U)(c),(U)(d))
 #define C7(o,n,a,b,c,d,e,f,g) ((F7)V(o,n))(o,(U)(a),(U)(b),(U)(c),(U)(d),(U)(e),(U)(f),(U)(g))
-static U words[128],used;static void put(U n){words[used++]=n;}static U enumerated;
-static int __stdcall enumerate(const void *guid,const char *name,const char *module,void *context){(void)guid;(void)module;enumerated+=(context==(void *)0x1234&&name&&*name);return 0;}
+static U words[128],used;static void put(U n){words[used++]=n;}static U enumerated,continue_enumeration;static unsigned char selected[16];
+static int __stdcall enumerate(const void *guid,const char *name,const char *module,void *context){(void)module;if(guid)for(U i=0;i<16;++i)selected[i]=((const unsigned char *)guid)[i];enumerated+=(context==(void *)0x1234&&name&&*name);return continue_enumeration;}
 static U stack(void){U n;__asm__ volatile("movl %%esp,%0":"=r"(n));return n;}
 static const unsigned char iid8[16]={0x49,0xa4,0x25,0x68,0x24,0x75,0x82,0x4d,0x92,0xf,0x50,0xe3,0x6a,0xb3,0xab,0x1e};
 static const unsigned char notify_iid[16]={0x83,7,0x21,0xb0,0xcd,0x89,0xd0,0x11,0xaf,8,0,0xa0,0xc9,0x25,0xcd,0x16};
@@ -27,10 +27,10 @@ struct Format {W tag,channels;U rate,bytes;W align,bits,extra;};
 #pragma pack(pop)
 struct Desc {U size,flags,bytes,reserved;struct Format *format;unsigned char algorithm[16];};
 U entry(void){
- U before=stack();put(0x44534e32);put(1);
+ U before=stack();put(0x44534e32);put(2);
  H module=LoadLibraryA("dsound.dll");put(module!=0);put(GetProcAddress(module,"DirectSoundCreate8")!=0);put(FreeLibrary(module)!=0);
- put(DirectSoundEnumerateA(enumerate,(void *)0x1234)==0);put(enumerated==1);
- void *device=0;put(DirectSoundCreate8(0,&device,0)==0&&device!=0);
+ put(DirectSoundEnumerateA(enumerate,(void *)0x1234)==0);put(enumerated==1);continue_enumeration=1;enumerated=0;put(DirectSoundEnumerateA(enumerate,(void *)0x1234)==0);put(enumerated>=2);
+ void *device=0;put(DirectSoundCreate8(selected,&device,0)==0&&device!=0);
  U caps[25]={96};caps[24]=0xfeedface;put(C1(device,4,caps)==0);put(caps[0]==96&&caps[24]==0xfeedface);put((caps[1]&0x20)!=0&&(caps[1]&0x40)==0);
  put(C2(device,6,GetDesktopWindow(),2)==0);
  struct Desc primary={36,1,0,0,0,{0}};void *p=0;put(C3(device,3,&primary,&p,0)==0&&p!=0);

@@ -284,9 +284,26 @@ pub(super) fn enumerate(image: &LoadedImage32<'_>, a: &[u32; 8], wide: bool) -> 
     if count == 0 {
         return 0x88780078;
     }
-    unsafe { image.callback_frame(a[0], &[0, name, module, a[1]], CallingConvention32::Stdcall) }
+    let keep = unsafe {
+        image.callback_frame(a[0], &[0, name, module, a[1]], CallingConvention32::Stdcall)
+    }
+    .unwrap_or_else(|e| unsupported(&e))
+    .unwrap_or_else(|| unsupported("non-returning sound enumeration callback"));
+    // The default alias is enumerated separately from the same adapter's GUID,
+    // as DirectSound specifies. Callers commonly omit the NULL/default alias.
+    if keep != 0 {
+        let adapter =
+            d3d9_32::memory(&image.cpu, &ADAPTER, false, false).unwrap_or_else(|e| unsupported(&e));
+        unsafe {
+            image.callback_frame(
+                a[0],
+                &[adapter, name, module, a[1]],
+                CallingConvention32::Stdcall,
+            )
+        }
         .unwrap_or_else(|e| unsupported(&e))
         .unwrap_or_else(|| unsupported("non-returning sound enumeration callback"));
+    }
     0
 }
 pub(super) fn get_device_id(image: &LoadedImage32<'_>, a: &[u32; 8]) -> u32 {

@@ -39,9 +39,9 @@ looping, stop and retained event notifications. An explicit opt-in physical
 AudioQueue test consumes at least 2048 frames and produces nonzero original test
 PCM, then tears down. This is queued-output evidence, not a listener report.
 
-The owned `directsound.c` PE and observer pass 61 fixed words at normal and
+The owned `directsound.c` PE and observer pass 63 fixed words (version 2) at normal and
 rebased placements through x86_64 Rosetta/CoreAudio. They cover default-device
-callback, DLL lookup, COM/notification identity and references, caps/format/output
+callback cancellation, default alias plus real adapter GUID, DLL lookup, COM/notification identity and references, caps/format/output
 guards, wrapped/whole-buffer writes, invalid unlock rejection, playback cursor,
 looping status, actual notification wait, stop/frozen position and stack cleanup.
 The observer can also run the identical PE on native Windows with an actual
@@ -58,3 +58,13 @@ python tools/observe_pe32_directsound.py --native --output /path/to/witness
 The original game's FMOD initialization and audible playback remain unverified
 at this component milestone. Software voice support is deliberately bounded;
 this is not general DirectSound or game compatibility.
+
+The first original replay calls DirectSoundEnumerateA but does not create a
+voice. It skips the NULL default alias. Enumeration now also reports the same
+real-backed software adapter by its own GUID when the callback continues, as
+[Microsoft documents](https://learn.microsoft.com/en-us/previous-versions/windows/desktop/ee417545(v=vs.85)).
+The version-2 witness checks both cancellation and continued enumeration and
+creates playback using the returned non-NULL GUID. Its PE SHA-256 is
+e34dbbfa92ccf6cdc415ba899a25bf3ac127fc742f070520d1370dad4826b606.
+This fixes the identified selection omission; original FMOD playback is still
+pending replay.

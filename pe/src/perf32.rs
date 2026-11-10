@@ -4,8 +4,11 @@ static ENABLED: OnceLock<bool> = OnceLock::new();
 std::thread_local! {
     static TOTALS: RefCell<([u64;4],[u64;4])> = const { RefCell::new(([0;4],[0;4])) };
 }
+pub(super) fn enabled() -> bool {
+    *ENABLED.get_or_init(|| std::env::var_os("ALKYHOL_PE32_PROFILE_SERVICES").is_some())
+}
 pub(super) fn start() -> Option<Instant> {
-    if *ENABLED.get_or_init(|| std::env::var_os("ALKYHOL_D3D9_PROFILE").is_some()) {
+    if enabled() {
         Some(Instant::now())
     } else {
         None

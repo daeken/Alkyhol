@@ -169,22 +169,26 @@ pub(super) fn yield_cpu() {
         let Some(image) = (unsafe { slot.get().cast::<LoadedImage32<'_>>().as_ref() }) else {
             return;
         };
-        let running = image
-            .cpu
-            .threads
-            .borrow()
-            .records
-            .values()
-            .any(|r| r.control.done.load(Ordering::Acquire) == 0);
-        if running {
-            let due = QUANTUM.with(|q| {
-                let mut q = q.borrow_mut();
-                let (count, start) = q.get_or_insert_with(|| (0, std::time::Instant::now()));
-                *count += 1;
-                *count >= 256 || start.elapsed() >= std::time::Duration::from_millis(2)
-            });
-            if due {
+        let due = QUANTUM.with(|q| {
+            let mut q = q.borrow_mut();
+            let (count, start) = q.get_or_insert_with(|| (0, std::time::Instant::now()));
+            *count += 1;
+            *count >= 256 || start.elapsed() >= std::time::Duration::from_millis(2)
+        });
+        if due {
+            // Checking every finished worker at every API call was part of the
+            // hot path. Worker liveness only matters when a quantum is due.
+            let running = image
+                .cpu
+                .threads
+                .borrow()
+                .records
+                .values()
+                .any(|r| r.control.done.load(Ordering::Acquire) == 0);
+            if running {
                 without_cpu(image, std::thread::yield_now);
+            } else {
+                QUANTUM.with(|q| *q.borrow_mut() = Some((0, std::time::Instant::now())));
             }
         }
     });
