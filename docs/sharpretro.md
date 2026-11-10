@@ -817,3 +817,13 @@ All 90 default native JIT tests and runner Clippy pass. The two new external mat
 comparisons pass separately; the two strict diagnostics fail as described, and
 the other 15 external observers remain separate. The next original replay uses
 the new FPATAN host; full application progress parity remains unestablished.
+
+
+The built 6f78b1d native host also preserves the frozen Windows 8 ABI, 24 TLS and
+64 heap output words in normal/rebased runs. A fresh unchanged original process
+has completed CRT startup and created its owned splash window under the recorded
+full-window desktop. It is retained, suspended, for the independent playtest's
+foreground restore. Continue from the ignored `local/jit32/shared-game/run.json`,
+`startup-slot.json` and `startup-extension.json` rather than starting a second
+copy. The next foreground replay must confirm the post-FPATAN scene; original
+character/3D/Orzammar progress parity remains unobserved.
