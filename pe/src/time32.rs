@@ -137,6 +137,21 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
             "PE32 local-time APIs require an explicitly configured supported guest timezone",
         );
     }
+    if id == 304 {
+        // GetLocalTime is VOID. This profile explicitly selects UTC; do not
+        // silently inherit the host's timezone or invent a fixed timestamp.
+        if !args[0].is_multiple_of(2) || !image.permits(args[0] as usize, 16, true) {
+            unsupported("PE32 SYSTEMTIME output outside checked writable guest storage");
+        }
+        let value = crate::process::file_time(std::time::SystemTime::now())
+            .unwrap_or_else(|_| unsupported("system clock outside FILETIME range"));
+        let output = calendar(u64::from(value[0]) | (u64::from(value[1]) << 32))
+            .unwrap_or_else(|| unsupported("system clock outside SYSTEMTIME range"));
+        unsafe {
+            (args[0] as usize as *mut [u16; 8]).write(output);
+        }
+        return 0;
+    }
     if id == 69 {
         check(image, args[0], 172, true);
         let bytes = zone();

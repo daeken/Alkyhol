@@ -178,7 +178,7 @@ fn host_code_address(address: u32) -> usize {
 }
 const PAGE: usize = 4096;
 const STACK: usize = 1024 * 1024;
-const APIS: [(&str, u16); 304] = [
+const APIS: [(&str, u16); 305] = [
     ("GetLastError", 0),
     ("SetLastError", 4),
     ("GetStdHandle", 4),
@@ -483,6 +483,7 @@ const APIS: [(&str, u16); 304] = [
     ("GetCapture", 0),
     ("setlocale", 8),
     ("_strdup", 4),
+    ("GetLocalTime", 4),
 ];
 // The first 120 API slots retain their original offsets. The second bank
 // begins after both x87 bodies, leaving their machine code and failure gates
@@ -2452,7 +2453,7 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
             65 => files32::first(image, args),
             66 => files32::next(image, args),
             67 => files32::close(image, args[0]),
-            68..=70 => time32::dispatch(image, id, args),
+            68..=70 | 304 => time32::dispatch(image, id, args),
             71 => std::process::id(),
             72 | 110 => time32::tick_count(),
             73 | 74 => {
@@ -2793,6 +2794,14 @@ mod tests {
         assert_eq!(api_id("kernel32.dll", &symbol), None);
         assert_eq!(APIS[293].1, 4);
         assert_eq!(cleanup_bytes(293, APIS[293].1), 4);
+    }
+    #[test]
+    fn current_local_time_is_one_kernel32_stdcall_output_pointer() {
+        let symbol = ImportSymbol::Name("GetLocalTime".into());
+        assert_eq!(api_id("kernel32.dll", &symbol), Some(304));
+        assert_eq!(api_id("user32.dll", &symbol), None);
+        assert_eq!(APIS[304].1, 4);
+        assert_eq!(cleanup_bytes(304, 4), 4);
     }
     #[test]
     fn cdecl_crt_gateways_keep_arguments_for_the_guest_caller() {

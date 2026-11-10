@@ -8322,3 +8322,38 @@ before environment, rather than guessing tags from raw values. Adding that
 observation changed none of the prior result/status/output fields. Both initial
 and corrected-input strict failures remain ignored/local. Full after-state
 comparison is retained. A fresh DAO replay is still required for this fix.
+
+The GetLocalTime import reached by the preserved Rosetta cutscene now has a
+checked PE32 stdcall implementation. It writes the real current wall clock as
+eight SYSTEMTIME words under the existing explicitly selected UTC guest profile;
+no host timezone/DST mapping is inferred. Missing timezone configuration, odd,
+null and non-writable output pointers fail explicitly before the write. The
+contract follows [Microsoft GetLocalTime](https://learn.microsoft.com/en-us/windows/win32/api/sysinfoapi/nf-sysinfoapi-getlocaltime)
+and [SYSTEMTIME](https://learn.microsoft.com/en-us/windows/win32/api/minwinbase/ns-minwinbase-systemtime).
+
+The same four owned PE32 microtests run on physical M4 native ARM JIT and
+Rosetta, at normal and forced placement. Each backend passes 48 UTC clock samples
+bracketed by actual FILETIME calls, complete field/weekday checks, word-aligned
+output guards and preserved last-error state, plus eight explicit unsupported
+profile/pointer failures. These are executing-host clock/ABI assertions, not
+frozen native Windows wall-clock equality. Reproduce with
+`python3 tools/check_pe32_current_local_time.py` (Rosetta), or `--host` pointing
+to the shared native ARM host. The existing PE workflow includes this check.
+The rebuilt native host also retains all frozen Windows ABI/TLS/heap words in
+normal/rebased modes. Reports remain ignored/local under
+`local/pe/current-local-time-rosetta` and `local/jit32/current-local-time-check`.
+The retained game replay still uses its earlier source-pinned host; neither
+this application call nor Rosetta's cutscene progress parity has been verified
+in a fresh game replay.
+
+The clean 352148e original replay passes the reached FPREM instruction and its
+successors in a bounded trace, then renders the actual Load Game selection UI.
+The frozen first Cousland quicksave is selected and the original CreateFile path
+for that exact staged savegame.das is observed. The staged hash remains unchanged;
+this log alone does not verify a successful save read or a restored world. The
+run then stops at checked guest read/fetch 0x12f000+1 (status 78), with
+7,724,405,480 instructions and original EXE/provided DLL hashes unchanged. No
+native original in-engine frame is established. The guard/call identity needs
+better native fault diagnostics; it is not yet diagnosed as corrupt game state.
+Evidence is preserved in ignored `local/jit32/shared-game-fetch-before`; its
+process identity is revoked. The SQRTSD loading route is still unverified.

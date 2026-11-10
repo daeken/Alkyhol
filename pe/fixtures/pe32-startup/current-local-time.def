@@ -1,0 +1,8 @@
+LIBRARY KERNEL32.dll
+EXPORTS
+  GetStdHandle
+  WriteFile
+  SetLastError
+  GetLastError
+  GetSystemTimeAsFileTime
+  GetLocalTime
