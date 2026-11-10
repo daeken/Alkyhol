@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Independent native x64 Windows legacy SIMD complete finite x87 remainder observations; accepts no game inputs."""
+"""Independent native x64 Windows complete finite x87 remainder observations; accepts no game inputs."""
 import ctypes,hashlib,json,os,platform,shutil,struct,subprocess
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
@@ -21,6 +21,6 @@ def observe():
     if raw[at:at+4]!=b'PE\0\0' or struct.unpack_from('<H',raw,at+4)[0]!=0x8664:raise ValueError('observer is not PE64 AMD64')
     with data.open('wb') as stream:r=subprocess.run([str(host)],stdout=stream,stderr=subprocess.PIPE,timeout=30,check=True)
     if data.stat().st_size!=24576*80:raise ValueError(f'incomplete native observation: {data.stat().st_size} bytes, expected {24576*80}')
-    report=dict(backend='native Windows x64 legacy SIMD complete finite x87 remainder assembly',source_sha256=sha(source),source_lf_sha256=hashlib.sha256(source.read_bytes().replace(b'\r\n',b'\n')).hexdigest(),observer_sha256=sha(host),observation_sha256=sha(data),rows=24576,native_machine=native.value,process_machine=process.value,host=platform.platform(),processor=platform.processor(),stderr_hex=r.stderr.hex(),revision=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip())
+    report=dict(backend='native Windows x64 complete finite x87 remainder assembly',source_sha256=sha(source),source_lf_sha256=hashlib.sha256(source.read_bytes().replace(b'\r\n',b'\n')).hexdigest(),observer_sha256=sha(host),observation_sha256=sha(data),rows=24576,native_machine=native.value,process_machine=process.value,host=platform.platform(),processor=platform.processor(),stderr_hex=r.stderr.hex(),revision=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip())
     (output/'report.json').write_text(json.dumps(report,indent=2)+'\n');print(json.dumps(report,indent=2))
 if __name__=='__main__':observe()

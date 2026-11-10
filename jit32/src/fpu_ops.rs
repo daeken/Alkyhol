@@ -63,6 +63,8 @@ pub fn operation(name: &str) -> Option<u64> {
         "FLDLN2" => 132,
         "FXAM" => 133,
         "FPATAN" => 134,
+        "FPREM" => 135,
+        "FPREM1" => 136,
         "FLD-M32" => 2,
         "FLD-M64" => 3,
         "FLD-M80" => 4,
@@ -193,6 +195,31 @@ fn perform(
 ) -> Result<Option<(usize, u128)>, ()> {
     let mut output = None;
     match op {
+        135 | 136 => {
+            if state.control >> 8 & 3 == 1 {
+                memory
+                    .cpu_fault
+                    .get_or_insert("reserved x87 remainder precision control");
+                return Err(());
+            }
+            if (0..2).any(|n| state.tag >> (((state.top() + n) & 7) * 2) & 3 == 3) {
+                memory
+                    .cpu_fault
+                    .get_or_insert("x87 remainder requires two nonempty stack slots");
+                return Err(());
+            }
+            let a = state.get(0);
+            let b = state.get(1);
+            let result = match super::fpu_remainder::remainder(a, b, op == 136) {
+                Ok(value) => value,
+                Err(reason) => {
+                    memory.cpu_fault.get_or_insert(reason);
+                    return Err(());
+                }
+            };
+            state.set(0, result.value);
+            state.status = (state.status & !0x4700) | result.condition | result.exceptions;
+        }
         134 => {
             if state.control >> 10 & 3 != 0 || state.control >> 8 & 3 == 1 {
                 memory

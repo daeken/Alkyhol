@@ -1,0 +1,125 @@
+{
+  "backend": "Rosetta x86_64 complete finite x87 FPREM/FPREM1 assembly on physical Apple Silicon",
+  "source": "jit32/tests/x87_remainder_reference.c",
+  "source_sha256": "4509ff1734f6c42932c547c79a8c20ff5d69124bc55f0775b55e7db876744c05",
+  "source_lf_sha256": "4509ff1734f6c42932c547c79a8c20ff5d69124bc55f0775b55e7db876744c05",
+  "observer_sha256": "014328c1dd71a6ccfc33375511f447e29d71b754ac062d423d8694680323edd8",
+  "observation_sha256": "d727eb8fc1ec42d16d9cb3475a9ba26e14e924c105937c16a22bfdc6be3e733e",
+  "fixture": "jit32/reference/x87-remainder-rosetta-v1.bin.gz",
+  "fixture_sha256": "97452678ea922051835ec5af4672edc3a23d357b0cf4fd0c73322cf52359b81f",
+  "rows": 24576,
+  "row_bytes": 80,
+  "complete_finite_reductions_only": true,
+  "masked_exception_observations": true,
+  "initial_environment_observed": true,
+  "strict_equality_required": true,
+  "host": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+  "compiler": "Apple clang version 21.0.0 (clang-2100.3.34.2)",
+  "revision": "b5d9d95f14c94ad02e1900fad65be16932ffd627",
+  "tracked_tree_clean_at_observation": false,
+  "source_commit_verified_from_identical_blob": "b5d9d95f14c94ad02e1900fad65be16932ffd627",
+  "known_strict_differences": {
+    "rows": 24576,
+    "result_differences": 96,
+    "state_differences": 96,
+    "flags_differences": 0,
+    "examples": [
+      {
+        "row": 12358,
+        "result_differs": true,
+        "model_status": 547,
+        "observed_status": 35,
+        "model_tag": 65492,
+        "observed_tag": 65492
+      },
+      {
+        "row": 12394,
+        "result_differs": true,
+        "model_status": 16384,
+        "observed_status": 512,
+        "model_tag": 65492,
+        "observed_tag": 65492
+      },
+      {
+        "row": 12395,
+        "result_differs": true,
+        "model_status": 768,
+        "observed_status": 256,
+        "model_tag": 65492,
+        "observed_tag": 65492
+      },
+      {
+        "row": 12502,
+        "result_differs": true,
+        "model_status": 547,
+        "observed_status": 35,
+        "model_tag": 65492,
+        "observed_tag": 65492
+      },
+      {
+        "row": 12870,
+        "result_differs": true,
+        "model_status": 547,
+        "observed_status": 35,
+        "model_tag": 65492,
+        "observed_tag": 65492
+      },
+      {
+        "row": 12906,
+        "result_differs": true,
+        "model_status": 16384,
+        "observed_status": 512,
+        "model_tag": 65492,
+        "observed_tag": 65492
+      },
+      {
+        "row": 12907,
+        "result_differs": true,
+        "model_status": 768,
+        "observed_status": 256,
+        "model_tag": 65492,
+        "observed_tag": 65492
+      },
+      {
+        "row": 13014,
+        "result_differs": true,
+        "model_status": 547,
+        "observed_status": 35,
+        "model_tag": 65492,
+        "observed_tag": 65492
+      },
+      {
+        "row": 13382,
+        "result_differs": true,
+        "model_status": 547,
+        "observed_status": 35,
+        "model_tag": 65492,
+        "observed_tag": 65492
+      },
+      {
+        "row": 13418,
+        "result_differs": true,
+        "model_status": 16384,
+        "observed_status": 512,
+        "model_tag": 65492,
+        "observed_tag": 65492
+      },
+      {
+        "row": 13419,
+        "result_differs": true,
+        "model_status": 768,
+        "observed_status": 256,
+        "model_tag": 65492,
+        "observed_tag": 65492
+      },
+      {
+        "row": 13526,
+        "result_differs": true,
+        "model_status": 547,
+        "observed_status": 35,
+        "model_tag": 65492,
+        "observed_tag": 65492
+      }
+    ]
+  }
+}

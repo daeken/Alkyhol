@@ -8281,3 +8281,44 @@ The clean 925b667 shared host also retains the frozen Windows ABI/TLS/heap words
 in normal/rebased cases. No older frozen comparison is weakened. A fresh original replay is
 required to verify this square-root implementation in DAO, and Rosetta's
 Orzammar progress parity remains unestablished.
+
+The next unchanged original replay opens the real Load Game path and stops
+explicitly at FPREM, status 78, before save selection or an observed savegame.das
+load. The stopping thread reports 8,391,647,650 instructions; original EXE and
+provided DLL hashes remain unchanged. Its state is archived in ignored
+`local/jit32/shared-game-fprem-before`. No original in-engine frame is established,
+and the previous SQRTSD loading route has not yet been exercised past its stop.
+
+FPREM and FPREM1 now implement exact finite complete reductions with exponent
+difference below 64, using integer significands and exact remainders. Rounding
+and precision controls do not round this result; the observed quotient-magnitude
+bits update C0/C3/C1 and C2 clears. Partial reductions, exceptional/noncanonical
+operands, zero divisors, empty stack slots, reserved precision and unmasked
+exception states fail explicitly without committing destination/environment.
+The partial-reduction algorithm remains separate; see the [Intel entries](https://www.intel.com/content/dam/www/public/us/en/documents/manuals/64-ia-32-architectures-software-developer-vol-2a-manual.pdf).
+All 106 default physical ARM JIT tests and runner Clippy pass; 21 external
+observers are ignored by default. Targeted generated-code tests cover every
+stack rotation, legal precision/rounding/infinity controls, signed ties/zeros,
+exact denormals, large complete quotients, unrelated GPR/XMM/environment state
+and non-commit on unsupported inputs.
+
+All four observation jobs pass in [CI 42847987636](https://github.com/daeken/Alkyhol/actions/runs/42847987636)
+at source b5d9d95. The native AMD64 Windows host reports AuthenticAMD Family
+26/Model 2 and Server build 26100. Its 24,576 complete finite FPREM/FPREM1 rows
+match physical ARM result bits, full x87 status/tag/control, MXCSR and defined
+EFLAGS exactly. Source/observer/table identities and the compressed fixture are
+frozen. `python3 tools/check_jit32_remainder.py` checks that native table.
+
+The new Rosetta table is also frozen, with its strict failures preserved:
+96 FPREM1 result/status rows differ, covering four large-quotient input pairs
+across 24 controls. Exact rational arithmetic agrees with the Windows/model
+remainders; the observed Rosetta magnitudes for those pairs exceed half the
+divisor. Ordinary FPREM rows agree. This is a measured standalone sequence
+difference, not a live-game or universal-CPU diagnosis.
+`python3 tools/check_jit32_remainder.py --backend rosetta` deliberately fails
+strict equality; no old comparison is weakened. The first diagnostic also
+exposed an assumed initial full-tag state: the observer now measures the actual
+before environment, rather than guessing tags from raw values. Adding that
+observation changed none of the prior result/status/output fields. Both initial
+and corrected-input strict failures remain ignored/local. Full after-state
+comparison is retained. A fresh DAO replay is still required for this fix.
