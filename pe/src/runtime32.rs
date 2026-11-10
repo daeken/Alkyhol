@@ -77,6 +77,8 @@ mod module_path32;
 mod mutex32;
 #[path = "nls32.rs"]
 mod nls32;
+#[path = "number_format32.rs"]
+mod number_format32;
 #[path = "path32.rs"]
 mod path32;
 #[path = "private_profile32.rs"]
@@ -180,7 +182,7 @@ fn host_code_address(address: u32) -> usize {
 }
 const PAGE: usize = 4096;
 const STACK: usize = 1024 * 1024;
-const APIS: [(&str, u16); 306] = [
+const APIS: [(&str, u16); 307] = [
     ("GetLastError", 0),
     ("SetLastError", 4),
     ("GetStdHandle", 4),
@@ -487,6 +489,7 @@ const APIS: [(&str, u16); 306] = [
     ("_strdup", 4),
     ("GetLocalTime", 4),
     ("CopyFileW", 12),
+    ("GetNumberFormatW", 24),
 ];
 // The first 120 API slots retain their original offsets. The second bank
 // begins after both x87 bodies, leaving their machine code and failure gates
@@ -2458,6 +2461,7 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
             67 => files32::close(image, args[0]),
             68..=70 | 304 => time32::dispatch(image, id, args),
             305 => copy_file32::dispatch(image, args),
+            306 => number_format32::dispatch(image, args),
             71 => std::process::id(),
             72 | 110 => time32::tick_count(),
             73 | 74 => {
@@ -2806,6 +2810,16 @@ mod tests {
         assert_eq!(api_id("user32.dll", &symbol), None);
         assert_eq!(APIS[304].1, 4);
         assert_eq!(cleanup_bytes(304, 4), 4);
+    }
+    #[test]
+    fn custom_number_format_keeps_prior_gate_offsets_and_uses_six_stdcall_arguments() {
+        let symbol = ImportSymbol::Name("GetNumberFormatW".into());
+        assert_eq!(api_id("kernel32.dll", &symbol), Some(306));
+        assert_eq!(api_id("user32.dll", &symbol), None);
+        assert_eq!(APIS[306].1, 24);
+        assert_eq!(cleanup_bytes(306, 24), 24);
+        assert_eq!(APIS[304].0, "GetLocalTime");
+        assert_eq!(APIS[305].0, "CopyFileW");
     }
     #[test]
     fn cdecl_crt_gateways_keep_arguments_for_the_guest_caller() {

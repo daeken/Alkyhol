@@ -8499,3 +8499,40 @@ run captures are preserved. Shared Win32/D3D9 fixes remain applicable to both
 hosts. The original Rosetta Orzammar GetLocalTime stop predates the tested clock
 implementation; a fresh Rosetta application run, rather than the native JIT's
 later loading stop or standalone tests, must establish current game progress.
+
+The fresh optimized Rosetta replay at 9c6329f reaches the same missing
+GetNumberFormatW import at EXE+0x220815 after selecting the identical frozen
+699f input. It stops honestly with status 78; original EXE/provided DLL hashes
+and all eleven staged input byte hashes remain unchanged. Resume-to-stop was
+about 25 seconds, versus about 17 minutes in the preserved JIT replay; these
+are manual workflow observations, not a controlled performance benchmark.
+The new run is retained in ignored `local/pe/dao-rosetta-return`; large old
+captures were subsequently losslessly compressed with original SHA-256 values
+and a restore helper in `local/space-cleanup`. No original restored 3D scene
+was observed in either run.
+
+The reached custom en-US GetNumberFormatW now performs decimal-string rounding
+and formatting without host locale or binary floating-point conversion. The
+bounded profile supports 0..9 fractional digits, leading-zero control, grouping
+0..9/10/32, supplied UTF-16 separators and all five negative layouts. Default
+locale/user overrides, other locales, extended grouping/separator profiles and
+unmeasured alignment/aliasing remain explicit refusals. Input, structure and
+output storage are checked and staged before writes; sizing includes NUL and
+insufficient buffers retain their contents. See
+[Microsoft GetNumberFormatW](https://learn.microsoft.com/en-us/windows/win32/api/winnls/nf-winnls-getnumberformatw)
+and [NUMBERFMTW](https://learn.microsoft.com/en-us/windows/win32/api/winnls/ns-winnls-numberfmtw).
+
+The independently authored exact PE ran on native AMD64 Windows Server 26100
+(native machine 0x8664, observer process machine 0) in the `native-number-format`
+job of [CI 42875640771](https://github.com/daeken/Alkyhol/actions/runs/42875640771),
+at a8f85a9. Its 548 observations and literal PE are frozen with source/PE/data/
+archive identities. Both normal and forced-rebase Rosetta executions through
+the new shared runtime produce the identical full 149,072-byte output, SHA-256
+`40278cda35c005e0293bcb098527b393d554440bb0c5b428372b7daf74a6ab65`.
+Assertions compare every output code unit/tail, result size and defined failure
+code; successful GetLastError is excluded from the required contract. Three
+decimal unit tests, sixteen actual PE profile/storage refusals, runner Clippy
+and formatting checks pass. Reproduce with
+`python3 tools/check_pe32_number_format.py --host PATH_TO_ROSETTA_HOST`.
+These are finite API/ABI observations; the original-game call must still be
+replayed through the implementation. No broader game compatibility is claimed.

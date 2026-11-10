@@ -1,0 +1,32 @@
+{
+  "identity": {
+    "files": {
+      "number-format.exe": "0a8740b16fdde5a8ae9ffc45b3556ddf6b5192847c1911a90356d224b8822803"
+    },
+    "sources": {
+      "number-format.c": "4908c80fd3730e673c298a90da8bef763d6897604a3bd8e13617d2571fd14ca7",
+      "number-format.def": "3f1cfa707e2cffc3d25e8e2ba229a0d6e3df39e2e20f7379da1d70e712f2db72"
+    }
+  },
+  "backend": "native Windows",
+  "platform": "Windows-2025Server-10.0.26100-SP0",
+  "machine": "AMD64",
+  "observations": [
+    {
+      "rebased": false,
+      "status": 0,
+      "stdout_sha256": "40278cda35c005e0293bcb098527b393d554440bb0c5b428372b7daf74a6ab65",
+      "stderr": "",
+      "data": "native-observations.bin",
+      "rows": 548
+    }
+  ],
+  "observer_process_machine": 0,
+  "native_machine": 34404,
+  "provenance": {
+    "workflow_run": 42875640771,
+    "artifact": 13792815233,
+    "source_revision": "a8f85a9f92aaaff56562b245547a5d0f48a5c1bd"
+  },
+  "fixture_sha256": "608d53b405d535fb0a6f8c5f4a93fb25add6852237b5a2ea6c591241756a7bc7"
+}

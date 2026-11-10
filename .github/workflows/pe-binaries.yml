@@ -53,6 +53,10 @@ jobs:
           mkdir -p local/jit32
           rustc --edition 2024 --test -D warnings pe/probe_exec_ranges.rs -o local/jit32/executable-range-tests
           local/jit32/executable-range-tests
+      - name: Test exact decimal formatting without host floating point or locale
+        run: |
+          rustc --edition 2024 --test -D warnings pe/probe_number_format.rs -o local/jit32/number-format-tests
+          local/jit32/number-format-tests
       - name: Fetch locked dependencies before offline PE builds
         if: runner.os == 'macOS'
         run: cargo fetch --manifest-path pe/Cargo.toml --locked
@@ -96,6 +100,8 @@ jobs:
         run: python tools/check_pe32_current_local_time.py
       - name: Exercise the guarded copy import from DAO save loading on real owned files
         run: python tools/check_pe32_copy_file.py
+      - name: Compare the literal number-format PE against 548 native Windows observations
+        run: python tools/check_pe32_number_format.py
       - uses: actions/upload-artifact@v4
         with:
           name: pe32-copy-file

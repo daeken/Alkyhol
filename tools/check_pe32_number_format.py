@@ -8,6 +8,7 @@ from pathlib import Path
 import shutil
 import struct
 import subprocess
+import zipfile
 from build_pe_fixture import ROOT, rust_tool
 
 SOURCE = ROOT / 'pe/fixtures/pe32-startup'
@@ -70,16 +71,77 @@ def compare(actual, reference):
     return differences
 
 
+def frozen(directory):
+    record = json.loads((ROOT/'pe/reference/pe32-number-format-windows-v1.json').read_text())
+    archive = ROOT/'pe/reference/pe32-number-format-v1.zip'
+    if digest(archive) != record['fixture_sha256']:
+        raise ValueError('frozen number-format fixture changed')
+    directory.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(archive) as z:
+        if set(z.namelist()) != {'number-format.exe', 'inputs.json', 'native-observations.bin'}:
+            raise ValueError('unexpected frozen fixture members')
+        for name in z.namelist():
+            data = z.read(name)
+            target = directory/name
+            if target.exists() and target.read_bytes() != data:
+                raise ValueError('output contains a different candidate; use a fresh directory: '+name)
+            target.write_bytes(data)
+    if digest(directory/'number-format.exe') != record['identity']['files']['number-format.exe']:
+        raise ValueError('frozen Windows PE identity mismatch')
+    reference = directory/'native-observations.bin'
+    if digest(reference) != record['observations'][0]['stdout_sha256']:
+        raise ValueError('frozen Windows observation identity mismatch')
+    return reference
+
+
+def guards(directory, host):
+    source = SOURCE/'number-format-guard.c'
+    lld = rust_tool('rust-lld')
+    directory.mkdir(exist_ok=True)
+    library = directory/'kernel32.lib'
+    subprocess.run([lld, '-flavor', 'link', '/lib', '/machine:x86',
+                    '/def:'+str(SOURCE/'number-format.def'), '/out:'+str(library)], check=True)
+    reasons = ['locale outside explicit en-US profile', 'defaults and user locale overrides',
+               'structure outside checked readable guest storage', 'output outside checked writable guest storage',
+               'unaligned string pointer outside measured profile', 'output outside checked writable guest storage',
+               'overlapping number-format input/output storage', 'grouping outside bounded profile']
+    rows = []
+    for mode, reason in enumerate(reasons):
+        obj, exe = directory/f'guard{mode}.obj', directory/f'guard{mode}.exe'
+        subprocess.run([shutil.which('clang') or 'clang', '--target=i686-pc-windows-msvc',
+                        '-O1', '-ffreestanding', '-fno-builtin', '-fno-stack-protector',
+                        '-fno-unwind-tables', '-fno-asynchronous-unwind-tables',
+                        '-Wall', '-Wextra', '-Werror', f'-DMODE={mode}', '-c',str(source),'-o',str(obj)],check=True)
+        subprocess.run([lld,'-flavor','link','/nodefaultlib','/subsystem:console','/machine:x86',
+                        '/dynamicbase','/fixed:no','/timestamp:0','/safeseh:no','/manifest:no','/entry:entry',
+                        str(obj),str(library),*[f'/alternatename:__imp__{n}@{s}=__imp__{n}' for n,s in SYMBOLS],
+                        '/out:'+str(exe)],check=True)
+        for rebased in [False, True]:
+            result=subprocess.run([str(host.resolve()),str(exe),'--strict','--file-origins',
+                                   *(['--rebase'] if rebased else [])],capture_output=True,timeout=30)
+            row=dict(mode=mode,rebased=rebased,status=result.returncode,pe_sha256=digest(exe),
+                     stderr=result.stderr.decode(errors='replace'),stdout_hex=result.stdout.hex())
+            rows.append(row)
+            (directory/'report.json').write_text(json.dumps(dict(source_sha256=digest(source),observations=rows),indent=2)+'\n')
+            if result.returncode!=78 or result.stdout!=struct.pack('<2I',0x4e464731,mode) or reason not in row['stderr']:
+                raise ValueError(f'number-format exclusion {mode} did not fail explicitly')
+    return len(rows)
+
+
 def main(args):
     directory = args.output.resolve()
     exe = directory / 'number-format.exe'
-    if args.build or not exe.exists():
+    if args.build:
         if args.native:
             raise RuntimeError('native observation requires the identical supplied PE')
-        exe = build(directory)
-    if args.build:
+        build(directory)
         print('Built owned number-format PE; no execution claimed')
         return
+    reference_path = args.reference
+    if not args.native and reference_path is None:
+        reference_path = frozen(directory)
+    if not exe.exists():
+        raise RuntimeError('execution requires the supplied identical PE; --build creates candidates')
     identity = json.loads((directory / 'inputs.json').read_text())
     if digest(exe) != identity['files'][exe.name] or any(digest(SOURCE/n) != h for n,h in identity['sources'].items()):
         raise ValueError('PE/source identity changed')
@@ -89,6 +151,8 @@ def main(args):
         host = runner(directory)
     report = dict(identity=identity, backend='native Windows' if args.native else 'Alkyhol PE32',
                   platform=platform.platform(), machine=platform.machine(), observations=[])
+    if not args.native:
+        report['host_sha256'] = digest(host.resolve())
     if args.native:
         import ctypes
         if platform.system() != 'Windows':
@@ -100,7 +164,9 @@ def main(args):
         if not kernel.IsWow64Process2(kernel.GetCurrentProcess(), ctypes.byref(process), ctypes.byref(native)) or native.value != 0x8664:
             raise RuntimeError('native AMD64 Windows observation required')
         report.update(observer_process_machine=process.value, native_machine=native.value)
-    reference = decode(args.reference.read_bytes()) if args.reference else None
+    reference = decode(reference_path.read_bytes()) if reference_path else None
+    if reference_path:
+        report['reference_sha256'] = digest(reference_path)
     for rebased in ([False] if args.native else [False, True]):
         command = [str(exe)] if args.native else [str(host.resolve()), str(exe), '--strict', '--file-origins']
         if rebased:
@@ -122,6 +188,9 @@ def main(args):
             if row['differences']:
                 raise ValueError(f"{len(row['differences'])} strict native number-format differences")
     (directory/'report.json').write_text(json.dumps(report, indent=2)+'\n')
+    if not args.native:
+        report['explicit_profile_storage_exclusions'] = guards(directory/'guards',host)
+        (directory/'report.json').write_text(json.dumps(report,indent=2)+'\n')
     print('Recorded', len(rows), 'complete number-format rows;',
           'native comparison passed' if reference is not None else 'no native equivalence claimed')
 
