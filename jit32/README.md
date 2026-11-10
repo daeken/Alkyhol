@@ -122,7 +122,10 @@ and API live-buffer checks are deliberately distinct.
 `ALKYHOL_PE32_TRACE_CALLS=first` limits repeated service diagnostics;
 `ALKYHOL_JIT32_TRACE_PROGRESS=1` prints million-instruction progress. The current
 shared entry budget is one billion instruction/service transitions per entry;
-exhaustion is an explicit failure. Native callbacks keep separate integer
+exhaustion is an explicit failure. `ALKYHOL_JIT32_INSTRUCTION_BUDGET` explicitly
+selects a decimal count from 1 through 100 billion for longer original startup
+and interactive experiments; the chosen limit is printed. Invalid settings fail
+before execution, and exhaustion remains a failure. Native callbacks keep separate integer
 continuations and shared guest-thread x87 state. See docs/sharpretro.md and
 docs/validation.md for precise current game progress and evidence limits.
 

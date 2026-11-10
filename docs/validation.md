@@ -7687,3 +7687,16 @@ templates, with native host tests for all source-bit positions, 16/32-bit widths
 register/checked-memory forms, partial writes, zero-source ZF and fault rollback.
 57 default CPU tests pass, five external observers remain separate. A subsequent
 original replay is pending; no native JIT game frame/menu or cutscene is claimed.
+
+The following original replay passes Umbra and creates the full game window,
+original shaders and vertex/index buffers, then stops explicitly at UNPCKHPD
+in the original EXE. Original hashes agree before/after (633.8s uncontrolled wall
+time; 816,434,379 loading-thread guest instructions). There was no original
+Present. Four legacy 32/64-bit low/high floating unpack forms now pass native
+bit-interleave, alias, status-preservation, aligned-memory and fault tests using
+the pinned templates. The shared runner's new explicit finite budget setting
+preserves the billion default; owned ABI execution stops without output at 1,
+passes eight frozen Windows words at 1,000,000 and rejects invalid limits.
+59 default CPU tests and Clippy pass. The next original experiment explicitly
+chooses ten billion transitions per entry; neither budget extension nor these
+host assertions establish a game frame or Rosetta progress parity.

@@ -438,3 +438,22 @@ bad-memory failure. Undefined arithmetic flags/zero-source destination are not
 asserted as x86 guarantees. All 57 default CPU tests pass; the next original
 replay is pending. Device creation is not evidence of an original game Present,
 menu, cutscene, native shaded-frame parity or general game compatibility.
+
+The subsequent original replay passes Umbra bit scans, opens the full game
+window and creates original vertex/pixel shaders and vertex/index buffers. Its
+next explicit stop is UNPCKHPD in the original EXE (816,434,379 instructions on
+the loading thread, 633.8s uncontrolled wall time, original inputs unchanged).
+No original Present was observed. The four legacy floating unpack forms now
+use the pinned interleave templates with checked aligned 128-bit memory operands.
+Native tests cover low/high 32/64-bit lanes, source aliasing, preserved GPR/
+EFLAGS/MXCSR/source bits, alignment and complete-source memory faults.
+
+For continued original startup and interactive execution, the shared runner now
+accepts an explicit finite `ALKYHOL_JIT32_INSTRUCTION_BUDGET` (1..100 billion),
+retaining the default billion and explicit exhaustion failure. Pure parser tests
+reject malformed/overflow/out-of-range settings. On the physical native host,
+the unchanged owned ABI PE stops at budget 1 without output, passes all eight
+frozen Windows words at budget 1,000,000, and rejects zero/over-limit settings
+before guest execution. All 59 default CPU tests and runner Clippy pass; five
+independent external observers remain separate. The next original replay uses
+an explicit ten-billion budget. No frame/menu/cutscene parity is claimed yet.

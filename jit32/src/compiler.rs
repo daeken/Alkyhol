@@ -726,6 +726,9 @@ pub(crate) fn compile(pc: u32, bytes: &[u8]) -> Result<Instruction> {
         "CVTDQ2PD",
         "PSHUFD",
         "UNPCKLPD",
+        "UNPCKHPD",
+        "UNPCKLPS",
+        "UNPCKHPS",
         "PINSRW",
         "PEXTRW",
         "MOVAPS",
@@ -925,7 +928,10 @@ pub(crate) fn compile(pc: u32, bytes: &[u8]) -> Result<Instruction> {
         stack_read: ["POPF", "POP", "RET", "RETI", "LEAVE"].contains(&mnemonic),
         stack_write: ["PUSHF", "PUSH", "CALL"].contains(&mnemonic),
         signed_division: mnemonic == "IDIV",
-        aligned_vector: ["MOVAPS", "MOVAPD", "MOVDQA"].contains(&mnemonic),
+        aligned_vector: [
+            "MOVAPS", "MOVAPD", "MOVDQA", "UNPCKLPD", "UNPCKHPD", "UNPCKLPS", "UNPCKHPS",
+        ]
+        .contains(&mnemonic),
         segment: match d.p.segment {
             0x26 => Some(0),
             0x2e => Some(1),

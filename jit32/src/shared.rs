@@ -17,6 +17,28 @@ pub struct Stats {
 pub fn stats() -> Stats {
     STATS.with(Cell::get)
 }
+fn parse_instruction_budget(value: Option<&str>) -> Result<u64> {
+    let Some(value) = value else {
+        return Ok(1_000_000_000);
+    };
+    if value.is_empty() || !value.bytes().all(|b| b.is_ascii_digit()) {
+        return Err("JIT32 instruction budget must be decimal digits".into());
+    }
+    let budget = value
+        .parse::<u64>()
+        .map_err(|_| "JIT32 instruction budget overflow")?;
+    if !(1..=100_000_000_000).contains(&budget) {
+        return Err("JIT32 instruction budget must be 1..=100000000000".into());
+    }
+    Ok(budget)
+}
+fn instruction_budget() -> Result<u64> {
+    match std::env::var("ALKYHOL_JIT32_INSTRUCTION_BUDGET") {
+        Ok(v) => parse_instruction_budget(Some(&v)),
+        Err(std::env::VarError::NotPresent) => parse_instruction_budget(None),
+        Err(_) => Err("JIT32 instruction budget is not valid Unicode".into()),
+    }
+}
 struct Cached {
     bytes: Vec<u8>,
     instruction: Rc<compiler::Instruction>,
@@ -28,6 +50,10 @@ unsafe fn validate(context: *const (), address: u64, length: usize, rights: u8) 
     context.permits(address, length, rights)
 }
 pub fn install() -> Result<()> {
+    let budget = instruction_budget()?;
+    if std::env::var_os("ALKYHOL_JIT32_INSTRUCTION_BUDGET").is_some() {
+        eprintln!("JIT32 explicit instruction/service budget per entry: {budget}");
+    }
     match std::env::var("ALKYHOL_JIT32_EXPERIMENTAL_SSE2") {
         Err(std::env::VarError::NotPresent) => {}
         Ok(v) if v == "1" => eprintln!(
@@ -80,7 +106,7 @@ fn execute_inner(context: &ExecutionContext32<'_>, entry: u32, stack: u32) -> Re
         .transpose()?;
     let mut trace_remaining = 0;
     let mut traced = false;
-    for _ in 0..1_000_000_000u64 {
+    for _ in 0..instruction_budget()? {
         let pc = state[17] as u32;
         if !traced && trace_after == Some(pc) {
             traced = true;
@@ -235,4 +261,29 @@ fn execute_inner(context: &ExecutionContext32<'_>, entry: u32, stack: u32) -> Re
         "native JIT instruction/service budget exhausted at {:#x}; instructions={instructions} services={services}",
         state[17]
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_instruction_budget;
+    #[test]
+    fn explicit_budgets_remain_finite_checked_and_opt_in() {
+        assert_eq!(parse_instruction_budget(None).unwrap(), 1_000_000_000);
+        for n in [1, 1_000_000_000, 10_000_000_000, 100_000_000_000] {
+            assert_eq!(parse_instruction_budget(Some(&n.to_string())).unwrap(), n);
+        }
+        for v in [
+            "",
+            "0",
+            "100000000001",
+            "18446744073709551616",
+            "-1",
+            "+1",
+            " 1",
+            "1 ",
+            "unlimited",
+        ] {
+            assert!(parse_instruction_budget(Some(v)).is_err(), "{v:?}");
+        }
+    }
 }

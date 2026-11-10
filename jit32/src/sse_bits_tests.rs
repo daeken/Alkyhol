@@ -5,6 +5,63 @@ use crate::{
     tests::cpu,
 };
 #[test]
+fn unpack_float_family_interleaves_bits_without_changing_fp_status() {
+    let a = 0x7ff00001fedcba987fc0123401234567u128;
+    let b = 0x80000000abcdef0198765432ffff0001u128;
+    for width in [32, 64] {
+        for high in [false, true] {
+            for form in 0..3 {
+                let mut bytes = if width == 64 { vec![0x66] } else { vec![] };
+                bytes.extend([
+                    0x0f,
+                    if high { 0x15 } else { 0x14 },
+                    [0xc1, 0xc0, 0x00][form],
+                ]);
+                let mut r = cpu(&bytes);
+                r.state[0] = 0x20000;
+                r.memory.map(0x20000, 16, READ, &b.to_le_bytes()).unwrap();
+                r.state[24] = a as u64;
+                r.state[25] = (a >> 64) as u64;
+                r.state[26] = b as u64;
+                r.state[27] = (b >> 64) as u64;
+                r.state[16] = 0xad7;
+                r.memory.fpu.borrow_mut().mxcsr = 0x9fc3;
+                let other = if form == 1 { a } else { b };
+                let half = 64 / width;
+                let offset = if high { half } else { 0 };
+                let mask = (1u128 << width) - 1;
+                let mut expected = 0;
+                for lane in 0..half {
+                    expected |= ((a >> ((lane + offset) * width)) & mask) << (2 * lane * width);
+                    expected |=
+                        ((other >> ((lane + offset) * width)) & mask) << ((2 * lane + 1) * width);
+                }
+                assert!(matches!(r.run(1), Stop::Budget { .. }));
+                assert_eq!(
+                    r.state[24] as u128 | ((r.state[25] as u128) << 64),
+                    expected
+                );
+                assert_eq!(&r.state[26..28], &[b as u64, (b >> 64) as u64]);
+                assert_eq!(r.state[16], 0xad7);
+                assert_eq!(r.memory.fpu.borrow().mxcsr, 0x9fc3);
+                assert_eq!(r.memory.read(0x20000, 16, READ).unwrap(), b.to_le_bytes());
+            }
+            for address in [0, 0x20008, 0x30000] {
+                let mut bytes = if width == 64 { vec![0x66] } else { vec![] };
+                bytes.extend([0x0f, if high { 0x15 } else { 0x14 }, 0x00]);
+                let mut r = cpu(&bytes);
+                r.memory.map(0x20000, 32, READ, &[0x5a; 32]).unwrap();
+                r.memory.map(0x30000, 8, READ, &[0x5a; 8]).unwrap();
+                r.state[0] = address;
+                let before = r.state;
+                let stop = r.run(1);
+                assert!(matches!(stop, Stop::Fault { .. } | Stop::CpuFault { .. }));
+                assert_eq!(r.state, before);
+            }
+        }
+    }
+}
+#[test]
 fn reached_vector_shift_subtract_shuffle_and_zip_are_lane_operations() {
     let a = [0xfedcba9876543210, 0x0123456789abcdef];
     for count in [0, 1, 31, 63, 64, 65, 255] {
