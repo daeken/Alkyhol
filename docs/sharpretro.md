@@ -743,3 +743,21 @@ x87 test symbols; no native full-PE-unit result is claimed, and no oracle/fixtur
 was changed. The input helper is tested from its production source file through
 the native JIT test target. Another original input/caller-traced run follows;
 New Game, Quick Play and Orzammar progress parity remain unestablished.
+
+
+The next physical input experiment encountered an independent fullscreen host
+condition. Our original window extends beyond the actual 1024x663 desktop;
+CoreGraphics reports the display captured, active and awake, while the console
+is unlocked. The Alkyhol host never calls CGDisplayCapture. A mode change fails
+with CoreGraphics error 1004; successful accessibility focus requests do not
+change the actual foreground owner, the independent Wine playtest. The helper's
+foreground guard therefore posts no key or click. Only our own window was moved
+and restored; only our own native process was suspended to preserve its remaining
+explicit instruction budget. The independent process stays running and untouched.
+
+This is an observed host test condition, not evidence of a JIT input/CPU failure
+or of New Game activation. The original DirectInput caller trace correctly
+rejects its NOTACQUIRED result. A coordinated windowed foreground run remains
+necessary to inspect successful state reads and advance the original menu. Local
+window/input diagnostics and capture metadata remain ignored; no game code/data,
+frozen comparison, API acquisition rule or rendering quality was changed.
