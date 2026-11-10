@@ -181,7 +181,7 @@ pub(super) fn yield_cpu() {
                 let mut q = q.borrow_mut();
                 let (count, start) = q.get_or_insert_with(|| (0, std::time::Instant::now()));
                 *count += 1;
-                *count >= 64 || start.elapsed() >= std::time::Duration::from_millis(2)
+                *count >= 256 || start.elapsed() >= std::time::Duration::from_millis(2)
             });
             if due {
                 without_cpu(image, std::thread::yield_now);
@@ -564,11 +564,9 @@ pub(super) fn host_fs_valid(fs: u16) -> bool {
 }
 
 pub(super) fn wait_handle(image: &LoadedImage32<'_>, handle: u32, milliseconds: u32) -> u32 {
-    // A native nonblocking poll does not need a full CPU-lease/TEB handoff.
-    // Ordinary dispatch still yields every 64 services or 2ms, so a polling
-    // original worker cannot monopolize the guest. Blocking waits retain the
-    // real release/wait/reacquire path. Keep the frozen Rosetta path unchanged.
-    #[cfg(target_arch = "aarch64")]
+    // An atomic, nonblocking kernel poll needs no CPU-lease/TEB handoff.
+    // Normal service scheduling still bounds API bursts to 256 calls or 2ms;
+    // blocking waits retain the release/pump/wait/reacquire path on both hosts.
     if milliseconds == 0 {
         return alkyhol::ffi::WaitForSingleObject(handle as usize, 0);
     }
@@ -607,6 +605,9 @@ pub(super) fn wait_event_set(
     all: bool,
     milliseconds: u32,
 ) -> alkyhol::kernel::WinResult<u32> {
+    if milliseconds == 0 {
+        return alkyhol::kernel::kernel().wait_events(handles, all, 0);
+    }
     without_cpu(image, || {
         if !super::window_host32::is_main_thread() || milliseconds == 0 {
             return alkyhol::kernel::kernel().wait_events(handles, all, milliseconds);

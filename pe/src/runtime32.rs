@@ -38,6 +38,8 @@ mod diagnostic32;
 mod directory32;
 #[path = "disk32.rs"]
 mod disk32;
+#[path = "dsound32.rs"]
+mod dsound32;
 #[path = "event32.rs"]
 mod event32;
 #[path = "exception_filter32.rs"]
@@ -58,6 +60,8 @@ mod icon32;
 mod netbios32;
 #[path = "perf32.rs"]
 mod perf32;
+#[path = "sound32.rs"]
+mod sound32;
 pub use icon32::IconImage32;
 #[path = "d3d9_32.rs"]
 mod d3d9_32;
@@ -184,7 +188,7 @@ fn host_code_address(address: u32) -> usize {
 }
 const PAGE: usize = 4096;
 const STACK: usize = 1024 * 1024;
-const APIS: [(&str, u16); 311] = [
+const APIS: [(&str, u16); 320] = [
     ("GetLastError", 0),
     ("SetLastError", 4),
     ("GetStdHandle", 4),
@@ -496,6 +500,15 @@ const APIS: [(&str, u16); 311] = [
     ("ShowCursor", 4),
     ("DeleteFileW", 4),
     ("DeleteFileA", 4),
+    ("DirectSoundCreate", 12),
+    ("DirectSoundCreate8", 12),
+    ("DirectSoundEnumerateA", 8),
+    ("DirectSoundEnumerateW", 8),
+    ("GetDeviceID", 8),
+    ("DirectSoundCaptureCreate", 12),
+    ("DirectSoundCaptureCreate8", 12),
+    ("DirectSoundCaptureEnumerateA", 8),
+    ("DirectSoundCaptureEnumerateW", 8),
 ];
 // The first 120 API slots retain their original offsets. The second bank
 // begins after both x87 bodies, leaving their machine code and failure gates
@@ -570,6 +583,8 @@ fn api_id(module: &str, symbol: &ImportSymbol) -> Option<usize> {
                     "ole32.dll"
                 } else if *id == 293 {
                     "netapi32.dll"
+                } else if (311..320).contains(id) {
+                    "dsound.dll"
                 } else if *id == 255 {
                     "d3d9.dll"
                 } else if matches!(*id, 8 | 120) {
@@ -1088,6 +1103,7 @@ struct Cpu32 {
     images: RefCell<image32::State>,
     d3d9: RefCell<d3d9_32::State>,
     input8: RefCell<input8_32::State>,
+    dsound: RefCell<dsound32::State>,
     unnamed_mutexes: RefCell<unnamed_mutex32::State>,
     com: RefCell<com32::State>,
     wave: RefCell<wave32::State>,
@@ -1226,6 +1242,7 @@ impl Cpu32 {
             images: RefCell::new(Default::default()),
             d3d9: RefCell::new(Default::default()),
             input8: RefCell::new(Default::default()),
+            dsound: RefCell::new(Default::default()),
             unnamed_mutexes: RefCell::new(Default::default()),
             com: RefCell::new(Default::default()),
             wave: RefCell::new(Default::default()),
@@ -1462,6 +1479,9 @@ impl<'a> LoadedImage32<'a> {
                 let name = import.module.to_ascii_lowercase();
                 let mut builtins = cpu.builtins.borrow_mut();
                 if let std::collections::btree_map::Entry::Vacant(entry) = builtins.entry(name) {
+                    if entry.key() == "dsound.dll" {
+                        cpu.dsound.borrow_mut().static_loaded = true;
+                    }
                     let token = cpu.mapping(PAGE, PAGE, 0)?;
                     token.protect(0, PAGE, 0)?;
                     entry.insert(token);
@@ -1839,6 +1859,9 @@ impl<'a> LoadedImage32<'a> {
             name.push_str(".dll");
         }
         if let Some(token) = self.cpu.builtins.borrow().get(&name.to_ascii_lowercase()) {
+            if name.eq_ignore_ascii_case("dsound.dll") && !dsound32::loaded(&self.cpu) {
+                return Ok(None);
+            }
             return Ok(Some(token.base as u32));
         }
         if crate::abi::is_builtin(&name) {
@@ -1868,6 +1891,9 @@ impl<'a> LoadedImage32<'a> {
             .iter()
             .find(|(_, token)| token.base as u32 == module)
         {
+            if name.eq_ignore_ascii_case("dsound.dll") && !dsound32::loaded(&self.cpu) {
+                return Err("DirectSound export query on an unloaded module".into());
+            }
             if symbol <= u16::MAX as u32 {
                 let id = api_id(name, &ImportSymbol::Ordinal(symbol as u16))
                     .ok_or("PE32 host-service ordinal lookup is unsupported")?;
@@ -2366,6 +2392,7 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
             .copied()
             .or_else(|| d3d9_32::signature(id))
             .or_else(|| input8_32::signature(id))
+            .or_else(|| dsound32::signature(id))
         else {
             unsupported("unknown gateway");
         };
@@ -2697,6 +2724,17 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
                 );
                 97
             }
+            311 | 312 => dsound32::create(image, args),
+            313 | 314 => dsound32::enumerate(image, args, id == 314),
+            315 => dsound32::get_device_id(image, args),
+            316 | 317 => {
+                if args[1] != 0 {
+                    dsound32::clear_output(image, args[1]);
+                }
+                0x80004001
+            }
+            318 | 319 => 0x80004001,
+            dsound32::BASE.. => dsound32::dispatch(image, id, &words),
             input8_32::BASE.. => input8_32::dispatch(image, id, &words),
             d3d9_32::BASE.. => d3d9_32::dispatch(image, id, &words),
             215 => {
@@ -3054,6 +3092,7 @@ mod tests {
                 images: RefCell::new(Default::default()),
                 d3d9: RefCell::new(Default::default()),
                 input8: RefCell::new(Default::default()),
+                dsound: RefCell::new(Default::default()),
                 unnamed_mutexes: RefCell::new(Default::default()),
                 com: RefCell::new(Default::default()),
                 wave: RefCell::new(Default::default()),

@@ -2531,7 +2531,7 @@ fn draw_buffer(
 }
 // Opt-in completed-Present throughput, without GPU readbacks beyond the existing
 // presentation path. Windows/game state is not changed by this diagnostic.
-fn profile_present(gpu: &Gpu) {
+fn profile_present(gpu: &Gpu, image: &LoadedImage32<'_>) {
     static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     if !*ENABLED.get_or_init(|| std::env::var_os("ALKYHOL_D3D9_PROFILE").is_some()) {
         return;
@@ -2547,6 +2547,7 @@ fn profile_present(gpu: &Gpu) {
         if seconds>=5. {
             let stats=gpu.legacy_pipeline_cache_stats();
             let uploads=gpu.legacy_upload_stats();
+            super::dsound32::report(image);
             let (service_seconds, service_calls) = super::perf32::take();
             eprintln!("PE32 D3D9 service timing [Win32,draw,other-D3D9,CPU-handoff]: seconds={service_seconds:?} calls={service_calls:?}");
             eprintln!("PE32 D3D9 completed Present profile: frames={frames} seconds={seconds:.6} fps={:.3} pipelines={stats:?} uploads={uploads:?}",*frames as f64/seconds);
@@ -3971,7 +3972,7 @@ fn dispatch_inner(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32 {
                 .borrow()
                 .graphics_present(*hwnd, w, h, &bytes)
                 .unwrap_or_else(|e| unsupported(&e));
-            profile_present(gpu);
+            profile_present(gpu, image);
             0
         }
         (2, 10) => 1,

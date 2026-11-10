@@ -1,0 +1,4 @@
+LIBRARY DSOUND.dll
+EXPORTS
+DirectSoundCreate8
+DirectSoundEnumerateA

@@ -143,6 +143,9 @@ pub(super) fn load(image: &LoadedImage32<'_>, address: u32, ansi: bool) -> u32 {
         };
         path32::resolve(&cwd, &name).unwrap_or_else(|e| unsupported(&e))
     };
+    if basename && sought == "dsound.dll" {
+        return super::dsound32::load(image);
+    }
     let target = image
         .cpu
         .modules
@@ -170,6 +173,9 @@ pub(super) fn load(image: &LoadedImage32<'_>, address: u32, ansi: bool) -> u32 {
     }
 }
 pub(super) fn free(image: &LoadedImage32<'_>, base: u32) -> u32 {
+    if let Some(result) = super::dsound32::free(image, base) {
+        return result;
+    }
     if !image
         .cpu
         .modules

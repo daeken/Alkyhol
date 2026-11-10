@@ -11,6 +11,7 @@ fn run(command: &mut Command) {
 fn main() {
     println!("cargo:rerun-if-changed=src/screen_capture32.m");
     println!("cargo:rerun-if-changed=src/audio_host32.c");
+    println!("cargo:rerun-if-changed=src/sound_host32.c");
     println!("cargo:rerun-if-changed=src/filesystem_host32.c");
     println!("cargo:rerun-if-changed=src/network_host32.c");
     println!("cargo:rerun-if-changed=src/memory_host32.c");
@@ -54,6 +55,7 @@ fn main() {
     let mut native = Vec::new();
     for name in [
         "audio_host32",
+        "sound_host32",
         "filesystem_host32",
         "network_host32",
         "memory_host32",
@@ -90,6 +92,7 @@ fn main() {
         "CoreGraphics",
         "CoreFoundation",
         "CoreAudio",
+        "AudioToolbox",
     ] {
         println!("cargo:rustc-link-lib=framework={framework}");
     }

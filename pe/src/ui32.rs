@@ -54,6 +54,9 @@ pub(super) struct State {
     capture: Option<(u32, u32)>,
 }
 impl State {
+    pub(super) fn audio_window(&self, hwnd: u32) -> bool {
+        hwnd != 0 && (self.windows.contains_key(&hwnd) || self.desktop == hwnd)
+    }
     pub(super) fn input_window(&self, hwnd: u32) -> bool {
         self.windows.contains_key(&hwnd)
     }

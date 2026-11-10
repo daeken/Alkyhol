@@ -8736,3 +8736,25 @@ callbacks and long calls spanning report boundaries can exceed the current
 report period. Original save completion remains unverified after the new delete
 support. The current running process is handed back for user playtesting;
 no further automated gameplay input or replacement is scheduled in this turn.
+
+## Real DirectSound output and Rosetta event polls, 2026-11-10
+
+The new bounded PE32 DirectSound COM/software PCM path has four passing Rust
+units and an explicit passing physical-M4 AudioQueue output/teardown test.
+The owned 61-word DirectSound PE passes normal and rebased under Rosetta,
+including a notification from actually consumed output. Native Windows audio
+comparison and original DAO sound are not yet observed; see [audio.md](audio.md).
+The owned PE SHA-256 is
+673f27cdfc5b9c822736f2b226abbc2f5773fae3ae9a667f6e0454c5f06edf86.
+
+Rosetta now uses the existing direct atomic event poll for zero timeout instead
+of dropping/reacquiring the FS/TEB CPU lease. Nonzero waits still release it;
+service quantum is 256 calls with the existing 2 ms elapsed cap. The unchanged
+26-word original-worker/TEB/TLS witness passes; all six frozen unnamed-event
+cases, including explicit exclusion failures, still pass. The same original
+legacy-shader PE again emits exactly 8,396 bytes with SHA-256
+32f2d8ff8d615da007be4ded2cbd2318d91c378cf65853c7afde6f5a174acffe.
+PE Clippy passes (existing vendored dependency warnings remain). These tests
+establish finite host behavior, not an original-game FPS improvement.
+The previous PID 17783 is already terminal (-15); no live user instance was
+replaced by these component tests, and its controls remain revoked.
