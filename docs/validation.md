@@ -8404,3 +8404,30 @@ shared native ARM host. Reports remain ignored/local under `local/pe/copy-file`
 and `local/jit32/copy-file-check`. Fresh original execution must still confirm
 the identified copy call and actual save restoration; native 3D/Rosetta cutscene
 parity is not established by these microtests.
+
+The eight supported ordinary CopyFileW cases pass as actual PE32 binaries on
+native AMD64 Windows Server build 26100 in
+[CI 42859474005](https://github.com/daeken/Alkyhol/actions/runs/42859474005).
+All eleven PE/source identities match the independently executed Mac cases.
+Their exact owned PE bytes and native observations are frozen in
+`pe/reference/pe32-copy-file-v1.zip` and `pe32-copy-file-windows-v1.json`.
+The tool now selects these literal files and compares result/defined failure
+codes with that native capture; undefined successful GetLastError is excluded.
+Both native ARM and Rosetta pass all 22 cases using the frozen files. Reports
+also retain current file sizes, modification times and readonly states.
+The overall CI run is not a pass: module-order formatting was corrected in
+13aff40, and seven other native startup observations reported mismatches.
+Those older observations/acceptance criteria have not been changed.
+
+The clean 0331f78 original replay confirms the formerly blocked CopyFileW call:
+it copies the selected quicksave's portrait into the character root (not the
+savegame.das contents), then renders the original Loading screen. The staged
+699f save's CreateFile invocation is recorded; successful complete save parsing
+or a restored world is still unverified. The trace also executes the former
+SQRTSD at 0xd18078 and its successor, establishing that loading-path fix in the
+application. It then stops honestly on PMOVMSKB at EXE+0x4f7e6e (status 78), with
+5,202,503,182 instructions and original EXE/provided DLL hashes unchanged. All
+eleven staged scene-input byte hashes also remain unchanged. No original native
+in-engine frame or Rosetta cutscene progress parity is claimed. Evidence is
+archived in ignored `local/jit32/shared-game-pmovmskb-before`; the process is
+terminal and its UI control is revoked.
