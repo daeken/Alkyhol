@@ -1238,3 +1238,13 @@ The two raw tables differ only in the loaded/after MXCSR DWORDs for those
 32,778 requested unmasked loads. Other observed fields, including all results
 and flags, are byte-identical. No existing oracle is weakened; this finite
 sequence evidence does not establish an application replay past PMOVMSKB.
+
+The subsequent clean 8c67e9e replay now executes the original PMOVMSKB at
+0xd17e6e and successor 0xd17e72, with several bounded trace pairs retained in
+ignored `local/jit32/shared-game/movemask-application-pass.json`. A confirmed
+Resume hover and separate held click select the same frozen scene input. The
+original save-open invocation, portrait CopyFileW and Loading screen are
+observed; the original process continues through scene loading at this live
+observation. This clears that specific application stop, without establishing a
+complete save read, restored world, native in-engine frame or Rosetta progress
+parity. No further input is injected after handing the desktop back.
