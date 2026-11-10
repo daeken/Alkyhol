@@ -21,6 +21,8 @@ pub fn operation(name: &str) -> Option<u64> {
         "DIV" => 3,
         "RSQRT" if form == 0 || form == 2 => 4,
         "RCP" if form == 0 || form == 2 => 5,
+        "MIN" => 6,
+        "MAX" => 7,
         _ => return None,
     };
     Some(op | (form << 4))
@@ -175,6 +177,8 @@ fn perform(
             (crate::sse_estimate::rsqrt(b as u32)? as u128, mxcsr)
         } else if op == 5 && width == 32 {
             (crate::sse_reciprocal::rcp(b as u32) as u128, mxcsr)
+        } else if op == 6 || op == 7 {
+            crate::sse_minmax::select(width as u32, a, b, op == 7, mxcsr)?
         } else if width == 32 {
             calculate::<Single, Wide32>(a, b, op, mxcsr)?
         } else {

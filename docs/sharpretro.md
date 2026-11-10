@@ -915,3 +915,40 @@ coordinated process identity; consult ignored `local/jit32/shared-game/run.json`
 for its exact host/source/input hashes. A bounded trace is armed at the newly
 reached reciprocal instruction. This restart is not evidence of passing that
 instruction or reaching character/3D/Orzammar until actually observed.
+
+
+The fresh unchanged original replay now executes past the former RCPSS stop:
+a bounded trace records that original instruction and its successors. It stops
+explicitly at newly reached MINPS, status 78, with original EXE/provided DLL
+hashes unchanged. The stopping thread reports 12,551,112,518 instructions.
+Foreground captures still show a loading transition, not character creation or
+in-engine 3D. The scoped UI controller independently detects exit and restores
+the prior desktop before the coordinated deadline. Raw evidence remains in
+ignored `local/jit32/shared-game-minps-before`; no live original PID remains.
+
+A preserved replacement-generated character/save input was copied into Alkyhol's
+own ignored profile after independent source-hash verification. The source and
+live replacement files are untouched. Load Game remained disabled after this
+live copy, so no original save parse/load or save incompatibility is established.
+The input is now present for fresh-start discovery; its provenance is a shared
+test input, never original reference behavior or recovered-body acceptance.
+
+All eight legacy SIMD minimum/maximum forms are now implemented through the
+existing checked arithmetic adapter. The selection follows the [Intel entries](https://www.intel.com/content/dam/www/public/us/en/documents/manuals/64-ia-32-architectures-software-developer-vol-2b-manual.pdf).
+All register routes, scalar upper lanes, aliases, read extents/rights and packed
+alignment have targeted native ARM tests. Unsupported unmasked exceptions fail
+without destination/environment commit; general #XM delivery remains separate.
+The compile-stop diagnostic now prints the emulated GPR/XMM/x87/MXCSR state from
+owned Rust arrays, without native Win32 thread-context sampling or guest mutation.
+
+All 98 default native ARM JIT tests and runner Clippy pass, with 19 external
+observers ignored by default. The separate new Rosetta observer has 65,536 rows:
+all result bits, complete MXCSR and defined flags agree exactly, including the
+special/denormal pair matrix and deterministic raw-bit pairs across all forms
+and control combinations. The C source, compiled-observer identity and table are
+frozen; `python3 tools/check_jit32_minmax.py` replays them. The existing SIMD
+workflow now also observes this unit on native x64 Windows; its result is pending.
+The result checkers additionally require a complete model report so an empty
+Rust test selection cannot become success. Older frozen observations/strict
+failures are retained. A fresh DAO run is still required for the MINPS fix;
+Orzammar progress parity and native full-frame equality remain unestablished.

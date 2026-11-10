@@ -24,4 +24,5 @@ def check():
     (output/'report.json').write_text(json.dumps(report,indent=2)+'\n')
     if sha(fixture)!=metadata['fixture_sha256']:raise ValueError('frozen input changed during comparison')
     result.check_returncode()
+    if report['model'] is None or report['model']['rows']!=67584:raise ValueError('complete model report missing')
 if __name__=='__main__':check()

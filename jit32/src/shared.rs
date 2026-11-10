@@ -233,7 +233,10 @@ fn execute_inner(context: &ExecutionContext32<'_>, entry: u32, stack: u32) -> Re
             }
             let instruction = Rc::new(
                 compiler::compile(pc, &bytes)
-                    .map_err(|e| format!("{e}; {} bytes={bytes:02x?}", context.location(pc)))?,
+                    .map_err(|e| {
+                        let fpu=memory.fpu.borrow();
+                        format!("{e}; {} bytes={bytes:02x?}; flags={:#x}; gpr={:x?}; xmm={:x?}; mxcsr={:#x}; x87_control={:#x}; x87_status={:#x}; x87_tag={:#x}; x87={:x?}",context.location(pc),state[16],&state[..8],&state[24..40],fpu.mxcsr,fpu.control,fpu.status,fpu.tag,fpu.registers)
+                    })?,
             );
             STATS.with(|s| {
                 let mut v = s.get();

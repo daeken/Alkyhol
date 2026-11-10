@@ -1,0 +1,20 @@
+{
+  "backend": "Rosetta x86_64 legacy SIMD min/max assembly on physical Apple Silicon",
+  "source": "jit32/tests/minmax_reference.c",
+  "source_sha256": "3a91d3c3a65afd2dbc7478d118cea83ba07cc8768120c7d3bc11d082e63b2b95",
+  "source_lf_sha256": "3a91d3c3a65afd2dbc7478d118cea83ba07cc8768120c7d3bc11d082e63b2b95",
+  "observer_sha256": "f7ae0386daabb350184450dad3e6bdc34161d3ccff4d4ff527630f72eb072eb4",
+  "observation_sha256": "e2d98c1e4ee384808308a31b4ff074482191e29f3e65e84eff9d2ceaebe408eb",
+  "fixture": "jit32/reference/minmax-rosetta-v1.bin.gz",
+  "fixture_sha256": "a2caba1e463844e5761fb06c429dacc66cdad53469b02b9fde8bdc51c321db90",
+  "rows": 65536,
+  "row_bytes": 80,
+  "result_bit_equality_required": true,
+  "masked_exception_observations": true,
+  "mxcsr_before_instruction": "captured after LDMXCSR; requested value retained separately",
+  "host": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+  "compiler": "Apple clang version 21.0.0 (clang-2100.3.34.2)",
+  "revision": "f9814419a0cbd4e9dea4b903c47b9038bd81610a",
+  "tracked_tree_clean_at_observation": false,
+  "source_tracked_at_observation": false
+}

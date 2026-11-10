@@ -20,6 +20,7 @@ mod sse_bits_tests;
 mod sse_compare;
 mod sse_estimate;
 mod sse_reciprocal;
+mod sse_minmax;
 mod stack_bank;
 #[cfg(test)]
 mod string_tests;

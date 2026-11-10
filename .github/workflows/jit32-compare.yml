@@ -5,6 +5,8 @@ on:
       - jit32/tests/sse_compare_reference.c
       - jit32/tests/rsqrt_reference.c
       - jit32/tests/rcp_reference.c
+      - jit32/tests/minmax_reference.c
+      - tools/observe_jit32_minmax_native.py
       - tools/observe_jit32_rcp_native.py
       - tools/observe_jit32_rsqrt_native.py
       - tools/observe_jit32_compare_native.py
@@ -14,6 +16,8 @@ on:
       - jit32/tests/sse_compare_reference.c
       - jit32/tests/rsqrt_reference.c
       - jit32/tests/rcp_reference.c
+      - jit32/tests/minmax_reference.c
+      - tools/observe_jit32_minmax_native.py
       - tools/observe_jit32_rcp_native.py
       - tools/observe_jit32_rsqrt_native.py
       - tools/observe_jit32_compare_native.py
@@ -80,4 +84,24 @@ jobs:
         with:
           name: native-rcp
           path: local/jit32/native-rcp-reference/
+          if-no-files-found: error
+
+  native-minmax-x64:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - name: Observe exact legacy SIMD minimum/maximum on native x64 Windows
+        run: python tools/observe_jit32_minmax_native.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-minmax
+          path: local/jit32/native-minmax-reference/
           if-no-files-found: error
