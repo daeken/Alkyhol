@@ -207,7 +207,15 @@ pub(super) fn seek(image: &LoadedImage32<'_>, a: &[u32; 8], wide: bool) -> u32 {
 }
 pub(super) fn flush(image: &LoadedImage32<'_>, h: u32) -> u32 {
     if !image.cpu.files.borrow().contains(&(h as usize)) {
-        unsupported("flush requires an owned live file handle");
+        // Directory watches are opened with FILE_LIST_DIRECTORY only. Their
+        // completion handles cannot be flushed as writable file descriptors.
+        let error = if image.cpu.watches.borrow().contains(h) {
+            alkyhol::kernel::ERROR_ACCESS_DENIED
+        } else {
+            alkyhol::kernel::ERROR_INVALID_HANDLE
+        };
+        alkyhol::ffi::SetLastError(error);
+        return 0;
     }
     match alkyhol::kernel::kernel().flush_file(h as usize) {
         Ok(()) => 1,
@@ -215,6 +223,43 @@ pub(super) fn flush(image: &LoadedImage32<'_>, h: u32) -> u32 {
             alkyhol::ffi::SetLastError(e.0);
             0
         }
+    }
+}
+
+#[cfg(test)]
+mod flush_tests {
+    use super::*;
+    use alkyhol::kernel::{ERROR_ACCESS_DENIED, ERROR_INVALID_HANDLE, kernel};
+
+    #[test]
+    fn flush_errors_return_to_guest_and_live_writes_are_synced() {
+        let image = super::super::tests::layout();
+        let path = std::env::temp_dir().join(format!("alkyhol-flush-{}", std::process::id()));
+        let file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)
+            .unwrap();
+        let writable = kernel().adopt_file(file, 0x40000000).unwrap();
+        kernel().write_file(writable, b"saved bytes").unwrap();
+        assert_eq!(flush(&image, writable as u32), 0);
+        assert_eq!(alkyhol::ffi::GetLastError(), ERROR_INVALID_HANDLE);
+        image.cpu.files.borrow_mut().insert(writable);
+        assert_eq!(flush(&image, writable as u32), 1);
+        assert_eq!(std::fs::read(&path).unwrap(), b"saved bytes");
+        image.cpu.files.borrow_mut().remove(&writable);
+        kernel().close_handle(writable).unwrap();
+        assert_eq!(flush(&image, writable as u32), 0);
+        assert_eq!(alkyhol::ffi::GetLastError(), ERROR_INVALID_HANDLE);
+
+        let file = std::fs::File::open(&path).unwrap();
+        let readonly = kernel().adopt_file(file, 0x80000000).unwrap();
+        image.cpu.files.borrow_mut().insert(readonly);
+        assert_eq!(flush(&image, readonly as u32), 0);
+        assert_eq!(alkyhol::ffi::GetLastError(), ERROR_ACCESS_DENIED);
+        image.cpu.files.borrow_mut().remove(&readonly);
+        kernel().close_handle(readonly).unwrap();
+        std::fs::remove_file(path).unwrap();
     }
 }
 
