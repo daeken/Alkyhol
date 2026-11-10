@@ -7717,3 +7717,13 @@ process times were ~0.835s both ways, not a measured game performance gain. No
 new native Windows observation or game-frame/cutscene parity follows.
 The x86_64 PE crate compile check also passes; this is not a new Rosetta runtime
 or native Windows execution observation.
+
+The polling/shuffle original replay reaches variable PSRLQ in the EXE at
+829,550,784 loading-thread instructions, with original inputs unchanged. Its
+138.7s wall time compares to 457.1s at the preceding nearby SHUFPS stop under
+uncontrolled host load; no controlled speedup or FPS claim is made. No Present
+has yet been observed. Eight XMM variable packed shift forms now pass targeted
+native tests across all supported lane widths, directions, aliasing, register/
+aligned-memory count sources, full low-64-bit saturation and ignored upper count
+bits, preservation and fault bounds. MMX remains explicitly unsupported. The
+61 default CPU tests and runner Clippy pass; original replay follows.

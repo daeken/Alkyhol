@@ -25,6 +25,9 @@ static LAYOUT: StateLayout = StateLayout {
     off_rr: 0,
     gpr_w_zext: true,
 };
+const VARIABLE_SHIFTS: [&str; 8] = [
+    "PSRLW", "PSRLD", "PSRLQ", "PSRAW", "PSRAD", "PSLLW", "PSLLD", "PSLLQ",
+];
 struct Stored {
     address: u32,
     value: u32,
@@ -868,6 +871,7 @@ pub(crate) fn compile(pc: u32, bytes: &[u8]) -> Result<Instruction> {
     ];
     if (bank.is_none()
         && !ADMITTED.contains(&mnemonic)
+        && !VARIABLE_SHIFTS.contains(&mnemonic)
         && crate::fpu_ops::operation(mnemonic).is_none()
         && crate::sse_arithmetic::operation(mnemonic).is_none())
         || (d.p.lock
@@ -881,6 +885,13 @@ pub(crate) fn compile(pc: u32, bytes: &[u8]) -> Result<Instruction> {
         || d.p.ad_size
     {
         return Err(format!("unsupported instruction {mnemonic} at {pc:#x}"));
+    }
+    // Mandatory 66 is consumed by decoder definition selection, rather than
+    // retained as the integer operand-size override in PrefixState.
+    if VARIABLE_SHIFTS.contains(&mnemonic)
+        && !bytes.iter().take_while(|&&b| b != 0x0f).any(|&b| b == 0x66)
+    {
+        return Err("MMX variable shifts are outside the native XMM profile".into());
     }
     if [
         "PUSHF", "POPF", "PUSH", "POP", "CALL", "RET", "RETI", "LEAVE",
@@ -934,7 +945,8 @@ pub(crate) fn compile(pc: u32, bytes: &[u8]) -> Result<Instruction> {
             "MOVAPS", "MOVAPD", "MOVDQA", "UNPCKLPD", "UNPCKHPD", "UNPCKLPS", "UNPCKHPS", "SHUFPS",
             "SHUFPD",
         ]
-        .contains(&mnemonic),
+        .contains(&mnemonic)
+            || VARIABLE_SHIFTS.contains(&mnemonic),
         segment: match d.p.segment {
             0x26 => Some(0),
             0x2e => Some(1),

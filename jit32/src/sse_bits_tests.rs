@@ -5,6 +5,97 @@ use crate::{
     tests::cpu,
 };
 #[test]
+fn variable_packed_shifts_use_the_full_low_qword_and_saturate_counts() {
+    let vector = 0x7654fedc01239876fedc765489ab0123u128;
+    for (bits, opcode, kind) in [
+        (16, 0xd1, 0),
+        (32, 0xd2, 0),
+        (64, 0xd3, 0),
+        (16, 0xe1, 1),
+        (32, 0xe2, 1),
+        (16, 0xf1, 2),
+        (32, 0xf2, 2),
+        (64, 0xf3, 2),
+    ] {
+        for count in [
+            0,
+            1,
+            bits - 1,
+            bits,
+            bits + 1,
+            255,
+            256,
+            0x100000001,
+            u64::MAX,
+        ] {
+            for form in 0..3 {
+                let mut r = cpu(&[0x66, 0x0f, opcode, [0xc1, 0xc0, 0x00][form]]);
+                r.state[0] = 0x20000;
+                let source = count as u128 | (u64::MAX as u128) << 64;
+                r.memory
+                    .map(0x20000, 16, READ, &source.to_le_bytes())
+                    .unwrap();
+                r.state[24] = vector as u64;
+                r.state[25] = (vector >> 64) as u64;
+                r.state[26] = count;
+                r.state[27] = u64::MAX;
+                r.state[16] = 0xad7;
+                r.memory.fpu.borrow_mut().mxcsr = 0x9fc3;
+                let before_gpr = r.registers();
+                let count = if form == 1 { vector as u64 } else { count };
+                let mask = (1u128 << bits) - 1;
+                let mut expected = 0;
+                for lane in 0..128 / bits {
+                    let value = vector >> (lane * bits) & mask;
+                    let shifted = if kind == 1 {
+                        let signed = ((value << (128 - bits)) as i128) >> (128 - bits);
+                        (signed >> count.min(bits - 1)) as u128 & mask
+                    } else if count >= bits {
+                        0
+                    } else if kind == 0 {
+                        value >> count
+                    } else {
+                        value << count & mask
+                    };
+                    expected |= shifted << (lane * bits);
+                }
+                let stop = r.run(1);
+                assert!(
+                    matches!(stop, Stop::Budget { .. }),
+                    "{bits}/{kind}/{count}/{form}: {stop:?}"
+                );
+                assert_eq!(
+                    r.state[24] as u128 | ((r.state[25] as u128) << 64),
+                    expected,
+                    "{bits}/{kind}/{count}/{form}"
+                );
+                assert_eq!(r.registers(), before_gpr);
+                assert_eq!(r.state[16], 0xad7);
+                assert_eq!(r.memory.fpu.borrow().mxcsr, 0x9fc3);
+                assert_eq!(r.state[26] as u128 | ((r.state[27] as u128) << 64), source);
+                assert_eq!(
+                    r.memory.read(0x20000, 16, READ).unwrap(),
+                    source.to_le_bytes()
+                );
+            }
+        }
+        for address in [0, 0x20008, 0x30000] {
+            let mut r = cpu(&[0x66, 0x0f, opcode, 0x00]);
+            r.memory.map(0x20000, 32, READ, &[0; 32]).unwrap();
+            r.memory.map(0x30000, 8, READ, &[0; 8]).unwrap();
+            r.state[0] = address;
+            let before = r.state;
+            assert!(matches!(
+                r.run(1),
+                Stop::Fault { .. } | Stop::CpuFault { .. }
+            ));
+            assert_eq!(r.state, before);
+        }
+        let mut mmx = cpu(&[0x0f, opcode, 0xc1]);
+        assert!(matches!(mmx.run(1), Stop::Unsupported { .. }));
+    }
+}
+#[test]
 fn float_shuffles_cover_all_selectors_aliases_and_memory() {
     let a = 0x12345678fedcba987fc01234abcdef01u128;
     let b = 0x800000017fffffff9988776655443322u128;

@@ -477,3 +477,16 @@ progress words before/after. Existing 32-word window and 26+12 worker/poll
 witnesses pass afterward, as do all 60 default CPU tests and runner Clippy.
 The owned witness's whole-process times were effectively unchanged (~0.835s);
 this is no measured game-loading/FPS improvement. Original replay is next.
+
+The next original run clears matrix shuffling and reaches the variable-count
+PSRLQ form, at 829,550,784 loading-thread instructions. All original input hashes
+remain unchanged. It takes 138.7s versus 457.1s for the preceding nearby SHUFPS
+stop; host load is uncontrolled, stop points differ, and no FPS result follows.
+There is still no original Present. Eight XMM variable-count packed shift forms
+now use pinned templates, checked across 16/32/64-bit lanes, logical/arithmetic
+directions, register/memory/aliased counts and oversized full low-QWORD counts
+(upper count QWORD ignored). Source bits, GPR/EFLAGS/MXCSR and memory/fault
+boundaries are checked; MMX forms remain explicitly excluded. Mandatory 66 is
+verified from instruction prefixes because definition selection consumes that
+prefix in the decoder. All 61 default native CPU tests and runner Clippy pass;
+the next original replay retains the explicit ten-billion entry budget.
