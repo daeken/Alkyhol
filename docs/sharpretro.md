@@ -215,3 +215,16 @@ original game/dependency files are hash-checked before and after the run.
 The DLL inputs retain the existing explicitly configured staged/unpacked
 dependencies; their exact identities remain in the local capture. The original
 DAOrigins.exe file is unchanged.
+
+The next CPU milestone forwards a generated post-store operand reread only when
+its SSA address/width match and the store dominates that read's branch scope.
+The forwarded value is narrowed like a real memory reload. Other addresses,
+widths, mutually exclusive branches and multiple stores still reject execution.
+This admits the original memory-shift path without adding a fallible access after
+a committed write. 120 shift/input/count cases check results and defined flags,
+with alias/dominance rejection, signed displacement and denied-write rollback.
+All 41 JIT tests pass on M4. The original EXE now creates/writes its real startup
+log and reaches its thread-naming software exception at 338,719,466 instructions
+and 825,382 services. The next stop is the owned x86 exception wrapper's snapshot
+instruction; native ARM needs a CPU-aware service entry, not a fabricated handler
+return. Original inputs remain hash-identical.

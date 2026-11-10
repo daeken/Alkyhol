@@ -401,6 +401,74 @@ mod tests {
         }
     }
     #[test]
+    fn memory_shifts_reload_the_committed_value_without_an_extra_access() {
+        for group in [4u8, 5, 7] {
+            for input in [0u32, 1, 0x7fffffff, 0x80000000, u32::MAX] {
+                for encoded in [0u8, 1, 3, 7, 31, 32, 33, 63] {
+                    let mut r = cpu(&[0xc1, (group << 3) | 5, 0, 0, 2, 0, encoded, 0xc3]);
+                    r.memory
+                        .map(0x20000, 4, READ | WRITE, &input.to_le_bytes())
+                        .unwrap();
+                    r.state[16] = 0xe57;
+                    let count = encoded as u32 & 31;
+                    let expected = match group {
+                        4 => input.wrapping_shl(count),
+                        5 => input >> count,
+                        _ => ((input as i32) >> count) as u32,
+                    };
+                    assert_eq!(r.run(4), Stop::Returned(0));
+                    assert_eq!(
+                        r.memory.word(0x20000).unwrap(),
+                        expected,
+                        "group {group} input {input:x} count {encoded}"
+                    );
+                    if count == 0 {
+                        assert_eq!(r.flags(), 0xe57);
+                    } else {
+                        let carry = if group == 4 {
+                            input >> (32 - count) & 1
+                        } else {
+                            input >> (count - 1) & 1
+                        };
+                        let flags = carry
+                            | if expected == 0 { 0x40 } else { 0 }
+                            | if expected >> 31 != 0 { 0x80 } else { 0 }
+                            | if (expected as u8).count_ones().is_multiple_of(2) {
+                                4
+                            } else {
+                                0
+                            };
+                        assert_eq!(r.flags() & 0xc5, flags);
+                        assert_eq!(r.flags() & 0x600, 0x600);
+                        if count == 1 {
+                            let overflow = match group {
+                                4 => (expected >> 31) ^ carry,
+                                5 => input >> 31,
+                                _ => 0,
+                            };
+                            assert_eq!((r.flags() >> 11) & 1, overflow);
+                        }
+                    }
+                }
+            }
+        }
+        let mut r = cpu(&[0xc1, 0x7d, 0xfc, 3, 0xc3]);
+        r.state[5] = 0x20004;
+        r.memory
+            .map(0x20000, 4, READ | WRITE, &0x80000000u32.to_le_bytes())
+            .unwrap();
+        assert_eq!(r.run(4), Stop::Returned(0));
+        assert_eq!(r.memory.word(0x20000).unwrap(), 0xf0000000);
+        let mut r = cpu(&[0xc1, 0x3d, 0, 0, 2, 0, 3]);
+        r.memory
+            .map(0x20000, 4, READ, &0x80000000u32.to_le_bytes())
+            .unwrap();
+        let before = r.state;
+        assert!(matches!(r.run(1), Stop::Fault { pc: 0x10000, .. }));
+        assert_eq!(r.state, before);
+        assert_eq!(r.memory.word(0x20000).unwrap(), 0x80000000);
+    }
+    #[test]
     fn reached_sincos_float_stores_match_physical_x86_observations() {
         for (input, sine, cosine, status) in [
             (0u32, 0u32, 0x3f800000u32, 0u16),

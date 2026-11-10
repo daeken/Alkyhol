@@ -7576,3 +7576,13 @@ The preexisting comparators also pass again: unchanged standalone JIT and actual
 Rosetta executions match the same frozen 8-word ABI and 24/64-word TLS/heap
 results at both bases. The new shared service path matches those 96 words at
 both bases independently; no frozen sources, PEs or Windows references changed.
+
+The subsequent memory-shift milestone passes 41 physical M4 JIT tests. Forwarding
+is confined to an identical SSA address/width with a dominating store; 120
+shift/input/count cases check actual native ARM results/defined flags, plus
+non-dominating/mismatched-read rejection and write-fault rollback. These host
+assertions add no new Windows observation. An actual original-input execution
+advances to 338,719,466 instructions / 825,382 services and its owned software-
+exception snapshot entry, after writing its real startup log. The existing
+thread-naming filter must be entered with real CPU state next. Input hashes
+agree before/after; no native window or parity is inferred from this stop.

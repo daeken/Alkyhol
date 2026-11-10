@@ -25,9 +25,17 @@ static LAYOUT: StateLayout = StateLayout {
     off_rr: 0,
     gpr_w_zext: true,
 };
+struct Stored {
+    address: u32,
+    value: u32,
+    scopes: Vec<u64>,
+}
 struct Shared {
     guards: RefCell<Vec<usize>>,
     stored: Cell<bool>,
+    last_store: RefCell<Option<Stored>>,
+    scopes: RefCell<Vec<u64>>,
+    next_scope: Cell<u64>,
     stack_store: Option<IlType>,
     stack_read: bool,
     stack_write: bool,
@@ -128,7 +136,15 @@ impl Checked<'_> {
         result
     }
     fn checked_val(&self, v: u32) -> u32 {
-        assert!(v < 4096, "spill limit");
+        let wide = matches!(
+            self.inner.ty_of(v),
+            IlType::V128 | IlType::I { width: 128, .. }
+        );
+        assert!(
+            v.checked_add(if wide { 2 } else { 1 })
+                .is_some_and(|n| n <= 4096),
+            "spill limit"
+        );
         v
     }
 }
@@ -138,10 +154,30 @@ impl Builder for Checked<'_> {
         self.inner.ty_of(v)
     }
     fn mem_read(&mut self, addr: u32, ty: IlType) -> u32 {
-        assert!(
-            !self.shared.stored.get(),
-            "read after committed store requires precise partial-state support"
-        );
+        if self.shared.stored.get() {
+            let saved = self.shared.last_store.borrow();
+            let store = saved
+                .as_ref()
+                .filter(|store| {
+                    store.address == addr
+                        && width(self.inner.ty_of(store.value)) == width(ty)
+                        && self.shared.scopes.borrow().starts_with(&store.scopes)
+                })
+                .expect("post-store read needs the same typed operand and a dominating store");
+            let mut value = store.value;
+            drop(saved);
+            // A physical byte/word/dword store discards any upper spill bits.
+            // Forward the reloaded bit pattern, not the full source register.
+            if width(ty) < 8 {
+                value = self.inner.bitcast(value, IlType::U64);
+                let mask = self
+                    .inner
+                    .literal(IlType::U64, (1u128 << (width(ty) * 8)) - 1);
+                value = self.inner.and(value, mask);
+            }
+            let value = self.inner.bitcast(value, ty);
+            return self.checked_val(value);
+        }
         let addr = self.address(addr, self.shared.stack_read);
         self.vector_alignment(addr);
         self.guard(addr, width(ty), false);
@@ -160,10 +196,16 @@ impl Builder for Checked<'_> {
         } else {
             value
         };
+        let original = addr;
         let addr = self.address(addr, self.shared.stack_write);
         self.vector_alignment(addr);
         self.guard(addr, width(self.inner.ty_of(value)), true);
         self.inner.mem_write(addr, value);
+        *self.shared.last_store.borrow_mut() = Some(Stored {
+            address: original,
+            value,
+            scopes: self.shared.scopes.borrow().clone(),
+        });
     }
     fn branch(&mut self, target: u32, link: bool) {
         assert!(!link, "guest native-link branch is not an x86 CALL");
@@ -177,11 +219,19 @@ impl Builder for Checked<'_> {
         self.inner.enc.ldr_x(9, 27, c * 8);
         let at = self.inner.enc.here();
         self.inner.enc.cbz(9, 0);
+        let scope = self.shared.next_scope.get();
+        self.shared
+            .next_scope
+            .set(scope.checked_add(2).expect("scope budget"));
+        self.shared.scopes.borrow_mut().push(scope);
         yes(self);
+        self.shared.scopes.borrow_mut().pop();
         let jump = self.inner.enc.here();
         self.inner.enc.b(0);
         let otherwise = self.inner.enc.here();
+        self.shared.scopes.borrow_mut().push(scope + 1);
         no(self);
+        self.shared.scopes.borrow_mut().pop();
         let end = self.inner.enc.here();
         assert!(
             otherwise - at < (1 << 18) && end - jump < (1 << 25),
@@ -763,6 +813,9 @@ pub(crate) fn compile(pc: u32, bytes: &[u8]) -> Result<Instruction> {
     let shared = Shared {
         guards: RefCell::new(vec![]),
         stored: Cell::new(false),
+        last_store: RefCell::new(None),
+        scopes: RefCell::new(vec![]),
+        next_scope: Cell::new(1),
         stack_store: match mnemonic {
             "CALL" => Some(IlType::U32),
             "PUSHF" => Some(if d.p.op_size {
@@ -1047,4 +1100,72 @@ pub(crate) fn compile(pc: u32, bytes: &[u8]) -> Result<Instruction> {
         code: Code::new(&inner.enc)?,
         length: d.len as usize,
     })
+}
+
+#[cfg(test)]
+mod forwarding_tests {
+    use super::*;
+    #[test]
+    fn forwarding_rejects_other_addresses_widths_and_nondominating_stores() {
+        for shape in 0..7 {
+            let result = std::panic::catch_unwind(|| {
+                let mut inner = Tier0::with_layout(&LAYOUT);
+                let shared = Shared {
+                    guards: RefCell::new(vec![]),
+                    stored: Cell::new(false),
+                    last_store: RefCell::new(None),
+                    scopes: RefCell::new(vec![]),
+                    next_scope: Cell::new(1),
+                    stack_store: None,
+                    stack_read: false,
+                    stack_write: false,
+                    segment: None,
+                    signed_division: false,
+                    aligned_vector: false,
+                };
+                let mut b = Checked {
+                    inner: &mut inner,
+                    shared: &shared,
+                };
+                let address = b.literal(IlType::U32, 0x20000);
+                let other = b.literal(IlType::U32, 0x30000);
+                let value = b.literal(IlType::U32, 0x12345678);
+                let condition = b.literal(IlType::Bool, 1);
+                if shape <= 2 || shape == 6 {
+                    b.mem_write(address, value);
+                    match shape {
+                        1 => {
+                            b.mem_read(other, IlType::U32);
+                        }
+                        2 => {
+                            b.mem_read(address, IlType::U16);
+                        }
+                        6 => b.mem_write(address, value),
+                        _ => {
+                            b.mem_read(address, IlType::U32);
+                        }
+                    }
+                } else {
+                    b.cond(
+                        condition,
+                        &mut |b| {
+                            b.mem_write(address, value);
+                            if shape == 5 {
+                                b.mem_read(address, IlType::U32);
+                            }
+                        },
+                        &mut |b| {
+                            if shape == 4 {
+                                b.mem_read(address, IlType::U32);
+                            }
+                        },
+                    );
+                    if shape == 3 {
+                        b.mem_read(address, IlType::U32);
+                    }
+                }
+            });
+            assert_eq!(result.is_ok(), shape == 0 || shape == 5, "shape {shape}");
+        }
+    }
 }
