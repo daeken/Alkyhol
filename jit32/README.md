@@ -217,3 +217,13 @@ It is not a bit-exact CPU polynomial/status oracle. Frozen native Windows and
 Rosetta observations can be checked with `python3 tools/check_jit32_atan2.py`
 and `--backend rosetta`. Adding `--strict` retains raw 80-bit/status differences
 as failed diagnostics. See docs/sharpretro.md for domain and measured counts.
+
+
+The reached RCPSS and paired RCPPS use deterministic software reciprocal estimates
+with exact integer bound checks and explicit tiny-result behavior. Normal CPU
+estimate-bit equality is not claimed. `python3 tools/check_jit32_rcp.py` checks the
+frozen Rosetta table; `--backend windows-amd64` checks the native Windows Intel
+table from CI 42814117586. Both have 67,584 rows. The observer measures MXCSR
+immediately before RCP, separately retaining requested-vs-loaded mask differences
+(33,792 Rosetta rows; zero on that Windows host). RCP control/flags preservation
+passes on both. Older frozen comparisons and strict failures remain unchanged.

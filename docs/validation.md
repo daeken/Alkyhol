@@ -8129,6 +8129,22 @@ instruction evidence, not application or raw CPU-bit parity.
 
 The owned C source/observer/data identities and compressed Rosetta table are
 frozen. `python3 tools/check_jit32_rcp.py` replays that table; a native Windows
-observer is added to the existing SIMD workflow, with its result still pending.
+observer passes with all three jobs in [CI 42814117586](https://github.com/daeken/Alkyhol/actions/runs/42814117586) at 94ee263.
+Its host reports GenuineIntel, native AMD64 machine/process checks, and Windows
+Server build 26100. The frozen 67,584-row table also passes on physical ARM:
+167,200 normal lanes meet the bound, 164,000 estimate-bit differences and 320
+permitted flush-choice differences are retained, with zero requested-load,
+instruction-MXCSR or defined-flag differences. Reproduce with
+`python3 tools/check_jit32_rcp.py --backend windows-amd64`.
 No original bytes, API results, geometry or rendering quality are substituted.
 A fresh native host replay is required to test the reciprocal fix in DAO.
+
+
+The built clean 94ee263 shared host passes the frozen native Windows 8-word ABI,
+24-word TLS and 64-word heap witnesses, each in normal/rebased mode. It starts a
+fresh unchanged original replay with reciprocal support and the dynamic desktop
+geometry fix. The original run is loading in the background under a newly
+coordinated process identity; consult ignored `local/jit32/shared-game/run.json`
+for its exact host/source/input hashes. A bounded trace is armed at the newly
+reached reciprocal instruction. This restart is not evidence of passing that
+instruction or reaching character/3D/Orzammar until actually observed.
