@@ -15,6 +15,14 @@ jobs:
         run: python tools/check_pe32_number_format.py --build
       - name: Build the owned hidden-window mouse-default witness
         run: python tools/observe_pe32_mouse_capture.py --client-buttons --output local/pe/mouse-defaults
+      - name: Build the reached clip-query and cursor-counter witness
+        run: python tools/observe_pe32_mouse_capture.py --clip-query --output local/pe/clip-query
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe32-clip-query
+          path: |
+            local/pe/clip-query/cursor-clip-query.exe
+            local/pe/clip-query/cursor-clip-query-inputs.json
       - uses: actions/upload-artifact@v4
         with:
           name: pe32-mouse-defaults
@@ -47,6 +55,17 @@ jobs:
           path: local/pe/mouse-defaults
       - name: Observe default client buttons and synchronous context callbacks on Windows
         run: python tools/observe_pe32_mouse_capture.py --client-buttons --native --output local/pe/mouse-defaults
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe32-clip-query
+          path: local/pe/clip-query
+      - name: Observe the identical clip-query and cursor-counter PE on Windows
+        run: python tools/observe_pe32_mouse_capture.py --clip-query --native --output local/pe/clip-query
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-clip-query
+          path: local/pe/clip-query
       - uses: actions/upload-artifact@v4
         if: always()
         with:

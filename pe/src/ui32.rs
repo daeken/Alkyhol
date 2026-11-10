@@ -49,6 +49,7 @@ pub(super) struct State {
     active: BTreeMap<u32, u32>,
     messages: BTreeMap<u32, VecDeque<[u32; 7]>>,
     mouse_traced: usize,
+    cursor_display_count: i32,
     capture: Option<(u32, u32)>,
 }
 impl State {
@@ -94,6 +95,9 @@ impl State {
 }
 impl Drop for State {
     fn drop(&mut self) {
+        if self.cursor_display_count < 0 {
+            let _ = host::cursor_visibility(true);
+        }
         self.windows.clear();
         self.app.take();
     }
@@ -1354,6 +1358,43 @@ pub(super) fn ensure_app(image: &LoadedImage32<'_>) {
         .borrow_mut()
         .app()
         .unwrap_or_else(|e| unsupported(&e));
+}
+
+pub(super) fn show_cursor(image: &LoadedImage32<'_>, show: u32) -> u32 {
+    if !host::is_main_thread() {
+        unsupported("ShowCursor worker input queues are not implemented");
+    }
+    let mut ui = image.cpu.ui.borrow_mut();
+    stop(ui.app());
+    let old = ui.cursor_display_count;
+    let next = old
+        .checked_add(if show != 0 { 1 } else { -1 })
+        .unwrap_or_else(|| unsupported("ShowCursor display counter overflow"));
+    if (old < 0) != (next < 0) {
+        stop(host::cursor_visibility(next >= 0));
+    }
+    ui.cursor_display_count = next;
+    next as u32
+}
+
+pub(super) fn unconfined_cursor_bounds(image: &LoadedImage32<'_>) -> [i32; 4] {
+    let mut ui = image.cpu.ui.borrow_mut();
+    let (bounds, _) = stop(stop(ui.app()).screen_geometry());
+    let values = [
+        bounds.origin.x,
+        bounds.origin.y,
+        bounds.origin.x + bounds.size.width,
+        bounds.origin.y + bounds.size.height,
+    ];
+    if values
+        .iter()
+        .any(|&v| !v.is_finite() || v < i32::MIN as f64 || v > i32::MAX as f64 || v.fract() != 0.)
+        || bounds.size.width <= 0.
+        || bounds.size.height <= 0.
+    {
+        unsupported("actual virtual desktop outside integral Win32 RECT bounds");
+    }
+    values.map(|v| v as i32)
 }
 
 #[cfg(test)]

@@ -153,6 +153,17 @@ static MAIN_TASKS: OnceLock<Mutex<VecDeque<MainTask>>> = OnceLock::new();
 fn tasks() -> &'static Mutex<VecDeque<MainTask>> {
     MAIN_TASKS.get_or_init(|| Mutex::new(VecDeque::new()))
 }
+/// AppKit balances one hide/unhide pair for each Win32 sign transition.
+/// Worker input queues and AttachThreadInput are not implemented here.
+pub(super) fn cursor_visibility(visible: bool) -> crate::Result<()> {
+    if !is_main_thread() {
+        return Err("cursor display transitions require the main UI thread".into());
+    }
+    unsafe {
+        send0::<()>(class("NSCursor")?, if visible { "unhide" } else { "hide" });
+    }
+    Ok(())
+}
 pub(super) fn is_main_thread() -> bool {
     unsafe { pthread_main_np() == 1 }
 }

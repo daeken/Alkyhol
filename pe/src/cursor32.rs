@@ -74,6 +74,20 @@ pub(super) fn clip(image: &LoadedImage32<'_>, rectangle: u32) -> u32 {
     0
 }
 
+/// This bridge never reports successful physical confinement. Its current clip
+/// rectangle is therefore the actual host virtual desktop, including negative
+/// monitor origins, rather than an invented or remembered requested rectangle.
+pub(super) fn clipping_rectangle(image: &LoadedImage32<'_>, output: u32) -> u32 {
+    if !output.is_multiple_of(4) || !image.permits(output as usize, 16, true) {
+        unsupported("cursor clipping RECT outside aligned writable guest storage");
+    }
+    let bounds = super::ui32::unconfined_cursor_bounds(image);
+    unsafe {
+        std::ptr::copy_nonoverlapping(bounds.as_ptr(), output as usize as *mut i32, 4);
+    }
+    1
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

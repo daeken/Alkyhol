@@ -8579,3 +8579,27 @@ and five protocol tests pass. The identical-PE native Windows observation is
 added to the existing PE workflow and is pending; these local assertions are
 not a native Windows result. Original right-click movement must be replayed
 before claiming the application fix.
+
+The next original replay at clean 2b148e1 (PID 89415) stops explicitly on
+USER32!GetClipCursor after 181.495 seconds, at EXE RVA 0x14669. Original
+EXE/provided DLL hashes remain unchanged. Its controls are revoked. Offline
+inspection of this reached routine also identifies the subsequent ShowCursor
+call; game-derived instruction/import details remain local.
+
+GetClipCursor now writes the actual host virtual-desktop rectangle, with checked
+aligned writable guest storage and signed monitor origins. Non-null ClipCursor
+requests still fail explicitly: no physical confinement is claimed. ShowCursor
+now maintains the main UI input queue's signed display counter, initially zero,
+and performs balanced actual NSCursor hide/unhide operations only when crossing
+zero. Nonzero BOOL values increment; worker input queues and counter overflow
+remain explicit unsupported paths. AppKit cleanup balances an outstanding hide.
+See [Microsoft ShowCursor](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-showcursor)
+and its [thread-local scope](https://devblogs.microsoft.com/oldnewthing/20091217-00/?p=15643).
+
+An owned PE queries all four desktop bounds 24 times with guarded outputs and
+stdcall stack checks, then exercises eight balanced visibility-count operations.
+All 116 output words pass on physical AppKit/Rosetta at normal and forced image
+placement. Six protocol tests pass, including corruption of every report word.
+This tests API results and real host calls, not an independent measurement of
+cursor pixels. The identical-PE Windows observer is wired into existing CI;
+its new native result and original movement replay remain pending.

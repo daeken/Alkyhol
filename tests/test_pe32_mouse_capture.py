@@ -9,6 +9,13 @@ import observe_pe32_mouse_capture as observer
 
 
 class CaptureReportTests(unittest.TestCase):
+    def test_unconfined_clip_query_checks_every_guard_bound_and_stack_result(self):
+        words=[0x434c5032,1]+[1]*113+[116]
+        with patch.object(observer,'CLIP_QUERY',True):
+            self.assertEqual(observer.decode(struct.pack('<116I',*words)),words)
+            for at in range(116):
+                changed=words.copy();changed[at]^=1
+                with self.assertRaises(ValueError):observer.decode(struct.pack('<116I',*changed))
     def test_client_button_and_nested_context_observations_require_every_word(self):
         words=[0x4d444633,1,1,1,1]
         for msg in [0x200,0x201,0x202,0x203,0x204,0x206,0x207,0x208,0x209]:words += [msg,0,0,1]

@@ -10,6 +10,7 @@ PREFIX='mouse-capture'
 BACKGROUND=False
 CLIENT_DEFAULT=False
 CLIENT_BUTTONS=False
+CLIP_QUERY=False
 FORCE_REBASE=False
 FILES=['mouse-capture.exe']
 SYMBOLS=[('GetModuleHandleW',4),('GetStdHandle',4),('WriteFile',20),('Sleep',4),('RegisterClassExW',4),('CreateWindowExW',48),('DefWindowProcW',16),('ShowWindow',8),('DestroyWindow',4),('SetCapture',4),('ReleaseCapture',0),('GetCapture',0),('PeekMessageW',20),('DispatchMessageW',4)]
@@ -26,6 +27,10 @@ def build(d):
 def decode(data):
  if len(data)%4:raise ValueError('truncated capture report')
  words=list(struct.unpack('<'+'I'*(len(data)//4),data))
+ if CLIP_QUERY:
+  expected=[0x434c5032,1]+[1]*113+[116]
+  if words!=expected:raise ValueError('actual desktop clip bounds, output guards or stack differ: '+repr(words))
+  return words
  if CLIENT_BUTTONS:
   expected=[0x4d444633,1,1,1,1]
   for msg in [0x200,0x201,0x202,0x203,0x204,0x206,0x207,0x208,0x209]:expected += [msg,0,0,1]
@@ -42,7 +47,7 @@ def execute(d,native=False,host=None):
  if not native:command=[str(host.resolve() if host else runner(d)),*command,'--strict','--file-origins',*(['--rebase'] if FORCE_REBASE else [])]
  r=subprocess.run(command,capture_output=True,timeout=30)
  report={'backend':'native Windows' if native else 'physical AppKit PE32','inputs':identity,'status':r.returncode,'stdout_hex':r.stdout.hex(),'stderr_hex':r.stderr.hex()}
- if CLIENT_BUTTONS:
+ if CLIENT_BUTTONS or CLIP_QUERY:
   import platform
   report.update(platform=platform.platform(),rebased=FORCE_REBASE)
   if host is not None:report['host_sha256']=digest(host)
@@ -54,15 +59,16 @@ def execute(d,native=False,host=None):
  path=d/(('native-' if native else '')+PREFIX+('.json' if native else '-host.json'));path.write_text(json.dumps(report,indent=2)+'\n')
  if r.returncode:raise ValueError('capture PE failed; raw output retained')
  report['words']=decode(r.stdout)
- if native and not CLIENT_BUTTONS:
+ if native and not (CLIENT_BUTTONS or CLIP_QUERY):
   peer=json.loads((d/(PREFIX+'-host.json')).read_text())
   if peer['inputs']!=identity or peer['status'] or peer['stdout_hex']!=report['stdout_hex']:raise ValueError('identical PE native/host capture observations differ')
- path.write_text(json.dumps(report,indent=2)+'\n');print('Owned PE32 default client buttons/context callbacks validate' if CLIENT_BUTTONS else 'Owned PE32 capture/release/query, WM_CAPTURECHANGED and stdcall stack validate')
+ path.write_text(json.dumps(report,indent=2)+'\n');print('Owned PE32 actual unconfined clip query validates' if CLIP_QUERY else 'Owned PE32 default client buttons/context callbacks validate' if CLIENT_BUTTONS else 'Owned PE32 capture/release/query, WM_CAPTURECHANGED and stdcall stack validate')
 if __name__=='__main__':
- p=argparse.ArgumentParser(description=__doc__);p.add_argument('--background',action='store_true');p.add_argument('--client-default',action='store_true');p.add_argument('--client-buttons',action='store_true');p.add_argument('--runner',type=Path);p.add_argument('--rebase',action='store_true');p.add_argument('--output',type=Path,default=ROOT/'local/pe/startup-microtests');m=p.add_mutually_exclusive_group();m.add_argument('--host',action='store_true');m.add_argument('--native',action='store_true');a=p.parse_args();d=a.output.resolve()
- if sum([a.client_default,a.background,a.client_buttons])>1:p.error('choose one mouse witness variant')
+ p=argparse.ArgumentParser(description=__doc__);p.add_argument('--background',action='store_true');p.add_argument('--client-default',action='store_true');p.add_argument('--client-buttons',action='store_true');p.add_argument('--clip-query',action='store_true');p.add_argument('--runner',type=Path);p.add_argument('--rebase',action='store_true');p.add_argument('--output',type=Path,default=ROOT/'local/pe/startup-microtests');m=p.add_mutually_exclusive_group();m.add_argument('--host',action='store_true');m.add_argument('--native',action='store_true');a=p.parse_args();d=a.output.resolve()
+ if sum([a.client_default,a.background,a.client_buttons,a.clip_query])>1:p.error('choose one mouse witness variant')
  FORCE_REBASE=a.rebase
  if a.client_default:CLIENT_DEFAULT=True;PREFIX='mouse-client-default';FILES=[PREFIX+'.exe']
  if a.background:BACKGROUND=True;PREFIX='mouse-background-capture';FILES=[PREFIX+'.exe']
  if a.client_buttons:CLIENT_BUTTONS=True;PREFIX='mouse-buttons-default';FILES=[PREFIX+'.exe'];SOURCES=['mouse-defaults.c','mouse-capture.def','mouse-defaults-user.def'];SYMBOLS=SYMBOLS+[('GetWindowInfo',8)]
+ if a.clip_query:CLIP_QUERY=True;PREFIX='cursor-clip-query';FILES=[PREFIX+'.exe'];SOURCES=['cursor-clip-query.c','mouse-capture.def','cursor-clip-query-user.def'];SYMBOLS=SYMBOLS+[('GetClipCursor',4),('ClipCursor',4),('GetSystemMetrics',4),('ShowCursor',4)]
  execute(d,a.native,a.runner) if a.host or a.native else build(d)

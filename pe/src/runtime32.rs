@@ -182,7 +182,7 @@ fn host_code_address(address: u32) -> usize {
 }
 const PAGE: usize = 4096;
 const STACK: usize = 1024 * 1024;
-const APIS: [(&str, u16); 307] = [
+const APIS: [(&str, u16); 309] = [
     ("GetLastError", 0),
     ("SetLastError", 4),
     ("GetStdHandle", 4),
@@ -490,6 +490,8 @@ const APIS: [(&str, u16); 307] = [
     ("GetLocalTime", 4),
     ("CopyFileW", 12),
     ("GetNumberFormatW", 24),
+    ("GetClipCursor", 4),
+    ("ShowCursor", 4),
 ];
 // The first 120 API slots retain their original offsets. The second bank
 // begins after both x87 bodies, leaving their machine code and failure gates
@@ -578,6 +580,7 @@ fn api_id(module: &str, symbol: &ImportSymbol) -> Option<usize> {
                     || (249..=254).contains(id)
                     || matches!(*id, 256..=258)
                     || matches!(*id, 299..=301)
+                    || (307..=308).contains(id)
                 {
                     "user32.dll"
                 } else if matches!(*id, 107 | 108 | 216 | 220 | 221 | 285 | 298) {
@@ -2639,6 +2642,8 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
             256 => ui32::dispatch(image, 42, &words),
             257 => ui32::window_info(image, args[0], args[1]),
             258 => cursor32::clip(image, args[0]),
+            307 => cursor32::clipping_rectangle(image, args[0]),
+            308 => ui32::show_cursor(image, args[0]),
             259 => input8_32::create(image, &words),
             260 | 262 => crt32::dispatch(image, 78, args),
             261 | 263 | 264 => crt32::deallocate(image, args[0]),
@@ -2820,6 +2825,19 @@ mod tests {
         assert_eq!(cleanup_bytes(306, 24), 24);
         assert_eq!(APIS[304].0, "GetLocalTime");
         assert_eq!(APIS[305].0, "CopyFileW");
+    }
+    #[test]
+    fn clip_query_is_one_user32_stdcall_rect_pointer() {
+        let symbol = ImportSymbol::Name("GetClipCursor".into());
+        assert_eq!(api_id("USER32.dll", &symbol), Some(307));
+        assert_eq!(api_id("kernel32.dll", &symbol), None);
+        assert_eq!(APIS[307].1, 4);
+        assert_eq!(cleanup_bytes(307, 4), 4);
+        let symbol = ImportSymbol::Name("ShowCursor".into());
+        assert_eq!(api_id("USER32.dll", &symbol), Some(308));
+        assert_eq!(api_id("kernel32.dll", &symbol), None);
+        assert_eq!(APIS[308].1, 4);
+        assert_eq!(cleanup_bytes(308, 4), 4);
     }
     #[test]
     fn cdecl_crt_gateways_keep_arguments_for_the_guest_caller() {
