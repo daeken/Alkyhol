@@ -405,3 +405,24 @@ the original Dragon Age splash artwork. Captures remain local. This establishes
 an original native-JIT splash, not a D3D9 game frame, menu, cutscene or parity with
 the preserved Rosetta Orzammar boundary. The original binary files remain local
 and unchanged; shader quality/assets/source profiles are preserved.
+
+### Declared-width immediate carry checks
+
+Original graphics enumeration reached the real M4/Metal D3D9 factory, but DAO's
+adapter callback rejected its equal shader-version comparison. A bounded original
+instruction trace showed CF and ZF both set: the decoder's sign-extended immediate
+occupied a 64-bit host container while the DWORD loaded from caps was canonical
+32-bit. Tier0 literal materialization did not mask to the declared IL width.
+The Alkyhol checked builder now canonicalizes integer literals at construction;
+the original application and SharpRetro source pin remain unchanged. No adapter
+capabilities were added or original checks bypassed.
+
+An owned regression reproduces the equal-value carry failure before the fix.
+`python3 tools/check_jit32_immediates.py` compares 960 independent actual Rosetta
+assembly rows (CMP/SUB/ADD/ADC/SBB, 8/16/32-bit, both carry inputs) against native
+ARM accumulator, register-group, memory-group and eligible sign-extended imm8
+forms. All result bits and six arithmetic flags agree. The 56 default CPU tests,
+runner Clippy, existing 512/1,024/6,144 SIMD rows and unchanged frozen Windows
+shared-service comparisons pass; five external observers run separately.
+These are finite host CPU observations. The original-input replay with this fix
+is in progress; no native JIT game frame or Rosetta cutscene parity is established.

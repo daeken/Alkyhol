@@ -253,6 +253,18 @@ impl Builder for Checked<'_> {
         false
     }
     fn literal(&mut self, ty: IlType, bits: u128) -> Self::Val {
+        // The x86 decoder sign-extends encoded immediates to i64, and the
+        // operand binder passes those bits as u128. Tier0 materializes literal
+        // containers without masking. Canonicalize to the IL width here, as its
+        // register/memory producers do, before unsigned carry comparisons see
+        // the value. In particular U32(0xfffe0200) is not 0xfffffffffffe0200.
+        let bits = match ty {
+            IlType::I {
+                width: width @ 1..=127,
+                ..
+            } => bits & ((1u128 << width) - 1),
+            _ => bits,
+        };
         let v = self.inner.literal(ty, bits);
         self.checked_val(v)
     }

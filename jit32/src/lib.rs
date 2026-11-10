@@ -8,11 +8,11 @@ mod fpu_ops;
 mod fpu_trig;
 #[cfg(feature = "shared-runtime")]
 pub mod shared;
-mod stack_bank;
 mod sse;
 mod sse_arithmetic;
 #[cfg(test)]
 mod sse_bits_tests;
+mod stack_bank;
 #[cfg(feature = "shared-runtime")]
 pub use alkyhol_pe as shared_pe;
 pub mod memory;
@@ -905,6 +905,103 @@ mod tests {
         }
         let mut r = cpu(&[0xf7, 0x35, 0, 0, 0, 0]); // DIV [0], fault before divide
         assert!(matches!(r.run(1), Stop::Fault { pc: 0x10000, .. }));
+    }
+    #[test]
+    #[ignore = "requires independent actual x86 observations from tools/check_jit32_immediates.py"]
+    fn actual_x86_immediate_observations() {
+        let data = std::fs::read(std::env::var_os("ALKYHOL_INTEGER_IMMEDIATE_REFERENCE").unwrap())
+            .unwrap();
+        assert_eq!(data.len(), 960 * 28);
+        for (i, row) in data.chunks_exact(28).enumerate() {
+            let w: Vec<u32> = row
+                .chunks_exact(4)
+                .map(|b| u32::from_le_bytes(b.try_into().unwrap()))
+                .collect();
+            let [width, op, immediate, input, result, flags, carry] = w[..] else {
+                unreachable!()
+            };
+            // Full-width group immediates, accumulator forms, and sign-extended
+            // imm8 forms must agree, over both a GPR and checked memory.
+            for form in 0..4 {
+                if form == 3 && (width == 8 || immediate as i32 != immediate as i8 as i32) {
+                    continue;
+                }
+                let mut bytes = Vec::new();
+                if width == 16 {
+                    bytes.push(0x66);
+                }
+                let group = [7, 5, 0, 2, 3][op as usize];
+                if form == 0 {
+                    bytes.push([0x3c, 0x2c, 0x04, 0x14, 0x1c][op as usize] + u8::from(width != 8));
+                } else {
+                    bytes.push(if form == 3 {
+                        0x83
+                    } else if width == 8 {
+                        0x80
+                    } else {
+                        0x81
+                    });
+                    bytes.push((if form == 2 { 0 } else { 0xc0 }) | (group << 3));
+                }
+                let n = if form == 3 { 1 } else { width as usize / 8 };
+                bytes.extend_from_slice(&immediate.to_le_bytes()[..n]);
+                let mut r = cpu(&bytes);
+                r.state[0] = if form == 2 {
+                    STACK as u64
+                } else {
+                    input as u64
+                };
+                r.state[16] = 0x202 | carry as u64;
+                r.memory.write(STACK as u64, &input.to_le_bytes()).unwrap();
+                assert!(
+                    matches!(r.run(1), Stop::Budget { .. }),
+                    "row {i} form {form}"
+                );
+                let actual = if form == 2 {
+                    u32::from_le_bytes(
+                        r.memory
+                            .read(STACK as u64, 4, READ)
+                            .unwrap()
+                            .try_into()
+                            .unwrap(),
+                    )
+                } else {
+                    r.state[0] as u32
+                };
+                assert_eq!(actual, result, "row {i} form {form}, {w:x?}");
+                assert_eq!(
+                    r.flags() & 0x8d5,
+                    flags & 0x8d5,
+                    "row {i} form {form}, {w:x?}"
+                );
+            }
+        }
+    }
+    #[test]
+    fn high_bit_immediates_compare_at_their_declared_width() {
+        for immediate in [0xfffe0200u32, 0xffff0200, 0x80000000, u32::MAX] {
+            for value in [
+                0,
+                immediate.wrapping_sub(1),
+                immediate,
+                immediate.wrapping_add(1),
+            ] {
+                // CMP EAX, imm32. Decoder immediates are signed i64 values;
+                // CF must compare the actual DWORDs, not their host containers.
+                let mut bytes = vec![0x3d];
+                bytes.extend(immediate.to_le_bytes());
+                let mut r = cpu(&bytes);
+                r.state[0] = value as u64;
+                assert!(matches!(r.run(1), Stop::Budget { .. }));
+                assert_eq!(
+                    r.flags() & 1,
+                    u32::from(value < immediate),
+                    "{value:x} - {immediate:x}"
+                );
+                assert_eq!((r.flags() >> 6) & 1, u32::from(value == immediate));
+                assert_eq!(r.state[0], value as u64);
+            }
+        }
     }
     #[test]
     fn actual_bits32_increment_wrap_flags_and_return() {

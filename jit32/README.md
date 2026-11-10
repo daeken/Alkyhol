@@ -141,3 +141,8 @@ the conservative scalar profile and frozen ABI/TLS/heap comparisons. Six reached
 scalar float/integer conversions honor guest MXCSR; reproduce their 512-row
 actual Rosetta/native ARM comparison with `python3 tools/check_jit32_sse.py`.
 This is finite host evidence, not full SIMD/SEH or game compatibility.
+
+Declared-width immediate arithmetic has a separate original x86 assembly
+comparison: `python3 tools/check_jit32_immediates.py`. Its 960 Rosetta rows cover
+CMP/SUB/ADD/ADC/SBB result/flags across 8/16/32-bit accumulator, group-register,
+checked-memory and eligible sign-extended imm8 encodings on the native ARM JIT.

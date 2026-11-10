@@ -7664,3 +7664,17 @@ capture visually confirms the splash artwork while original resource loading
 continues. This is the first original native-JIT splash window, not a D3D9 game
 frame/menu/cutscene or Rosetta progress parity. Raw captures and game data remain
 local; no game assets are committed.
+
+Original native DAO's subsequent graphics enumeration exposed a real immediate
+width/carry bug in the JIT: an equal DWORD shader-version comparison incorrectly
+set CF alongside ZF. An owned regression fails before the correction. The checked
+builder now masks integer literals to their declared IL width, preserving the
+original adapter caps and game checks. On physical M4, the independent actual
+Rosetta assembly comparator passes 960 rows across CMP/SUB/ADD/ADC/SBB and
+8/16/32-bit widths, both carry inputs and multiple original encoding/storage
+forms, comparing results and all six arithmetic flags. Reproduce with
+`tools/check_jit32_immediates.py`. The 56 default tests (five independent observers
+separately invoked), runner Clippy, existing 512/1,024/6,144 SIMD rows and frozen
+shared ABI/TLS/heap comparisons at both bases pass. No frozen Windows data or
+SharpRetro sources changed. The corrected original replay is ongoing; game-frame
+and Rosetta cutscene parity remain unverified.
