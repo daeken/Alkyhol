@@ -17,6 +17,14 @@ jobs:
         run: python tools/observe_pe32_mouse_capture.py --client-buttons --output local/pe/mouse-defaults
       - name: Build the reached clip-query and cursor-counter witness
         run: python tools/observe_pe32_mouse_capture.py --clip-query --output local/pe/clip-query
+      - name: Build the reached save-file deletion witness
+        run: python tools/check_pe32_delete_file.py --build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe32-delete-file
+          path: |
+            local/pe/delete-file/delete-file.exe
+            local/pe/delete-file/inputs.json
       - uses: actions/upload-artifact@v4
         with:
           name: pe32-clip-query
@@ -59,6 +67,17 @@ jobs:
         with:
           name: pe32-clip-query
           path: local/pe/clip-query
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe32-delete-file
+          path: local/pe/delete-file
+      - name: Observe the identical ordinary deletion PE on Windows
+        run: python tools/check_pe32_delete_file.py --native
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-delete-file
+          path: local/pe/delete-file
       - name: Observe the identical clip-query and cursor-counter PE on Windows
         run: python tools/observe_pe32_mouse_capture.py --clip-query --native --output local/pe/clip-query
       - uses: actions/upload-artifact@v4

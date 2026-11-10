@@ -1,0 +1,12 @@
+LIBRARY KERNEL32.dll
+EXPORTS
+GetStdHandle
+WriteFile
+GetEnvironmentVariableA
+SetCurrentDirectoryW
+DeleteFileW
+DeleteFileA
+CreateFileW
+CloseHandle
+GetLastError
+SetLastError

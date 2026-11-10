@@ -15,6 +15,7 @@ const O_CLOEXEC: i32 = 0x1000000;
 unsafe extern "C" {
     fn openat(directory: i32, path: *const std::ffi::c_char, flags: i32, ...) -> i32;
     fn mkdirat(directory: i32, path: *const std::ffi::c_char, mode: u32) -> i32;
+    fn unlinkat(directory: i32, path: *const std::ffi::c_char, flags: i32) -> i32;
 }
 pub(super) struct Documents {
     host: PathBuf,
@@ -130,6 +131,96 @@ impl Documents {
             std::io::ErrorKind::NotFound | std::io::ErrorKind::NotADirectory => Ok(Err(3)),
             _ => Err(format!("unsupported directory creation failure: {error}")),
         }
+    }
+    pub(super) fn delete_file(
+        &self,
+        text: &str,
+        leases: &[((u64, u64), u32)],
+    ) -> Result<std::result::Result<(), u32>> {
+        self.check()?;
+        let root = String::from_utf16(&self.units).map_err(|_| "invalid Documents role")?;
+        let relative = text
+            .strip_prefix(&format!("{root}\\"))
+            .ok_or("file deletion is restricted to the explicit Documents backing")?;
+        if !relative.is_ascii() || text.encode_utf16().count() >= 260 {
+            return Err("delete paths require bounded ASCII descendants".into());
+        }
+        let (_, before) = match files32::existing(text)? {
+            Ok(v) => v,
+            Err(error) => return Ok(Err(error)),
+        };
+        if before.is_dir() {
+            return Ok(Err(5));
+        }
+        if !before.is_file() || before.nlink() != 1 {
+            return Err("delete target must be an ordinary non-aliased file".into());
+        }
+        if before.permissions().readonly() {
+            return Ok(Err(5));
+        }
+        let identity = (before.dev(), before.ino());
+        if leases
+            .iter()
+            .any(|(id, share)| *id == identity && share & 4 == 0)
+        {
+            return Ok(Err(32));
+        }
+        if leases.iter().any(|(id, _)| *id == identity) {
+            return Err(
+                "live FILE_SHARE_DELETE handles require unimplemented delete-pending semantics"
+                    .into(),
+            );
+        }
+        let (held, _) = match self.open_file(text, 0x80000000, 3)? {
+            Ok(v) => v,
+            Err(error) => return Ok(Err(error)),
+        };
+        let held_meta = held.metadata().map_err(|e| e.to_string())?;
+        if (held_meta.dev(), held_meta.ino()) != identity {
+            return Err("delete target changed during open".into());
+        }
+        let mut parts: Vec<_> = relative.split('\\').collect();
+        let leaf =
+            CString::new(parts.pop().ok_or("missing delete leaf")?).map_err(|e| e.to_string())?;
+        let mut parent = self.file.try_clone().map_err(|e| e.to_string())?;
+        for part in parts {
+            let part = CString::new(part).map_err(|e| e.to_string())?;
+            let fd = unsafe {
+                openat(
+                    parent.as_raw_fd(),
+                    part.as_ptr(),
+                    O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC,
+                )
+            };
+            if fd < 0 {
+                return Err("delete parent changed during checked open".into());
+            }
+            parent = unsafe { File::from_raw_fd(fd) };
+        }
+        self.check()?;
+        let (_, meta) =
+            files32::existing(text.rsplit_once('\\').ok_or("missing delete parent")?.0)?
+                .map_err(|_| "delete parent disappeared")?;
+        let actual = parent.metadata().map_err(|e| e.to_string())?;
+        if (actual.dev(), actual.ino()) != (meta.dev(), meta.ino()) {
+            return Err("delete parent identity changed".into());
+        }
+        let (_, meta) =
+            files32::existing(text)?.map_err(|_| "delete leaf disappeared before unlink")?;
+        if (meta.dev(), meta.ino()) != identity {
+            return Err("delete leaf identity changed".into());
+        }
+        if unsafe { unlinkat(parent.as_raw_fd(), leaf.as_ptr(), 0) } != 0 {
+            let error = std::io::Error::last_os_error();
+            return match error.kind() {
+                std::io::ErrorKind::PermissionDenied => Ok(Err(5)),
+                _ => Err(format!("delete operation changed or failed: {error}")),
+            };
+        }
+        if held.metadata().map_err(|e| e.to_string())?.nlink() != 0 {
+            return Err("delete target link identity changed concurrently".into());
+        }
+        Ok(Ok(()))
     }
     pub(super) fn open_file(
         &self,
@@ -325,6 +416,44 @@ pub(super) fn get(image: &LoadedImage32<'_>, args: &[u32; 8]) -> u32 {
     // error channel; no undocumented LastError normalization is claimed.
     0
 }
+pub(super) fn delete(image: &LoadedImage32<'_>, address: u32, ansi: bool) -> u32 {
+    let path = if ansi {
+        super::bulk32::ascii(image, address)
+    } else {
+        let units = startup32::read_units::<u16>(image, address, -1)
+            .unwrap_or_else(|| unsupported("delete path outside checked UTF-16 storage"));
+        String::from_utf16(&units[..units.len() - 1])
+            .unwrap_or_else(|_| unsupported("delete path is invalid UTF-16"))
+    };
+    let current = super::directory32::current(image).unwrap_or_else(|e| unsupported(&e));
+    let path = super::path32::resolve(&current, &path).unwrap_or_else(|e| unsupported(&e));
+    let docs = image
+        .cpu
+        .documents
+        .as_ref()
+        .unwrap_or_else(|| unsupported("file deletion requires explicit Documents backing"));
+    let leases: Vec<_> = image
+        .cpu
+        .file_leases
+        .borrow()
+        .values()
+        .map(|v| (v.identity, v.share))
+        .collect();
+    if image.cpu.diagnostic.is_some() {
+        eprintln!("PE32 diagnostic delete file: path={path:?}; ansi={ansi}");
+    }
+    match docs
+        .delete_file(&path, &leases)
+        .unwrap_or_else(|e| unsupported(&e))
+    {
+        Ok(()) => 1,
+        Err(error) => {
+            alkyhol::ffi::SetLastError(error);
+            0
+        }
+    }
+}
+
 pub(super) fn create(image: &LoadedImage32<'_>, args: &[u32; 8]) -> u32 {
     let units = startup32::read_units::<u16>(image, args[0], -1)
         .unwrap_or_else(|| unsupported("directory creation input outside checked UTF-16 storage"));

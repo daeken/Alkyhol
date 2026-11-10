@@ -184,7 +184,7 @@ fn host_code_address(address: u32) -> usize {
 }
 const PAGE: usize = 4096;
 const STACK: usize = 1024 * 1024;
-const APIS: [(&str, u16); 309] = [
+const APIS: [(&str, u16); 311] = [
     ("GetLastError", 0),
     ("SetLastError", 4),
     ("GetStdHandle", 4),
@@ -494,6 +494,8 @@ const APIS: [(&str, u16); 309] = [
     ("GetNumberFormatW", 24),
     ("GetClipCursor", 4),
     ("ShowCursor", 4),
+    ("DeleteFileW", 4),
+    ("DeleteFileA", 4),
 ];
 // The first 120 API slots retain their original offsets. The second bank
 // begins after both x87 bodies, leaving their machine code and failure gates
@@ -2658,6 +2660,7 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
             258 => cursor32::clip(image, args[0]),
             307 => cursor32::clipping_rectangle(image, args[0]),
             308 => ui32::show_cursor(image, args[0]),
+            309 | 310 => shell_folder32::delete(image, args[0], id == 310),
             259 => input8_32::create(image, &words),
             260 | 262 => crt32::dispatch(image, 78, args),
             261 | 263 | 264 => crt32::deallocate(image, args[0]),
@@ -2839,6 +2842,16 @@ mod tests {
         assert_eq!(cleanup_bytes(306, 24), 24);
         assert_eq!(APIS[304].0, "GetLocalTime");
         assert_eq!(APIS[305].0, "CopyFileW");
+    }
+    #[test]
+    fn delete_gateways_are_kernel32_one_pointer_stdcall_imports() {
+        for (name, id) in [("DeleteFileW", 309), ("DeleteFileA", 310)] {
+            let symbol = ImportSymbol::Name(name.into());
+            assert_eq!(api_id("kernel32.dll", &symbol), Some(id));
+            assert_eq!(api_id("user32.dll", &symbol), None);
+            assert_eq!(APIS[id as usize].1, 4);
+            assert_eq!(cleanup_bytes(id, 4), 4);
+        }
     }
     #[test]
     fn clip_query_is_one_user32_stdcall_rect_pointer() {

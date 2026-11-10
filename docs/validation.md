@@ -8699,3 +8699,25 @@ Its complete 8,396-byte output remains byte-identical to the pre-upload renderer
 SHA-256 32f2d8ff8d615da007be4ded2cbd2318d91c378cf65853c7afde6f5a174acffe.
 The 123-word cursor/thread witness passes through that rebuilt host as well.
 These are host observations; new native Windows CI results remain pending.
+
+The user authorized saving/restarting into the buffer-reuse build. The original
+86af1c5 process (PID 2330) instead stopped at missing DeleteFileW during the
+coordinator's F5 quicksave, after 1071.638 seconds. All eleven prior character/
+save files remain byte-identical, and a local pre-deletion-support backup is
+preserved; the latest movement was not saved. The stop is not a right-click or
+rendering failure. Old UI controls are revoked. Details stay local in
+`local/pe/dao-quiet/save-terminal.json`.
+
+DeleteFileW/A now performs real ordinary-file unlinking only inside the explicit
+Documents capability, using checked no-follow directory handles and file/parent
+identities. Absent leaf/parent, readonly/directory targets and incompatible live
+sharing return actual failures 2/3/5/32. Live FILE_SHARE_DELETE handles remain
+unsupported until delete-pending semantics exist. Symlinks, hard links, unknown
+namespaces, non-ASCII descendants, unsafe storage and concurrent identity changes
+also stop explicitly. No deletion capability is granted over game installations.
+See [Microsoft DeleteFileW](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-deletefilew).
+The new owned identical PE passes 24 normal/rebased physical Rosetta cases,
+covering W/A deletion, repeated absence, defined errors, sharing, stack cleanup
+and non-mutation on explicit exclusions. The two import routes/cleanup are
+checked separately. Existing native Windows CI now observes the seven ordinary
+cases of the identical PE; that new result and original save replay are pending.
