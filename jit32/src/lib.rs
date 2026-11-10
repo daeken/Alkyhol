@@ -1383,3 +1383,6 @@ mod extended_cpu_tests {
 
 #[cfg(test)]
 mod rotate_tests;
+
+#[cfg(test)]
+mod xlat_tests;

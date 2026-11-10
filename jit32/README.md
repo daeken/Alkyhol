@@ -179,3 +179,7 @@ evidence, separate from native Windows and original game progress.
 `python3 tools/check_jit32_rotates.py` compares 5,200 actual Rosetta narrow-rotate
 rows with both CL and immediate native forms. Only architecturally defined
 overflow flags are asserted. These observations are separate from Windows.
+
+`python3 tools/check_jit32_xlat.py` compares all 256 byte-table indices under
+two initial flag states against actual Rosetta assembly; native tests separately
+exercise guest segment/address wrap and checked memory failures.

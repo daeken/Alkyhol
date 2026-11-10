@@ -731,6 +731,12 @@ pub(crate) fn compile(pc: u32, bytes: &[u8]) -> Result<Instruction> {
         _ => None,
     };
     let rdtsc = bytes.starts_with(&[0x0f, 0x31]);
+    let (prefix_len, prefixes) =
+        xfusion_recomp::decode::scan_prefixes(&bytes[..bytes.len().min(15)], XMode::Bits32);
+    let xlat = prefix_len < 15
+        && bytes.get(prefix_len) == Some(&0xd7)
+        && !prefixes.vex_valid
+        && !prefixes.evex_valid;
     let d = if let Some((_, len)) = bank {
         xfusion_recomp::decode::DecodedInsn {
             len,
@@ -742,6 +748,13 @@ pub(crate) fn compile(pc: u32, bytes: &[u8]) -> Result<Instruction> {
             op: 0x31,
             ..Default::default()
         }
+    } else if xlat {
+        xfusion_recomp::decode::DecodedInsn {
+            len: (prefix_len + 1) as u32,
+            op: 0xd7,
+            p: prefixes,
+            ..Default::default()
+        }
     } else {
         decode_insn(bytes, XMode::Bits32).ok_or_else(|| format!("decode failure at {pc:#x}"))?
     };
@@ -749,6 +762,8 @@ pub(crate) fn compile(pc: u32, bytes: &[u8]) -> Result<Instruction> {
         if op & 1 == 0 { "PUSHA" } else { "POPA" }
     } else if rdtsc {
         "RDTSC"
+    } else if xlat {
+        "XLAT"
     } else {
         DEF_MNEMONICS[d.def_id as usize]
     };
@@ -886,6 +901,7 @@ pub(crate) fn compile(pc: u32, bytes: &[u8]) -> Result<Instruction> {
         "SAL",
         "ROL",
         "ROR",
+        "XLAT",
         "BSWAP",
         "BSF",
         "BSR",
@@ -1446,6 +1462,23 @@ pub(crate) fn compile(pc: u32, bytes: &[u8]) -> Result<Instruction> {
                     bd.branch(target, false);
                 },
             );
+        } else if mnemonic == "XLAT" {
+            let base = bd.reg_read(RegFile(0), 3, IlType::U32);
+            let accumulator = bd.reg_read(RegFile(0), 0, IlType::U32);
+            let index = bd.cast(accumulator, IlType::U8);
+            let index = bd.cast(index, IlType::U32);
+            let offset = bd.add(base, index);
+            let mut address = bd.cast(offset, IlType::U64);
+            if let Some(si) = shared.segment {
+                let segment = bd.reg_read(RegFile(2), si, IlType::U64);
+                address = bd.add(segment, address);
+            }
+            let value = bd.mem_read(address, IlType::U8);
+            let value = bd.cast(value, IlType::U32);
+            let mask = bd.literal(IlType::U32, 0xffffff00);
+            let preserved = bd.and(accumulator, mask);
+            let result = bd.or(preserved, value);
+            bd.reg_write(RegFile(0), 0, result);
         } else if mnemonic == "MOV" && (0xa0..=0xa3).contains(&d.op) {
             // Generated moffs operands omit the segment override entirely.
             use xfusion_recomp::operand::{Operand, bind_fixed_reg, read_operand, write_operand};

@@ -7811,3 +7811,16 @@ partial registers and no write/flag commitment on read-only memory faults. The
 73 default tests and runner Clippy pass; ten external observations are separate.
 Original inputs are unchanged, no Present has been observed, and cutscene parity
 remains unestablished. Next replay retains the explicit ten-billion budget.
+
+The rotate replay clears ROL and reaches the adjacent original XLAT at
+1,618,333,706 loading-thread instructions. The pinned decoder has no XLAT
+entry. The checked adapter now decodes this one-byte operation with bounded
+legacy prefixes, reads only the selected checked byte at segment+(EBX+zero-
+extended AL modulo 2^32), and preserves upper EAX, other registers and flags.
+Sixteen-bit addressing and LOCK remain explicit exclusions. All 512 owned
+actual Rosetta rows agree; native tests additionally cover operand-prefix
+invariance, FS/wrap, single-byte boundaries, precise invalid-memory failure and
+the 15-byte length limit. All 74 default native tests and runner Clippy pass;
+eleven external observations remain separately invoked. Original input hashes
+remain unchanged and no Present has yet been observed. The next replay uses the
+new host without overwriting the preceding running executable.
