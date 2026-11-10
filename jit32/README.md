@@ -149,3 +149,8 @@ Declared-width immediate arithmetic has a separate original x86 assembly
 comparison: `python3 tools/check_jit32_immediates.py`. Its 960 Rosetta rows cover
 CMP/SUB/ADD/ADC/SBB result/flags across 8/16/32-bit accumulator, group-register,
 checked-memory and eligible sign-extended imm8 encodings on the native ARM JIT.
+
+`python3 tools/check_jit32_peek.py` exercises a native guest-worker window and
+callbacks followed by AppKit message polling alongside a real compute worker.
+Its 36 finite host assertions cover the CPU lease handoff used by DAO startup;
+they are separate from native Windows observations and game progress.

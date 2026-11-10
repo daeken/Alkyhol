@@ -6,6 +6,10 @@ use super::{
 use crate::Result;
 use std::collections::{BTreeMap, VecDeque};
 const VISIBLE: u32 = 0x10000000;
+#[cfg(target_arch = "aarch64")]
+type AppHandle = std::sync::Arc<host::App>;
+#[cfg(target_arch = "x86_64")]
+type AppHandle = host::App;
 #[derive(Clone)]
 struct Class {
     atom: u32,
@@ -37,7 +41,7 @@ struct Window {
 }
 #[derive(Default)]
 pub(super) struct State {
-    app: Option<host::App>,
+    app: Option<AppHandle>,
     classes: BTreeMap<u32, Class>,
     windows: BTreeMap<u32, Window>,
     next_atom: u32,
@@ -80,7 +84,10 @@ impl State {
     }
     fn app(&mut self) -> Result<&host::App> {
         if self.app.is_none() {
-            self.app = Some(host::App::new()?);
+            let app = host::App::new()?;
+            #[cfg(target_arch = "aarch64")]
+            let app = std::sync::Arc::new(app);
+            self.app = Some(app);
         }
         Ok(self.app.as_ref().unwrap())
     }
@@ -666,6 +673,7 @@ fn peek_message(image: &LoadedImage32<'_>, a: &[u32; 16]) -> u32 {
     if !a[0].is_multiple_of(4) || !image.permits(a[0] as usize, 28, true) {
         unsupported("MSG outside writable checked guest storage");
     }
+    #[cfg(target_arch = "x86_64")]
     let native = {
         let ui = image.cpu.ui.borrow();
         if let Some(app) = &ui.app {
@@ -673,6 +681,20 @@ fn peek_message(image: &LoadedImage32<'_>, a: &[u32; 16]) -> u32 {
             app.take_mouse()
         } else {
             Vec::new()
+        }
+    };
+    #[cfg(target_arch = "aarch64")]
+    let native = {
+        // AppKit waits only touch synchronized host objects. Retain the native
+        // app independently, end the UI RefCell borrow, then release the CPU
+        // lease so the loading worker can run while main pumps native events.
+        let app = image.cpu.ui.borrow().app.clone();
+        match app {
+            Some(app) => super::thread32::without_cpu(image, || {
+                stop(app.pump());
+                app.take_mouse()
+            }),
+            None => Vec::new(),
         }
     };
     sync_capture(image);
@@ -749,7 +771,7 @@ fn sync_capture(image: &LoadedImage32<'_>) {
         let mut ui = image.cpu.ui.borrow_mut();
         match ui.capture {
             Some((hwnd, owner)) if owner == alkyhol::ffi::GetCurrentThreadId() => {
-                let actual = ui.app.as_ref().and_then(host::App::mouse_capture);
+                let actual = ui.app.as_ref().and_then(|app| app.mouse_capture());
                 if actual != ui.windows.get(&hwnd).map(|w| w.native.number()) {
                     ui.capture = None;
                     Some(hwnd)

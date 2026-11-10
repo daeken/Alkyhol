@@ -7700,3 +7700,20 @@ passes eight frozen Windows words at 1,000,000 and rejects invalid limits.
 59 default CPU tests and Clippy pass. The next original experiment explicitly
 chooses ten billion transitions per entry; neither budget extension nor these
 host assertions establish a game frame or Rosetta progress parity.
+
+The ten-billion original replay passed unpacking and reached original matrix
+SHUFPS after further texture/viewport setup, at 825,096,084 loading-thread
+instructions; inputs remained unchanged (457.1s uncontrolled wall time). No
+Present was observed. SHUFPS/SHUFPD pass all 256 selector values on native ARM,
+including source aliasing, aligned memory, exact bits, preserved registers/
+status and fault rollback. A physical original-startup sample identified a
+window-polling worker holding the CPU lease while waiting for AppKit. Native
+PeekMessage now keeps only a host App Arc during that wait, ending the UI borrow
+and releasing/reacquiring the lease; guest event processing remains serialized.
+The existing Rosetta path is retained. New owned polling/window execution passes
+36 exact words before/after, and existing 32 window + 26 worker/TLS + 12 poll words
+pass afterward. All 60 default CPU tests and runner Clippy pass. Owned total
+process times were ~0.835s both ways, not a measured game performance gain. No
+new native Windows observation or game-frame/cutscene parity follows.
+The x86_64 PE crate compile check also passes; this is not a new Rosetta runtime
+or native Windows execution observation.

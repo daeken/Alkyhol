@@ -5,6 +5,63 @@ use crate::{
     tests::cpu,
 };
 #[test]
+fn float_shuffles_cover_all_selectors_aliases_and_memory() {
+    let a = 0x12345678fedcba987fc01234abcdef01u128;
+    let b = 0x800000017fffffff9988776655443322u128;
+    for width in [32, 64] {
+        for selector in 0..=255u8 {
+            for form in 0..3 {
+                let mut bytes = if width == 64 { vec![0x66] } else { vec![] };
+                bytes.extend([0x0f, 0xc6, [0xc1, 0xc0, 0x00][form], selector]);
+                let mut r = cpu(&bytes);
+                r.state[0] = 0x20000;
+                r.memory.map(0x20000, 16, READ, &b.to_le_bytes()).unwrap();
+                r.state[24] = a as u64;
+                r.state[25] = (a >> 64) as u64;
+                r.state[26] = b as u64;
+                r.state[27] = (b >> 64) as u64;
+                r.state[16] = 0xad7;
+                r.memory.fpu.borrow_mut().mxcsr = 0x9fc3;
+                let before_gpr = r.registers();
+                let other = if form == 1 { a } else { b };
+                let mut expected = 0u128;
+                let mask = (1u128 << width) - 1;
+                let lanes = 128 / width;
+                let bits = if width == 32 { 2 } else { 1 };
+                for lane in 0..lanes {
+                    let source = if lane < lanes / 2 { a } else { other };
+                    let index = (selector as u32 >> (lane * bits)) & ((1 << bits) - 1);
+                    expected |= ((source >> (index * width)) & mask) << (lane * width);
+                }
+                assert!(matches!(r.run(1), Stop::Budget { .. }));
+                assert_eq!(
+                    r.state[24] as u128 | ((r.state[25] as u128) << 64),
+                    expected,
+                    "width {width} selector {selector:x} form {form}"
+                );
+                assert_eq!(r.registers(), before_gpr);
+                assert_eq!(r.state[16], 0xad7);
+                assert_eq!(r.memory.fpu.borrow().mxcsr, 0x9fc3);
+                assert_eq!(&r.state[26..28], &[b as u64, (b >> 64) as u64]);
+            }
+        }
+        for address in [0, 0x20008, 0x30000] {
+            let mut bytes = if width == 64 { vec![0x66] } else { vec![] };
+            bytes.extend([0x0f, 0xc6, 0x00, 0xff]);
+            let mut r = cpu(&bytes);
+            r.memory.map(0x20000, 32, READ, &[0; 32]).unwrap();
+            r.memory.map(0x30000, 8, READ, &[0; 8]).unwrap();
+            r.state[0] = address;
+            let before = r.state;
+            assert!(matches!(
+                r.run(1),
+                Stop::Fault { .. } | Stop::CpuFault { .. }
+            ));
+            assert_eq!(r.state, before);
+        }
+    }
+}
+#[test]
 fn unpack_float_family_interleaves_bits_without_changing_fp_status() {
     let a = 0x7ff00001fedcba987fc0123401234567u128;
     let b = 0x80000000abcdef0198765432ffff0001u128;

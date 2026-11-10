@@ -457,3 +457,23 @@ frozen Windows words at budget 1,000,000, and rejects zero/over-limit settings
 before guest execution. All 59 default CPU tests and runner Clippy pass; five
 independent external observers remain separate. The next original replay uses
 an explicit ten-billion budget. No frame/menu/cutscene parity is claimed yet.
+
+That original replay passes the unpack stop and proceeds through further
+textures/viewport/buffer setup before SHUFPS in original matrix code, after
+825,096,084 loading-thread instructions (457.1s uncontrolled process wall time).
+Original file hashes remain unchanged and no Present was observed. SHUFPS/SHUFPD
+now use the pinned shuffle templates. Native tests cover all 256 selectors for
+both forms, distinct/aliased registers and aligned memory, exact bit placement,
+preserved source/GPR/EFLAGS/MXCSR and precise bad-memory/alignment failure.
+
+A physical startup sample also showed the splash-message worker waiting for
+AppKit while holding the guest CPU lease, blocking the loading worker. Native
+PeekMessage now retains the host-only App through Arc, drops its UI RefCell
+borrow, and releases the CPU lease for the host pump. Returned events are
+processed after reacquiring the lease; output ownership is checked again at
+write. The Rosetta branch retains its existing pump/ownership path. The owned
+`tools/check_jit32_peek.py` witness passes the same 36 window/callback/worker-
+progress words before/after. Existing 32-word window and 26+12 worker/poll
+witnesses pass afterward, as do all 60 default CPU tests and runner Clippy.
+The owned witness's whole-process times were effectively unchanged (~0.835s);
+this is no measured game-loading/FPS improvement. Original replay is next.
