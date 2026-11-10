@@ -20,6 +20,7 @@ pub fn operation(name: &str) -> Option<u64> {
         "MUL" => 2,
         "DIV" => 3,
         "RSQRT" if form == 0 || form == 2 => 4,
+        "RCP" if form == 0 || form == 2 => 5,
         _ => return None,
     };
     Some(op | (form << 4))
@@ -172,6 +173,8 @@ fn perform(
         let b = source >> shift & mask;
         let (value, next) = if op == 4 && width == 32 {
             (crate::sse_estimate::rsqrt(b as u32)? as u128, mxcsr)
+        } else if op == 5 && width == 32 {
+            (crate::sse_reciprocal::rcp(b as u32) as u128, mxcsr)
         } else if width == 32 {
             calculate::<Single, Wide32>(a, b, op, mxcsr)?
         } else {

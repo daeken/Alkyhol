@@ -4,6 +4,8 @@ on:
     paths:
       - jit32/tests/sse_compare_reference.c
       - jit32/tests/rsqrt_reference.c
+      - jit32/tests/rcp_reference.c
+      - tools/observe_jit32_rcp_native.py
       - tools/observe_jit32_rsqrt_native.py
       - tools/observe_jit32_compare_native.py
       - .github/workflows/jit32-compare.yml
@@ -11,6 +13,8 @@ on:
     paths:
       - jit32/tests/sse_compare_reference.c
       - jit32/tests/rsqrt_reference.c
+      - jit32/tests/rcp_reference.c
+      - tools/observe_jit32_rcp_native.py
       - tools/observe_jit32_rsqrt_native.py
       - tools/observe_jit32_compare_native.py
       - .github/workflows/jit32-compare.yml
@@ -56,4 +60,24 @@ jobs:
         with:
           name: native-rsqrt
           path: local/jit32/native-rsqrt-reference/
+          if-no-files-found: error
+
+  native-rcp-x64:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - name: Observe bounded RCP and complete MXCSR on native x64 Windows
+        run: python tools/observe_jit32_rcp_native.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-rcp
+          path: local/jit32/native-rcp-reference/
           if-no-files-found: error

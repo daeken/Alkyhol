@@ -8098,3 +8098,37 @@ rustc --edition=2024 --test pe/probe_window_host.rs \
   -l framework=Foundation -o local/window-host-tests
 local/window-host-tests --test-threads=1
 ```
+
+
+The unchanged original native replay now displays its actual foreground menu,
+receives the New Game click with matching native client/screen and DirectInput
+button states, and executes past the exact former FPATAN stop. A bounded 256-step
+read-only trace records that instruction and its next original PCs. It then
+stops explicitly at the newly reached RCPSS; status 78, original EXE/provided DLL
+hashes unchanged. The run and capture/trace provenance are archived in ignored
+`local/jit32/shared-game-rcpss-before`. Character creation, original in-engine
+3D and Orzammar progress parity remain unobserved. The independent replacement
+playtest is separate evidence and its now-expired original-PID control is revoked.
+
+RCPSS/RCPPS now share a deterministic software reciprocal profile. The admitted
+estimate bound, signed special values, quiet-NaN payloads and unconditional tiny
+flush follow the [Intel RCP entries](https://www.intel.com/content/dam/www/public/us/en/documents/manuals/64-ia-32-architectures-software-developer-vol-2b-manual.pdf).
+Finite normal estimate bits and flush choices near the tiny boundary need not
+match a CPU's table. Scalar upper lanes, flags and MXCSR are preserved. Packed
+alignment and complete source read rights/extent are checked before commit.
+
+All 94 default native ARM JIT tests and runner Clippy pass; 18 external observers
+are ignored by default. The new owned 67,584-row Rosetta RCP comparison runs
+separately: 167,200 normal lanes meet exact integer bounds, 164,000 differ in
+normal result bits and 320 differ in permitted flush choice. RCP itself preserves
+all measured MXCSR and defined flags. The observer additionally records the
+actual MXCSR immediately after LDMXCSR: 33,792 rows differ from the requested
+mask state under Rosetta. That separate load behavior remains visible; none of
+the older frozen RSQRT or other strict comparisons is changed. This is finite
+instruction evidence, not application or raw CPU-bit parity.
+
+The owned C source/observer/data identities and compressed Rosetta table are
+frozen. `python3 tools/check_jit32_rcp.py` replays that table; a native Windows
+observer is added to the existing SIMD workflow, with its result still pending.
+No original bytes, API results, geometry or rendering quality are substituted.
+A fresh native host replay is required to test the reciprocal fix in DAO.
