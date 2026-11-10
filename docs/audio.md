@@ -68,3 +68,20 @@ creates playback using the returned non-NULL GUID. Its PE SHA-256 is
 e34dbbfa92ccf6cdc415ba899a25bf3ac127fc742f070520d1370dad4826b606.
 This fixes the identified selection omission; original FMOD playback is still
 pending replay.
+
+### Primary listener state
+
+The original FMOD DLL requests PRIMARYBUFFER|CTRL3D (0x11), confirmed from its
+original instructions at the observed CreateSoundBuffer call. The primary buffer
+now exposes a real IDirectSound3DListener interface sharing its canonical COM
+identity/lifetime. All parameter getters, finite position/velocity/orientation,
+validated distance/rolloff/doppler setters and deferred versus immediate updates
+are backed by retained parameter state; CommitDeferredSettings applies that
+state. Secondary spatial buffers remain rejected, and no spatialized output is
+claimed. These listener parameters therefore do not alter supported 2D PCM.
+
+The version-3 owned PE adds primary CTRL3D creation, listener QI, guarded defaults,
+deferred position/commit, invalid-factor rejection and retained release. Its
+71 fixed words pass normal/rebased on physical Rosetta/CoreAudio. A separate
+unit checks immediate/deferred field coexistence and atomic rejection. Original
+FMOD streaming after this change is still pending replay.

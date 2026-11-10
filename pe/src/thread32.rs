@@ -625,9 +625,9 @@ pub(super) fn wait_event_set(
     })
 }
 pub(super) fn switch_to_thread(image: &LoadedImage32<'_>) -> u32 {
-    let before = super::CPU_TICKETS.lock().unwrap().1;
+    let before = super::CPU_TICKETS.lock().unwrap().serving;
     without_cpu(image, std::thread::yield_now);
-    let after = super::CPU_TICKETS.lock().unwrap().1;
+    let after = super::CPU_TICKETS.lock().unwrap().serving;
     // Releasing and immediately reacquiring costs one ticket. More than one
     // means another guest thread actually ran under the FIFO CPU lease.
     u32::from(after - before > 1)

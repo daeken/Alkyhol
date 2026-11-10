@@ -16,9 +16,9 @@ def build(d):
  subprocess.run([lld,'-flavor','link','/nodefaultlib','/subsystem:console','/machine:x86','/dynamicbase','/fixed:no','/timestamp:0','/safeseh:no','/manifest:no','/entry:entry',str(obj),*libs,*[f'/alternatename:__imp__{n}@{s}=__imp__{n}' for n,s in SYMBOLS],'/out:'+str(d/'directsound.exe')],check=True)
  (d/'inputs.json').write_text(json.dumps(inputs(d),indent=2)+'\n')
 def decode(data):
- if len(data)!=63*4:raise ValueError('incomplete DirectSound playback witness')
- words=list(struct.unpack('<63I',data))
- if words!=[0x44534e32,2]+[1]*60+[63]:raise ValueError('DirectSound COM/PCM/notification/stack assertions differ: '+repr(words))
+ if len(data)!=71*4:raise ValueError('incomplete DirectSound playback witness')
+ words=list(struct.unpack('<71I',data))
+ if words!=[0x44534e32,3]+[1]*68+[71]:raise ValueError('DirectSound COM/PCM/notification/stack assertions differ: '+repr(words))
  return words
 def execute(d,host,native):
  identity=inputs(d)

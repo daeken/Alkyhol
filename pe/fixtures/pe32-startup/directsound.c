@@ -27,14 +27,21 @@ struct Format {W tag,channels;U rate,bytes;W align,bits,extra;};
 #pragma pack(pop)
 struct Desc {U size,flags,bytes,reserved;struct Format *format;unsigned char algorithm[16];};
 U entry(void){
- U before=stack();put(0x44534e32);put(2);
+ U before=stack();put(0x44534e32);put(3);
  H module=LoadLibraryA("dsound.dll");put(module!=0);put(GetProcAddress(module,"DirectSoundCreate8")!=0);put(FreeLibrary(module)!=0);
  put(DirectSoundEnumerateA(enumerate,(void *)0x1234)==0);put(enumerated==1);continue_enumeration=1;enumerated=0;put(DirectSoundEnumerateA(enumerate,(void *)0x1234)==0);put(enumerated>=2);
  void *device=0;put(DirectSoundCreate8(selected,&device,0)==0&&device!=0);
  U caps[25]={96};caps[24]=0xfeedface;put(C1(device,4,caps)==0);put(caps[0]==96&&caps[24]==0xfeedface);put((caps[1]&0x20)!=0&&(caps[1]&0x40)==0);
  put(C2(device,6,GetDesktopWindow(),2)==0);
- struct Desc primary={36,1,0,0,0,{0}};void *p=0;put(C3(device,3,&primary,&p,0)==0&&p!=0);
- struct Format format={1,2,48000,192000,4,16,0};put(C1(p,14,&format)==0);put(C0(p,2)==0);
+ struct Desc primary={36,17,0,0,0,{0}};void *p=0;put(C3(device,3,&primary,&p,0)==0&&p!=0);
+ struct Format format={1,2,48000,192000,4,16,0};put(C1(p,14,&format)==0);
+ unsigned char listener_iid[16]={0x84,0xfa,0x9a,0x27,0x81,0x49,0xce,0x11,0xa5,0x21,0,0x20,0xaf,0xb,0xe5,0x60};
+ void *listener=0;put(C2(p,0,listener_iid,&listener)==0&&listener!=0);
+ U all[17]={64};all[16]=0xfeedface;put(C1(listener,3,all)==0&&all[9]==0x3f800000&&all[11]==0x3f800000&&all[13]==0x3f800000&&all[16]==0xfeedface);
+ put(C4(listener,14,0x3f800000,0x40000000,0x40400000,1)==0);
+ U position[3]={1,1,1};put(C1(listener,7,position)==0&&position[0]==0&&position[1]==0&&position[2]==0);
+ put(C0(listener,17)==0);put(C1(listener,7,position)==0&&position[0]==0x3f800000&&position[1]==0x40000000&&position[2]==0x40400000);
+ put(C2(listener,11,0,0)==0x80070057);put(C0(listener,2)>0);put(C0(p,2)==0);
  struct Desc desc={36,0x1e8,8192,0,&format,{0}};void *buffer=0;put(C3(device,3,&desc,&buffer,0)==0&&buffer!=0);
  void *as8=0;put(C2(buffer,0,iid8,&as8)==0&&as8==buffer);put(C0(as8,2)>0);
  void *absent=(void *)1;put(C2(buffer,0,bad,&absent)==0x80004002&&absent==0);

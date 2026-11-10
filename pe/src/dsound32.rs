@@ -29,6 +29,9 @@ const BUFFER: [u8; 16] = [
 const BUFFER8: [u8; 16] = [
     0x49, 0xa4, 0x25, 0x68, 0x24, 0x75, 0x82, 0x4d, 0x92, 0xf, 0x50, 0xe3, 0x6a, 0xb3, 0xab, 0x1e,
 ];
+const LISTENER: [u8; 16] = [
+    0x84, 0xfa, 0x9a, 0x27, 0x81, 0x49, 0xce, 0x11, 0xa5, 0x21, 0, 0x20, 0xaf, 0xb, 0xe5, 0x60,
+];
 const NOTIFY: [u8; 16] = [
     0x83, 7, 0x21, 0xb0, 0xcd, 0x89, 0xd0, 0x11, 0xaf, 8, 0, 0xa0, 0xc9, 0x25, 0xcd, 0x16,
 ];
@@ -81,6 +84,7 @@ pub(super) struct State {
     tables: BTreeMap<u32, u32>,
     objects: BTreeMap<u32, Object>,
     aliases: BTreeMap<u32, (u32, u32)>,
+    listeners: BTreeMap<u32, Listener>,
     notification_events: BTreeMap<u32, Vec<u32>>,
     pub module_refs: u32,
     pub static_loaded: bool,
@@ -117,7 +121,128 @@ pub(super) fn signature(id: u32) -> Option<(&'static str, u16)> {
         ]
         .get(slot)
         .copied(),
+        3 => LISTENER_METHODS.get(slot).copied(),
         _ => None,
+    }
+}
+const LISTENER_METHODS: [(&str, u16); 18] = [
+    ("DirectSound3DListener::QueryInterface", 12),
+    ("DirectSound3DListener::AddRef", 4),
+    ("DirectSound3DListener::Release", 4),
+    ("DirectSound3DListener::GetAllParameters", 8),
+    ("DirectSound3DListener::GetDistanceFactor", 8),
+    ("DirectSound3DListener::GetDopplerFactor", 8),
+    ("DirectSound3DListener::GetOrientation", 12),
+    ("DirectSound3DListener::GetPosition", 8),
+    ("DirectSound3DListener::GetRolloffFactor", 8),
+    ("DirectSound3DListener::GetVelocity", 8),
+    ("DirectSound3DListener::SetAllParameters", 12),
+    ("DirectSound3DListener::SetDistanceFactor", 12),
+    ("DirectSound3DListener::SetDopplerFactor", 12),
+    ("DirectSound3DListener::SetOrientation", 32),
+    ("DirectSound3DListener::SetPosition", 20),
+    ("DirectSound3DListener::SetRolloffFactor", 12),
+    ("DirectSound3DListener::SetVelocity", 20),
+    ("DirectSound3DListener::CommitDeferredSettings", 4),
+];
+struct Listener {
+    alias: u32,
+    active: [u32; 16],
+    pending: [u32; 16],
+}
+impl Default for Listener {
+    fn default() -> Self {
+        let mut active = [0; 16];
+        active[0] = 64;
+        // position, velocity, +Z front, +Y top, distance/rolloff/doppler 1.
+        for i in [9, 11, 13, 14, 15] {
+            active[i] = 1f32.to_bits();
+        }
+        Self {
+            alias: 0,
+            active,
+            pending: active,
+        }
+    }
+}
+impl Listener {
+    fn update(&mut self, first: usize, values: &[u32], apply: u32) -> u32 {
+        if apply > 1 || values.iter().any(|v| !f32::from_bits(*v).is_finite()) {
+            return INVALID;
+        }
+        for (n, bits) in values.iter().enumerate() {
+            let i = first + n;
+            let f = f32::from_bits(*bits);
+            if i == 13 && f <= 0. || matches!(i, 14 | 15) && !(0. ..=10.).contains(&f) {
+                return INVALID;
+            }
+        }
+        self.pending[first..first + values.len()].copy_from_slice(values);
+        if apply == 0 {
+            self.active[first..first + values.len()].copy_from_slice(values);
+        }
+        0
+    }
+    fn commit(&mut self) {
+        self.active = self.pending;
+    }
+}
+fn listener_dispatch(
+    image: &LoadedImage32<'_>,
+    listener: &mut Listener,
+    slot: u32,
+    a: &[u32; 16],
+) -> u32 {
+    match slot {
+        3 => {
+            if read::<1>(image, a[1])[0] != 64 {
+                return INVALID;
+            }
+            write(image, a[1], &listener.active);
+            0
+        }
+        4 | 5 | 8 => {
+            let index = match slot {
+                4 => 13,
+                5 => 15,
+                _ => 14,
+            };
+            write(image, a[1], &[listener.active[index]]);
+            0
+        }
+        6 => {
+            write(image, a[1], &listener.active[7..10]);
+            write(image, a[2], &listener.active[10..13]);
+            0
+        }
+        7 | 9 => {
+            let first = if slot == 7 { 1 } else { 4 };
+            write(image, a[1], &listener.active[first..first + 3]);
+            0
+        }
+        10 => {
+            let all = read::<16>(image, a[1]);
+            if all[0] != 64 {
+                return INVALID;
+            }
+            listener.update(1, &all[1..], a[2])
+        }
+        11 | 12 | 15 => listener.update(
+            match slot {
+                11 => 13,
+                12 => 15,
+                _ => 14,
+            },
+            &a[1..2],
+            a[2],
+        ),
+        13 => listener.update(7, &a[1..7], a[7]),
+        14 | 16 => listener.update(if slot == 14 { 1 } else { 4 }, &a[1..4], a[4]),
+        17 => {
+            listener.commit();
+            0
+        }
+        _ => unreachable!(),
     }
 }
 fn checked(image: &LoadedImage32<'_>, at: u32, len: usize, write: bool) {
@@ -161,6 +286,7 @@ fn table(cpu: &Cpu32, s: &mut State, kind: u32) -> Result<u32> {
         0 => 12,
         1 => 24,
         2 => 4,
+        3 => 18,
         _ => unreachable!(),
     };
     let m = cpu.mapping(PAGE * 2, PAGE, 0)?;
@@ -328,6 +454,7 @@ fn release(s: &mut State, at: u32) -> u32 {
         if let Body::Buffer { parent, .. } = object.body {
             mixer(s).lock().unwrap().voices.remove(&at);
             s.notification_events.remove(&at);
+            s.listeners.remove(&at);
             release(s, parent);
         }
         s.aliases.retain(|_, (canonical, _)| *canonical != at);
@@ -338,6 +465,17 @@ fn release(s: &mut State, at: u32) -> u32 {
     refs
 }
 pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32 {
+    let result = dispatch_inner(image, id, a);
+    if (result as i32) < 0 {
+        let (name, bytes) = signature(id).unwrap();
+        eprintln!(
+            "PE32 DirectSound failure: {name} -> {result:08x}; args={:x?}",
+            &a[..usize::from(bytes) / 4]
+        );
+    }
+    result
+}
+fn dispatch_inner(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32 {
     let kind = (id - BASE) / 256;
     let slot = (id - BASE) % 256;
     let mut s = image.cpu.dsound.borrow_mut();
@@ -357,6 +495,18 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32
             || !device && [BUFFER, BUFFER8].contains(&iid)
         {
             at
+        } else if !device && iid == LISTENER && s.listeners.contains_key(&at) {
+            let alias = s.listeners[&at].alias;
+            if alias != 0 {
+                alias
+            } else {
+                let t = table(&image.cpu, &mut s, 3).unwrap_or_else(|e| unsupported(&e));
+                let alias = d3d9_32::memory(&image.cpu, &t.to_le_bytes(), true, false)
+                    .unwrap_or_else(|e| unsupported(&e));
+                s.aliases.insert(alias, (at, 3));
+                s.listeners.get_mut(&at).unwrap().alias = alias;
+                alias
+            }
         } else if !device && iid == NOTIFY {
             let flags = match s.objects[&at].body {
                 Body::Buffer { flags, .. } => flags,
@@ -394,6 +544,9 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32
     }
     if slot == 2 {
         return release(&mut s, at);
+    }
+    if kind == 3 {
+        return listener_dispatch(image, s.listeners.get_mut(&at).unwrap(), slot, a);
     }
     let mix = mixer(&s);
     if kind == 2 {
@@ -439,7 +592,7 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32
                     return INVALID;
                 }
                 let primary = d[1] & 1 != 0;
-                if d[1] & 4 != 0 || d[1] & 0x210 != 0 {
+                if d[1] & 4 != 0 || d[1] & 0x200 != 0 || !primary && d[1] & 0x10 != 0 {
                     return CONTROL;
                 }
                 let fmt = if primary {
@@ -485,6 +638,9 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32
                     },
                 );
                 s.objects.get_mut(&at).unwrap().refs += 1;
+                if primary && d[1] & 0x10 != 0 {
+                    s.listeners.insert(obj, Listener::default());
+                }
                 mix.lock()
                     .unwrap()
                     .voices
@@ -878,5 +1034,36 @@ pub(super) fn report(image: &LoadedImage32<'_>) {
             m.nonzero,
             m.voices.len()
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn listener_parameters_commit_deferred_fields_and_reject_invalid_changes_atomically() {
+        let mut l = Listener::default();
+        assert_eq!(l.active[9], 1f32.to_bits());
+        assert_eq!(l.active[11], 1f32.to_bits());
+        assert_eq!(
+            l.update(1, &[1f32.to_bits(), 2f32.to_bits(), 3f32.to_bits()], 1),
+            0
+        );
+        assert_eq!(&l.active[1..4], &[0; 3]);
+        assert_eq!(l.update(13, &[2f32.to_bits()], 0), 0);
+        l.commit();
+        assert_eq!(l.active[1], 1f32.to_bits());
+        assert_eq!(l.active[13], 2f32.to_bits());
+        let before = l.pending;
+        assert_eq!(
+            l.update(1, &[4f32.to_bits(), f32::NAN.to_bits()], 0),
+            INVALID
+        );
+        assert_eq!(l.update(13, &[0], 1), INVALID);
+        assert_eq!(l.update(14, &[11f32.to_bits()], 1), INVALID);
+        assert_eq!(l.update(15, &[(-1f32).to_bits()], 0), INVALID);
+        assert_eq!(l.update(4, &[1f32.to_bits()], 2), INVALID);
+        assert_eq!(l.active, before);
+        assert_eq!(l.pending, before);
     }
 }

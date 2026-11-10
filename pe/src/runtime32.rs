@@ -9,7 +9,7 @@ use std::{
     marker::PhantomData,
     ptr,
     rc::Rc,
-    sync::{Condvar, Mutex, MutexGuard, OnceLock},
+    sync::{Arc, Condvar, Mutex, MutexGuard, OnceLock},
 };
 #[path = "raise32.rs"]
 mod raise32;
@@ -662,18 +662,47 @@ fn selectors() -> Result<(u16, u16)> {
 // Serialize CPU entries so a second thread cannot retarget the active TEB slot.
 static FS_SLOT: Mutex<()> = Mutex::new(());
 // FIFO admission prevents a polling main thread from starving behind workers.
-static CPU_TICKETS: Mutex<(u64, u64)> = Mutex::new((0, 0));
-static CPU_READY: Condvar = Condvar::new();
+struct CpuTickets {
+    next: u64,
+    serving: u64,
+    waiters: std::collections::BTreeMap<u64, Arc<Condvar>>,
+}
+impl CpuTickets {
+    const fn new() -> Self {
+        Self {
+            next: 0,
+            serving: 0,
+            waiters: std::collections::BTreeMap::new(),
+        }
+    }
+    fn reserve(&mut self) -> Result<u64> {
+        let ticket = self.next;
+        self.next = self
+            .next
+            .checked_add(1)
+            .ok_or("CPU ticket namespace exhausted")?;
+        Ok(ticket)
+    }
+    fn complete(&mut self, ticket: u64) -> Result<()> {
+        if self.serving != ticket {
+            return Err("CPU lease ticket completed out of order".into());
+        }
+        self.serving = self
+            .serving
+            .checked_add(1)
+            .ok_or("CPU ticket namespace exhausted")?;
+        // Wake the FIFO successor alone. Broadcasting at each service quantum
+        // made all sleeping game workers contend for one serialized CPU lease.
+        if let Some(next) = self.waiters.remove(&self.serving) {
+            next.notify_one();
+        }
+        Ok(())
+    }
+}
+static CPU_TICKETS: Mutex<CpuTickets> = Mutex::new(CpuTickets::new());
 fn finish_cpu_ticket(ticket: u64) {
     let mut queue = CPU_TICKETS.lock().unwrap();
-    if queue.1 != ticket {
-        unsupported("CPU lease ticket completed out of order");
-    }
-    queue.1 = queue
-        .1
-        .checked_add(1)
-        .unwrap_or_else(|| unsupported("CPU ticket namespace exhausted"));
-    CPU_READY.notify_all();
+    queue.complete(ticket).unwrap_or_else(|e| unsupported(&e));
 }
 #[cfg(target_arch = "aarch64")]
 fn selectors() -> Result<(u16, u16)> {
@@ -699,29 +728,27 @@ impl TebLease {
             let mut queue = CPU_TICKETS
                 .lock()
                 .map_err(|_| "CPU admission queue poisoned")?;
-            if queue.0 != queue.1 {
+            if queue.next != queue.serving {
                 return Err("another PE32 entry owns the FS slot".into());
             }
             let guard = FS_SLOT
                 .try_lock()
                 .map_err(|_| "another PE32 entry owns the FS slot")?;
-            let ticket = queue.0;
-            queue.0 = queue
-                .0
-                .checked_add(1)
-                .ok_or("CPU ticket namespace exhausted")?;
+            let ticket = queue.reserve()?;
             (guard, ticket)
         } else {
             let mut queue = CPU_TICKETS
                 .lock()
                 .map_err(|_| "CPU admission queue poisoned")?;
-            let ticket = queue.0;
-            queue.0 = queue
-                .0
-                .checked_add(1)
-                .ok_or("CPU ticket namespace exhausted")?;
-            while queue.1 != ticket {
-                if window_host32::is_main_thread() {
+            let ticket = queue.reserve()?;
+            let main = window_host32::is_main_thread();
+            let ready = (!main && queue.serving != ticket).then(|| {
+                let ready = Arc::new(Condvar::new());
+                queue.waiters.insert(ticket, ready.clone());
+                ready
+            });
+            while queue.serving != ticket {
+                if main {
                     drop(queue);
                     window_host32::pump_tasks();
                     std::thread::sleep(std::time::Duration::from_micros(100));
@@ -729,7 +756,9 @@ impl TebLease {
                         .lock()
                         .map_err(|_| "CPU admission queue poisoned")?;
                 } else {
-                    queue = CPU_READY
+                    queue = ready
+                        .as_ref()
+                        .unwrap()
                         .wait(queue)
                         .map_err(|_| "CPU admission queue poisoned")?;
                 }
@@ -2752,6 +2781,50 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn cpu_ticket_successors_keep_fifo_exclusion_without_broadcasting() {
+        use std::sync::atomic::{AtomicU32, Ordering};
+        let queue = Arc::new(Mutex::new(CpuTickets::new()));
+        let inside = Arc::new(AtomicU32::new(0));
+        let mut workers = Vec::new();
+        for _ in 0..32 {
+            let queue = queue.clone();
+            let inside = inside.clone();
+            workers.push(std::thread::spawn(move || {
+                let ready = Arc::new(Condvar::new());
+                for _ in 0..32 {
+                    let mut state = queue.lock().unwrap();
+                    let ticket = state.reserve().unwrap();
+                    if state.serving != ticket {
+                        state.waiters.insert(ticket, ready.clone());
+                    }
+                    while state.serving != ticket {
+                        let (next, timeout) = ready
+                            .wait_timeout(state, std::time::Duration::from_secs(5))
+                            .unwrap();
+                        state = next;
+                        assert!(!timeout.timed_out(), "FIFO successor was not awakened");
+                    }
+                    drop(state);
+                    assert_eq!(inside.fetch_add(1, Ordering::SeqCst), 0);
+                    std::thread::yield_now();
+                    assert_eq!(inside.fetch_sub(1, Ordering::SeqCst), 1);
+                    queue.lock().unwrap().complete(ticket).unwrap();
+                }
+            }));
+        }
+        for worker in workers {
+            worker.join().unwrap();
+        }
+        let mut queue = queue.lock().unwrap();
+        assert_eq!((queue.next, queue.serving), (1024, 1024));
+        assert!(queue.waiters.is_empty());
+        assert!(queue.complete(1023).is_err());
+        assert_eq!(queue.serving, 1024);
+        queue.next = u64::MAX;
+        assert!(queue.reserve().is_err());
+        assert_eq!(queue.next, u64::MAX);
+    }
     #[test]
     fn window_info_keeps_existing_gate_indices_and_user32_ownership() {
         let symbol = ImportSymbol::Name("GetWindowInfo".into());

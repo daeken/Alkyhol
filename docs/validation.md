@@ -8779,3 +8779,18 @@ locally after DirectInput's independent Quartz observation, preventing the
 unhandled-key responder path. Command shortcuts, native-dialog events, modifier
 changes and mouse events retain native dispatch. The routing unit passes;
 absence of the beep in the original app remains for user confirmation.
+
+A further scheduler change replaces each FIFO CPU admission broadcast with a
+successor-specific condition variable. The admission order and FS/TEB exclusion
+remain unchanged; only the actual next waiter is notified. Main-thread AppKit
+task pumping remains in the admission loop. A 32-worker, 1,024-admission host
+stress unit checks strict exclusion, eventual successor progress, empty waiter
+cleanup, out-of-order rejection and ticket exhaustion. This is host scheduler
+evidence, not an original-game speed claim.
+
+The 73ace75 original replay successfully creates DirectSound devices after the
+enumeration fix, but rejects FMOD's primary 3D-listener request before streaming.
+That finite listener state is now implemented and covered by the version-3
+71-word COM/playback witness and a parameter-state unit. Spatial sound buffers
+remain explicitly unsupported. The original game's sound remains unverified
+until a subsequent replay submits actual nonzero PCM.
