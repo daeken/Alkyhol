@@ -8828,3 +8828,33 @@ seconds and programmable GPU draw backend 0.632. Rosetta's large unidentified
 portion prevents attributing the whole bottleneck to the graphics bridge.
 These overlapping CPU samples are not additive wall/GPU percentages; no exact
 FMOD/game attribution is inferred. Raw traces and summaries remain ignored.
+
+## Castle Cousland quicksave and thumbnail
+
+The screenshot replay ended during profile cleanup when `FlushFileBuffers`
+received a handle outside the owned writable file set. PE32 now reports
+`ERROR_INVALID_HANDLE` for invalid or unowned handles and `ERROR_ACCESS_DENIED`
+for read-only watch handles. The unit exercises a real writable flush and
+checks those errors. The unchanged file-family PE passes on physical M4.
+
+The next original F5 replay wrote state and metadata before stopping during
+thumbnail compression. D3DX requested a lockable single-sample BGRA render
+target for staging. On `d4ec9b9`, the expanded `--save-resources` PE passes on
+physical M4/Rosetta, including GPU-backed subrectangle readback, writable unlock
+and preservation of surrounding pixels. The PE library suite passes 250 tests
+with two ignored. All-target PE Clippy passes locally.
+
+With a local backup of the save directory, the unchanged original game and
+provided DLLs loaded Castle Cousland under Rosetta on the physical M4, then
+completed F5 and continued presenting frames. The quicksave state and metadata
+changed. Original D3DX wrote a 65,664-byte DXT1 DDS, which decodes to a 512×256
+image of the castle scene. The prior save and raw replay evidence remain local.
+
+The in-game Load Game menu read the new quicksave and returned to the rendered
+Castle Cousland scene with the HUD visible. The quicksave files retained their
+hashes after reload. The pause-menu Save Game path also created a separate
+manual slot with state, metadata, portrait, story and a decodable DXT1 thumbnail,
+then returned to gameplay. Existing manual slots were left intact. This verifies
+the tested save and quicksave reload in the original executable on the physical
+M4. Native comparison of the expanded PE fixture is pending in CI 42910361660,
+which still has the earlier Vulkan volume-rounding failure.
