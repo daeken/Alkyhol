@@ -7617,3 +7617,15 @@ Runner Clippy passes. These rows are not new native Windows or physical Intel
 observations, and the experimental profile does not promise full SIMD support.
 Original DAO now proceeds beyond platform validation into original ERF resource
 indexing; no new native JIT window/frame is established by this interim run.
+
+The reached FLDPI gap is implemented with the remaining x87 constant family.
+An independent original-assembly observer under actual Rosetta agrees with
+native ARM for all 84 constant result80/status rows (7 constants × 4 RC × 3 PC).
+Native code now packs immutable instructions in owned MAP_JIT arenas; lifetime,
+disjoint execution and large-allocation tests pass. The full native suite is
+45 passing tests, with two external observation tests explicitly invoked by
+separate checkers (512 conversion + 84 constant rows pass). Runner Clippy and
+all unchanged shared frozen Windows ABI/TLS/heap words at both bases pass.
+This storage change does not remove guest instructions/checks or establish an
+FPS result. The next original-input replay also restores the explicit open
+D3D9 compiler configuration used by Rosetta; no new game frame is claimed yet.

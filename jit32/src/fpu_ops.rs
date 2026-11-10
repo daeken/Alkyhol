@@ -56,6 +56,11 @@ pub fn operation(name: &str) -> Option<u64> {
     Some(match name {
         "FLD1" => 0,
         "FLDZ" => 1,
+        "FLDPI" => 128,
+        "FLDL2T" => 129,
+        "FLDL2E" => 130,
+        "FLDLG2" => 131,
+        "FLDLN2" => 132,
         "FLD-M32" => 2,
         "FLD-M64" => 3,
         "FLD-M80" => 4,
@@ -178,6 +183,20 @@ fn perform(
     match op {
         0 => state.push(0x3fff8000000000000000),
         1 => state.push(0),
+        128..=132 => {
+            // Positive ROM constants. RC chooses the lower/upper significand;
+            // PC is ignored and no precision flag is raised (Intel FLD constants).
+            // Independent actual x86/Rosetta rows: tests/x87_constants_reference.c.
+            let (lower, nearest_up) = match op {
+                128 => (0x4000c90fdaa22168c234u128, true),
+                129 => (0x4000d49a784bcd1b8afe, false),
+                130 => (0x3fffb8aa3b295c17f0bb, true),
+                131 => (0x3ffd9a209a84fbcff798, true),
+                _ => (0x3ffeb17217f7d1cf79ab, true),
+            };
+            let rc = state.control >> 10 & 3;
+            state.push(lower + u128::from(rc == 2 || (rc == 0 && nearest_up)));
+        }
         2..=4 => {
             let bits = read(
                 memory,
@@ -634,6 +653,54 @@ mod native_rows {
                 count += 1;
             }
             assert_eq!(count, if id == 89 { 20 } else { 11 });
+        }
+    }
+}
+
+#[cfg(test)]
+mod constants_tests {
+    use crate::{Stop, tests::cpu};
+    #[test]
+    fn pi_uses_control_rounding_ignores_precision_and_preserves_sticky_flags() {
+        for pc in [0, 2, 3] {
+            for rc in 0..4 {
+                let mut r = cpu(&[0xd9, 0xeb, 0xc3]);
+                r.memory.fpu.borrow_mut().control = 0x7f | (pc << 8) | (rc << 10);
+                r.memory.fpu.borrow_mut().status = 0x220;
+                assert!(matches!(r.run(1), Stop::Budget { .. }));
+                let fp = r.memory.fpu.borrow();
+                assert_eq!(
+                    fp.registers[7],
+                    0x4000c90fdaa22168c234 + u128::from(rc == 0 || rc == 2)
+                );
+                assert_eq!(fp.status, 0x3820);
+                assert_eq!(fp.tag, 0x3fff);
+            }
+        }
+    }
+    #[test]
+    #[ignore = "run tools/check_jit32_constants.py for actual x86 observations"]
+    fn actual_x86_constant_observations() {
+        let data = std::fs::read(
+            std::env::var_os("ALKYHOL_X87_CONSTANT_REFERENCE")
+                .expect("actual x86 observer output required"),
+        )
+        .unwrap();
+        assert_eq!(data.len(), 84 * 22);
+        for row in data.chunks_exact(22) {
+            let op = u32::from_le_bytes(row[0..4].try_into().unwrap());
+            let cw = u32::from_le_bytes(row[4..8].try_into().unwrap());
+            let sw = u32::from_le_bytes(row[8..12].try_into().unwrap());
+            let mut bits = [0; 16];
+            bits[..10].copy_from_slice(&row[12..]);
+            let bits = u128::from_le_bytes(bits);
+            let opcode = [0xeb, 0xe9, 0xea, 0xec, 0xed, 0xe8, 0xee][op as usize];
+            let mut r = cpu(&[0xd9, opcode, 0xc3]);
+            r.memory.fpu.borrow_mut().control = cw as u16;
+            assert!(matches!(r.run(1), Stop::Budget { .. }));
+            let state = r.memory.fpu.borrow();
+            assert_eq!(state.registers[7], bits, "op={op} cw={cw:x}");
+            assert_eq!(state.status, sw as u16, "op={op} cw={cw:x}");
         }
     }
 }

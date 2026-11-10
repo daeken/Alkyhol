@@ -292,3 +292,33 @@ reads, unmasked precision failures and preserved state. The complete default
 suite passes 43 tests with one explicit external-observer test ignored; that
 external test passes separately through the checker. These are finite Rosetta
 and native ARM observations, not new Windows or physical Intel observations.
+
+### Reached x87 constants and native code packing
+
+The next original-input run completes resource indexing and reaches FLDPI.
+The remaining x87 ROM constant-load family now supplies full 64-significand
+values according to guest RC, ignoring PC and preserving sticky exceptions,
+without inventing a precision exception. The rules follow
+[Intel SDM Volume 1, §8.3.4](https://cdrdv2-public.intel.com/789574/253665-sdm-vol-1.pdf).
+`tools/check_jit32_constants.py` independently executes seven owned original x86
+constant instructions under actual Rosetta, then compares their native ARM
+result80/status across four rounding modes and three precision settings: all
+84 rows agree. This is finite Rosetta/native ARM evidence, not a new native
+Windows measurement or general x87 equivalence.
+
+The native code allocator now packs immutable generated blocks at disjoint
+16-byte offsets in shared 64-KiB MAP_JIT arenas instead of allocating a separate
+host page for every tiny guest instruction. Pages remain owned until their last
+block is dropped; large blocks get sufficient dedicated capacity. Thread-local
+weak arena selection prevents retaining dead pages, and no emitted live block
+is rewritten/reused. Tests execute 64 distinct packed blocks, remove their peers,
+execute a surviving block, verify final page destruction and execute a larger
+allocation. This changes native storage only; guest instruction, permission,
+fault and rendering checks remain intact.
+
+On physical M4, 45 default JIT tests pass; the two separately invoked external
+observers pass their 512 and 84 rows. Runner Clippy and unchanged shared frozen
+Windows ABI/TLS/heap comparisons (96 words, both bases) also pass after packing.
+The next original-input replay explicitly supplies the same open D3D9 shader
+compiler as the Rosetta renderer; earlier diagnostic native startup omitted that
+launch setting. Game shader inputs/artifacts remain ignored local data.

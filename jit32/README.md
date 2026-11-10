@@ -94,14 +94,13 @@ heap-resize (64 words) PEs against actual Rosetta runs and frozen native Windows
 observations, normal and forced-rebased. Inputs/references stay unchanged. These
 comparisons are separate from synthetic callback/order/fault and API-unit tests.
 
-DAO's original first CRT initializer now executes through native ARM JIT code;
-its latest capture maps/binds 12 static modules and stops at GetModuleHandleA.
-Neither CRT initialization nor EXE entry is complete. Extended x87/MXCSR/exception
-state, atomics/loops/SIMD, dynamic module lookup/loading, API callback reentry,
-threads, detach/rollback notifications and the larger Win32/COM/D3D9 bridge remain
-required before replacing the working Rosetta DAO path. Nonzero TLS zero-fill is
-still rejected for its separately documented native-evidence mismatch. See
-`docs/sharpretro.md` and `docs/validation.md`.
+The retained initial **standalone** provider capture maps/binds 12 static
+modules and stops at GetModuleHandleA in the first CRT initializer. That smaller
+provider is separate from the shared service path below, which completes the
+supplied DLL graph and enters original DAO engine/resource initialization.
+Standalone nonzero TLS zero-fill retains its separately documented native-
+evidence mismatch. See docs/sharpretro.md and docs/validation.md for the current
+application driver and exact evidence limits.
 
 ## Shared Win32/COM/D3D9 service path
 
