@@ -8235,3 +8235,42 @@ These are bounds-lookup timings, not an end-to-end DAO speedup or FPS result.
 The retained live original process still uses its earlier recorded host binary;
 this optimization applies to the next host build/replay. Raw reports stay in
 ignored `local/jit32/executable-range-*` and `exec-ranges-shared-check`.
+
+The unchanged original native replay executes past the former MINPS stop; its
+bounded emulated-array trace records that instruction and successors. It then
+stops explicitly at newly reached SQRTSD while loading, status 78, with original
+EXE/provided DLL hashes unchanged. The stopping thread reports 6,365,664,291
+instructions. Foreground/background captures show black loading, not an original
+in-engine frame. The menu click appears to select New Game after the retained
+window resized; no savegame.das load was observed. The prior shared-save menu
+discovery remains separate evidence. Raw evidence is archived in ignored
+`local/jit32/shared-game-sqrtsd-before`; its process identity is revoked.
+
+This replay also exposes a host GUI limitation: while its main thread performs
+an original blocking wait, host handoff tasks run but AppKit events are not
+pumped. Normal hide requests therefore remain unprocessed during loading.
+Independent native ARM stack samples and WindowServer observations distinguish
+this from a stopped loading worker. The scoped desktop handback explicitly
+accepted the visible background loading window; no successful-hide claim is
+made. Native-event pumping during such waits needs a separate checked change.
+
+SQRTSS/SQRTSD/SQRTPS/SQRTPD now use an exact integer radicand and remainder to
+round once at destination precision under guest MXCSR. DAZ, signed zero,
+infinities, NaN payload quieting, invalid/denormal/precision flags and unmasked
+failure follow the [Intel square-root entries](https://www.intel.com/content/dam/www/public/us/en/documents/manuals/64-ia-32-architectures-software-developer-vol-2b-manual.pdf).
+Positive finite binary32/64 roots are normal and finite; FTZ has no effect.
+All 102 default physical ARM JIT tests and runner Clippy pass; 20 external
+observers are ignored by default. Targeted tests cover all register routes,
+aliases, scalar upper lanes, memory extents/rights/alignment, unrelated state
+and non-commit on unsupported unmasked exceptions.
+
+The new owned Rosetta observer records 32,768 rows over all four forms, all
+RC/DAZ/FTZ combinations, sticky flags, a 32-value special-source set and
+deterministic raw bits. Every result bit, complete MXCSR and defined EFLAGS
+agrees with physical ARM execution; requested and actually loaded MXCSR also
+agree in this masked corpus. Source/observer/data identities and the compressed
+table are frozen; `python3 tools/check_jit32_sqrt.py` replays it. The existing
+native Windows observer workflow now includes this unit; its result is still
+pending. No older frozen comparison is weakened. A fresh original replay is
+required to verify this square-root implementation in DAO, and Rosetta's
+Orzammar progress parity remains unestablished.

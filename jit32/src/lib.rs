@@ -21,6 +21,7 @@ mod sse_compare;
 mod sse_estimate;
 mod sse_reciprocal;
 mod sse_minmax;
+mod sse_sqrt;
 mod stack_bank;
 #[cfg(test)]
 mod string_tests;

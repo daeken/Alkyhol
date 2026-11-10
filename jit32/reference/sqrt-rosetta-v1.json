@@ -1,0 +1,21 @@
+{
+  "backend": "Rosetta x86_64 legacy SIMD square-root assembly on physical Apple Silicon",
+  "source": "jit32/tests/sqrt_reference.c",
+  "source_sha256": "0db8acf59ee3ccd3f9b40914e5ea40a4466d220b90d780c0715c9f99b8479eae",
+  "source_lf_sha256": "0db8acf59ee3ccd3f9b40914e5ea40a4466d220b90d780c0715c9f99b8479eae",
+  "observer_sha256": "dbf0d5b12ca6fc3727c0706f6c719825aefc5e9d27954a120d1bdde0c0ae5879",
+  "observation_sha256": "efee1ea7aa23f2d532f3d49ab049d2a81c3c83668b802e3a16762f18a01bb8f2",
+  "fixture": "jit32/reference/sqrt-rosetta-v1.bin.gz",
+  "fixture_sha256": "f5c09fd915f33bb85ebac103d924dec28004d210c2e12add60986565eda94f29",
+  "rows": 32768,
+  "row_bytes": 80,
+  "result_bit_equality_required": true,
+  "masked_exception_observations": true,
+  "mxcsr_before_instruction": "captured after LDMXCSR; requested value retained separately",
+  "host": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+  "compiler": "Apple clang version 21.0.0 (clang-2100.3.34.2)",
+  "revision": "9ff7ac34d146182766c9819ac5b3917eb30cf289",
+  "tracked_tree_clean_at_observation": false,
+  "source_tracked_at_observation": false,
+  "observation_file_mtime_ns": 1794321575495539396
+}
