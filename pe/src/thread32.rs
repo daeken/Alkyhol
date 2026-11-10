@@ -205,11 +205,9 @@ pub(super) fn create(image: &LoadedImage32<'_>, a: &[u32; 8]) -> u32 {
     if a[0] != 0 || a[1] > STACK as u32 || a[4] & !4 != 0 {
         unsupported("thread security/stack/creation flags outside the owned synchronous profile");
     }
-    if !image
-        .code_regions
-        .iter()
-        .any(|&(first, last)| super::host_code_address(a[2]) >= first && super::host_code_address(a[2]) < last)
-    {
+    if !image.code_regions.iter().any(|&(first, last)| {
+        super::host_code_address(a[2]) >= first && super::host_code_address(a[2]) < last
+    }) {
         unsupported("thread entry outside executable guest storage");
     }
     if !image.cpu.modules.borrow().is_empty()

@@ -319,7 +319,7 @@ pub(crate) fn stream_file_type(handle: usize) -> Option<std::result::Result<u32,
     })
 }
 #[alkyhol_host_abi::host_abi]
-    unsafe extern "win64" fn GetStdHandle(kind: u32) -> usize {
+unsafe extern "win64" fn GetStdHandle(kind: u32) -> usize {
     let index = match kind {
         0xfffffff6 => 0,
         0xfffffff5 => 1,
@@ -340,7 +340,7 @@ pub(crate) fn stream_file_type(handle: usize) -> Option<std::result::Result<u32,
     })
 }
 #[alkyhol_host_abi::host_abi]
-    unsafe extern "win64" fn GetConsoleMode(handle: usize, mode: *mut u32) -> i32 {
+unsafe extern "win64" fn GetConsoleMode(handle: usize, mode: *mut u32) -> i32 {
     if mode.is_null() {
         return fail(INVALID_PARAMETER);
     }
@@ -360,7 +360,7 @@ pub(crate) fn stream_file_type(handle: usize) -> Option<std::result::Result<u32,
     })
 }
 #[alkyhol_host_abi::host_abi]
-    unsafe extern "win64" fn GetCommandLineW() -> *const u16 {
+unsafe extern "win64" fn GetCommandLineW() -> *const u16 {
     PROCESS.with(|p| {
         p.borrow().as_ref().map_or_else(
             || {
@@ -378,7 +378,7 @@ pub(crate) fn command_snapshot() -> Option<Vec<u16>> {
 }
 // A real contiguous Shell32 argv allocation, released with the bounded LocalFree.
 #[alkyhol_host_abi::host_abi]
-    unsafe extern "win64" fn CommandLineToArgvW(text: *const u16, count: *mut i32) -> *mut *mut u16 {
+unsafe extern "win64" fn CommandLineToArgvW(text: *const u16, count: *mut i32) -> *mut *mut u16 {
     if count.is_null() {
         fail(INVALID_PARAMETER);
         return ptr::null_mut();
@@ -434,7 +434,7 @@ pub(crate) fn command_snapshot() -> Option<Vec<u16>> {
     })
 }
 #[alkyhol_host_abi::host_abi]
-    unsafe extern "win64" fn LocalFree(pointer: *mut c_void) -> *mut c_void {
+unsafe extern "win64" fn LocalFree(pointer: *mut c_void) -> *mut c_void {
     if pointer.is_null() {
         return ptr::null_mut();
     }
@@ -452,7 +452,7 @@ pub(crate) fn command_snapshot() -> Option<Vec<u16>> {
     })
 }
 #[alkyhol_host_abi::host_abi]
-    unsafe extern "win64" fn GetCurrentDirectoryW(capacity: u32, buffer: *mut u16) -> u32 {
+unsafe extern "win64" fn GetCurrentDirectoryW(capacity: u32, buffer: *mut u16) -> u32 {
     if !PROCESS.with(|slot| slot.borrow().is_some()) {
         fail(NOT_SUPPORTED);
         return 0;
@@ -490,7 +490,7 @@ pub(crate) fn shell_address(name: &str) -> Option<usize> {
     (name == "CommandLineToArgvW").then_some(CommandLineToArgvW as *const () as usize)
 }
 #[alkyhol_host_abi::host_abi]
-    unsafe extern "win64" fn GetEnvironmentVariableW(
+unsafe extern "win64" fn GetEnvironmentVariableW(
     name: *const u16,
     buffer: *mut u16,
     capacity: u32,
@@ -535,7 +535,7 @@ pub(crate) fn shell_address(name: &str) -> Option<usize> {
     })
 }
 #[alkyhol_host_abi::host_abi]
-    unsafe extern "win64" fn GetModuleFileNameW(module: usize, buffer: *mut u16, capacity: u32) -> u32 {
+unsafe extern "win64" fn GetModuleFileNameW(module: usize, buffer: *mut u16, capacity: u32) -> u32 {
     if module != 0 {
         fail(NOT_SUPPORTED);
         return 0;
@@ -568,7 +568,7 @@ pub(crate) fn shell_address(name: &str) -> Option<usize> {
     })
 }
 #[alkyhol_host_abi::host_abi]
-    unsafe extern "win64" fn VirtualAlloc(
+unsafe extern "win64" fn VirtualAlloc(
     address: *mut c_void,
     size: usize,
     allocation: u32,
@@ -649,7 +649,7 @@ pub(crate) fn shell_address(name: &str) -> Option<usize> {
     })
 }
 #[alkyhol_host_abi::host_abi]
-    unsafe extern "win64" fn VirtualProtect(
+unsafe extern "win64" fn VirtualProtect(
     address: *mut c_void,
     size: usize,
     protection: u32,
@@ -698,7 +698,7 @@ pub(crate) fn shell_address(name: &str) -> Option<usize> {
     })
 }
 #[alkyhol_host_abi::host_abi]
-    unsafe extern "win64" fn VirtualFree(address: *mut c_void, size: usize, kind: u32) -> i32 {
+unsafe extern "win64" fn VirtualFree(address: *mut c_void, size: usize, kind: u32) -> i32 {
     if kind != 0x8000 {
         return fail(NOT_SUPPORTED);
     }
@@ -727,7 +727,7 @@ pub(crate) fn shell_address(name: &str) -> Option<usize> {
     })
 }
 #[alkyhol_host_abi::host_abi]
-    unsafe extern "win64" fn FlushInstructionCache(
+unsafe extern "win64" fn FlushInstructionCache(
     process: usize,
     address: *const c_void,
     size: usize,
@@ -765,7 +765,7 @@ pub(crate) fn shell_address(name: &str) -> Option<usize> {
     })
 }
 #[alkyhol_host_abi::host_abi]
-    unsafe extern "win64" fn WriteConsoleW(
+unsafe extern "win64" fn WriteConsoleW(
     handle: usize,
     buffer: *const u16,
     count: u32,
@@ -1000,7 +1000,7 @@ fn listing(pattern: &str) -> std::result::Result<VecDeque<FindData>, u32> {
     if rows.is_empty() { Err(2) } else { Ok(rows) }
 }
 #[alkyhol_host_abi::host_abi]
-    unsafe extern "win64" fn FindFirstFileW(pattern: *const u16, out: *mut FindData) -> usize {
+unsafe extern "win64" fn FindFirstFileW(pattern: *const u16, out: *mut FindData) -> usize {
     if out.is_null() {
         fail(INVALID_PARAMETER);
         return INVALID;
@@ -1040,7 +1040,7 @@ fn listing(pattern: &str) -> std::result::Result<VecDeque<FindData>, u32> {
     })
 }
 #[alkyhol_host_abi::host_abi]
-    unsafe extern "win64" fn FindNextFileW(handle: usize, out: *mut FindData) -> i32 {
+unsafe extern "win64" fn FindNextFileW(handle: usize, out: *mut FindData) -> i32 {
     if out.is_null() {
         return fail(INVALID_PARAMETER);
     }
@@ -1062,7 +1062,7 @@ fn listing(pattern: &str) -> std::result::Result<VecDeque<FindData>, u32> {
     })
 }
 #[alkyhol_host_abi::host_abi]
-    unsafe extern "win64" fn FindClose(handle: usize) -> i32 {
+unsafe extern "win64" fn FindClose(handle: usize) -> i32 {
     PROCESS.with(|p| {
         let mut state = p.borrow_mut();
         let Some(state) = state.as_mut() else {
@@ -1096,7 +1096,7 @@ pub(crate) fn address(name: &str) -> Option<usize> {
     }
 }
 
-#[cfg(all(test,target_arch="x86_64"))]
+#[cfg(all(test, target_arch = "x86_64"))]
 mod tests {
     use super::*;
     fn context() -> ProcessContext {

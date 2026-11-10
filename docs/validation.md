@@ -7753,3 +7753,11 @@ sources on zero repeat count. Segmented/16-bit-address strings remain explicitly
 unsupported. All 67 default CPU tests and runner Clippy pass; seven external
 observers are invoked separately. No new Windows or full game/frame parity is
 inferred from these finite host comparisons.
+
+Latest CI inspection on e9dc101 found the PE/Rosetta workflows stopping at Rust
+formatting checks in the native bridge files; formatting is restored without
+changing fixtures or runtime behavior. Separate native Windows full-path,
+message/paint, SEH and capture observations still report differences; those
+failures are retained, not suppressed or relabeled as passes. The new standalone
+native x64 SIMD observation job measures the owned comparison matrix without
+game inputs and refuses ARM/translated Windows hosts. Its result is pending.

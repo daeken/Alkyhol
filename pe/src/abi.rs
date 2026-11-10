@@ -153,12 +153,12 @@ mod shims {
 
 pub(crate) fn resolve(module: &str, name: &str) -> Option<usize> {
     if module.eq_ignore_ascii_case("kernel32.dll") {
-        let address=shims::address(name)
+        let address = shims::address(name)
             .or_else(|| crate::process::address(name))
             .or_else(|| crate::unicode::address(name));
-        #[cfg(target_arch="aarch64")]
+        #[cfg(target_arch = "aarch64")]
         return address;
-        #[cfg(target_arch="x86_64")]
+        #[cfg(target_arch = "x86_64")]
         return address
             .or_else(|| crate::function_tables::address(name))
             .or_else(|| crate::virtual_unwind::address(name))
@@ -167,11 +167,11 @@ pub(crate) fn resolve(module: &str, name: &str) -> Option<usize> {
     if module.eq_ignore_ascii_case("shell32.dll") {
         return crate::process::shell_address(name);
     }
-    #[cfg(target_arch="x86_64")]
+    #[cfg(target_arch = "x86_64")]
     if module.eq_ignore_ascii_case("d3dcompiler_47.dll") {
         return crate::binary_com::address(name);
     }
-    #[cfg(target_arch="x86_64")]
+    #[cfg(target_arch = "x86_64")]
     if module.eq_ignore_ascii_case("d3d12.dll") {
         return crate::binary_com::d3d12_address(name);
     }
@@ -188,7 +188,7 @@ pub(crate) fn is_builtin(module: &str) -> bool {
     .any(|name| module.eq_ignore_ascii_case(name))
 }
 
-#[cfg(all(test,target_arch="x86_64"))]
+#[cfg(all(test, target_arch = "x86_64"))]
 mod tests {
     use super::*;
     #[test]

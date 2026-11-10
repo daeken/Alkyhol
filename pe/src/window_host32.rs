@@ -35,7 +35,7 @@ unsafe extern "C" {
     fn objc_getClass(name: *const std::ffi::c_char) -> Id;
     fn sel_registerName(name: *const std::ffi::c_char) -> Sel;
     fn objc_msgSend();
-    #[cfg(target_arch="x86_64")]
+    #[cfg(target_arch = "x86_64")]
     fn objc_msgSend_stret();
 }
 #[link(name = "AppKit", kind = "framework")]
@@ -280,7 +280,7 @@ unsafe fn send1<A, R>(object: Id, name: &str, arg: A) -> R {
         unsafe { std::mem::transmute(objc_msgSend as *const ()) };
     unsafe { call(object, selector(name), arg) }
 }
-#[cfg(target_arch="x86_64")]
+#[cfg(target_arch = "x86_64")]
 unsafe fn rectangle(object: Id, name: &str) -> Rect {
     let mut out = Rect::default();
     let call: unsafe extern "C" fn(*mut Rect, Id, Sel) =
@@ -288,7 +288,7 @@ unsafe fn rectangle(object: Id, name: &str) -> Rect {
     unsafe { call(&mut out, object, selector(name)) };
     out
 }
-#[cfg(target_arch="x86_64")]
+#[cfg(target_arch = "x86_64")]
 unsafe fn convert(rect: Rect, style: u64, method: &str) -> crate::Result<Rect> {
     let mut out = Rect::default();
     let call: unsafe extern "C" fn(*mut Rect, Id, Sel, Rect, u64) =
@@ -296,15 +296,17 @@ unsafe fn convert(rect: Rect, style: u64, method: &str) -> crate::Result<Rect> {
     unsafe { call(&mut out, class("NSWindow")?, selector(method), rect, style) };
     Ok(out)
 }
-#[cfg(target_arch="aarch64")]
-unsafe fn rectangle(object:Id,name:&str)->Rect {
-    let call:unsafe extern "C" fn(Id,Sel)->Rect=unsafe{std::mem::transmute(objc_msgSend as *const ())};
-    unsafe{call(object,selector(name))}
+#[cfg(target_arch = "aarch64")]
+unsafe fn rectangle(object: Id, name: &str) -> Rect {
+    let call: unsafe extern "C" fn(Id, Sel) -> Rect =
+        unsafe { std::mem::transmute(objc_msgSend as *const ()) };
+    unsafe { call(object, selector(name)) }
 }
-#[cfg(target_arch="aarch64")]
-unsafe fn convert(rect:Rect,style:u64,method:&str)->crate::Result<Rect>{
-    let call:unsafe extern "C" fn(Id,Sel,Rect,u64)->Rect=unsafe{std::mem::transmute(objc_msgSend as *const ())};
-    Ok(unsafe{call(class("NSWindow")?,selector(method),rect,style)})
+#[cfg(target_arch = "aarch64")]
+unsafe fn convert(rect: Rect, style: u64, method: &str) -> crate::Result<Rect> {
+    let call: unsafe extern "C" fn(Id, Sel, Rect, u64) -> Rect =
+        unsafe { std::mem::transmute(objc_msgSend as *const ()) };
+    Ok(unsafe { call(class("NSWindow")?, selector(method), rect, style) })
 }
 fn string(text: &[u16]) -> crate::Result<Id> {
     let call: unsafe extern "C" fn(Id, Sel, *const u16, usize) -> Id =

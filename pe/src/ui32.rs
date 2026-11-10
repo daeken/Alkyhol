@@ -134,7 +134,7 @@ fn write(image: &LoadedImage32<'_>, at: u32, v: &[u32]) {
     }
 }
 fn executable(image: &LoadedImage32<'_>, at: u32) -> bool {
-    let at=super::host_code_address(at);
+    let at = super::host_code_address(at);
     image
         .regions
         .iter()

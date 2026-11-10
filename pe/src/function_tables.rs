@@ -27,7 +27,7 @@ fn unsupported(reason: &str) -> ! {
     std::process::exit(78)
 }
 impl Registry {
-    #[cfg(all(test,target_arch="x86_64"))]
+    #[cfg(all(test, target_arch = "x86_64"))]
     pub(crate) fn entry_count_for_test(&self) -> usize {
         self.entries
     }
@@ -217,7 +217,7 @@ pub(crate) fn address(name: &str) -> Option<usize> {
     }
 }
 
-#[cfg(all(test,target_arch="x86_64"))]
+#[cfg(all(test, target_arch = "x86_64"))]
 mod tests {
     use super::*;
     fn context() -> crate::ProcessContext {

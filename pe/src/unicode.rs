@@ -82,7 +82,7 @@ fn windows_utf8_lossy(bytes: &[u8]) -> String {
     text
 }
 #[alkyhol_host_abi::host_abi]
-    unsafe extern "win64" fn MultiByteToWideChar(
+unsafe extern "win64" fn MultiByteToWideChar(
     page: u32,
     flags: u32,
     source: *const u8,
@@ -109,7 +109,7 @@ fn windows_utf8_lossy(bytes: &[u8]) -> String {
     unsafe { output(&wide, target, capacity) }
 }
 #[alkyhol_host_abi::host_abi]
-    unsafe extern "win64" fn WideCharToMultiByte(
+unsafe extern "win64" fn WideCharToMultiByte(
     page: u32,
     flags: u32,
     source: *const u16,
@@ -147,7 +147,7 @@ pub(crate) fn address(name: &str) -> Option<usize> {
         _ => None,
     }
 }
-#[cfg(all(test,target_arch="x86_64"))]
+#[cfg(all(test, target_arch = "x86_64"))]
 mod tests {
     use super::*;
     #[test]

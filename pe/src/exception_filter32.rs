@@ -4,7 +4,9 @@ use super::{LoadedImage32, unsupported};
 fn executable(pointer: u32, regions: &[(usize, usize, u32)]) -> bool {
     pointer == 0
         || regions.iter().any(|&(first, last, rights)| {
-            rights & 0x20000000 != 0 && super::host_code_address(pointer) >= first && super::host_code_address(pointer) < last
+            rights & 0x20000000 != 0
+                && super::host_code_address(pointer) >= first
+                && super::host_code_address(pointer) < last
         })
 }
 pub(super) fn replace(image: &LoadedImage32<'_>, filter: u32) -> u32 {

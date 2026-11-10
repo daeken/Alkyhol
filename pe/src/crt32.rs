@@ -150,7 +150,9 @@ pub(super) fn initializers(image: &LoadedImage32<'_>, begin: u32, end: u32) -> u
 pub(super) fn dll_onexit(image: &LoadedImage32<'_>, args: &[u32; 8]) -> u32 {
     if args[0] == 0
         || !image.regions.iter().any(|&(first, last, rights)| {
-            rights & 0x20000000 != 0 && super::host_code_address(args[0]) >= first && super::host_code_address(args[0]) < last
+            rights & 0x20000000 != 0
+                && super::host_code_address(args[0]) >= first
+                && super::host_code_address(args[0]) < last
         })
     {
         unsupported("DLL onexit callback outside executable guest storage");
@@ -296,7 +298,9 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
     if id == 80 || id == 82 {
         if args[0] != 0
             && !image.regions.iter().any(|&(first, last, rights)| {
-                rights & 0x20000000 != 0 && super::host_code_address(args[0]) >= first && super::host_code_address(args[0]) < last
+                rights & 0x20000000 != 0
+                    && super::host_code_address(args[0]) >= first
+                    && super::host_code_address(args[0]) < last
             })
         {
             unsupported("CRT exception policy handler outside executable guest storage");

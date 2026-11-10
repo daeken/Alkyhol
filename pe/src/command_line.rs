@@ -64,7 +64,13 @@ mod tests {
 
 // Deliberately bounded inverse of our canonical Windows command encoding.
 // Other valid Shell32 command-line spellings require separate native evidence.
-#[cfg(any(test, all(target_os = "macos", any(target_arch = "x86_64",feature="native-runtime32"))))]
+#[cfg(any(
+    test,
+    all(
+        target_os = "macos",
+        any(target_arch = "x86_64", feature = "native-runtime32")
+    )
+))]
 pub(crate) fn canonical_arguments(text: &str) -> Result<Vec<String>> {
     let Some(rest) = text.strip_prefix('"') else {
         return Err("noncanonical executable quoting".into());
