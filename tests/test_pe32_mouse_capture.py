@@ -9,6 +9,19 @@ import observe_pe32_mouse_capture as observer
 
 
 class CaptureReportTests(unittest.TestCase):
+    def test_client_button_and_nested_context_observations_require_every_word(self):
+        words=[0x4d444633,1,1,1,1]
+        for msg in [0x200,0x201,0x202,0x203,0x204,0x206,0x207,0x208,0x209]:words += [msg,0,0,1]
+        for point in [0x00040003,0xfff3fff9,0x80007fff,0x00040003]:words += [point,0,1,1,1,1]
+        words += [0,1,1,1,70]
+        packet=struct.pack('<70I',*words)
+        with patch.object(observer,'CLIENT_BUTTONS',True):
+            self.assertEqual(observer.decode(packet),words)
+            for at in range(70):
+                changed=words.copy();changed[at]^=1
+                with self.assertRaises(ValueError):observer.decode(struct.pack('<70I',*changed))
+            for data in [b'',packet[:-1],packet[:-4],packet+b'\0'*4]:
+                with self.assertRaises(ValueError):observer.decode(data)
     def test_background_owner_transfers_and_callback_assertions_are_strict(self):
         words=[0x43415032,2]+[1]*18+[21]
         with patch.object(observer,'BACKGROUND',True):

@@ -470,11 +470,54 @@ fn destroy(image: &LoadedImage32<'_>, hwnd: u32) -> u32 {
 fn default_client_double_click(message: u32) -> Option<u32> {
     matches!(message, 0x203 | 0x206 | 0x209).then_some(0)
 }
+fn context_screen_point(client: u32, origin: [i32; 2]) -> u32 {
+    let x = origin[0].wrapping_add(client as u16 as i16 as i32);
+    let y = origin[1].wrapping_add((client >> 16) as u16 as i16 as i32);
+    (x as u32 & 0xffff) | ((y as u32 & 0xffff) << 16)
+}
 fn default_proc(image: &LoadedImage32<'_>, a: &[u32; 16]) -> u32 {
     if let Some(result) = default_client_double_click(a[1]) {
         return result;
     }
     match a[1] {
+        // Ordinary client motion/down/up notifications have no default action.
+        // Right release is separate: it sends a synchronous WM_CONTEXTMENU.
+        // X buttons are deliberately excluded; their release can send
+        // WM_APPCOMMAND, which is not implemented by this bounded profile.
+        0x200 | 0x201 | 0x202 | 0x204 | 0x207 | 0x208 => 0,
+        0x205 => {
+            let origin = {
+                let ui = image.cpu.ui.borrow();
+                let Some(window) = ui.windows.get(&a[0]) else {
+                    return error(1400);
+                };
+                let client = frame(stop(window.native.client_frame()));
+                [client[0] as i32, client[1] as i32]
+            };
+            // Release the UI borrow before reentering the original procedure.
+            // Its context handler may delegate, change state or destroy itself.
+            call(image, a[0], 0x7b, a[0], context_screen_point(a[3], origin));
+            0
+        }
+        0x7b => {
+            let ui = image.cpu.ui.borrow();
+            let Some(window) = ui.windows.get(&a[0]) else {
+                return error(1400);
+            };
+            let client = frame(stop(window.native.client_frame()));
+            let x = a[3] as u16 as i16 as i32;
+            let y = (a[3] >> 16) as u16 as i16 as i32;
+            if x >= client[0] as i32
+                && x < client[2] as i32
+                && y >= client[1] as i32
+                && y < client[3] as i32
+            {
+                // Owned top-level client areas have no default shortcut menu.
+                0
+            } else {
+                unsupported("nonclient/keyboard default context menus are unimplemented");
+            }
+        }
         0x81 => 1,
         0x10 => {
             destroy(image, a[0]);
@@ -1316,6 +1359,13 @@ pub(super) fn ensure_app(image: &LoadedImage32<'_>) {
 #[cfg(test)]
 mod mouse_tests {
     use super::*;
+    #[test]
+    fn context_notifications_sign_extend_client_coordinates_and_pack_screen_words() {
+        assert_eq!(context_screen_point(0x00040003, [120, 160]), 0x00a4007b);
+        assert_eq!(context_screen_point(0xfff3fff9, [120, 160]), 0x00930071);
+        assert_eq!(context_screen_point(0x80007fff, [-500, 72]), 0x80487e0b);
+        assert_eq!(context_screen_point(1, [i32::MAX, 0]), 0);
+    }
     #[test]
     fn default_client_double_clicks_do_not_invent_other_mouse_or_nonclient_behavior() {
         for message in [0x203, 0x206, 0x209] {

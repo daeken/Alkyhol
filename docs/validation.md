@@ -8554,3 +8554,28 @@ Four additional protocol tests protect the frozen identities, full output/tail
 comparison, defined failure-code rules, rejection of incomplete/guard-corrupt
 transport, and refusal to overwrite a different candidate PE. All pass locally;
 they do not weaken the native oracle. The PE binary workflow includes them.
+
+The user then attempted movement and original Rosetta PID 85242 stopped with
+status 78 at the explicit default-window refusal for WM_RBUTTONDOWN (0x204),
+after 728.658 seconds. This is a missing window-message behavior, not an observed
+GPU crash. Original EXE/provided DLL hashes remain unchanged; local terminal
+identity and staged-input checks are in
+`local/pe/dao-number-format/right-click-terminal.json`. All controls for that
+process are revoked.
+
+Default ordinary client motion and left/right/middle button handling is now
+admitted where Windows has no default action. Right-button release instead
+sends the original procedure a synchronous WM_CONTEXTMENU, with signed client
+coordinates converted to packed screen coordinates. The callback can reenter
+without retaining a UI borrow. Default context handling covers the client area
+of owned top-level windows; nonclient/keyboard menus and X-button application
+commands remain explicit unsupported paths. See
+[Microsoft WM_CONTEXTMENU](https://learn.microsoft.com/en-us/windows/win32/menurc/wm-contextmenu).
+An original hidden-window PE tests nine default messages, positive/negative/
+boundary coordinates, callback target, synchronous ordering, delegation and
+capture preservation. All 70 output words agree with the expected contract on
+physical AppKit/Rosetta at normal/forced placement. The signed-coordinate unit
+and five protocol tests pass. The identical-PE native Windows observation is
+added to the existing PE workflow and is pending; these local assertions are
+not a native Windows result. Original right-click movement must be replayed
+before claiming the application fix.

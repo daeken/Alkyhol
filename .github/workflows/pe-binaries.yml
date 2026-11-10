@@ -13,6 +13,14 @@ jobs:
           python-version: '3.12'
       - name: Build the owned witness for DAO's reached custom number-format call
         run: python tools/check_pe32_number_format.py --build
+      - name: Build the owned hidden-window mouse-default witness
+        run: python tools/observe_pe32_mouse_capture.py --client-buttons --output local/pe/mouse-defaults
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe32-mouse-defaults
+          path: |
+            local/pe/mouse-defaults/mouse-buttons-default.exe
+            local/pe/mouse-defaults/mouse-buttons-default-inputs.json
       - uses: actions/upload-artifact@v4
         with:
           name: pe32-number-format-input
@@ -33,6 +41,17 @@ jobs:
           path: local/pe/number-format
       - name: Observe the identical PE's custom number formatting on native Windows
         run: python tools/check_pe32_number_format.py --native
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe32-mouse-defaults
+          path: local/pe/mouse-defaults
+      - name: Observe default client buttons and synchronous context callbacks on Windows
+        run: python tools/observe_pe32_mouse_capture.py --client-buttons --native --output local/pe/mouse-defaults
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-mouse-defaults
+          path: local/pe/mouse-defaults
       - uses: actions/upload-artifact@v4
         if: always()
         with:
