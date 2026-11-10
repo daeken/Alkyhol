@@ -802,6 +802,8 @@ pub(crate) fn compile(pc: u32, bytes: &[u8]) -> Result<Instruction> {
         "ROL",
         "ROR",
         "BSWAP",
+        "BSF",
+        "BSR",
         "NOP",
         "NOPL",
         "JO",

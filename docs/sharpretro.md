@@ -426,3 +426,15 @@ runner Clippy, existing 512/1,024/6,144 SIMD rows and unchanged frozen Windows
 shared-service comparisons pass; five external observers run separately.
 These are finite host CPU observations. The original-input replay with this fix
 is in progress; no native JIT game frame or Rosetta cutscene parity is established.
+
+The corrected original replay passes DAO's actual acceptance callback, enumerates
+depth formats, creates a real windowed D3D9 device and initializes DirectInput.
+It then stops at BSR in the original Umbra DLL, after 498,296,856 guest instructions
+on that thread (193.9s wall time for the process, uncontrolled host load). Original
+input hashes remain unchanged. The existing SharpRetro BSF/BSR templates are now
+admitted after targeted native tests across every nonzero source bit, 16/32-bit
+register/memory operands, partial destination writes, zero-source ZF and precise
+bad-memory failure. Undefined arithmetic flags/zero-source destination are not
+asserted as x86 guarantees. All 57 default CPU tests pass; the next original
+replay is pending. Device creation is not evidence of an original game Present,
+menu, cutscene, native shaded-frame parity or general game compatibility.

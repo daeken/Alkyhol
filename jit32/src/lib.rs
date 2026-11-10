@@ -978,6 +978,59 @@ mod tests {
         }
     }
     #[test]
+    fn bit_scans_cover_operand_widths_aliases_and_checked_memory() {
+        for width in [16, 32] {
+            for reverse in [false, true] {
+                for memory in [false, true] {
+                    for bit in 0..width {
+                        let input = (1u32 << bit) | if reverse { 1 } else { 1u32 << (width - 1) };
+                        let mut bytes = if width == 16 { vec![0x66] } else { vec![] };
+                        bytes.extend([
+                            0x0f,
+                            if reverse { 0xbd } else { 0xbc },
+                            if memory { 0x01 } else { 0xc1 },
+                        ]);
+                        let mut r = cpu(&bytes);
+                        r.state[0] = 0xa5a55a5a;
+                        r.state[1] = if memory { STACK as u64 } else { input as u64 };
+                        r.memory.write(STACK as u64, &input.to_le_bytes()).unwrap();
+                        r.state[16] = 0xad7;
+                        assert!(matches!(r.run(1), Stop::Budget { .. }));
+                        let answer = bit;
+                        assert_eq!(
+                            r.state[0],
+                            if width == 16 {
+                                0xa5a50000 | answer as u64
+                            } else {
+                                answer as u64
+                            }
+                        );
+                        assert_eq!(r.flags() & 0x40, 0);
+                        // Other arithmetic flags and zero-source destination are
+                        // architecturally undefined: do not assert them as x86 facts.
+                    }
+                    let mut bytes = if width == 16 { vec![0x66] } else { vec![] };
+                    bytes.extend([
+                        0x0f,
+                        if reverse { 0xbd } else { 0xbc },
+                        if memory { 0x01 } else { 0xc0 },
+                    ]);
+                    let mut r = cpu(&bytes);
+                    r.state[0] = 0;
+                    r.state[1] = if memory { STACK as u64 } else { 0 };
+                    r.memory.write(STACK as u64, &[0; 4]).unwrap();
+                    assert!(matches!(r.run(1), Stop::Budget { .. }));
+                    assert_eq!(r.flags() & 0x40, 0x40);
+                }
+                let mut r = cpu(&[0x0f, if reverse { 0xbd } else { 0xbc }, 0x00]);
+                r.state[0] = 0; // Bad source pointer, not a zero-valued source.
+                let before = r.state;
+                assert!(matches!(r.run(1), Stop::Fault { .. }));
+                assert_eq!(r.state, before);
+            }
+        }
+    }
+    #[test]
     fn high_bit_immediates_compare_at_their_declared_width() {
         for immediate in [0xfffe0200u32, 0xffff0200, 0x80000000, u32::MAX] {
             for value in [

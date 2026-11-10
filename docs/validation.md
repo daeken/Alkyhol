@@ -7678,3 +7678,12 @@ separately invoked), runner Clippy, existing 512/1,024/6,144 SIMD rows and froze
 shared ABI/TLS/heap comparisons at both bases pass. No frozen Windows data or
 SharpRetro sources changed. The corrected original replay is ongoing; game-frame
 and Rosetta cutscene parity remain unverified.
+
+The corrected original-input native replay completes adapter acceptance and
+creates the actual D3D9 device, then initializes DirectInput before an explicit
+BSR stop in original Umbra. Inputs remain unchanged (193.9s uncontrolled wall
+time; no FPS inference). BSF/BSR are now admitted using the existing pinned
+templates, with native host tests for all source-bit positions, 16/32-bit widths,
+register/checked-memory forms, partial writes, zero-source ZF and fault rollback.
+57 default CPU tests pass, five external observers remain separate. A subsequent
+original replay is pending; no native JIT game frame/menu or cutscene is claimed.
