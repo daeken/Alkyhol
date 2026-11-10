@@ -32,6 +32,8 @@ mod crt32;
 mod cursor32;
 #[path = "diagnostic32.rs"]
 mod diagnostic32;
+#[path = "copy_file32.rs"]
+mod copy_file32;
 #[path = "directory32.rs"]
 mod directory32;
 #[path = "disk32.rs"]
@@ -178,7 +180,7 @@ fn host_code_address(address: u32) -> usize {
 }
 const PAGE: usize = 4096;
 const STACK: usize = 1024 * 1024;
-const APIS: [(&str, u16); 305] = [
+const APIS: [(&str, u16); 306] = [
     ("GetLastError", 0),
     ("SetLastError", 4),
     ("GetStdHandle", 4),
@@ -484,6 +486,7 @@ const APIS: [(&str, u16); 305] = [
     ("setlocale", 8),
     ("_strdup", 4),
     ("GetLocalTime", 4),
+    ("CopyFileW", 12),
 ];
 // The first 120 API slots retain their original offsets. The second bank
 // begins after both x87 bodies, leaving their machine code and failure gates
@@ -2454,6 +2457,7 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
             66 => files32::next(image, args),
             67 => files32::close(image, args[0]),
             68..=70 | 304 => time32::dispatch(image, id, args),
+            305 => copy_file32::dispatch(image, args),
             71 => std::process::id(),
             72 | 110 => time32::tick_count(),
             73 | 74 => {

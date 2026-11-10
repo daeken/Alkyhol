@@ -59,6 +59,15 @@ jobs:
         run: python tools/observe_pe32_calendar_filetime.py --host
       - name: Check reached GetLocalTime against actual host UTC bounds and explicit restrictions
         run: python tools/check_pe32_current_local_time.py
+      - name: Exercise the guarded copy import from DAO save loading on real owned files
+        run: python tools/check_pe32_copy_file.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe32-copy-file
+          path: |
+            local/pe/copy-file/case*.exe
+            local/pe/copy-file/inputs.json
+            local/pe/copy-file/report.json
       - name: Build and assert actual FMOD startup clocks and compare-exchange semantics on the host
         run: |
           python tools/observe_pe32_startup_clock.py
@@ -405,6 +414,12 @@ jobs:
         with:
           name: pe32-startup-microtests
           path: local/pe/startup-microtests
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe32-copy-file
+          path: local/pe/copy-file
+      - name: Observe the identical copy PE on native Windows using owned temporary files
+        run: python tools/check_pe32_copy_file.py --native
       - name: Check identical DAO startup microtests against frozen native captures
         run: python tools/check_pe32_startup.py --native
       - uses: ilammy/msvc-dev-cmd@v1
@@ -617,6 +632,7 @@ jobs:
           path: |
             local/pe/startup-microtests/native-*.json
             local/pe/startup-microtests/resource-icon-native.bin
+            local/pe/copy-file/report.json
   alkyhol-pe:
     runs-on: macos-latest
     steps:

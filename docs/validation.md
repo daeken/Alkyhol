@@ -8377,3 +8377,30 @@ state. The stopped run did not itself print that label or its argument paths;
 a fresh replay must confirm the call. Private mapping evidence stays alongside
 `local/jit32/shared-game-fetch-before`. No additional game execution or frame
 compatibility is inferred from mapping-only inspection.
+
+CopyFileW now performs a real streamed copy into the existing explicitly
+configured Documents write capability. It checks UTF-16/ordinary paths, source
+identity and readable sharing, destination identity, overwrite/create semantics,
+readonly state and all file I/O before reporting completion. Exact contents,
+truncation, access/write times and the ordinary readonly attribute are retained.
+Missing source, existing exclusive destination, readonly destination and denied
+source read sharing return actual modeled Win32 failures. Same-file/directory
+copies, live destination handles, live source writers, symbolic links/aliases,
+paths outside the write capability and unsupported metadata/I/O conditions fail
+explicitly. This is a bounded ordinary-file contract, not NTFS security, EFS,
+alternate-stream or complete filesystem compatibility. See
+[Microsoft CopyFileW](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-copyfilew).
+
+Twenty-two owned PE32 cases pass independently on physical M4 native ARM JIT and
+Rosetta at normal/forced placement. Assertions check every binary content byte,
+overwrite truncation, write timestamp, readonly state, exact supported failure
+codes, unchanged source/old failed target, nonzero BOOL and explicit exclusions;
+no game input is used. Runner Clippy and the six frozen native Windows
+ABI/TLS/heap shared-host checks also pass. The same PE files are carried by the
+existing PE workflow for a native Windows observation; that new result is still
+pending. Dynamic file/clock assertions are not a new frozen Windows comparison.
+Reproduce with `python3 tools/check_pe32_copy_file.py`, or `--host` pointing to the
+shared native ARM host. Reports remain ignored/local under `local/pe/copy-file`
+and `local/jit32/copy-file-check`. Fresh original execution must still confirm
+the identified copy call and actual save restoration; native 3D/Rosetta cutscene
+parity is not established by these microtests.
