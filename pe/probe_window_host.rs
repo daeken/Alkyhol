@@ -52,14 +52,14 @@ fn main() -> Result<()> {
             .encode_utf16()
             .collect::<Vec<_>>(),
     )?;
-    window.position(110, 120, outer.size.width as i32, outer.size.height as i32);
+    window.position(110, 120, outer.size.width as i32, outer.size.height as i32)?;
     window.show(true);
     app.activate();
     for _ in 0..20 {
         app.pump()?;
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
-    let frame = window.frame();
+    let frame = window.frame()?;
     let client = window.client();
     let onscreen = window.onscreen()?;
     println!(

@@ -325,10 +325,30 @@ fn string(text: &[u16]) -> crate::Result<Id> {
         Ok(out)
     }
 }
+// AppKit uses a bottom-left origin; Win32 and WindowServer use top-left.
+// Display modes can change while the process is alive. Never cache this height
+// in App/Window: a stale value shifts MSG.pt and every window/screen conversion.
+fn flipped_y(desktop_height: f64, y: f64, extent: f64) -> f64 {
+    desktop_height - y - extent
+}
+fn current_desktop() -> crate::Result<Rect> {
+    checked_desktop(unsafe { CGDisplayBounds(CGMainDisplayID()) })
+}
+fn checked_desktop(rect: Rect) -> crate::Result<Rect> {
+    if !rect.origin.x.is_finite()
+        || !rect.origin.y.is_finite()
+        || !rect.size.width.is_finite()
+        || !rect.size.height.is_finite()
+        || rect.size.width <= 0.
+        || rect.size.height <= 0.
+    {
+        return Err("actual host desktop geometry is unavailable".into());
+    }
+    Ok(rect)
+}
 pub(super) struct App {
     pool: Id,
     app: Id,
-    pub desktop: Rect,
     mouse: Mutex<MouseQueue>,
 }
 #[derive(Clone, Copy, Debug)]
@@ -416,14 +436,7 @@ impl App {
                 ));
             }
             unsafe { send0::<()>(app, "finishLaunching") };
-            let desktop = unsafe { CGDisplayBounds(CGMainDisplayID()) };
-            if !desktop.size.width.is_finite()
-                || !desktop.size.height.is_finite()
-                || desktop.size.width <= 0.
-                || desktop.size.height <= 0.
-            {
-                return Err("actual host desktop geometry is unavailable".into());
-            }
+            current_desktop()?;
             let mut mouse = MouseQueue::default();
             for button in 0..5 {
                 if unsafe { CGEventSourceButtonState(1, button) } {
@@ -433,10 +446,12 @@ impl App {
             Ok(Self {
                 pool,
                 app,
-                desktop,
                 mouse: Mutex::new(mouse),
             })
         })
+    }
+    pub(super) fn desktop(&self) -> crate::Result<Rect> {
+        main_exec(current_desktop)
     }
     pub(super) fn frame_for_client(&self, rect: Rect, style: u64) -> crate::Result<Rect> {
         main_exec(move || unsafe { convert(rect, style, "frameRectForContentRect:styleMask:") })
@@ -457,7 +472,7 @@ impl App {
             let frame = Rect {
                 origin: Point {
                     x: x as f64,
-                    y: self.desktop.size.height - y as f64 - height as f64,
+                    y: flipped_y(current_desktop()?.size.height, y as f64, height as f64),
                 },
                 size: Size {
                     width: width as f64,
@@ -486,10 +501,7 @@ impl App {
                 send1::<_, ()>(window, "setAcceptsMouseMovedEvents:", 1i8);
                 send1::<_, ()>(window, "setTitle:", string(title)?)
             };
-            Ok(Window {
-                window,
-                desktop_height: self.desktop.size.height,
-            })
+            Ok(Window { window })
         })
     }
     pub(super) fn pump(&self) -> crate::Result<()> {
@@ -584,7 +596,7 @@ impl App {
         })?;
         let screen = mouse_point(Point {
             x: screen.x,
-            y: self.desktop.size.height - screen.y,
+            y: flipped_y(current_desktop()?.size.height, screen.y, 0.),
         })?;
         let seconds = unsafe { send0::<f64>(event, "timestamp") };
         if !seconds.is_finite() || seconds < 0.0 || seconds * 1e9 >= u64::MAX as f64 {
@@ -681,6 +693,7 @@ impl App {
                     "actual active screen inventory is unavailable or exceeds bounds".into(),
                 );
             }
+            let desktop_height = current_desktop()?.size.height;
             let mut left = f64::INFINITY;
             let mut top = f64::INFINITY;
             let mut right = f64::NEG_INFINITY;
@@ -688,7 +701,7 @@ impl App {
             for index in 0..count {
                 let screen = unsafe { send1::<_, Id>(screens, "objectAtIndex:", index) };
                 let mut rect = unsafe { rectangle(screen, "frame") };
-                rect.origin.y = self.desktop.size.height - rect.origin.y - rect.size.height;
+                rect.origin.y = flipped_y(desktop_height, rect.origin.y, rect.size.height);
                 left = left.min(rect.origin.x);
                 top = top.min(rect.origin.y);
                 right = right.max(rect.origin.x + rect.size.width);
@@ -720,7 +733,6 @@ impl Drop for App {
 }
 pub(super) struct Window {
     window: Id,
-    desktop_height: f64,
 }
 // SAFETY: every native operation and destruction is marshalled to main.
 unsafe impl Send for Window {}
@@ -908,11 +920,15 @@ impl Window {
     pub(super) fn number(&self) -> i64 {
         main_exec(move || unsafe { send0(self.window, "windowNumber") })
     }
-    pub(super) fn frame(&self) -> Rect {
+    pub(super) fn frame(&self) -> crate::Result<Rect> {
         main_exec(move || {
             let mut rect = unsafe { rectangle(self.window, "frame") };
-            rect.origin.y = self.desktop_height - rect.origin.y - rect.size.height;
-            rect
+            rect.origin.y = flipped_y(
+                current_desktop()?.size.height,
+                rect.origin.y,
+                rect.size.height,
+            );
+            Ok(rect)
         })
     }
     pub(super) fn client_frame(&self) -> crate::Result<Rect> {
@@ -921,7 +937,11 @@ impl Window {
             let style = unsafe { send0::<u64>(self.window, "styleMask") };
             let mut content =
                 unsafe { convert(frame, style, "contentRectForFrameRect:styleMask:") }?;
-            content.origin.y = self.desktop_height - content.origin.y - content.size.height;
+            content.origin.y = flipped_y(
+                current_desktop()?.size.height,
+                content.origin.y,
+                content.size.height,
+            );
             Ok(content)
         })
     }
@@ -962,12 +982,12 @@ impl Window {
             Ok(())
         })
     }
-    pub(super) fn position(&self, x: i32, y: i32, width: i32, height: i32) {
+    pub(super) fn position(&self, x: i32, y: i32, width: i32, height: i32) -> crate::Result<()> {
         main_exec(move || {
             let frame = Rect {
                 origin: Point {
                     x: x as f64,
-                    y: self.desktop_height - y as f64 - height as f64,
+                    y: flipped_y(current_desktop()?.size.height, y as f64, height as f64),
                 },
                 size: Size {
                     width: width as f64,
@@ -977,6 +997,7 @@ impl Window {
             let call: unsafe extern "C" fn(Id, Sel, Rect, i8) =
                 unsafe { std::mem::transmute(objc_msgSend as *const ()) };
             unsafe { call(self.window, selector("setFrame:display:"), frame, 1) };
+            Ok(())
         })
     }
 }
@@ -1322,5 +1343,75 @@ mod display_mode_tests {
         ] {
             assert!(display_mode(w, h, r).is_err());
         }
+    }
+}
+
+#[cfg(test)]
+mod desktop_geometry_tests {
+    use super::{Point, Rect, Size, checked_desktop, current_desktop, flipped_y};
+    #[test]
+    fn display_change_keeps_message_points_and_window_rectangles_consistent() {
+        // Reproduce the actual DAO mode-change diagnostic: cached 663 reported
+        // y=320 for a physical y=900 event after the desktop became 1243 high.
+        let native_y = 343.;
+        assert_eq!(flipped_y(663., native_y, 0.), 320.);
+        assert_eq!(flipped_y(1243., native_y, 0.), 900.);
+        for height in [663., 1107., 1243., 1326.] {
+            for (top, extent) in [(26., 1232.), (-120., 300.), (900., 0.)] {
+                let native = flipped_y(height, top, extent);
+                assert_eq!(flipped_y(height, native, extent), top);
+                // The rectangle's top point and an event at that top have the
+                // same Win32 Y even when its native origin is below the screen.
+                assert_eq!(flipped_y(height, native + extent, 0.), top);
+            }
+        }
+    }
+    #[test]
+    fn desktop_bounds_reject_unknown_geometry_without_a_stale_fallback() {
+        let valid = Rect {
+            origin: Point { x: 0., y: 0. },
+            size: Size {
+                width: 1710.,
+                height: 1107.,
+            },
+        };
+        assert_eq!(checked_desktop(valid).unwrap().size.height, 1107.);
+        for value in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            let mut rect = valid;
+            rect.origin.x = value;
+            assert!(checked_desktop(rect).is_err());
+            let mut rect = valid;
+            rect.origin.y = value;
+            assert!(checked_desktop(rect).is_err());
+        }
+        for value in [0., -1., f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            let mut rect = valid;
+            rect.size.width = value;
+            assert!(checked_desktop(rect).is_err());
+            let mut rect = valid;
+            rect.size.height = value;
+            assert!(checked_desktop(rect).is_err());
+        }
+    }
+    #[test]
+    fn current_primary_desktop_query_returns_actual_coregraphics_bounds() {
+        // Read-only physical-host evidence; this never switches modes or opens
+        // a window. A live mode-change window/input replay remains separate.
+        let rect = current_desktop().unwrap();
+        let mode = unsafe { super::CGDisplayCopyDisplayMode(super::CGMainDisplayID()) };
+        assert!(!mode.is_null());
+        let (width, height) = unsafe {
+            (
+                super::CGDisplayModeGetWidth(mode),
+                super::CGDisplayModeGetHeight(mode),
+            )
+        };
+        unsafe {
+            super::CFRelease(mode);
+        }
+        assert_eq!(
+            (rect.size.width, rect.size.height),
+            (width as f64, height as f64)
+        );
     }
 }

@@ -819,11 +819,49 @@ the other 15 external observers remain separate. The next original replay uses
 the new FPATAN host; full application progress parity remains unestablished.
 
 
-The built 6f78b1d native host also preserves the frozen Windows 8 ABI, 24 TLS and
-64 heap output words in normal/rebased runs. A fresh unchanged original process
+The built 6f78b1d native host also preserves the frozen native Windows outputs: 8 ABI words, 24 TLS words and
+64 heap words in normal/rebased runs. A fresh unchanged original process
 has completed CRT startup and created its owned splash window under the recorded
 full-window desktop. It is retained, suspended, for the independent playtest's
 foreground restore. Continue from the ignored `local/jit32/shared-game/run.json`,
 `startup-slot.json` and `startup-extension.json` rather than starting a second
 copy. The next foreground replay must confirm the post-FPATAN scene; original
 character/3D/Orzammar progress parity remains unobserved.
+
+
+The retained FPATAN-host replay renders another identifiable original Bink intro
+frame on the physical M4 and remains alive without a new CPU stop. A bounded
+coordinated presentation slot confirms the display capture is released, but the
+busy original decoder does not service activation in that interval. The local
+input guard refuses to post while actual foreground remains the independent
+playtest. No click/key is delivered in that slot. The original is suspended with
+its state intact during the other playtest's subsequent input slot. This is an
+intro checkpoint, not character creation, in-engine 3D or Orzammar parity.
+
+A separate bridge fix removes startup-cached desktop dimensions from App/Window.
+Mouse MSG screen points, primary metrics, window/client rectangles and window
+placement now query the current primary logical desktop. Missing/invalid geometry
+fails explicitly. This addresses the observed mode-change error where a physical
+Y=900 point was reported as Y=320 because startup height 663 was reused after the
+desktop became 1243 high. The retained original process still uses its existing
+host; this fix has not been injected into it or claimed as a game replay result.
+
+On the physical native ARM M4, all ten tests of the actual window module pass,
+including the new regression, signed/offscreen rectangle consistency, invalid
+geometry rejection and a read-only current CoreGraphics mode/bounds comparison.
+The existing bitmap, mouse/capture and main-thread closure tests also pass. These
+tests do not open a window, activate another app, change modes or post input.
+The native-runtime32 ARM and x86_64 PE libraries both check successfully, and a
+separate native shared JIT host builds with the fix. The retained original host
+is not overwritten. A live post-change window
+and input replay remains separate from these assertions. Reproduce the isolated
+window-module tests without the unrelated legacy x86 transition link objects:
+
+```sh
+xcrun --sdk macosx clang -arch arm64 -mmacosx-version-min=14.0 -fobjc-arc \
+  -Wall -Wextra -Werror -c pe/src/screen_capture32.m -o local/window-capture.o
+rustc --edition=2024 --test pe/probe_window_host.rs \
+  -C link-arg=local/window-capture.o -l framework=ScreenCaptureKit \
+  -l framework=Foundation -o local/window-host-tests
+local/window-host-tests --test-threads=1
+```

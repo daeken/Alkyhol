@@ -289,7 +289,7 @@ fn create(image: &LoadedImage32<'_>, a: &[u32; 16], ansi: bool) -> u32 {
             return error(1407);
         };
         let app = stop(ui.app());
-        let desktop = app.desktop;
+        let desktop = stop(app.desktop());
         let width = if a[6] == 0x80000000 {
             (desktop.size.width * 0.75) as i32
         } else {
@@ -340,7 +340,7 @@ fn create(image: &LoadedImage32<'_>, a: &[u32; 16], ansi: bool) -> u32 {
     };
     let rect = {
         let ui = image.cpu.ui.borrow();
-        ui.windows[&hwnd].native.frame()
+        stop(ui.windows[&hwnd].native.frame())
     };
     let r = frame(rect);
     let minmax = Scratch::new(&image.cpu, &[0, 0, 0, 0, 1, 1, 0, 0, 32767, 32767]);
@@ -383,7 +383,7 @@ fn create(image: &LoadedImage32<'_>, a: &[u32; 16], ansi: bool) -> u32 {
                 w.native.number(),
                 w.native.visible(),
                 w.native.onscreen(),
-                w.native.frame(),
+                stop(w.native.frame()),
                 w.native.client()
             );
         }
@@ -486,7 +486,7 @@ fn default_proc(image: &LoadedImage32<'_>, a: &[u32; 16]) -> u32 {
                 return error(1400);
             };
             let (min, max) = w.native.limits();
-            let d = ui.app.as_ref().unwrap().desktop;
+            let d = stop(ui.app.as_ref().unwrap().desktop());
             let mut info = read::<10>(image, a[3]);
             info[2] = d.size.width as u32;
             info[3] = d.size.height as u32;
@@ -505,7 +505,7 @@ fn default_proc(image: &LoadedImage32<'_>, a: &[u32; 16]) -> u32 {
             let Some(w) = ui.windows.get(&a[0]) else {
                 return error(1400);
             };
-            let f = w.native.frame();
+            let f = stop(w.native.frame());
             let c = stop(w.native.client_frame());
             let output = [
                 (rect[0] as i32).wrapping_add((c.origin.x - f.origin.x) as i32) as u32,
@@ -884,7 +884,7 @@ pub(super) fn window_info(image: &LoadedImage32<'_>, hwnd: u32, output: u32) -> 
     let Some(window) = ui.windows.get(&hwnd) else {
         return error(1400);
     };
-    let outer = frame(window.native.frame());
+    let outer = frame(stop(window.native.frame()));
     let client = frame(stop(window.native.client_frame()));
     let border_x = (client[0] as i32).saturating_sub(outer[0] as i32).max(0) as u32;
     // The top nonclient extent may contain a title bar; bottom identifies the
@@ -970,7 +970,7 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32
         11 | 12 => {
             let mut ui = image.cpu.ui.borrow_mut();
             let rect = if a[0] == ui.desktop && ui.desktop != 0 {
-                let d = stop(ui.app()).desktop;
+                let d = stop(stop(ui.app()).desktop());
                 host::Rect {
                     origin: host::Point { x: 0., y: 0. },
                     size: d.size,
@@ -982,7 +982,7 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32
                 if id == 11 {
                     w.native.client()
                 } else {
-                    w.native.frame()
+                    stop(w.native.frame())
                 }
             };
             write(image, a[1], &frame(rect));
@@ -1010,7 +1010,7 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32
                 stop(w.native.frame_style(next));
                 w.frame_style = next;
             }
-            let r = w.native.frame();
+            let r = stop(w.native.frame());
             let x = if a[6] & 2 != 0 {
                 r.origin.x as i32
             } else {
@@ -1043,7 +1043,7 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32
                     w.ex_style &= !8;
                 }
             }
-            w.native.position(x, y, width, height);
+            stop(w.native.position(x, y, width, height));
             drop(ui);
             if a[6] & 0x80 != 0 {
                 show(image, a[0], 0);
@@ -1083,7 +1083,7 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32
         17 => {
             let mut ui = image.cpu.ui.borrow_mut();
             let app = stop(ui.app());
-            let d = app.desktop;
+            let d = stop(app.desktop());
             match a[0] {
                 0 => d.size.width as u32,
                 1 => d.size.height as u32,
@@ -1190,7 +1190,7 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32
             let Some(w) = ui.windows.get(&a[0]) else {
                 return error(1400);
             };
-            let f = w.native.frame();
+            let f = stop(w.native.frame());
             let c = w.native.client();
             let x = f.origin.x as i32;
             let y = (f.origin.y + f.size.height - c.size.height) as i32;
