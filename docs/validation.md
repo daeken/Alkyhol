@@ -7629,3 +7629,9 @@ all unchanged shared frozen Windows ABI/TLS/heap words at both bases pass.
 This storage change does not remove guest instructions/checks or establish an
 FPS result. The next original-input replay also restores the explicit open
 D3D9 compiler configuration used by Rosetta; no new game frame is claimed yet.
+
+The native zero-timeout wait optimization passes the same 26-word original
+worker/TLS/FLS witness and new 12-word event-poll/worker-progress PE before/after.
+The scheduler's existing service quantum remains active; blocking waits and
+Rosetta remain unchanged. These are finite native ARM host assertions, with no
+new native Windows timing or game performance claim.

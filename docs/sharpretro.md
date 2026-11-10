@@ -322,3 +322,20 @@ Windows ABI/TLS/heap comparisons (96 words, both bases) also pass after packing.
 The next original-input replay explicitly supplies the same open D3D9 shader
 compiler as the Rosetta renderer; earlier diagnostic native startup omitted that
 launch setting. Game shader inputs/artifacts remain ignored local data.
+
+### Native nonblocking poll handoff
+
+DAO's original message worker repeatedly invokes zero-timeout waits while the
+loader indexes archives. The native provider now polls the real kernel object
+without releasing/reacquiring the full guest CPU/TEB lease for each nonblocking
+call. The existing dispatch scheduler still yields every 64 services or 2 ms
+when workers are active; positive/infinite waits retain their real blocking
+release/wait/reacquire behavior. The Rosetta implementation is unchanged.
+
+`tools/check_jit32_threads.py` executes the unchanged 26-word owned original
+worker/TLS/FLS witness plus a new 12-word targeted original PE for unsignaled/
+signaled/consumed auto-reset polling, progress of a polling worker, join/status
+and real handle closure. Both pass on native ARM before and after this handoff
+change. These are finite host assertions, not a new Windows timing measurement
+or a measured game loading-speed result. It remains a semantic poll: no sleep,
+forged completion, event suppression or skipped guest instructions is added.

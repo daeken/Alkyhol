@@ -566,6 +566,14 @@ pub(super) fn host_fs_valid(fs: u16) -> bool {
 }
 
 pub(super) fn wait_handle(image: &LoadedImage32<'_>, handle: u32, milliseconds: u32) -> u32 {
+    // A native nonblocking poll does not need a full CPU-lease/TEB handoff.
+    // Ordinary dispatch still yields every 64 services or 2ms, so a polling
+    // original worker cannot monopolize the guest. Blocking waits retain the
+    // real release/wait/reacquire path. Keep the frozen Rosetta path unchanged.
+    #[cfg(target_arch = "aarch64")]
+    if milliseconds == 0 {
+        return alkyhol::ffi::WaitForSingleObject(handle as usize, 0);
+    }
     without_cpu(image, || {
         if !super::window_host32::is_main_thread() || milliseconds == 0 {
             return alkyhol::ffi::WaitForSingleObject(handle as usize, milliseconds);
