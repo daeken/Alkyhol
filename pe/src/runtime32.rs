@@ -26,14 +26,14 @@ mod ansi32;
 mod bulk32;
 #[path = "com32.rs"]
 mod com32;
+#[path = "copy_file32.rs"]
+mod copy_file32;
 #[path = "crt32.rs"]
 mod crt32;
 #[path = "cursor32.rs"]
 mod cursor32;
 #[path = "diagnostic32.rs"]
 mod diagnostic32;
-#[path = "copy_file32.rs"]
-mod copy_file32;
 #[path = "directory32.rs"]
 mod directory32;
 #[path = "disk32.rs"]
