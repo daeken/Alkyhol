@@ -947,8 +947,22 @@ all result bits, complete MXCSR and defined flags agree exactly, including the
 special/denormal pair matrix and deterministic raw-bit pairs across all forms
 and control combinations. The C source, compiled-observer identity and table are
 frozen; `python3 tools/check_jit32_minmax.py` replays them. The existing SIMD
-workflow now also observes this unit on native x64 Windows; its result is pending.
+workflow also observes this unit on native x64 Windows. All four jobs pass in
+[CI 42825749976](https://github.com/daeken/Alkyhol/actions/runs/42825749976) at 80912a8.
+Its hosted native Windows AMD machine reports Family 26/Model 2 and build 26100.
+All 65,536 rows match the physical ARM model exactly. The entire 5,242,880-byte
+Windows observation table is also byte-identical to the separate Rosetta table;
+source/artifact/data identities and the native fixture are preserved. Reproduce
+with `python3 tools/check_jit32_minmax.py --backend windows-amd64`.
 The result checkers additionally require a complete model report so an empty
 Rust test selection cannot become success. Older frozen observations/strict
 failures are retained. A fresh DAO run is still required for the MINPS fix;
 Orzammar progress parity and native full-frame equality remain unestablished.
+
+
+A clean 80912a8 native shared host also preserves the frozen native Windows ABI,
+TLS and heap words in both normal/rebased witnesses. The preserved shared scene
+input is already in the owned profile for the next fresh original launch. The
+host now includes min/max and read-only compile-stop operand diagnostics, but its
+actual application progress beyond MINPS still requires a fresh observed replay.
+No original executable, DLL, save source or rendering geometry is patched.

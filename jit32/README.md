@@ -227,3 +227,11 @@ table from CI 42814117586. Both have 67,584 rows. The observer measures MXCSR
 immediately before RCP, separately retaining requested-vs-loaded mask differences
 (33,792 Rosetta rows; zero on that Windows host). RCP control/flags preservation
 passes on both. Older frozen comparisons and strict failures remain unchanged.
+
+
+`python3 tools/check_jit32_minmax.py` checks all eight legacy scalar/packed
+single/double MIN/MAX forms against 65,536 frozen Rosetta rows. Add
+`--backend windows-amd64` for the separate native Windows AMD fixture from
+CI 42825749976. Both complete raw tables are byte-identical; the ARM model matches
+all result bits, complete MXCSR and defined flags. These are masked-exception
+observations; unsupported unmasked exceptions stop before state commit.

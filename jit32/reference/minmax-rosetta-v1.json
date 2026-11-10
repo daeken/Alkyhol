@@ -16,5 +16,6 @@
   "compiler": "Apple clang version 21.0.0 (clang-2100.3.34.2)",
   "revision": "f9814419a0cbd4e9dea4b903c47b9038bd81610a",
   "tracked_tree_clean_at_observation": false,
-  "source_tracked_at_observation": false
+  "source_tracked_at_observation": false,
+  "source_commit_verified_from_identical_blob": "80912a82cfcd01a74362935929c10db3ffa3c3e9"
 }
