@@ -28,6 +28,7 @@ static LAYOUT: StateLayout = StateLayout {
 const VARIABLE_SHIFTS: [&str; 8] = [
     "PSRLW", "PSRLD", "PSRLQ", "PSRAW", "PSRAD", "PSLLW", "PSLLD", "PSLLQ",
 ];
+const PREFETCH_HINTS: [&str; 4] = ["PREFETCHNTA", "PREFETCHT0", "PREFETCHT1", "PREFETCHT2"];
 struct Stored {
     address: u32,
     value: u32,
@@ -971,6 +972,7 @@ pub(crate) fn compile(pc: u32, bytes: &[u8]) -> Result<Instruction> {
     if (bank.is_none()
         && !ADMITTED.contains(&mnemonic)
         && !VARIABLE_SHIFTS.contains(&mnemonic)
+        && !PREFETCH_HINTS.contains(&mnemonic)
         && crate::fpu_ops::operation(mnemonic).is_none()
         && crate::sse_arithmetic::operation(mnemonic).is_none()
         && crate::sse_compare::operation(mnemonic).is_none())
@@ -1533,6 +1535,10 @@ pub(crate) fn compile(pc: u32, bytes: &[u8]) -> Result<Instruction> {
                     bd.branch(target, false);
                 },
             );
+        } else if PREFETCH_HINTS.contains(&mnemonic) {
+            // Intel SDM PREFETCHh permits ignoring locality/cache hints.
+            // Do not turn the hint into an architectural read or permission
+            // fault. Decoding still checks the complete instruction encoding.
         } else if mnemonic == "XLAT" {
             let base = bd.reg_read(RegFile(0), 3, IlType::U32);
             let accumulator = bd.reg_read(RegFile(0), 0, IlType::U32);

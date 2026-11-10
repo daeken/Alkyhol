@@ -1389,3 +1389,54 @@ mod xlat_tests;
 
 #[cfg(test)]
 mod double_shift_tests;
+
+#[cfg(test)]
+mod prefetch_tests {
+    use super::*;
+    #[test]
+    fn cache_hints_preserve_state_without_architectural_memory_access() {
+        for hint in 0..4 {
+            for prefix in [None, Some(0x64), Some(0x66)] {
+                for address in [0, 0x20000, u32::MAX] {
+                    let mut code = vec![];
+                    if let Some(p) = prefix {
+                        code.push(p);
+                    }
+                    code.extend([0x0f, 0x18, (hint << 3) | 0x80]);
+                    code.extend(0x1234u32.to_le_bytes());
+                    let mut r = tests::cpu(&code);
+                    r.state[0] = address as u64;
+                    r.state[22] = 0x30000;
+                    r.state[16] = 0xad7;
+                    {
+                        let mut f = r.memory.fpu.borrow_mut();
+                        f.push(0x3fff8000000000000000);
+                        f.mxcsr = 0x5fc1;
+                        f.status |= 0x20;
+                    }
+                    let before = r.state;
+                    let fp = r.memory.fpu.borrow().clone();
+                    assert!(matches!(r.run(1), Stop::Budget { .. }));
+                    assert_eq!(&r.state[..17], &before[..17]);
+                    assert_eq!(&r.state[18..], &before[18..]);
+                    assert_eq!(r.state[17], 0x10000 + code.len() as u64);
+                    let after = r.memory.fpu.borrow();
+                    assert_eq!(after.status, fp.status);
+                    assert_eq!(after.control, fp.control);
+                    assert_eq!(after.tag, fp.tag);
+                    assert_eq!(after.registers, fp.registers);
+                    assert_eq!(after.mxcsr, fp.mxcsr);
+                }
+            }
+        }
+        for code in [
+            &[0x0f, 0x18][..],
+            &[0x0f, 0x18, 0x80, 1, 2][..],
+            &[0xf0, 0x0f, 0x18, 0][..],
+            &[0x0f, 0x18, 0xc0][..],
+            &[0x0f, 0x18, 0x20][..],
+        ] {
+            assert!(compiler::compile(0x10000, code).is_err());
+        }
+    }
+}

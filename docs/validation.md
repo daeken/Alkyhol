@@ -7881,3 +7881,22 @@ cover source/destination/count aliasing and no partial state on write faults.
 All 78 default native tests and runner Clippy pass; fourteen external observations
 are invoked separately. The next original replay includes the memory-priority
 follow-up and the new shifts; no video/menu/cutscene parity is yet claimed.
+
+The double-shift replay reaches the first original native-JIT DrawPrimitive and
+SwapChain Present calls. A physical M4 capture verifies the original animated
+intro artwork actually reaches the native window; this is video/graphics evidence,
+not just an observed API call. The capture, process identity, host/input hashes
+and raw logs stay ignored under local/jit32/shared-game-prefetch-before. It later
+stops at PREFETCHNTA in the original Bink decoder, after 2,857,138,100 loading-
+thread instructions, 27 entries and 368.9s uncontrolled wall time. Input hashes
+remain unchanged. An initial brief Escape input post did not establish a skip;
+a later held-input attempt found the process already stopped and sent nothing.
+No menu or Orzammar cutscene parity has been established.
+
+The NTA/T0/T1/T2 prefetch hints are now explicitly admitted without an
+architectural memory read, as permitted by the [Intel PREFETCHh contract](https://www.intel.com/content/dam/www/public/us/en/documents/manuals/64-ia-32-architectures-software-developer-vol-2b-manual.pdf).
+This is an intentional cache-policy choice, not an omitted required result or
+successful API stub. Native tests verify full register/FPU/flag preservation,
+next PC and inaccessible/FS/wrapped addresses, while rejecting invalid/truncated
+encodings and LOCK. All 79 default CPU tests and runner Clippy pass; the existing
+fourteen external observers remain separate. Original replay follows.
