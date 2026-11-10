@@ -20,7 +20,7 @@ static DWORD witness(){
  if(((DWORD*)lock.pBits)[0]!=0x001ff800||((DWORD*)lock.pBits)[1]!=0)return 6;
  if(texture->UnlockRect(0)!=S_OK)return 7;texture->Release();
  IDirect3DSurface9 *source=NULL,*target=NULL,*cpu=NULL;
- if(g_pd3dDevice->CreateRenderTarget(4,4,21,0,0,0,&source,NULL)!=S_OK||g_pd3dDevice->CreateRenderTarget(4,4,21,0,0,0,&target,NULL)!=S_OK)return 8;
+ if(g_pd3dDevice->CreateRenderTarget(4,4,21,0,0,0,&source,NULL)!=S_OK||g_pd3dDevice->CreateRenderTarget(4,4,21,0,0,1,&target,NULL)!=S_OK)return 8;
  R blue={2,0,4,4};if(g_pd3dDevice->ColorFill(source,NULL,0xffff0000)!=S_OK||g_pd3dDevice->ColorFill(source,&blue,0xff0000ff)!=S_OK||g_pd3dDevice->ColorFill(target,NULL,0xff00ff00)!=S_OK)return 9;
  R crop={0,0,4,4},dest={1,1,3,3};
  if(g_pd3dDevice->StretchRect(source,&crop,target,&dest,0)!=S_OK)return 10;
@@ -30,10 +30,24 @@ static DWORD witness(){
   DWORD expected=y>=1&&y<3&&x==1?0xffff0000:y>=1&&y<3&&x==2?0xff0000ff:0xff00ff00;
   if(*(DWORD*)((unsigned char*)lock.pBits+y*lock.Pitch+x*4)!=expected)return 13;
  }
- if(cpu->UnlockRect()!=S_OK)return 14;cpu->Release();target->Release();source->Release();return 0;
+ if(cpu->UnlockRect()!=S_OK)return 14;
+ if(target->LockRect(&lock,&dest,0x810)!=S_OK)return 15;
+ if(((DWORD*)lock.pBits)[0]!=0xffff0000||((DWORD*)lock.pBits)[1]!=0xff0000ff)return 16;
+ if(target->UnlockRect()!=S_OK)return 17;
+ R corner={0,0,1,1};
+ if(target->LockRect(&lock,&corner,0)!=S_OK)return 18;
+ *(DWORD*)lock.pBits=0xffaabbcc;
+ if(target->UnlockRect()!=S_OK||g_pd3dDevice->GetRenderTargetData(target,cpu)!=S_OK)return 19;
+ if(cpu->LockRect(&lock,NULL,16)!=S_OK)return 20;
+ for(UINT y=0;y<4;y++)for(UINT x=0;x<4;x++){
+  DWORD expected=y==0&&x==0?0xffaabbcc:y>=1&&y<3&&x==1?0xffff0000:y>=1&&y<3&&x==2?0xff0000ff:0xff00ff00;
+  if(*(DWORD*)((unsigned char*)lock.pBits+y*lock.Pitch+x*4)!=expected)return 21;
+ }
+ if(cpu->UnlockRect()!=S_OK)return 22;
+ cpu->Release();target->Release();source->Release();return 0;
 }
 extern "C" DWORD entry(){
- DWORD before=stack(),words[8]={0x53415645,1,0,0,0,0,3,8};
+ DWORD before=stack(),words[8]={0x53415645,2,0,0,0,0,3,8};
  WNDCLASSEX wc={};wc.cbSize=sizeof(wc);wc.lpfnWndProc=proc;wc.hInstance=GetModuleHandleW(NULL);wc.lpszClassName=L"AlkyholSaveResources";
  if(!RegisterClassExW(&wc))return 2;
  HWND window=CreateWindowExW(0,wc.lpszClassName,L"Alkyhol real save resources",0x80000000,80,80,32,32,NULL,NULL,wc.hInstance,NULL);

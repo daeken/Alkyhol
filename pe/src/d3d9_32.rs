@@ -182,6 +182,7 @@ enum Body {
         format: u32,
         initialized: bool,
         locked: bool,
+        target_lock: Option<transfers::TargetLock>,
     },
     IndexBuffer {
         parent: u32,
@@ -1043,6 +1044,7 @@ fn backbuffer(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
                 format: p[2],
                 initialized: false,
                 locked: false,
+                target_lock: None,
             },
             0,
         );
@@ -1096,6 +1098,7 @@ fn offscreen(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
             format: a[3],
             initialized: false,
             locked: false,
+            target_lock: None,
         },
         1,
     );
@@ -1174,6 +1177,7 @@ fn transfer(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
                 width,
                 height,
                 format,
+                locked: false,
                 ..
             },
     }) = s.objects.get(&a[1])
@@ -1414,6 +1418,15 @@ fn expose(s: &mut State, p: u32) {
         bind(s, container);
     }
 }
+fn color_target_locked(s: &State, device: u32) -> bool {
+    let Body::Device { render_target, .. } = &s.objects[&device].body else {
+        unreachable!()
+    };
+    matches!(
+        s.objects.get(render_target).map(|object| &object.body),
+        Some(Body::Surface { locked: true, .. })
+    )
+}
 fn color_target(s: &State, p: u32) -> (Target, u32) {
     let Body::Device {
         target,
@@ -1547,6 +1560,7 @@ fn texture_surface(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u
                 format,
                 initialized: false,
                 locked: false,
+                target_lock: None,
             },
             0,
         );
@@ -1614,6 +1628,7 @@ fn allocate_depth(
             format,
             initialized: false,
             locked: false,
+            target_lock: None,
         },
         if implicit { 0 } else { 1 },
     ))
@@ -2225,7 +2240,7 @@ fn draw_buffer(
     else {
         unreachable!()
     };
-    if !*scene {
+    if !*scene || color_target_locked(s, a[0]) {
         return INVALID;
     }
     let programmable = (*vertex_shader, *pixel_shader, *declaration);
@@ -3240,7 +3255,7 @@ fn texture_operation(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16], sl
                 level.dirty = true;
             }
             if readonly && !level.initialized && *format != 50 {
-                unsupported("D3D9 read of uninitialized texture shadow");
+                return INVALID;
             }
             // A fresh managed L8 mip already owns real CPU storage. READONLY
             // may expose it, but its initial contents are not a Windows-value
@@ -3937,6 +3952,9 @@ fn dispatch_inner(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32 {
             if a[1] != 0 || a[2] != 0 || a[3] == 0 || a[3] & !7 != 0 {
                 return UNAVAILABLE;
             }
+            if color_target_locked(&s, a[0]) {
+                return INVALID;
+            }
             let (mut active, format) = color_target(&s, a[0]);
             let (width, height) = active.dimensions();
             let Body::Device { viewport, .. } = &s.objects[&a[0]].body else {
@@ -4108,20 +4126,7 @@ fn dispatch_inner(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32 {
                 args[1] = *texture_level;
                 return texture_operation(image, &mut s, &args, 20);
             }
-            let Body::Surface {
-                locked,
-                initialized,
-                ..
-            } = &mut s.objects.get_mut(&a[0]).unwrap().body
-            else {
-                unreachable!()
-            };
-            if !*locked {
-                return INVALID;
-            }
-            *locked = false;
-            *initialized = true;
-            0
+            transfers::unlock_surface(image, &mut s, a[0])
         }
         _ => unsupported(&format!(
             "unimplemented D3D9 COM method: interface={kind} slot={slot}; no successful stub returned"

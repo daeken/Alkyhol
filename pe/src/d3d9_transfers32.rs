@@ -1,6 +1,11 @@
 //! Checked staging and color transfers. All admitted copies reach real storage.
 use super::*;
 
+pub(super) struct TargetLock {
+    rect: [u32; 4],
+    readonly: bool,
+}
+
 fn rectangle(image: &LoadedImage32<'_>, p: u32, width: u32, height: u32) -> Option<[u32; 4]> {
     let r = if p == 0 {
         [0, 0, width, height]
@@ -35,8 +40,7 @@ pub(super) fn create_render_target(image: &LoadedImage32<'_>, s: &mut State, a: 
         return INVALID;
     }
     write(image, a[7], &[0]);
-    // Lockable render targets require a separate GPU/CPU coherence contract.
-    if ![21, 22].contains(&a[3]) || a[4] != 0 || a[5] != 0 || a[6] != 0 || a[8] != 0 {
+    if ![21, 22].contains(&a[3]) || a[4] != 0 || a[5] != 0 || a[8] != 0 {
         return UNAVAILABLE;
     }
     let Body::Device { gpu, .. } = &s.objects[&a[0]].body else {
@@ -52,6 +56,18 @@ pub(super) fn create_render_target(image: &LoadedImage32<'_>, s: &mut State, a: 
     // Same real initialization policy as freshly created render-target textures.
     gpu.clear(&mut target, if a[3] == 22 { 0xff000000 } else { 0 })
         .unwrap_or_else(|e| unsupported(&e));
+    let data = if a[6] != 0 {
+        let length = a[1] as usize * a[2] as usize * 4;
+        match memory(&image.cpu, &vec![0; length], true, false) {
+            Ok(address) => address,
+            Err(e) => {
+                eprintln!("D3D9 lockable render target storage: {e}");
+                return UNAVAILABLE;
+            }
+        }
+    } else {
+        0
+    };
     addref(s, a[0]);
     let p = object(
         &image.cpu,
@@ -65,12 +81,13 @@ pub(super) fn create_render_target(image: &LoadedImage32<'_>, s: &mut State, a: 
             container: 0,
             texture_level: 0,
             bindings: 0,
-            data: 0,
+            data,
             width: a[1],
             height: a[2],
             format: a[3],
             initialized: false,
             locked: false,
+            target_lock: None,
         },
         1,
     );
@@ -82,6 +99,13 @@ pub(super) fn lock_surface(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 1
     if a[1] == 0 || a[3] & !0x810 != 0 {
         return INVALID;
     }
+    let Body::Surface { parent, .. } = &s.objects[&a[0]].body else {
+        unreachable!()
+    };
+    let Body::Device { gpu, .. } = &s.objects[parent].body else {
+        unreachable!()
+    };
+    let gpu = gpu.clone();
     let Body::Surface {
         back,
         attachment,
@@ -89,20 +113,39 @@ pub(super) fn lock_surface(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 1
         data,
         width,
         height,
+        format,
         initialized,
         locked,
+        target_lock,
         ..
     } = &mut s.objects.get_mut(&a[0]).unwrap().body
     else {
         unreachable!()
     };
-    if *back || attachment.is_some() || depth.is_some() || *locked {
+    if *back || depth.is_some() || *locked || *data == 0 {
         return INVALID;
     }
     let Some(r) = rectangle(image, a[2], *width, *height) else {
         return INVALID;
     };
-    if a[3] & 16 != 0 && !*initialized {
+    let readonly = a[3] & 16 != 0;
+    if let Some(target) = attachment {
+        let mut bytes = match gpu.readback(target) {
+            Ok(bytes) => bytes,
+            Err(e) => {
+                eprintln!("D3D9 LockRect readback: {e}");
+                return UNAVAILABLE;
+            }
+        };
+        if *format == 22 {
+            for pixel in bytes.as_chunks_mut::<4>().0 {
+                pixel[3] = 255;
+            }
+        }
+        checked(image, *data, bytes.len(), true);
+        unsafe { std::ptr::copy_nonoverlapping(bytes.as_ptr(), *data as *mut u8, bytes.len()) };
+        *target_lock = Some(TargetLock { rect: r, readonly });
+    } else if readonly && !*initialized {
         unsupported("D3D9 read of uninitialized system-memory surface");
     }
     write(
@@ -111,6 +154,66 @@ pub(super) fn lock_surface(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 1
         &[*width * 4, *data + r[1] * *width * 4 + r[0] * 4],
     );
     *locked = true;
+    0
+}
+
+pub(super) fn unlock_surface(image: &LoadedImage32<'_>, s: &mut State, pointer: u32) -> u32 {
+    let Body::Surface { parent, .. } = &s.objects[&pointer].body else {
+        unreachable!()
+    };
+    let Body::Device { gpu, .. } = &s.objects[parent].body else {
+        unreachable!()
+    };
+    let gpu = gpu.clone();
+    let Body::Surface {
+        attachment,
+        data,
+        width,
+        format,
+        initialized,
+        locked,
+        target_lock,
+        ..
+    } = &mut s.objects.get_mut(&pointer).unwrap().body
+    else {
+        unreachable!()
+    };
+    if !*locked {
+        return INVALID;
+    }
+    if let (Some(target), Some(lock)) = (attachment, target_lock.as_ref()) {
+        if !lock.readonly {
+            let [left, top, right, bottom] = lock.rect;
+            let pitch = *width * 4;
+            let row = (right - left) * 4;
+            let start = *data + top * pitch + left * 4;
+            let length = (bottom - top - 1) * pitch + row;
+            checked(image, start, length as usize, false);
+            let bytes = unsafe { std::slice::from_raw_parts(start as *const u8, length as usize) };
+            let result = if *format == 22 {
+                let mut opaque = bytes.to_vec();
+                for y in 0..(bottom - top) as usize {
+                    for pixel in opaque[y * pitch as usize..][..row as usize]
+                        .as_chunks_mut::<4>()
+                        .0
+                    {
+                        pixel[3] = 255;
+                    }
+                }
+                gpu.write_target_region(target, lock.rect, &opaque, pitch)
+            } else {
+                gpu.write_target_region(target, lock.rect, bytes, pitch)
+            };
+            if let Err(e) = result {
+                eprintln!("D3D9 UnlockRect upload: {e}");
+                return UNAVAILABLE;
+            }
+        }
+    } else {
+        *initialized = true;
+    }
+    *target_lock = None;
+    *locked = false;
     0
 }
 
