@@ -9,7 +9,9 @@ int main(void) {
   unsigned char in[512] __attribute__((aligned(16)))={0},out[512] __attribute__((aligned(16)))={0};
   uint16_t cw=0x37f,sw=(top<<11)|(sticky?0x477f:0),se=exp[kind]|(sign<<15);uint32_t mxcsr=0x1f80;
   memcpy(in,&cw,2);memcpy(in+2,&sw,2);in[4]=empty?0:(1<<top);memcpy(in+24,&mxcsr,4);memcpy(in+32,&sig[kind],8);memcpy(in+40,&se,2);
-  __asm__ volatile("fxrstor %1; fxam; fxsave %0; fninit":"=m"(out):"m"(in):"st","memory");
+  __asm__ volatile("fxrstor %1; fxam; fxsave %0; fninit":"=m"(out):"m"(in):"st","memory",
+   "xmm0","xmm1","xmm2","xmm3","xmm4","xmm5","xmm6","xmm7",
+   "xmm8","xmm9","xmm10","xmm11","xmm12","xmm13","xmm14","xmm15");
   unsigned char row[32]={0};memcpy(row,in+32,10);row[10]=top;row[11]=empty;memcpy(row+12,&sw,2);memcpy(row+14,out+2,2);memcpy(row+16,out+32,10);memcpy(row+26,out,2);row[28]=out[4];
   if(fwrite(row,sizeof row,1,stdout)!=1)return 1;
  }
