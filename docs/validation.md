@@ -7740,3 +7740,16 @@ rows via `tools/check_jit32_bits.py`. Native bounds/permission/fault and registe
 tests pass; the full default suite is 65 passing tests with six independent
 observers separately invoked. Runner Clippy passes. These add no native Windows
 observation or original native-JIT game-frame/cutscene parity claim.
+
+The next original native run clears BTS, loads AddIns.xml and reaches repeated
+CMPSB's unwired intrinsic at 1,415,045,498 loading-thread instructions (217.5s
+uncontrolled wall time, inputs unchanged). No Present was observed. Checked
+CMPS/SCAS byte/word/DWORD lowering now produces all arithmetic flags, direction-
+correct pointers and exact count/early-stop behavior while retaining per-REP-
+iteration fault commitment. Independent actual Rosetta assembly agrees on all
+432 input/result rows via `tools/check_jit32_strings.py`. Native tests also retain
+completed iterations when the second memory source faults, and skip invalid
+sources on zero repeat count. Segmented/16-bit-address strings remain explicitly
+unsupported. All 67 default CPU tests and runner Clippy pass; seven external
+observers are invoked separately. No new Windows or full game/frame parity is
+inferred from these finite host comparisons.

@@ -509,3 +509,22 @@ register/imm8 masking, partial writes, source alias/boundary behavior, FS/wrap
 and read-only/truncated memory with no partial flag/write commitment. All 65
 default CPU tests and runner Clippy pass; six external observers run separately.
 This is finite CPU evidence, not new Windows or original game-frame evidence.
+
+Original execution clears BTS and advances through further initialization and
+the application's AddIns.xml settings load. At 1,415,045,498 loading-thread
+instructions it explicitly stops at repeated CMPSB's unwired intrinsic (217.5s
+uncontrolled wall time, original inputs unchanged). No Present was observed.
+CMPS/SCAS byte/word/DWORD forms now compare checked sources, set all six
+arithmetic flags and advance the correct 32-bit pointers in guest DF order.
+REPE/REPNE retain the existing one-iteration boundary, count-zero skip and
+last-completed-iteration state on a subsequent fault. Segmented/16-bit-address
+strings remain explicit exclusions.
+
+`tools/check_jit32_strings.py` agrees with independent actual Rosetta assembly
+on all 432 rows: both operations, three widths, forward/backward direction,
+plain/REPE/REPNE, six initial counts and two accumulator values. Result flags,
+pointer endpoints, count, accumulator and unchanged source bytes agree. Native
+units also verify a fault on the second source of a later iteration and invalid
+sources skipped by zero repeat count. All 67 default CPU tests and runner Clippy
+pass; seven external observers remain separately invoked. This is finite host
+CPU evidence, not an original game frame or parity with Rosetta's cutscene.

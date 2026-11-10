@@ -159,3 +159,8 @@ they are separate from native Windows observations and game progress.
 rows against independent actual x86/Rosetta assembly, including aligned LOCK
 forms. The native unit tests separately retain permission/fault, register,
 immediate-mask, segment/wrap and excluded-form checks.
+
+`python3 tools/check_jit32_strings.py` compares 432 CMPS/SCAS rows with actual
+x86/Rosetta assembly across operand widths, repeat conditions/counts and DF
+directions. Memory-fault commitment and zero-count invalid-source tests run in
+the default native suite.

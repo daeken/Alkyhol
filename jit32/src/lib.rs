@@ -15,6 +15,8 @@ mod sse_arithmetic;
 #[cfg(test)]
 mod sse_bits_tests;
 mod stack_bank;
+#[cfg(test)]
+mod string_tests;
 #[cfg(feature = "shared-runtime")]
 pub use alkyhol_pe as shared_pe;
 pub mod memory;

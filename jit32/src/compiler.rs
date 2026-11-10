@@ -69,6 +69,62 @@ fn width(ty: IlType) -> u64 {
     }
 }
 impl Checked<'_> {
+    fn compare_string(&mut self, mnemonic: &str, width: u32) {
+        let ty = xfusion_recomp::operand::ilty(width);
+        let scan = mnemonic.starts_with("SCAS");
+        let si = self.reg_read(RegFile(0), 6, IlType::U32);
+        let di = self.reg_read(RegFile(0), 7, IlType::U32);
+        let lhs = if scan {
+            let a = self.reg_read(RegFile(0), 0, IlType::U32);
+            self.cast(a, ty)
+        } else {
+            self.mem_read(si, ty)
+        };
+        let rhs = self.mem_read(di, ty);
+        // Both reads precede architectural changes. A later REP fault retains
+        // completed iterations and rolls back only this iteration.
+        let result = self.sub(lhs, rhs);
+        let carry = self.lt(lhs, rhs);
+        self.reg_write(RegFile(1), 0, carry);
+        let zero = self.literal(ty, 0);
+        let zf = self.eq(result, zero);
+        self.reg_write(RegFile(1), 6, zf);
+        self.flag_bit(7, result, width - 1);
+        let different = self.xor(lhs, rhs);
+        let changed = self.xor(lhs, result);
+        let overflow = self.and(different, changed);
+        self.flag_bit(11, overflow, width - 1);
+        let auxiliary = self.xor(different, result);
+        self.flag_bit(4, auxiliary, 4);
+        let low = self.cast(result, IlType::U8);
+        let low = self.cast(low, IlType::U32);
+        let four = self.literal(IlType::U32, 4);
+        let high = self.shr(low, four);
+        let folded = self.xor(low, high);
+        let mask = self.literal(IlType::U32, 15);
+        let folded = self.and(folded, mask);
+        let table = self.literal(IlType::U32, 0x9669);
+        let parity = self.shr(table, folded);
+        self.flag_bit(2, parity, 0);
+        let step = self.literal(IlType::U32, (width / 8) as u128);
+        let negative = self.neg(step);
+        let df = self.reg_read(RegFile(1), 10, IlType::Bool);
+        let step = self.ternary(df, negative, step);
+        if !scan {
+            let next = self.add(si, step);
+            self.reg_write(RegFile(0), 6, next);
+        }
+        let next = self.add(di, step);
+        self.reg_write(RegFile(0), 7, next);
+    }
+    fn flag_bit(&mut self, flag: u32, value: u32, bit: u32) {
+        let shift = self.literal(IlType::U32, bit as u128);
+        let value = self.shr(value, shift);
+        let one = self.literal(self.ty_of(value), 1);
+        let value = self.and(value, one);
+        let value = self.cast(value, IlType::Bool);
+        self.reg_write(RegFile(1), flag, value);
+    }
     fn address(&mut self, addr: u32, stack: bool) -> u32 {
         // Address-size wrap happens before adding the segment base. Upstream's
         // ModRM helper currently defers Bits32 masking; correct it at access.
@@ -926,9 +982,9 @@ pub(crate) fn compile(pc: u32, bytes: &[u8]) -> Result<Instruction> {
         "MOVSB", "MOVSV", "STOSB", "STOSV", "LODSB", "LODSV", "CMPSB", "CMPSV", "SCASB", "SCASV",
     ]
     .contains(&mnemonic);
-    if string && d.p.segment != 0 {
+    if string && (d.p.segment != 0 || d.p.ad_size) {
         return Err(format!(
-            "segmented string operation not admitted at {pc:#x}"
+            "segmented/16-bit-address string operation not admitted at {pc:#x}"
         ));
     }
     let mut inner = Tier0::with_layout(&LAYOUT);
@@ -1318,7 +1374,18 @@ pub(crate) fn compile(pc: u32, bytes: &[u8]) -> Result<Instruction> {
                     let mut one = d;
                     one.p.rep = false;
                     one.p.rep_nz = false;
-                    assert!(lift_one(bd, &one, pc as u64, XMode::Bits32, FLAGS_ALL_LIVE));
+                    if ["CMPSB", "CMPSV", "SCASB", "SCASV"].contains(&mnemonic) {
+                        bd.compare_string(
+                            mnemonic,
+                            if mnemonic.ends_with('B') {
+                                8
+                            } else {
+                                d.p.v_width(XMode::Bits32)
+                            },
+                        );
+                    } else {
+                        assert!(lift_one(bd, &one, pc as u64, XMode::Bits32, FLAGS_ALL_LIVE));
+                    }
                     let one = bd.literal(IlType::U32, 1);
                     let left = bd.sub(count, one);
                     bd.reg_write(RegFile(0), 1, left);
@@ -1371,6 +1438,15 @@ pub(crate) fn compile(pc: u32, bytes: &[u8]) -> Result<Instruction> {
             let value = bd.literal(IlType::U32, d.imm0 as i8 as i32 as u32 as u128);
             bd.mem_write(next_sp, value);
             bd.reg_write(RegFile(0), 4, next_sp);
+        } else if ["CMPSB", "CMPSV", "SCASB", "SCASV"].contains(&mnemonic) {
+            bd.compare_string(
+                mnemonic,
+                if mnemonic.ends_with('B') {
+                    8
+                } else {
+                    d.p.v_width(XMode::Bits32)
+                },
+            );
         } else if !lift_one(
             &mut bd,
             &d,
