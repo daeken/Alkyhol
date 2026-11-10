@@ -57,6 +57,7 @@ jobs:
         run: |
           rustc --edition 2024 --test -D warnings pe/probe_number_format.rs -o local/jit32/number-format-tests
           local/jit32/number-format-tests
+          python -m unittest discover -s tests -p test_pe32_number_format_protocol.py -v
       - name: Fetch locked dependencies before offline PE builds
         if: runner.os == 'macOS'
         run: cargo fetch --manifest-path pe/Cargo.toml --locked

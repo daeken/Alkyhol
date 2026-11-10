@@ -8536,3 +8536,21 @@ and formatting checks pass. Reproduce with
 `python3 tools/check_pe32_number_format.py --host PATH_TO_ROSETTA_HOST`.
 These are finite API/ABI observations; the original-game call must still be
 replayed through the implementation. No broader game compatibility is claimed.
+
+The clean cc7b6fb original Rosetta replay now passes the actual GetNumberFormatW
+call and returns from Loading to a rendered Castle Cousland scene: Aedan, NPCs,
+the room geometry/textures and HUD are visible on the physical M4. Resume selects
+the same frozen 699f replacement-generated quicksave. Original EXE/provided DLL
+hashes and all eleven staged input byte hashes remain unchanged at this observed
+checkpoint. Local evidence is in
+`local/pe/dao-number-format/original-cousland-restored.json` and its identified
+frame; no original game frame/data is committed. This establishes acceptance
+and an original rendered scene from that shared input, not exact restored-field
+or pixel equality, comprehensive gameplay, or passage beyond the separate prior
+Orzammar cutscene route. The process remains running and further automated
+gameplay input is handed back to the user.
+
+Four additional protocol tests protect the frozen identities, full output/tail
+comparison, defined failure-code rules, rejection of incomplete/guard-corrupt
+transport, and refusal to overwrite a different candidate PE. All pass locally;
+they do not weaken the native oracle. The PE binary workflow includes them.
