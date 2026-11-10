@@ -2546,7 +2546,10 @@ fn profile_present(gpu: &Gpu) {
         let seconds=start.elapsed().as_secs_f64();
         if seconds>=5. {
             let stats=gpu.legacy_pipeline_cache_stats();
-            eprintln!("PE32 D3D9 completed Present profile: frames={frames} seconds={seconds:.6} fps={:.3} pipelines={stats:?}",*frames as f64/seconds);
+            let uploads=gpu.legacy_upload_stats();
+            let (service_seconds, service_calls) = super::perf32::take();
+            eprintln!("PE32 D3D9 service timing [Win32,draw,other-D3D9,CPU-handoff]: seconds={service_seconds:?} calls={service_calls:?}");
+            eprintln!("PE32 D3D9 completed Present profile: frames={frames} seconds={seconds:.6} fps={:.3} pipelines={stats:?} uploads={uploads:?}",*frames as f64/seconds);
             *start=std::time::Instant::now();*frames=0;
         }
     });

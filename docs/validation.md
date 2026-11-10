@@ -8666,3 +8666,36 @@ world presentation intervals were approximately 1.5–2.4 FPS before additional
 input; this is still slow. The separate 6.1x owned draw-batch result must not be
 presented as a sixfold game FPS improvement. The quieter 86af1c5 replay is next;
 no improved original-scene rate is established yet.
+
+The user confirms the quieter original-binary 86af1c5 replay is working, though
+still slow. This remains original PE32 DAOrigins.exe under Rosetta through the
+Rust compatibility host, not the replacement executable. The current process
+is left in the user's control. Observed completed scene intervals vary roughly
+5–8 FPS (with later input/load-dependent lower intervals); no fixed controlled
+benchmark or native frame equality is claimed.
+
+A non-restarting ten-second Instruments Time Profiler capture of that owned
+process exported 11,930 running samples (11.93 sampled CPU seconds), including
+114 samples without exported stacks. Inclusive D3D9 dispatch accounts for
+approximately 35% of those samples, programmable backend drawing 24.8%, and
+create_buffer_init 9.8%. These are overlapping inclusive CPU observations,
+not additive wall/GPU percentages, and some Rosetta stacks remain truncated or
+unidentified. Local raw traces/derived reports stay ignored under
+`local/pe/dao-quiet/`. The evidence motivates the reusable destination/staging
+milestone in d3d9.md; its original-game improvement is not measured yet.
+
+Opt-in PE profiling also has a prepared per-guest-thread host-service wall-time
+breakdown for Win32 calls, draw calls, other D3D9 methods and post-service CPU
+handoffs. Counts/timers reset at each report and stay separate across host
+threads. This is diagnostic inclusive elapsed time, not exclusive CPU time or
+whole-game execution coverage. The snapshot/reset/worker-isolation unit passes;
+PE Clippy passes. Existing tests cover the renderer changes separately. No
+running user session is replaced by these build/test operations.
+
+The rebuilt x86_64 host with upload reuse/profile diagnostics also runs the same
+owned legacy-shader PE (SHA-256
+884e1bb999df897274e1fed12ac8429fddb0462b6be3a68add14f9dc3c0b4f51).
+Its complete 8,396-byte output remains byte-identical to the pre-upload renderer,
+SHA-256 32f2d8ff8d615da007be4ded2cbd2318d91c378cf65853c7afde6f5a174acffe.
+The 123-word cursor/thread witness passes through that rebuilt host as well.
+These are host observations; new native Windows CI results remain pending.

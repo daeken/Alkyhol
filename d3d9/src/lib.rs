@@ -17,6 +17,8 @@ mod occlusion;
 pub use occlusion::OcclusionQuery;
 pub mod legacy;
 mod legacy_gpu;
+mod legacy_upload;
+pub use legacy_upload::LegacyUploadStats;
 pub mod vertex;
 pub use depth::Depth;
 mod render_state;
@@ -38,6 +40,7 @@ pub struct Device {
     occlusion: Arc<std::sync::Mutex<occlusion::Tracker>>,
     null_textures: OnceLock<Result<[SampledTexture; 3]>>,
     legacy_pipelines: std::sync::Mutex<legacy_gpu::PipelineCache>,
+    legacy_uploads: std::sync::Mutex<legacy_upload::Uploads>,
 }
 #[derive(Clone)]
 pub struct Target {
@@ -105,6 +108,7 @@ impl Device {
             occlusion: Arc::default(),
             null_textures: OnceLock::new(),
             legacy_pipelines: Default::default(),
+            legacy_uploads: Default::default(),
         })
     }
     pub fn adapter_name(&self) -> &str {

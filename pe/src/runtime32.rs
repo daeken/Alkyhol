@@ -56,6 +56,8 @@ mod heap32;
 mod icon32;
 #[path = "netbios32.rs"]
 mod netbios32;
+#[path = "perf32.rs"]
+mod perf32;
 pub use icon32::IconImage32;
 #[path = "d3d9_32.rs"]
 mod d3d9_32;
@@ -2306,8 +2308,25 @@ extern "C" fn dispatch(id: u32, arguments: *const u32) -> u64 {
     };
     let before = exit_state();
     let thread_before = thread32::exit_state();
+    let timer = perf32::start();
     let result = dispatch_inner(id, arguments);
+    if let Some(timer) = timer {
+        let category = if d3d9_32::signature(id).is_some() {
+            if (id - d3d9_32::BASE) / 256 == 1
+                && [81, 82, 83, 84].contains(&((id - d3d9_32::BASE) % 256))
+            {
+                1
+            } else {
+                2
+            }
+        } else {
+            0
+        };
+        perf32::record(category, Some(timer));
+    }
+    let timer = perf32::start();
     thread32::yield_cpu();
+    perf32::record(3, timer);
     // ExitProcess and CRT termination escapes are non-returning guest operations.
     // The assembly gate uses
     // a separate control bit, never a forged stdcall return-stack observation.

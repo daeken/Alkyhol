@@ -6,7 +6,6 @@ use std::{
     sync::Arc,
     sync::atomic::Ordering,
 };
-use wgpu::util::DeviceExt;
 /// Per-device bounded cache counters; these measure reuse, not game frame rate.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct LegacyPipelineStats {
@@ -189,6 +188,9 @@ fn texture_dimensions(
     Ok(result)
 }
 impl Device {
+    pub fn legacy_upload_stats(&self) -> crate::LegacyUploadStats {
+        self.legacy_uploads.lock().unwrap().stats
+    }
     pub fn legacy_pipeline_cache_stats(&self) -> LegacyPipelineStats {
         self.legacy_pipelines.lock().unwrap().stats
     }
@@ -413,17 +415,34 @@ impl Device {
                 ))
             })
             .collect::<Result<_>>()?;
+        if data.iter().enumerate().any(|(n, bytes)| {
+            used.contains(&(n as u32, 0))
+                && bytes.len() as u64 > self.device.limits().max_uniform_buffer_binding_size as u64
+        }) {
+            return Err("legacy constants exceed the actual uniform binding limit".into());
+        }
+        let index_data = draw.indices.map(|indices| {
+            indices
+                .iter()
+                .flat_map(|n| n.to_le_bytes())
+                .collect::<Vec<_>>()
+        });
+        let mut uploads = self.legacy_uploads.lock().unwrap();
+        uploads.reserve(
+            self,
+            data.iter()
+                .enumerate()
+                .filter(|(n, _)| used.contains(&(*n as u32, 0)))
+                .map(|(_, d)| d.len())
+                .chain(std::iter::once(draw.vertices.len()))
+                .chain(index_data.iter().map(Vec::len)),
+        )?;
         self.scope();
+        let mut encoder = self.device.create_command_encoder(&Default::default());
         let buffers: Vec<_> = (0..3)
             .map(|n| {
-                used.contains(&(n as u32, 0)).then(|| {
-                    self.device
-                        .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                            label: Some("D3D9 actual constants"),
-                            contents: data[n],
-                            usage: wgpu::BufferUsages::UNIFORM,
-                        })
-                })
+                used.contains(&(n as u32, 0))
+                    .then(|| uploads.write(self, &mut encoder, n, data[n]))
             })
             .collect();
         let groups: Vec<_> = (0..3)
@@ -432,7 +451,11 @@ impl Device {
                 if let Some(buffer) = &buffers[n] {
                     entries.push(wgpu::BindGroupEntry {
                         binding: 0,
-                        resource: buffer.as_entire_binding(),
+                        resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                            buffer,
+                            offset: 0,
+                            size: wgpu::BufferSize::new(data[n].len() as u64),
+                        }),
                     });
                 }
                 if n == 1 {
@@ -458,29 +481,14 @@ impl Device {
                 })
             })
             .collect();
-        let vertices = self
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("D3D9 actual shader vertices"),
-                contents: draw.vertices,
-                usage: wgpu::BufferUsages::VERTEX,
-            });
+        let vertices = uploads.write(self, &mut encoder, 3, draw.vertices);
         let view = target.texture.create_view(&wgpu::TextureViewDescriptor {
             format: Some(state.format()),
             ..Default::default()
         });
-        let indices = draw.indices.map(|indices| {
-            self.device
-                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some("D3D9 actual normalized index buffer"),
-                    contents: &indices
-                        .iter()
-                        .flat_map(|n| n.to_le_bytes())
-                        .collect::<Vec<_>>(),
-                    usage: wgpu::BufferUsages::INDEX,
-                })
-        });
-        let mut encoder = self.device.create_command_encoder(&Default::default());
+        let indices = index_data
+            .as_ref()
+            .map(|bytes| uploads.write(self, &mut encoder, 4, bytes));
         let query = self.draw_query()?;
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -518,12 +526,15 @@ impl Device {
             for (n, group) in groups.iter().enumerate() {
                 pass.set_bind_group(n as u32, group, &[]);
             }
-            pass.set_vertex_buffer(0, vertices.slice(..));
+            pass.set_vertex_buffer(0, vertices.slice(..draw.vertices.len() as u64));
             if query.is_some() {
                 pass.begin_occlusion_query(0);
             }
             if let Some(indices) = &indices {
-                pass.set_index_buffer(indices.slice(..), wgpu::IndexFormat::Uint32);
+                pass.set_index_buffer(
+                    indices.slice(..index_data.as_ref().unwrap().len() as u64),
+                    wgpu::IndexFormat::Uint32,
+                );
                 pass.draw_indexed(0..draw.indices.unwrap().len() as u32, 0, 0..1);
             } else {
                 pass.draw(0..(draw.vertices.len() / draw.stride as usize) as u32, 0..1);
@@ -535,7 +546,9 @@ impl Device {
         if let Some(query) = &query {
             query.resolve(&mut encoder);
         }
+        uploads.finish();
         self.queue.submit([encoder.finish()]);
+        uploads.recall();
         self.finish()?;
         if let Some(query) = query {
             query.submitted()?;
@@ -758,13 +771,18 @@ mod cache_timing {
             textures: &[],
         };
         let mut reference = None;
-        for enabled in [false, true] {
+        for (enabled, reuse) in [(false, false), (false, true), (true, false), (true, true)] {
             {
                 let mut cache = device.legacy_pipelines.lock().unwrap();
                 *cache = PipelineCache {
                     enabled,
                     ..Default::default()
                 };
+            }
+            {
+                let mut uploads = device.legacy_uploads.lock().unwrap();
+                *uploads = crate::legacy_upload::Uploads::default();
+                uploads.reuse = reuse;
             }
             device.clear(&mut target, 0xff0000ff).unwrap();
             device.draw_legacy(&mut target, &draw).unwrap();
@@ -777,11 +795,15 @@ mod cache_timing {
             let elapsed = start.elapsed();
             let stats = device.legacy_pipeline_cache_stats();
             eprintln!(
-                "finite_pipeline_batch enabled={enabled} draws=128 seconds={:.6} stats={stats:?}",
+                "finite_pipeline_batch pipeline_cache={enabled} upload_reuse={reuse} draws=128 seconds={:.6} stats={stats:?}",
                 elapsed.as_secs_f64()
             );
             assert_eq!(stats.builds, if enabled { 1 } else { 129 });
             assert_eq!(stats.hits, if enabled { 128 } else { 0 });
+            let upload_stats = device.legacy_upload_stats();
+            assert_eq!(upload_stats.allocations, if reuse { 3 } else { 387 });
+            assert_eq!(upload_stats.writes, 387);
+            eprintln!("finite_upload_allocations {upload_stats:?}");
             if let Some(ref pixels_before) = reference {
                 assert_eq!(&pixels, pixels_before);
             } else {
@@ -796,7 +818,9 @@ mod cache_timing {
         draw.vertex_constants = &[]; // the warm pipeline must still reject missing uniforms
         assert!(device.draw_legacy(&mut target, &draw).is_err());
         assert_eq!(device.legacy_pipeline_cache_stats().builds, before.builds);
+        draw.vertex_constants = &constants[..16]; // aligned but shorter than the shader's actual binding
+        assert!(device.draw_legacy(&mut target, &draw).is_err());
         draw.vertex_constants = &constants;
-        device.draw_legacy(&mut target, &draw).unwrap(); // failure did not poison scopes/cache
+        device.draw_legacy(&mut target, &draw).unwrap(); // failure did not poison scopes/cache/uploads
     }
 }
