@@ -133,6 +133,14 @@ fn operation(n: u32) -> Result<wgpu::BlendOperation> {
     })
 }
 impl RenderState {
+    pub(crate) fn pipeline_words(&self) -> Vec<(u32, u32)> {
+        self.values
+            .iter()
+            .filter(|(ty, _)| ![57, 193].contains(ty))
+            .map(|(&ty, &value)| (ty, value))
+            .collect()
+    }
+
     pub fn get(&self, ty: u32) -> Result<u32> {
         self.values
             .get(&ty)

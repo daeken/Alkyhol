@@ -5,6 +5,10 @@ typedef unsigned int U; typedef void *H;
 API H __stdcall GetStdHandle(U);API int __stdcall WriteFile(H,const void *,U,U *,H);
 API int __stdcall GetClipCursor(void *);API int __stdcall ClipCursor(const void *);
 API int __stdcall GetSystemMetrics(int);API int __stdcall ShowCursor(int);
+API H __stdcall CreateThread(H,U,U (__stdcall *)(H),H,U,U *);
+API U __stdcall WaitForSingleObject(H,U);API int __stdcall CloseHandle(H);
+static volatile U worker_ok;
+static U __stdcall worker(H ignored){(void)ignored;worker_ok=ShowCursor(0)==-1&&ShowCursor(0)==-2&&ShowCursor(1)==-1&&ShowCursor(1)==0;return 0;}
 static U words[160],used;static void put(U n){words[used++]=n;}
 static U stack(void){U n;__asm__ volatile("movl %%esp,%0":"=r"(n));return n;}
 U entry(void){
@@ -20,5 +24,8 @@ U entry(void){
  const int args[8]={0,0,1,7,1,0,0,1};
  const int counts[8]={-1,-2,-1,0,1,0,-1,0};
  for(U n=0;n<8;++n){put(ShowCursor(args[n])==counts[n]);put(stack()==before);}
+ H thread=CreateThread(0,0,worker,0,0,0);put(thread!=0);
+ put(thread&&WaitForSingleObject(thread,0xffffffff)==0);put(thread&&CloseHandle(thread)!=0);put(worker_ok==1);
+ put(ShowCursor(0)==-1);put(ShowCursor(1)==0);put(stack()==before);
  put(used+1);U done=0;if(!WriteFile(GetStdHandle((U)-11),words,used*4,&done,0)||done!=used*4)__builtin_trap();return 0;
 }

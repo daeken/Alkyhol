@@ -64,6 +64,10 @@ fn gpu_executes_legacy_shader_matrix_math_and_runtime_constant_changes() {
                 },
             )
             .unwrap();
+        let stats = device.legacy_pipeline_cache_stats();
+        assert_eq!(stats.builds, 1);
+        assert_eq!(stats.hits, if shift == 0. { 0 } else { 1 });
+        assert_eq!(stats.entries, 1);
         let pixels = device.readback(&target).unwrap();
         let at = |x: usize, y: usize| &pixels[(y * 32 + x) * 4..(y * 32 + x) * 4 + 4];
         assert_eq!(at(0, 0), [255, 0, 0, 255]);

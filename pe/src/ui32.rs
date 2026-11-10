@@ -49,7 +49,8 @@ pub(super) struct State {
     active: BTreeMap<u32, u32>,
     messages: BTreeMap<u32, VecDeque<[u32; 7]>>,
     mouse_traced: usize,
-    cursor_display_count: i32,
+    cursor_display_counts: BTreeMap<u32, i32>,
+    cursor_hidden: bool,
     capture: Option<(u32, u32)>,
 }
 impl State {
@@ -83,6 +84,23 @@ impl State {
             .native
             .present(width, height, pixels)
     }
+    fn sync_cursor_visibility(&mut self) {
+        if !self.cursor_hidden && !self.cursor_display_counts.values().any(|&count| count < 0) {
+            return;
+        }
+        let foreground = self
+            .windows
+            .values()
+            .find(|w| w.native.key())
+            .map(|w| w.owner);
+        let hide = foreground
+            .and_then(|owner| self.cursor_display_counts.get(&owner))
+            .is_some_and(|&count| count < 0);
+        if hide != self.cursor_hidden {
+            stop(host::cursor_visibility(!hide));
+            self.cursor_hidden = hide;
+        }
+    }
     fn app(&mut self) -> Result<&host::App> {
         if self.app.is_none() {
             let app = host::App::new()?;
@@ -95,7 +113,7 @@ impl State {
 }
 impl Drop for State {
     fn drop(&mut self) {
-        if self.cursor_display_count < 0 {
+        if self.cursor_hidden {
             let _ = host::cursor_visibility(true);
         }
         self.windows.clear();
@@ -744,6 +762,7 @@ fn peek_message(image: &LoadedImage32<'_>, a: &[u32; 16]) -> u32 {
             None => Vec::new(),
         }
     };
+    image.cpu.ui.borrow_mut().sync_cursor_visibility();
     sync_capture(image);
     for event in native {
         let mut ui = image.cpu.ui.borrow_mut();
@@ -1361,20 +1380,18 @@ pub(super) fn ensure_app(image: &LoadedImage32<'_>) {
 }
 
 pub(super) fn show_cursor(image: &LoadedImage32<'_>, show: u32) -> u32 {
-    if !host::is_main_thread() {
-        unsupported("ShowCursor worker input queues are not implemented");
-    }
     let mut ui = image.cpu.ui.borrow_mut();
     stop(ui.app());
-    let old = ui.cursor_display_count;
-    let next = old
+    let count = ui
+        .cursor_display_counts
+        .entry(alkyhol::ffi::GetCurrentThreadId())
+        .or_default();
+    *count = count
         .checked_add(if show != 0 { 1 } else { -1 })
         .unwrap_or_else(|| unsupported("ShowCursor display counter overflow"));
-    if (old < 0) != (next < 0) {
-        stop(host::cursor_visibility(next >= 0));
-    }
-    ui.cursor_display_count = next;
-    next as u32
+    let result = *count as u32;
+    ui.sync_cursor_visibility();
+    result
 }
 
 pub(super) fn unconfined_cursor_bounds(image: &LoadedImage32<'_>) -> [i32; 4] {

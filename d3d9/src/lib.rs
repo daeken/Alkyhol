@@ -23,7 +23,7 @@ mod render_state;
 pub use render_state::RenderState;
 mod texture;
 mod texture_stages;
-pub use legacy_gpu::{LegacyDraw, viewport_from_words};
+pub use legacy_gpu::{LegacyDraw, LegacyPipelineStats, viewport_from_words};
 pub mod fixed_vertex;
 pub mod fixed_xyz;
 pub use texture::{SampleFormat, SampledTexture, SamplerState, Texture2D, TextureBinding};
@@ -37,6 +37,7 @@ pub struct Device {
     info: wgpu::AdapterInfo,
     occlusion: Arc<std::sync::Mutex<occlusion::Tracker>>,
     null_textures: OnceLock<Result<[SampledTexture; 3]>>,
+    legacy_pipelines: std::sync::Mutex<legacy_gpu::PipelineCache>,
 }
 #[derive(Clone)]
 pub struct Target {
@@ -103,6 +104,7 @@ impl Device {
             info,
             occlusion: Arc::default(),
             null_textures: OnceLock::new(),
+            legacy_pipelines: Default::default(),
         })
     }
     pub fn adapter_name(&self) -> &str {

@@ -2529,6 +2529,28 @@ fn draw_buffer(
     }
     0
 }
+// Opt-in completed-Present throughput, without GPU readbacks beyond the existing
+// presentation path. Windows/game state is not changed by this diagnostic.
+fn profile_present(gpu: &Gpu) {
+    static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    if !*ENABLED.get_or_init(|| std::env::var_os("ALKYHOL_D3D9_PROFILE").is_some()) {
+        return;
+    }
+    std::thread_local! {
+        static PERIOD: std::cell::RefCell<Option<(std::time::Instant,u64)>> = const { std::cell::RefCell::new(None) };
+    }
+    PERIOD.with(|slot| {
+        let mut slot=slot.borrow_mut();
+        let (start,frames)=slot.get_or_insert_with(|| (std::time::Instant::now(),0));
+        *frames+=1;
+        let seconds=start.elapsed().as_secs_f64();
+        if seconds>=5. {
+            let stats=gpu.legacy_pipeline_cache_stats();
+            eprintln!("PE32 D3D9 completed Present profile: frames={frames} seconds={seconds:.6} fps={:.3} pipelines={stats:?}",*frames as f64/seconds);
+            *start=std::time::Instant::now();*frames=0;
+        }
+    });
+}
 fn capture_present(width: u32, height: u32, bytes: &[u8]) {
     use std::io::Write;
     static SERIAL: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
@@ -3944,6 +3966,7 @@ fn dispatch_inner(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32 {
                 .borrow()
                 .graphics_present(*hwnd, w, h, &bytes)
                 .unwrap_or_else(|e| unsupported(&e));
+            profile_present(gpu);
             0
         }
         (2, 10) => 1,

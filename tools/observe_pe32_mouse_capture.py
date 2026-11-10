@@ -28,7 +28,7 @@ def decode(data):
  if len(data)%4:raise ValueError('truncated capture report')
  words=list(struct.unpack('<'+'I'*(len(data)//4),data))
  if CLIP_QUERY:
-  expected=[0x434c5032,1]+[1]*113+[116]
+  expected=[0x434c5032,1]+[1]*120+[123]
   if words!=expected:raise ValueError('actual desktop clip bounds, output guards or stack differ: '+repr(words))
   return words
  if CLIENT_BUTTONS:
@@ -70,5 +70,5 @@ if __name__=='__main__':
  if a.client_default:CLIENT_DEFAULT=True;PREFIX='mouse-client-default';FILES=[PREFIX+'.exe']
  if a.background:BACKGROUND=True;PREFIX='mouse-background-capture';FILES=[PREFIX+'.exe']
  if a.client_buttons:CLIENT_BUTTONS=True;PREFIX='mouse-buttons-default';FILES=[PREFIX+'.exe'];SOURCES=['mouse-defaults.c','mouse-capture.def','mouse-defaults-user.def'];SYMBOLS=SYMBOLS+[('GetWindowInfo',8)]
- if a.clip_query:CLIP_QUERY=True;PREFIX='cursor-clip-query';FILES=[PREFIX+'.exe'];SOURCES=['cursor-clip-query.c','mouse-capture.def','cursor-clip-query-user.def'];SYMBOLS=SYMBOLS+[('GetClipCursor',4),('ClipCursor',4),('GetSystemMetrics',4),('ShowCursor',4)]
+ if a.clip_query:CLIP_QUERY=True;PREFIX='cursor-clip-query';FILES=[PREFIX+'.exe'];SOURCES=['cursor-clip-query.c','cursor-clip-query.def','cursor-clip-query-user.def'];SYMBOLS=SYMBOLS+[('GetClipCursor',4),('ClipCursor',4),('GetSystemMetrics',4),('ShowCursor',4),('CreateThread',24),('WaitForSingleObject',8),('CloseHandle',4)]
  execute(d,a.native,a.runner) if a.host or a.native else build(d)

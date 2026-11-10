@@ -8603,3 +8603,34 @@ placement. Six protocol tests pass, including corruption of every report word.
 This tests API results and real host calls, not an independent measurement of
 cursor pixels. The identical-PE Windows observer is wired into existing CI;
 its new native result and original movement replay remain pending.
+
+The 18d0402 original replay (PID 93234) passed GetClipCursor but stopped at
+ShowCursor's over-restrictive host-main-thread guard after 159.985 seconds.
+The original UI-owning guest thread differs from AppKit's host main thread;
+controls for that terminal process are revoked. The counter is now keyed by
+actual guest thread ID. Only the current foreground window owner's negative
+count hides the native cursor, and native operations dispatch through the
+existing synchronous AppKit main-thread queue. Message pumping reconciles focus
+changes; cleanup balances the outstanding native hide. AttachThreadInput remains
+unsupported. The extended owned PE also creates a real guest worker and checks
+independent balanced counts, thread completion, handle closure and the original
+thread's unchanged counter. All 123 words pass on physical Rosetta at normal and
+forced placement; six protocol tests pass. This supersedes the earlier 116-word
+single-thread witness and the host-thread restriction, without claiming an
+independently observed native Windows result for the new 123-word binary.
+
+CI 42884333603's native-number-format job has now observed the unchanged
+70-word mouse-default/context PE on Windows Server 26100 AMD64. Its full output
+and source/PE identities agree with physical Rosetta, including forced placement.
+The literal report is frozen as `pe/reference/pe32-mouse-defaults-windows-v1.json`
+(artifact 13795487310). This is finite window-message evidence. The workflow's
+separate native-pe32-startup job failed; no whole-workflow success is claimed.
+
+The programmable D3D9 pipeline cache described in d3d9.md passes all 34 library
+checks and 16 targeted integration checks on physical M4/Rosetta, with no ignored
+cases in those selected runs. D3D9 all-target Clippy and PE library Clippy pass;
+six cursor protocol tests pass. The two cache admission/identity tests and the
+cached/uncached pixel/timing/failure test exercise the new cache units. Shader
+quality, geometry, texture/mip/color-space behavior and all per-draw dynamic
+validation remain intact. Original DAO's cursor fix and cache integration must
+still be replayed; the finite timing result is not application frame rate.

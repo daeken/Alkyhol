@@ -2,10 +2,80 @@
 //! profile: float constants, triangle lists and explicit float vertex attributes.
 use super::{Depth, Device, RenderState, Result, Target, TextureBinding, depth, legacy};
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::{BTreeMap, BTreeSet, HashMap, VecDeque},
+    sync::Arc,
     sync::atomic::Ordering,
 };
 use wgpu::util::DeviceExt;
+/// Per-device bounded cache counters; these measure reuse, not game frame rate.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct LegacyPipelineStats {
+    pub hits: u64,
+    pub builds: u64,
+    pub evictions: u64,
+    pub entries: usize,
+    pub key_bytes: usize,
+}
+#[derive(Clone, Hash, PartialEq, Eq)]
+struct PipelineKey {
+    vs: Vec<u8>,
+    ps: Vec<u8>,
+    stride: u64,
+    attributes: Vec<wgpu::VertexAttribute>,
+    state: Vec<(u32, u32)>,
+    depth: Option<wgpu::TextureFormat>,
+}
+impl PipelineKey {
+    fn bytes(&self) -> usize {
+        self.vs.len()
+            + self.ps.len()
+            + self.attributes.len() * std::mem::size_of::<wgpu::VertexAttribute>()
+            + self.state.len() * 8
+    }
+}
+struct PreparedPipeline {
+    pipeline: wgpu::RenderPipeline,
+    used: BTreeSet<(u32, u32)>,
+    textures: BTreeSet<u32>,
+    dimensions: BTreeMap<u32, naga::ImageDimension>,
+}
+pub(crate) struct PipelineCache {
+    entries: HashMap<Arc<PipelineKey>, Arc<PreparedPipeline>>,
+    order: VecDeque<Arc<PipelineKey>>,
+    stats: LegacyPipelineStats,
+    enabled: bool,
+}
+impl Default for PipelineCache {
+    fn default() -> Self {
+        Self {
+            entries: HashMap::new(),
+            order: VecDeque::new(),
+            stats: Default::default(),
+            enabled: std::env::var_os("ALKYHOL_D3D9_DISABLE_PIPELINE_CACHE").is_none(),
+        }
+    }
+}
+impl PipelineCache {
+    const LIMIT: usize = 256;
+    const BYTE_LIMIT: usize = 32 * 1024 * 1024;
+    fn insert(&mut self, key: PipelineKey, pipeline: Arc<PreparedPipeline>) {
+        let bytes = key.bytes();
+        if !self.enabled || bytes > Self::BYTE_LIMIT {
+            return;
+        }
+        while self.entries.len() >= Self::LIMIT || self.stats.key_bytes + bytes > Self::BYTE_LIMIT {
+            let oldest = self.order.pop_front().unwrap();
+            self.stats.key_bytes -= oldest.bytes();
+            self.entries.remove(&oldest);
+            self.stats.evictions += 1;
+        }
+        let key = Arc::new(key);
+        self.entries.insert(key.clone(), pipeline);
+        self.order.push_back(key);
+        self.stats.key_bytes += bytes;
+        self.stats.entries = self.entries.len();
+    }
+}
 pub struct LegacyDraw<'a> {
     /// Normalized indices into this draw's vertex slice; uploaded as a GPU INDEX buffer.
     pub indices: Option<&'a [u32]>,
@@ -119,6 +189,110 @@ fn texture_dimensions(
     Ok(result)
 }
 impl Device {
+    pub fn legacy_pipeline_cache_stats(&self) -> LegacyPipelineStats {
+        self.legacy_pipelines.lock().unwrap().stats
+    }
+    fn prepare_pipeline(
+        &self,
+        draw: &LegacyDraw<'_>,
+        state: &RenderState,
+        depth: Option<&Depth>,
+        depth_state: Option<wgpu::DepthStencilState>,
+    ) -> Result<Arc<PreparedPipeline>> {
+        let key = PipelineKey {
+            vs: draw.vertex_spirv.to_vec(),
+            ps: draw.pixel_spirv.to_vec(),
+            stride: draw.stride,
+            attributes: draw.attributes.to_vec(),
+            state: state.pipeline_words(),
+            depth: depth.map(|d| d.texture.format()),
+        };
+        let mut cache = self.legacy_pipelines.lock().unwrap();
+        if let Some(prepared) = cache.entries.get(&key).cloned() {
+            cache.stats.hits += 1;
+            return Ok(prepared);
+        }
+        let mut vs = legacy::lower_spirv(draw.vertex_spirv, legacy::Stage::Vertex)?;
+        legacy::vertex_pixel_centers(&mut vs)?;
+        let mut ps = legacy::lower_spirv(draw.pixel_spirv, legacy::Stage::Pixel)?;
+        if depth.is_some() {
+            crate::depth_bias::lower(
+                &mut ps,
+                f32::from_bits(state.get(195)?),
+                f32::from_bits(state.get(175)?),
+            )?;
+        }
+        crate::alpha_test::lower(&mut ps, state.get(15)? != 0, state.get(25)?, state.get(24)?)?;
+        let mut used = BTreeSet::new();
+        resources(&vs, 0, &mut used)?;
+        resources(&ps, 1, &mut used)?;
+        let vs_text = legacy::wgsl(&vs)?;
+        let ps_text = legacy::wgsl(&ps)?;
+        let mut textures = BTreeSet::new();
+        for &(group, binding) in &used {
+            if group == 1 && binding >= 16 {
+                textures.insert((binding - 16) % 16);
+            }
+        }
+        let dimensions = texture_dimensions(&ps, &used)?;
+        if textures.iter().any(|slot| !dimensions.contains_key(slot)) {
+            return Err("pixel sampler has no supported sampled image declaration".into());
+        }
+        self.scope();
+        let vertex = self
+            .device
+            .create_shader_module(wgpu::ShaderModuleDescriptor {
+                label: Some("translated D3D9 vertex shader"),
+                source: wgpu::ShaderSource::Wgsl(vs_text.into()),
+            });
+        let pixel = self
+            .device
+            .create_shader_module(wgpu::ShaderModuleDescriptor {
+                label: Some("translated D3D9 pixel shader"),
+                source: wgpu::ShaderSource::Wgsl(ps_text.into()),
+            });
+        let pipeline = self
+            .device
+            .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some("D3D9 programmable triangle"),
+                layout: None,
+                vertex: wgpu::VertexState {
+                    module: &vertex,
+                    entry_point: Some("main"),
+                    compilation_options: Default::default(),
+                    buffers: &[wgpu::VertexBufferLayout {
+                        array_stride: draw.stride,
+                        step_mode: wgpu::VertexStepMode::Vertex,
+                        attributes: draw.attributes,
+                    }],
+                },
+                primitive: state.primitive(),
+                depth_stencil: depth_state,
+                multisample: state.multisample(),
+                fragment: Some(wgpu::FragmentState {
+                    module: &pixel,
+                    entry_point: Some("main"),
+                    compilation_options: Default::default(),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: state.format(),
+                        blend: state.blend(),
+                        write_mask: state.writes(),
+                    })],
+                }),
+                multiview: None,
+                cache: None,
+            });
+        self.finish()?;
+        let prepared = Arc::new(PreparedPipeline {
+            pipeline,
+            used,
+            textures,
+            dimensions,
+        });
+        cache.stats.builds += 1;
+        cache.insert(key, prepared.clone());
+        Ok(prepared)
+    }
     pub fn draw_legacy(&self, target: &mut Target, draw: &LegacyDraw<'_>) -> Result<()> {
         self.draw_legacy_state(target, draw, &RenderState::default())
     }
@@ -189,22 +363,11 @@ impl Device {
         {
             return Err("indexed draw range outside vertex storage or triangle budget".into());
         }
-        let mut vs = legacy::lower_spirv(draw.vertex_spirv, legacy::Stage::Vertex)?;
-        legacy::vertex_pixel_centers(&mut vs)?;
-        let mut ps = legacy::lower_spirv(draw.pixel_spirv, legacy::Stage::Pixel)?;
-        if depth.is_some() {
-            crate::depth_bias::lower(
-                &mut ps,
-                f32::from_bits(state.get(195)?),
-                f32::from_bits(state.get(175)?),
-            )?;
-        }
-        crate::alpha_test::lower(&mut ps, state.get(15)? != 0, state.get(25)?, state.get(24)?)?;
-        let mut used = BTreeSet::new();
-        resources(&vs, 0, &mut used)?;
-        resources(&ps, 1, &mut used)?;
-        let vs_text = legacy::wgsl(&vs)?;
-        let ps_text = legacy::wgsl(&ps)?;
+        let prepared = self.prepare_pipeline(draw, state, depth, depth_state)?;
+        let used = &prepared.used;
+        let textures = &prepared.textures;
+        let dimensions = &prepared.dimensions;
+        let pipeline = &prepared.pipeline;
         let viewport_data: Vec<u8> = [viewport[2], viewport[3], viewport[0], viewport[1]]
             .iter()
             .flat_map(|n| n.to_le_bytes())
@@ -217,19 +380,9 @@ impl Device {
                 return Err("missing/alignment-invalid legacy constant buffer".into());
             }
         }
-        let mut textures = BTreeSet::new();
-        for &(group, binding) in &used {
-            if group == 1 && binding >= 16 {
-                textures.insert((binding - 16) % 16);
-            }
-        }
-        let dimensions = texture_dimensions(&ps, &used)?;
-        if textures.iter().any(|slot| !dimensions.contains_key(slot)) {
-            return Err("pixel sampler has no supported sampled image declaration".into());
-        }
         // Validate real bindings first. A locked/uninitialized/mismatched real
         // resource must not acquire the NULL sampler behavior.
-        for &slot in &textures {
+        for &slot in textures {
             if let Some(input) = draw.textures.iter().find(|t| t.slot == slot) {
                 if input.texture.shares_target(target) {
                     return Err("D3D9 draw cannot sample its current render target".into());
@@ -261,49 +414,6 @@ impl Device {
             })
             .collect::<Result<_>>()?;
         self.scope();
-        let vertex = self
-            .device
-            .create_shader_module(wgpu::ShaderModuleDescriptor {
-                label: Some("translated D3D9 vertex shader"),
-                source: wgpu::ShaderSource::Wgsl(vs_text.into()),
-            });
-        let pixel = self
-            .device
-            .create_shader_module(wgpu::ShaderModuleDescriptor {
-                label: Some("translated D3D9 pixel shader"),
-                source: wgpu::ShaderSource::Wgsl(ps_text.into()),
-            });
-        let pipeline = self
-            .device
-            .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                label: Some("D3D9 programmable triangle"),
-                layout: None,
-                vertex: wgpu::VertexState {
-                    module: &vertex,
-                    entry_point: Some("main"),
-                    compilation_options: Default::default(),
-                    buffers: &[wgpu::VertexBufferLayout {
-                        array_stride: draw.stride,
-                        step_mode: wgpu::VertexStepMode::Vertex,
-                        attributes: draw.attributes,
-                    }],
-                },
-                primitive: state.primitive(),
-                depth_stencil: depth_state,
-                multisample: state.multisample(),
-                fragment: Some(wgpu::FragmentState {
-                    module: &pixel,
-                    entry_point: Some("main"),
-                    compilation_options: Default::default(),
-                    targets: &[Some(wgpu::ColorTargetState {
-                        format: state.format(),
-                        blend: state.blend(),
-                        write_mask: state.writes(),
-                    })],
-                }),
-                multiview: None,
-                cache: None,
-            });
         let buffers: Vec<_> = (0..3)
             .map(|n| {
                 used.contains(&(n as u32, 0)).then(|| {
@@ -394,7 +504,7 @@ impl Device {
                 })],
                 ..Default::default()
             });
-            pass.set_pipeline(&pipeline);
+            pass.set_pipeline(pipeline);
             pass.set_stencil_reference(state.get(57)? & 255);
             pass.set_blend_constant(state.constant());
             pass.set_viewport(
@@ -494,5 +604,199 @@ mod null_tests {
                     .unwrap();
             assert!(texture_dimensions(&module, &BTreeSet::from([(1, 16)])).is_err());
         }
+    }
+}
+
+#[cfg(test)]
+mod cache_tests {
+    use super::*;
+    fn key() -> PipelineKey {
+        PipelineKey {
+            vs: vec![1, 2, 3],
+            ps: vec![4, 5, 6],
+            stride: 32,
+            attributes: vec![wgpu::VertexAttribute {
+                format: wgpu::VertexFormat::Float32x4,
+                offset: 0,
+                shader_location: 0,
+            }],
+            state: RenderState::default().pipeline_words(),
+            depth: None,
+        }
+    }
+    #[test]
+    fn exact_pipeline_identity_covers_shaders_layout_attachment_and_every_static_state() {
+        let original = key();
+        for at in 0..original.state.len() {
+            let mut changed = key();
+            changed.state[at].1 ^= 1;
+            assert!(changed != original);
+        }
+        let mut variants = vec![key(); 7];
+        variants[0].vs[0] ^= 1;
+        variants[1].ps[0] ^= 1;
+        variants[2].stride += 4;
+        variants[3].attributes[0].offset += 4;
+        variants[4].attributes[0].shader_location += 1;
+        variants[5].attributes[0].format = wgpu::VertexFormat::Float32x3;
+        variants[6].depth = Some(wgpu::TextureFormat::Depth16Unorm);
+        assert!(variants.iter().all(|v| *v != original));
+        let mut state = RenderState::default();
+        state.set(57, 123).unwrap();
+        state.set(193, 0xaabbccdd).unwrap();
+        assert_eq!(state.pipeline_words(), original.state);
+        assert!(!original.state.iter().any(|(id, _)| [57, 193].contains(id)));
+    }
+    #[test]
+    #[ignore = "requires an actual GPU"]
+    fn bounded_fifo_admission_releases_keys_and_rejects_oversize_and_disabled_entries() {
+        let device = Device::new().unwrap();
+        let attributes = [
+            wgpu::VertexAttribute {
+                format: wgpu::VertexFormat::Float32x4,
+                offset: 0,
+                shader_location: 0,
+            },
+            wgpu::VertexAttribute {
+                format: wgpu::VertexFormat::Float32x4,
+                offset: 16,
+                shader_location: 1,
+            },
+        ];
+        let draw = LegacyDraw {
+            indices: None,
+            vertex_spirv: include_bytes!("../tests/fixtures/legacy-color.vs.spv"),
+            pixel_spirv: include_bytes!("../tests/fixtures/legacy-color.ps.spv"),
+            vertices: &[],
+            stride: 32,
+            attributes: &attributes,
+            vertex_constants: &[],
+            pixel_constants: &[],
+            textures: &[],
+        };
+        let prepared = device
+            .prepare_pipeline(&draw, &RenderState::default(), None, None)
+            .unwrap();
+        let mut cache = PipelineCache {
+            enabled: true,
+            ..Default::default()
+        };
+        for n in 0..=PipelineCache::LIMIT {
+            let mut k = key();
+            k.stride = n as u64;
+            cache.insert(k, prepared.clone());
+        }
+        assert_eq!(cache.stats.entries, PipelineCache::LIMIT);
+        assert_eq!(cache.stats.evictions, 1);
+        let mut first = key();
+        first.stride = 0;
+        assert!(!cache.entries.contains_key(&first));
+        let bytes = cache.stats.key_bytes;
+        let mut oversized = key();
+        oversized.vs = vec![0; PipelineCache::BYTE_LIMIT + 1];
+        cache.insert(oversized, prepared.clone());
+        assert_eq!(cache.stats.key_bytes, bytes);
+        let mut large = key();
+        large.ps = vec![0; PipelineCache::BYTE_LIMIT / 2];
+        cache.insert(large.clone(), prepared.clone());
+        large.stride += 1;
+        cache.insert(large, prepared.clone());
+        assert_eq!(cache.entries.len(), 1);
+        assert!(cache.stats.key_bytes <= PipelineCache::BYTE_LIMIT);
+        let mut disabled = PipelineCache {
+            enabled: false,
+            ..Default::default()
+        };
+        disabled.insert(key(), prepared);
+        assert_eq!(disabled.stats, LegacyPipelineStats::default());
+    }
+}
+
+#[cfg(test)]
+mod cache_timing {
+    use super::*;
+    #[test]
+    #[ignore = "requires an actual GPU; prints finite draw-batch timing, not game FPS"]
+    fn cached_and_uncached_draws_match_and_failed_pipelines_are_not_admitted() {
+        let device = Device::new().unwrap();
+        let mut target = device.create_target(32, 32).unwrap();
+        let vertices: Vec<u8> = [(0f32, 0.75f32), (0.75, -0.75), (-0.75, -0.75)]
+            .into_iter()
+            .flat_map(|(x, y)| {
+                [x, y, 0.5, 1., 1., 0., 0., 1.]
+                    .into_iter()
+                    .flat_map(f32::to_le_bytes)
+            })
+            .collect();
+        let constants: Vec<u8> = [
+            1f32, 0., 0., 0., 0., 1., 0., 0., 0., 0., 1., 0., 0., 0., 0., 1.,
+        ]
+        .into_iter()
+        .flat_map(f32::to_le_bytes)
+        .collect();
+        let attributes = [
+            wgpu::VertexAttribute {
+                format: wgpu::VertexFormat::Float32x4,
+                offset: 0,
+                shader_location: 0,
+            },
+            wgpu::VertexAttribute {
+                format: wgpu::VertexFormat::Float32x4,
+                offset: 16,
+                shader_location: 1,
+            },
+        ];
+        let mut draw = LegacyDraw {
+            indices: None,
+            vertex_spirv: include_bytes!("../tests/fixtures/legacy-color.vs.spv"),
+            pixel_spirv: include_bytes!("../tests/fixtures/legacy-color.ps.spv"),
+            vertices: &vertices,
+            stride: 32,
+            attributes: &attributes,
+            vertex_constants: &constants,
+            pixel_constants: &[],
+            textures: &[],
+        };
+        let mut reference = None;
+        for enabled in [false, true] {
+            {
+                let mut cache = device.legacy_pipelines.lock().unwrap();
+                *cache = PipelineCache {
+                    enabled,
+                    ..Default::default()
+                };
+            }
+            device.clear(&mut target, 0xff0000ff).unwrap();
+            device.draw_legacy(&mut target, &draw).unwrap();
+            device.readback(&target).unwrap();
+            let start = std::time::Instant::now();
+            for _ in 0..128 {
+                device.draw_legacy(&mut target, &draw).unwrap();
+            }
+            let pixels = device.readback(&target).unwrap();
+            let elapsed = start.elapsed();
+            let stats = device.legacy_pipeline_cache_stats();
+            eprintln!(
+                "finite_pipeline_batch enabled={enabled} draws=128 seconds={:.6} stats={stats:?}",
+                elapsed.as_secs_f64()
+            );
+            assert_eq!(stats.builds, if enabled { 1 } else { 129 });
+            assert_eq!(stats.hits, if enabled { 128 } else { 0 });
+            if let Some(ref pixels_before) = reference {
+                assert_eq!(&pixels, pixels_before);
+            } else {
+                reference = Some(pixels);
+            }
+        }
+        let before = device.legacy_pipeline_cache_stats();
+        draw.stride = 16; // attributes no longer fit: genuine wgpu pipeline failure
+        assert!(device.draw_legacy(&mut target, &draw).is_err());
+        assert_eq!(device.legacy_pipeline_cache_stats(), before);
+        draw.stride = 32;
+        draw.vertex_constants = &[]; // the warm pipeline must still reject missing uniforms
+        assert!(device.draw_legacy(&mut target, &draw).is_err());
+        assert_eq!(device.legacy_pipeline_cache_stats().builds, before.builds);
+        draw.vertex_constants = &constants;
+        device.draw_legacy(&mut target, &draw).unwrap(); // failure did not poison scopes/cache
     }
 }
