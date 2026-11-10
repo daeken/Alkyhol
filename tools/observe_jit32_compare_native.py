@@ -20,7 +20,7 @@ def observe():
     raw=host.read_bytes();at=struct.unpack_from('<I',raw,0x3c)[0]
     if raw[at:at+4]!=b'PE\0\0' or struct.unpack_from('<H',raw,at+4)[0]!=0x8664:raise ValueError('observer is not PE64 AMD64')
     with data.open('wb') as stream:r=subprocess.run([str(host)],stdout=stream,stderr=subprocess.PIPE,timeout=30,check=True)
-    if data.stat().st_size!=18432*72:raise ValueError('incomplete native observation')
+    if data.stat().st_size!=18432*72:raise ValueError(f'incomplete native observation: {data.stat().st_size} bytes, expected {18432*72}')
     report=dict(backend='native Windows x64 original SIMD assembly',source_sha256=sha(source),observer_sha256=sha(host),observation_sha256=sha(data),rows=18432,native_machine=native.value,process_machine=process.value,host=platform.platform(),processor=platform.processor(),stderr_hex=r.stderr.hex(),revision=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip())
     (output/'report.json').write_text(json.dumps(report,indent=2)+'\n');print(json.dumps(report,indent=2))
 if __name__=='__main__':observe()

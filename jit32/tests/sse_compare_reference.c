@@ -2,6 +2,10 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#ifdef _WIN32
+#include <io.h>
+#include <fcntl.h>
+#endif
 typedef struct {uint64_t word[2];} Vector;
 #define ASM(OP) __asm__ volatile("movdqu %[a], %%xmm0\n\tmovdqu %[b], %%xmm1\n\tldmxcsr %[before]\n\tpushq %[initial]\n\tpopfq\n\t" OP "\n\tstmxcsr %[after]\n\tmovdqu %%xmm0, %[out]\n\tpushfq\n\tpopq %[flags]" : [out]"=m"(*out),[after]"=m"(*after),[flags]"=r"(flags) : [a]"m"(*a),[b]"m"(*b),[before]"m"(before),[initial]"r"(initial) : "xmm0","xmm1","cc","memory")
 #define PREDICATES(OP) switch(pred){case 0:ASM(OP " $0, %%xmm1, %%xmm0");break;case 1:ASM(OP " $1, %%xmm1, %%xmm0");break;case 2:ASM(OP " $2, %%xmm1, %%xmm0");break;case 3:ASM(OP " $3, %%xmm1, %%xmm0");break;case 4:ASM(OP " $4, %%xmm1, %%xmm0");break;case 5:ASM(OP " $5, %%xmm1, %%xmm0");break;case 6:ASM(OP " $6, %%xmm1, %%xmm0");break;case 7:ASM(OP " $7, %%xmm1, %%xmm0");break;}
@@ -11,6 +15,9 @@ static void execute(unsigned kind,unsigned pred,uint32_t before,const Vector *a,
  *eflags=(uint32_t)flags;
 }
 int main(void){
+#ifdef _WIN32
+ if(_setmode(_fileno(stdout),_O_BINARY)<0)return 4;
+#endif
  const uint32_t single[]={0,0x80000000,0x3f800000,0xbf800000,0x7f800000,0xff800000,0x7fc01234,0x7f801234,1,0x7fffff,0x800000,0x40000000,0xc0000000,0x7f7fffff,0x3f7fffff,0xffc05678};
  const uint64_t wide[]={0,UINT64_C(0x8000000000000000),UINT64_C(0x3ff0000000000000),UINT64_C(0xbff0000000000000),UINT64_C(0x7ff0000000000000),UINT64_C(0xfff0000000000000),UINT64_C(0x7ff8000000001234),UINT64_C(0x7ff0000000001234),1,UINT64_C(0xfffffffffffff),UINT64_C(0x10000000000000),UINT64_C(0x4000000000000000),UINT64_C(0xc000000000000000),UINT64_C(0x7fefffffffffffff),UINT64_C(0x3fefffffffffffff),UINT64_C(0xfff8000000005678)};
  uint32_t saved;__asm__ volatile("stmxcsr %0":"=m"(saved));

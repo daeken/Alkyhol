@@ -28,6 +28,7 @@ jobs:
       - name: Observe original comparison assembly on native x64 Windows
         run: python tools/observe_jit32_compare_native.py
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: native-simd-comparison
           path: local/jit32/native-compare-reference/
