@@ -3,6 +3,41 @@ on: [push, pull_request]
 permissions:
   contents: read
 jobs:
+  number-format-fixture:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build the owned witness for DAO's reached custom number-format call
+        run: python tools/check_pe32_number_format.py --build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pe32-number-format-input
+          path: |
+            local/pe/number-format/number-format.exe
+            local/pe/number-format/inputs.json
+  native-number-format:
+    needs: number-format-fixture
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          name: pe32-number-format-input
+          path: local/pe/number-format
+      - name: Observe the identical PE's custom number formatting on native Windows
+        run: python tools/check_pe32_number_format.py --native
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-number-format
+          path: local/pe/number-format
   pe32-startup:
     runs-on: macos-latest
     steps:

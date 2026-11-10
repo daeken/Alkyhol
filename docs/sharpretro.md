@@ -1248,3 +1248,13 @@ observed; the original process continues through scene loading at this live
 observation. This clears that specific application stop, without establishing a
 complete save read, restored world, native in-engine frame or Rosetta progress
 parity. No further input is injected after handing the desktop back.
+
+That same replay subsequently stops explicitly at KERNEL32!GetNumberFormatW,
+after 10,097,356,582 guest instructions and 161 entries (status 78). The original
+caller supplies a custom NUMBERFMTW; the host locale is not a substitute for
+those fields. EXE/provided DLL hashes and all eleven staged input byte hashes
+remain unchanged. No original native 3D scene was observed. Immutable evidence
+is retained in ignored `local/jit32/shared-game-number-format-before`; the
+process is terminal and all its UI control is revoked. An independently authored
+PE witness covers custom decimal rounding, grouping, negative modes and output
+capacities; native Windows observation is pending, not a semantic test pass.
