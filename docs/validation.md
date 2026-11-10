@@ -8647,3 +8647,22 @@ versus twice in full mode; full mode retains 52 raw COM lines versus zero in
 first mode. Multiple interface kinds can share a textual method name, so first
 is defined by gate ID, not name. PE library Clippy passes. This does not itself
 establish a measured game-performance improvement.
+
+Clean 6731c0f's original Rosetta replay (PID 99451) restored the same Aedan
+Castle Cousland scene with the bounded pipeline cache active. A guarded native
+right press/release reached actual WM_RBUTTONDOWN/UP (0x204/0x205), passed both
+GetClipCursor and ShowCursor, and continued rendering afterward with no explicit
+stop. The frame/call/process evidence remains local in
+`local/pe/dao-cached/right-click-replay.json`. This is a finite reproduction of
+the reported right-click crash, not comprehensive movement/game compatibility.
+Original EXE/provided DLL hashes remain unchanged. The coordinator deliberately
+terminated this owned process (SIGTERM, -15) to replace it with the first-call
+logging fix; this termination is not a game crash, and all old controls are
+revoked.
+
+In that replay the cache settled at 110 successful builds, no evictions and
+2,166,808 key bytes, with subsequent draws reusing existing pipelines. Completed
+world presentation intervals were approximately 1.5–2.4 FPS before additional
+input; this is still slow. The separate 6.1x owned draw-batch result must not be
+presented as a sixfold game FPS improvement. The quieter 86af1c5 replay is next;
+no improved original-scene rate is established yet.
