@@ -8357,3 +8357,23 @@ native original in-engine frame is established. The guard/call identity needs
 better native fault diagnostics; it is not yet diagnosed as corrupt game state.
 Evidence is preserved in ignored `local/jit32/shared-game-fetch-before`; its
 process identity is revoked. The SQRTSD loading route is still unverified.
+
+Native denied fetch/read reports now resolve inaccessible import traps through
+the owned diagnostic registry, converting guest offsets to host addresses before
+that metadata lookup. Denied fetches include current flags/registers and up to
+32 bytes of independently checked stack; denied data reads name their target.
+No Win32 thread-context sampling, signal injection or permission relaxation is
+used. Four actual owned deferred-function/data PE cases (normal/rebased) retain
+status 78 and their prior output marker while reporting the correct import;
+all six frozen Windows ABI/TLS/heap shared-host checks also pass. Raw assertions
+are in ignored `local/jit32/guard-import-diagnostics.json`.
+
+A separate local metadata-only inspector exits before the first requested guest
+instruction. With the original run's launch profile/environment, its inaccessible
+import range starts at 0x124000 and 0x12f000 labels CopyFileW; the earlier table
+prefix is unchanged by the GetLocalTime addition. This points to a deliberately
+blocked copy import as the loading stop, rather than establishing corrupt game
+state. The stopped run did not itself print that label or its argument paths;
+a fresh replay must confirm the call. Private mapping evidence stays alongside
+`local/jit32/shared-game-fetch-before`. No additional game execution or frame
+compatibility is inferred from mapping-only inspection.

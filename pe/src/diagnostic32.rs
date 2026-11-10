@@ -41,7 +41,7 @@ impl Traps {
             })
             .map(|i| self.memory.base as u32 + (i * PAGE) as u32)
     }
-    fn at(&self, address: u64) -> Option<&str> {
+    pub(super) fn at(&self, address: u64) -> Option<&str> {
         let start = self.memory.base as u64;
         let offset = address.checked_sub(start)?;
         if offset >= self.memory.len as u64 {

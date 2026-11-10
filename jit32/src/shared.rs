@@ -228,7 +228,18 @@ fn execute_inner(context: &ExecutionContext32<'_>, entry: u32, stack: u32) -> Re
                 match context.read(pc.wrapping_add(n), 1, true) {
                     Ok(b) => bytes.push(b[0]),
                     Err(_) if !bytes.is_empty() => break,
-                    Err(e) => return Err(e),
+                    Err(e) => {
+                        // A denied fetch can be a deliberately inaccessible
+                        // diagnostic import, rather than an ISA/memory defect.
+                        // Read only already admitted stack bytes; never enter
+                        // the host's Win32 thread-context/suspend APIs.
+                        let stack = context.read(state[4] as u32, 32, false).ok();
+                        return Err(format!(
+                            "{e}; pc={pc:#x}; flags={:#x}; gpr={:x?}; checked_stack={stack:02x?}",
+                            state[16],
+                            &state[..8]
+                        ));
+                    }
                 }
             }
             let instruction = Rc::new(
@@ -275,8 +286,11 @@ fn execute_inner(context: &ExecutionContext32<'_>, entry: u32, stack: u32) -> Re
         }
         if let Some(fault) = memory.fault.take() {
             state = snapshot;
+            let target = u32::try_from(fault.address)
+                .map(|address| context.location(address))
+                .unwrap_or_else(|_| "outside the 32-bit guest address space".into());
             return Err(format!(
-                "JIT32 guest fault pc={pc:#x} {fault:?} registers={:x?}",
+                "JIT32 guest fault pc={pc:#x} {fault:?}; target={target}; registers={:x?}",
                 &state[..8]
             ));
         }

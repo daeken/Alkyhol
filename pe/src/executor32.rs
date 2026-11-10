@@ -31,6 +31,15 @@ pub(super) fn installed() -> bool {
 }
 impl ExecutionContext32<'_> {
     pub fn location(&self, address: u32) -> String {
+        if let Some(label) = self
+            .image
+            .cpu
+            .diagnostic
+            .as_ref()
+            .and_then(|t| t.at(host_address(address as usize) as u64))
+        {
+            return format!("unimplemented import {label}");
+        }
         self.image
             .cpu
             .modules
@@ -128,7 +137,9 @@ impl ExecutionContext32<'_> {
     pub fn read(&self, address: u32, length: usize, executable: bool) -> Result<Vec<u8>> {
         if !self.permits(address as u64, length, if executable { 4 } else { 1 }) {
             return Err(format!(
-                "guest read/fetch outside admitted storage: {address:#x}+{length:#x}"
+                "guest {} outside admitted storage: {address:#x}+{length:#x}; {}",
+                if executable { "fetch" } else { "read" },
+                self.location(address)
             ));
         }
         Ok(unsafe { std::slice::from_raw_parts(address as *const u8, length) }.to_vec())
