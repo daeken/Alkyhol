@@ -7727,3 +7727,16 @@ native tests across all supported lane widths, directions, aliasing, register/
 aligned-memory count sources, full low-64-bit saturation and ignored upper count
 bits, preservation and fault bounds. MMX remains explicitly unsupported. The
 61 default CPU tests and runner Clippy pass; original replay follows.
+
+Original execution clears PSRLQ and stops at runtime BTS in the EXE, after
+829,889,181 loading-thread instructions (179.2s uncontrolled wall time, original
+inputs unchanged). No Present was observed. The explicit Bits32 BT/BTS/BTR/BTC
+adapter handles register/imm8 masking, signed register-index memory bit strings,
+partial register writes, CF from the old bit, segment/address wrap and guarded
+aligned atomic modifying forms. LOCK registers, 16-bit memory addressing and
+the existing unaligned-atomic domain remain explicitly excluded. Independent
+actual x86/Rosetta assembly agrees with native ARM on all 112 signed memory/CF
+rows via `tools/check_jit32_bits.py`. Native bounds/permission/fault and register
+tests pass; the full default suite is 65 passing tests with six independent
+observers separately invoked. Runner Clippy passes. These add no native Windows
+observation or original native-JIT game-frame/cutscene parity claim.

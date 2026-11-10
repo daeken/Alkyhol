@@ -812,6 +812,10 @@ pub(crate) fn compile(pc: u32, bytes: &[u8]) -> Result<Instruction> {
         "BSWAP",
         "BSF",
         "BSR",
+        "BT",
+        "BTS",
+        "BTR",
+        "BTC",
         "NOP",
         "NOPL",
         "JO",
@@ -877,7 +881,7 @@ pub(crate) fn compile(pc: u32, bytes: &[u8]) -> Result<Instruction> {
         || (d.p.lock
             && ![
                 "ADD", "SUB", "AND", "OR", "XOR", "INC", "DEC", "NEG", "NOT", "CMPXCHG", "XADD",
-                "XCHG",
+                "XCHG", "BTS", "BTR", "BTC",
             ]
             .contains(&mnemonic))
         || d.p.vex_valid
@@ -892,6 +896,11 @@ pub(crate) fn compile(pc: u32, bytes: &[u8]) -> Result<Instruction> {
         && !bytes.iter().take_while(|&&b| b != 0x0f).any(|&b| b == 0x66)
     {
         return Err("MMX variable shifts are outside the native XMM profile".into());
+    }
+    if ["BT", "BTS", "BTR", "BTC"].contains(&mnemonic)
+        && (d.p.lock && d.m.is_reg || d.p.ad_size && !d.m.is_reg)
+    {
+        return Err("bit test requires unlocked registers or 32-bit memory addressing".into());
     }
     if [
         "PUSHF", "POPF", "PUSH", "POP", "CALL", "RET", "RETI", "LEAVE",
@@ -1026,6 +1035,65 @@ pub(crate) fn compile(pc: u32, bytes: &[u8]) -> Result<Instruction> {
                     ah,
                 );
             }
+        } else if ["BT", "BTS", "BTR", "BTC"].contains(&mnemonic) {
+            use xfusion_recomp::operand::{
+                Operand, bind_modrm_reg, bind_modrm_rm, ilty, read_operand, write_operand,
+            };
+            let width = d.p.v_width(XMode::Bits32);
+            let ty = ilty(width);
+            let immediate = d.op == 0xba;
+            let index = if immediate {
+                bd.literal(ty, d.imm0 as u128)
+            } else {
+                read_operand(&mut bd, &bind_modrm_reg(&d, width))
+            };
+            let mut dest = bind_modrm_rm(&mut bd, &d, pc as u64, XMode::Bits32, width);
+            if !immediate && let Operand::Mem { addr, .. } = dest {
+                // A register bit index is signed at operand width. Widen it
+                // with sext, not a bit-pattern cast, before floor division.
+                let signed = bd.sext(index, IlType::I64);
+                let shift = bd.literal(IlType::U8, width.trailing_zeros() as u128);
+                let word = bd.shr(signed, shift);
+                let shift = bd.literal(IlType::U8, (width / 8).trailing_zeros() as u128);
+                let bytes = bd.shl(word, shift);
+                let bytes = bd.cast(bytes, IlType::U64);
+                let addr = bd.add(addr, bytes);
+                dest = Operand::Mem { addr, width };
+            }
+            let limit = bd.literal(ty, (width - 1) as u128);
+            let bit = bd.and(index, limit);
+            let one = bd.literal(ty, 1);
+            let mask = bd.shl(one, bit);
+            let old = if d.p.lock {
+                let Operand::Mem { addr, .. } = dest else {
+                    unreachable!()
+                };
+                let (operation, mask) = match mnemonic {
+                    "BTS" => (1, mask),
+                    "BTR" => (2, bd.not(mask)),
+                    "BTC" => (3, mask),
+                    _ => unreachable!(),
+                };
+                bd.mem_rmw_atomic(operation, addr, mask, ty)
+            } else {
+                read_operand(&mut bd, &dest)
+            };
+            if mnemonic != "BT" && !d.p.lock {
+                let value = match mnemonic {
+                    "BTS" => bd.or(old, mask),
+                    "BTR" => {
+                        let inverse = bd.not(mask);
+                        bd.and(old, inverse)
+                    }
+                    "BTC" => bd.xor(old, mask),
+                    _ => unreachable!(),
+                };
+                write_operand(&mut bd, &dest, value);
+            }
+            let carry = bd.shr(old, bit);
+            let carry = bd.and(carry, one);
+            let carry = bd.cast(carry, IlType::Bool);
+            bd.reg_write(RegFile(1), 0, carry);
         } else if mnemonic == "RDTSC" {
             let value = bd.inner.literal(IlType::U64, 0);
             let e = &mut bd.inner.enc;

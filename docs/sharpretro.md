@@ -490,3 +490,22 @@ boundaries are checked; MMX forms remain explicitly excluded. Mandatory 66 is
 verified from instruction prefixes because definition selection consumes that
 prefix in the decoder. All 61 default native CPU tests and runner Clippy pass;
 the next original replay retains the explicit ten-billion entry budget.
+
+Original execution next clears variable shifts and reaches BTS in the EXE's
+runtime code at 829,889,181 loading-thread instructions (179.2s uncontrolled wall
+time, inputs unchanged). No Present has yet been observed. BT/BTS/BTR/BTC now
+have an explicit Bits32 adapter for register/imm8 forms and 32-bit memory bit
+strings: register indices are signed at operand width for neighboring-word
+addressing, with explicit sext before floor division, address wrap before segment
+translation, and CF from the old selected bit. Aligned locked modifying forms
+use actual guarded atomic OR/AND/XOR operations. LOCK register forms and 16-bit
+memory addressing remain explicit exclusions; generic unaligned atomic access
+retains the existing exclusion.
+
+The independent `tools/check_jit32_bits.py` assembly observer agrees on 112
+actual Rosetta/native ARM memory/CF rows, including negative indices, both
+operand widths and aligned locked forms. Native units additionally cover
+register/imm8 masking, partial writes, source alias/boundary behavior, FS/wrap
+and read-only/truncated memory with no partial flag/write commitment. All 65
+default CPU tests and runner Clippy pass; six external observers run separately.
+This is finite CPU evidence, not new Windows or original game-frame evidence.

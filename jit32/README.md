@@ -154,3 +154,8 @@ checked-memory and eligible sign-extended imm8 encodings on the native ARM JIT.
 callbacks followed by AppKit message polling alongside a real compute worker.
 Its 36 finite host assertions cover the CPU lease handoff used by DAO startup;
 they are separate from native Windows observations and game progress.
+
+`python3 tools/check_jit32_bits.py` compares 112 signed memory bit-test/update
+rows against independent actual x86/Rosetta assembly, including aligned LOCK
+forms. The native unit tests separately retain permission/fault, register,
+immediate-mask, segment/wrap and excluded-form checks.
