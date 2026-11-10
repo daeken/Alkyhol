@@ -1,0 +1,210 @@
+//! Original instruction tests for the vector manipulations reached by DAO's CRT.
+use crate::{
+    Stop,
+    memory::{READ, WRITE},
+    tests::cpu,
+};
+#[test]
+fn reached_vector_shift_subtract_shuffle_and_zip_are_lane_operations() {
+    let a = [0xfedcba9876543210, 0x0123456789abcdef];
+    for count in [0, 1, 31, 63, 64, 65, 255] {
+        let mut r = cpu(&[0x66, 0x0f, 0x73, 0xd0, count, 0xc3]);
+        r.state[24] = a[0];
+        r.state[25] = a[1];
+        r.state[16] = 0xad7;
+        assert_eq!(r.run(3), Stop::Returned(0));
+        assert_eq!(
+            &r.state[24..26],
+            &a.map(|v| if count >= 64 { 0 } else { v >> count })
+        );
+        assert_eq!(r.state[16], 0xad7);
+    }
+    let mut r = cpu(&[0x66, 0x0f, 0xfb, 0xc1, 0xc3]);
+    r.state[24] = 0;
+    r.state[25] = 1;
+    r.state[26] = 1;
+    r.state[27] = u64::MAX;
+    assert_eq!(r.run(3), Stop::Returned(0));
+    assert_eq!(&r.state[24..26], &[u64::MAX, 2]);
+    let src = [0x11111111u128, 0x22222222, 0x33333333, 0x44444444];
+    for control in [0, 0x1b, 0xee, 0xff] {
+        let mut r = cpu(&[0x66, 0x0f, 0x70, 0xc1, control, 0xc3]);
+        r.state[26] = (src[0] | src[1] << 32) as u64;
+        r.state[27] = (src[2] | src[3] << 32) as u64;
+        assert_eq!(r.run(3), Stop::Returned(0));
+        let expected = (0..4).fold(0, |out, i| {
+            out | src[(control as usize >> (i * 2)) & 3] << (i * 32)
+        });
+        assert_eq!(r.state[24] as u128 | (r.state[25] as u128) << 64, expected);
+    }
+    let mut r = cpu(&[0x66, 0x0f, 0x14, 0xc1, 0xc3]);
+    r.state[24] = 1;
+    r.state[25] = 2;
+    r.state[26] = 3;
+    r.state[27] = 4;
+    assert_eq!(r.run(3), Stop::Returned(0));
+    assert_eq!(&r.state[24..26], &[1, 3]);
+}
+#[test]
+fn reached_word_insert_extract_and_exact_i32_to_double_preserve_other_lanes() {
+    let vector = 0x123456789abcdef00123456789abcdefu128;
+    for selector in (0..8).chain([255]) {
+        let lane = selector as u32 & 7;
+        let mut r = cpu(&[0x66, 0x0f, 0xc4, 0xc1, selector, 0xc3]);
+        r.state[24] = vector as u64;
+        r.state[25] = (vector >> 64) as u64;
+        r.state[1] = 0xcafebabe;
+        assert_eq!(r.run(3), Stop::Returned(0));
+        let expected = (vector & !(0xffffu128 << (lane * 16))) | (0xbabeu128 << (lane * 16));
+        assert_eq!(
+            r.state[24] as u128 | ((r.state[25] as u128) << 64),
+            expected
+        );
+        let mut r = cpu(&[0x66, 0x0f, 0xc5, 0xc1, selector, 0xc3]);
+        r.state[26] = vector as u64;
+        r.state[27] = (vector >> 64) as u64;
+        assert_eq!(
+            r.run(3),
+            Stop::Returned(((vector >> (lane * 16)) & 0xffff) as u32)
+        );
+    }
+    let mut r = cpu(&[0xf3, 0x0f, 0xe6, 0xc1, 0xc3]);
+    r.state[26] = 0x7fffffff80000000;
+    r.state[27] = u64::MAX;
+    r.memory.fpu.borrow_mut().mxcsr = 0x9fc3;
+    assert_eq!(r.run(3), Stop::Returned(0));
+    assert_eq!(
+        &r.state[24..26],
+        &[(-2147483648f64).to_bits(), 2147483647f64.to_bits()]
+    );
+    assert_eq!(r.memory.fpu.borrow().mxcsr, 0x9fc3);
+}
+#[test]
+fn low_double_moves_touch_only_the_selected_eight_bytes() {
+    let mut r = cpu(&[
+        0x66, 0x0f, 0x12, 0x05, 0, 0, 2, 0, 0x66, 0x0f, 0x13, 0x05, 8, 0, 2, 0, 0xc3,
+    ]);
+    r.memory
+        .map(0x20000, 24, READ | WRITE, &[0x5a; 24])
+        .unwrap();
+    r.state[24] = 1;
+    r.state[25] = 0x12345678;
+    assert_eq!(r.run(4), Stop::Returned(0));
+    assert_eq!(r.state[24], 0x5a5a5a5a5a5a5a5a);
+    assert_eq!(r.state[25], 0x12345678);
+    assert_eq!(r.memory.read(0x20000, 24, READ).unwrap(), [0x5a; 24]);
+}
+#[test]
+fn integer_xmm_moves_use_fixed_widths_and_zero_the_specified_upper_bits() {
+    let mut r = cpu(&[0x66, 0x0f, 0x6e, 0xc1, 0xc3]);
+    r.state[1] = 0xdeadbeef;
+    r.state[24] = u64::MAX;
+    r.state[25] = u64::MAX;
+    assert_eq!(r.run(3), Stop::Returned(0));
+    assert_eq!(&r.state[24..26], &[0xdeadbeef, 0]);
+    let mut r = cpu(&[0x66, 0x0f, 0x7e, 0xc1, 0xc3]);
+    r.state[24] = 0x12345678cafebabe;
+    r.state[1] = 1;
+    assert_eq!(r.run(3), Stop::Returned(0));
+    assert_eq!(r.state[1], 0xcafebabe);
+    let mut r = cpu(&[0xf3, 0x0f, 0x7e, 0xc1, 0xc3]);
+    r.state[26] = 0x12345678cafebabe;
+    r.state[27] = u64::MAX;
+    r.state[25] = u64::MAX;
+    assert_eq!(r.run(3), Stop::Returned(0));
+    assert_eq!(&r.state[24..26], &[0x12345678cafebabe, 0]);
+    let mut r = cpu(&[0x66, 0x0f, 0xd6, 0xc1, 0xc3]);
+    r.state[24] = 0x12345678cafebabe;
+    r.state[25] = u64::MAX;
+    r.state[27] = u64::MAX;
+    assert_eq!(r.run(3), Stop::Returned(0));
+    assert_eq!(&r.state[26..28], &[0x12345678cafebabe, 0]);
+    let mut r = cpu(&[0x66, 0x0f, 0x6e, 0x05, 0, 0, 2, 0, 0xc3]);
+    r.memory
+        .map(0x20000, 4, READ, &0xdeadbeefu32.to_le_bytes())
+        .unwrap();
+    assert_eq!(r.run(3), Stop::Returned(0));
+    assert_eq!(&r.state[24..26], &[0xdeadbeef, 0]);
+    let mut r = cpu(&[0x66, 0x0f, 0xd6, 0x05, 0, 0, 2, 0, 0xc3]);
+    r.memory
+        .map(0x20000, 16, READ | WRITE, &[0x5a; 16])
+        .unwrap();
+    r.state[24] = 0x12345678cafebabe;
+    assert_eq!(r.run(3), Stop::Returned(0));
+    assert_eq!(
+        r.memory.read(0x20000, 8, READ).unwrap(),
+        0x12345678cafebabeu64.to_le_bytes()
+    );
+    assert_eq!(r.memory.read(0x20008, 8, READ).unwrap(), [0x5a; 8]);
+}
+#[test]
+fn packed_integer_shift_boundaries_and_add_subtract_wrap_per_lane() {
+    let vector = 0x8765432101234567fedcba9876543210u128;
+    for (bits, opcode, group) in [
+        (16, 0x71, 2),
+        (16, 0x71, 4),
+        (16, 0x71, 6),
+        (32, 0x72, 2),
+        (32, 0x72, 4),
+        (32, 0x72, 6),
+        (64, 0x73, 2),
+        (64, 0x73, 6),
+    ] {
+        for count in [0u8, 1, (bits - 1) as u8, bits as u8, (bits + 1) as u8, 255] {
+            let mut r = cpu(&[0x66, 0x0f, opcode, 0xc0 | (group << 3), count, 0xc3]);
+            r.state[24] = vector as u64;
+            r.state[25] = (vector >> 64) as u64;
+            assert_eq!(r.run(3), Stop::Returned(0));
+            let mask = (1u128 << bits) - 1;
+            let mut expected = 0;
+            for lane in 0..128 / bits {
+                let v = vector >> (lane * bits) & mask;
+                let value = if group == 4 {
+                    let signed = ((v << (128 - bits)) as i128) >> (128 - bits);
+                    (signed >> u32::from(count).min(bits - 1)) as u128 & mask
+                } else if count as u32 >= bits {
+                    0
+                } else if group == 2 {
+                    v >> count
+                } else {
+                    v << count & mask
+                };
+                expected |= value << (lane * bits);
+            }
+            assert_eq!(
+                r.state[24] as u128 | ((r.state[25] as u128) << 64),
+                expected,
+                "{bits}/{group}/{count}"
+            );
+        }
+    }
+    for (bits, add, sub) in [
+        (8, 0xfc, 0xf8),
+        (16, 0xfd, 0xf9),
+        (32, 0xfe, 0xfa),
+        (64, 0xd4, 0xfb),
+    ] {
+        for (opcode, subtract) in [(add, false), (sub, true)] {
+            let mut r = cpu(&[0x66, 0x0f, opcode, 0xc1, 0xc3]);
+            r.state[24] = vector as u64;
+            r.state[25] = (vector >> 64) as u64;
+            r.state[26] = u64::MAX;
+            r.state[27] = u64::MAX;
+            assert_eq!(r.run(3), Stop::Returned(0));
+            let mask = (1u128 << bits) - 1;
+            let mut expected = 0;
+            for lane in 0..128 / bits {
+                let v = vector >> (lane * bits) & mask;
+                expected |= if subtract {
+                    v.wrapping_sub(mask) & mask
+                } else {
+                    v.wrapping_add(mask) & mask
+                } << (lane * bits);
+            }
+            assert_eq!(
+                r.state[24] as u128 | ((r.state[25] as u128) << 64),
+                expected
+            );
+        }
+    }
+}

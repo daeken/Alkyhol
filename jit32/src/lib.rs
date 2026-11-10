@@ -10,6 +10,9 @@ mod fpu_trig;
 pub mod shared;
 mod stack_bank;
 mod sse;
+mod sse_arithmetic;
+#[cfg(test)]
+mod sse_bits_tests;
 #[cfg(feature = "shared-runtime")]
 pub use alkyhol_pe as shared_pe;
 pub mod memory;

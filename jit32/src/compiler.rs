@@ -405,7 +405,8 @@ impl Builder for Checked<'_> {
     }
     #[allow(unused_variables)]
     fn vzip(&mut self, a: Self::Val, b: Self::Val, elem_bits: u32, hi: bool) -> Self::Val {
-        panic!("unsupported JIT operation: vzip")
+        let v = self.inner.vzip(a, b, elem_bits, hi);
+        self.checked_val(v)
     }
     #[allow(unused_variables)]
     fn vfbin(&mut self, a: Self::Val, b: Self::Val, elem_bits: u32, op: u32) -> Self::Val {
@@ -413,11 +414,13 @@ impl Builder for Checked<'_> {
     }
     #[allow(unused_variables)]
     fn vibin(&mut self, a: Self::Val, b: Self::Val, elem_bits: u32, op: u32) -> Self::Val {
-        panic!("unsupported JIT operation: vibin")
+        let v = self.inner.vibin(a, b, elem_bits, op);
+        self.checked_val(v)
     }
     #[allow(unused_variables)]
     fn vishi(&mut self, a: Self::Val, ew: u32, count: u32, dir: u32) -> Self::Val {
-        panic!("unsupported JIT operation: vishi")
+        let v = self.inner.vishi(a, ew, count, dir);
+        self.checked_val(v)
     }
     #[allow(unused_variables)]
     fn vmovmsk(&mut self, a: Self::Val, ew: u32) -> Self::Val {
@@ -441,7 +444,8 @@ impl Builder for Checked<'_> {
     }
     #[allow(unused_variables)]
     fn vshuf(&mut self, a: Self::Val, b: Self::Val, elem_bits: u32, sel: u32) -> Self::Val {
-        panic!("unsupported JIT operation: vshuf")
+        let v = self.inner.vshuf(a, b, elem_bits, sel);
+        self.checked_val(v)
     }
     #[allow(unused_variables)]
     fn vshufw(&mut self, src: Self::Val, sel: u32, hi: bool) -> Self::Val {
@@ -449,7 +453,11 @@ impl Builder for Checked<'_> {
     }
     #[allow(unused_variables)]
     fn vcvt(&mut self, a: Self::Val, kind: u32) -> Self::Val {
-        panic!("unsupported JIT operation: vcvt")
+        assert_eq!(kind, 4, "only exact packed i32-to-f64 conversion admitted");
+        let a = self.inner.cast(a, IlType::V128);
+        self.checked_val(a);
+        let v = self.inner.vcvt(a, kind);
+        self.checked_val(v)
     }
     #[allow(unused_variables)]
     fn fabs(&mut self, a: Self::Val) -> Self::Val {
@@ -485,11 +493,50 @@ impl Builder for Checked<'_> {
     }
     #[allow(unused_variables)]
     fn velement_read(&mut self, v: Self::Val, i: Self::Val, elem_ty: IlType) -> Self::Val {
-        panic!("unsupported JIT operation: velement_read")
+        let bits = width(elem_ty) * 8;
+        assert!([8, 16, 32, 64].contains(&bits));
+        let size = self.inner.literal(IlType::U32, bits as u128);
+        let shift = self.inner.mul(i, size);
+        let sixty_four = self.inner.literal(IlType::U32, 64);
+        let high = self.inner.and(shift, sixty_four);
+        let zero = self.inner.literal(IlType::U32, 0);
+        let high = self.inner.ne(high, zero);
+        let lo = self.inner.lo64(v);
+        let hi = self.inner.hi64(v);
+        let word = self.inner.ternary(high, hi, lo);
+        let sixty_three = self.inner.literal(IlType::U32, 63);
+        let shift = self.inner.and(shift, sixty_three);
+        let word = self.inner.shr(word, shift);
+        let result = self.inner.cast(word, elem_ty);
+        self.checked_val(result)
     }
     #[allow(unused_variables)]
     fn velement_write(&mut self, v: Self::Val, i: Self::Val, e: Self::Val) -> Self::Val {
-        panic!("unsupported JIT operation: velement_write")
+        let bits = width(self.inner.ty_of(e)) * 8;
+        assert!([8, 16, 32, 64].contains(&bits));
+        let size = self.inner.literal(IlType::U32, bits as u128);
+        let shift = self.inner.mul(i, size);
+        let sixty_four = self.inner.literal(IlType::U32, 64);
+        let high = self.inner.and(shift, sixty_four);
+        let zero = self.inner.literal(IlType::U32, 0);
+        let high = self.inner.ne(high, zero);
+        let lo = self.inner.lo64(v);
+        let hi = self.inner.hi64(v);
+        let word = self.inner.ternary(high, hi, lo);
+        let sixty_three = self.inner.literal(IlType::U32, 63);
+        let shift = self.inner.and(shift, sixty_three);
+        let mask = self.inner.literal(IlType::U64, (1u128 << bits) - 1);
+        let mask = self.inner.shl(mask, shift);
+        let inverse = self.inner.not(mask);
+        let kept = self.inner.and(word, inverse);
+        let elem = self.inner.cast(e, IlType::U64);
+        let elem = self.inner.shl(elem, shift);
+        let elem = self.inner.and(elem, mask);
+        let merged = self.inner.or(kept, elem);
+        let low = self.inner.ternary(high, lo, merged);
+        let high = self.inner.ternary(high, merged, hi);
+        let result = self.inner.pair128(high, low);
+        self.checked_val(result)
     }
     #[allow(unused_variables)]
     fn vzero_top(&mut self, v: Self::Val) -> Self::Val {
@@ -653,18 +700,47 @@ pub(crate) fn compile(pc: u32, bytes: &[u8]) -> Result<Instruction> {
         "IMUL",
         "IMUL3",
         "IMUL1",
+        "LDMXCSR",
+        "STMXCSR",
         "CVTTSD2SI",
         "CVTTSS2SI",
         "CVTSD2SI",
         "CVTSS2SI",
         "CVTSI2SD",
         "CVTSI2SS",
+        "MOVLPD",
+        "PSRLQ-I",
+        "PSUBQ",
+        "CVTDQ2PD",
+        "PSHUFD",
+        "UNPCKLPD",
+        "PINSRW",
+        "PEXTRW",
         "MOVAPS",
         "MOVUPS",
         "MOVAPD",
         "MOVUPD",
         "MOVDQA",
         "MOVDQU",
+        "MOVD-X",
+        "MOVD-XS",
+        "MOVQ-X",
+        "MOVQ-XS",
+        "MOVQ-XM",
+        "PADDQ",
+        "PADDD",
+        "PADDW",
+        "PADDB",
+        "PSUBD",
+        "PSUBW",
+        "PSUBB",
+        "PSLLW-I",
+        "PSLLD-I",
+        "PSLLQ-I",
+        "PSRLW-I",
+        "PSRLD-I",
+        "PSRAW-I",
+        "PSRAD-I",
         "MOVD",
         "MOVQ",
         "MOVSS",
@@ -773,7 +849,8 @@ pub(crate) fn compile(pc: u32, bytes: &[u8]) -> Result<Instruction> {
     ];
     if (bank.is_none()
         && !ADMITTED.contains(&mnemonic)
-        && crate::fpu_ops::operation(mnemonic).is_none())
+        && crate::fpu_ops::operation(mnemonic).is_none()
+        && crate::sse_arithmetic::operation(mnemonic).is_none())
         || (d.p.lock
             && ![
                 "ADD", "SUB", "AND", "OR", "XOR", "INC", "DEC", "NEG", "NOT", "CMPXCHG", "XADD",
@@ -934,6 +1011,102 @@ pub(crate) fn compile(pc: u32, bytes: &[u8]) -> Result<Instruction> {
             let at = e.here();
             e.cbz(0, 0);
             shared.guards.borrow_mut().push(at);
+        } else if ["MOVD-X", "MOVD-XS", "MOVQ-X", "MOVQ-XS", "MOVQ-XM"].contains(&mnemonic) {
+            use xfusion_recomp::operand::{
+                bind_modrm_rm, bind_xmm_reg, bind_xmm_rm, read_operand, write_operand,
+            };
+            let width = if mnemonic.starts_with("MOVD") { 32 } else { 64 };
+            let load = mnemonic == "MOVD-X" || mnemonic == "MOVQ-X";
+            if load {
+                let src = if width == 32 {
+                    bind_modrm_rm(&mut bd, &d, pc as u64, XMode::Bits32, 32)
+                } else {
+                    bind_xmm_rm(&mut bd, &d, pc as u64, XMode::Bits32, 64)
+                };
+                let value = read_operand(&mut bd, &src);
+                let value = bd.cast(
+                    value,
+                    if width == 32 {
+                        IlType::U32
+                    } else {
+                        IlType::U64
+                    },
+                );
+                let value = bd.cast(value, IlType::V128);
+                write_operand(&mut bd, &bind_xmm_reg(&d, 128), value);
+            } else {
+                let value = read_operand(&mut bd, &bind_xmm_reg(&d, width));
+                let dest = if width == 32 {
+                    bind_modrm_rm(&mut bd, &d, pc as u64, XMode::Bits32, 32)
+                } else {
+                    bind_xmm_rm(
+                        &mut bd,
+                        &d,
+                        pc as u64,
+                        XMode::Bits32,
+                        if d.m.is_reg { 128 } else { 64 },
+                    )
+                };
+                let value = bd.cast(
+                    value,
+                    if width == 32 {
+                        IlType::U32
+                    } else {
+                        IlType::U64
+                    },
+                );
+                let value = if width == 64 && d.m.is_reg {
+                    bd.cast(value, IlType::V128)
+                } else {
+                    value
+                };
+                write_operand(&mut bd, &dest, value);
+            }
+        } else if let Some(operation) = crate::sse_arithmetic::operation(mnemonic) {
+            let address = if d.m.is_reg {
+                bd.literal(IlType::U32, 0)
+            } else {
+                xfusion_recomp::operand::addr_from_modrm(&mut bd, &d, pc as u64, XMode::Bits32)
+            };
+            let address = bd.address(address, false);
+            let description = operation
+                | ((d.m.reg as u64 & 7) << 8)
+                | ((d.m.rm as u64 & 7) << 12)
+                | ((d.m.is_reg as u64) << 16);
+            let e = &mut bd.inner.enc;
+            e.ldr_x(0, 28, 90 * 8);
+            e.mov_r(1, 28);
+            e.mov_imm64(2, description);
+            e.ldr_x(3, 27, address * 8);
+            e.mov_imm64(16, crate::sse_arithmetic::execute as *const () as u64);
+            e.put_raw(0xd63f0200);
+            let at = e.here();
+            e.cbz(0, 0);
+            shared.guards.borrow_mut().push(at);
+        } else if ["LDMXCSR", "STMXCSR"].contains(&mnemonic) {
+            use xfusion_recomp::operand::{bind_modrm_rm, read_operand, write_operand};
+            assert!(!d.m.is_reg, "MXCSR requires a memory operand");
+            let operand = bind_modrm_rm(&mut bd, &d, pc as u64, XMode::Bits32, 32);
+            let input = if mnemonic == "LDMXCSR" {
+                read_operand(&mut bd, &operand)
+            } else {
+                bd.literal(IlType::U32, 0)
+            };
+            let result = bd.literal(IlType::U32, 0);
+            let e = &mut bd.inner.enc;
+            e.ldr_x(0, 28, 90 * 8);
+            e.mov_imm64(1, (result * 8) as u64);
+            e.add_r(1, 27, 1);
+            e.mov_imm64(2, if mnemonic == "LDMXCSR" { 6 } else { 7 });
+            e.ldr_x(3, 27, input * 8);
+            e.mov_imm64(16, crate::sse::execute as *const () as u64);
+            e.put_raw(0xd63f0200);
+            let at = e.here();
+            e.cbz(0, 0);
+            shared.guards.borrow_mut().push(at);
+            if mnemonic == "STMXCSR" {
+                write_operand(&mut bd, &operand, result);
+            }
         } else if let Some((operation, source_width, dest_width)) = crate::sse::conversion(mnemonic)
         {
             use xfusion_recomp::operand::{

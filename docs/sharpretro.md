@@ -339,3 +339,33 @@ and real handle closure. Both pass on native ARM before and after this handoff
 change. These are finite host assertions, not a new Windows timing measurement
 or a measured game loading-speed result. It remains a semantic poll: no sleep,
 forged completion, event suppression or skipped guest instructions is added.
+
+### Reached SIMD environment and math group
+
+Original DAO next reaches STMXCSR, then its original SIMD math routine. The
+adapter now reads/writes actual guest MXCSR through checked four-byte operands;
+reserved bits fail explicitly. It does not use the pinned lifter's empty
+LDMXCSR or constant-default STMXCSR templates. The reached group includes normal
+finite ADD/SUB/MUL/DIV scalar and packed single/double forms with software guest
+rounding/sticky precision status, exact packed i32-to-double conversion, word
+insert/extract, per-lane shifts/add/subtract, low-double moves and fixed-width
+GPR/XMM moves with required upper-lane clearing. Unmodeled arithmetic exceptions,
+subnormals and nonfinite inputs still stop explicitly in this milestone.
+
+Native ARM matches 1,024 additional independent actual Rosetta arithmetic rows,
+including result bits/MXCSR across all forms, RC and DAZ/FTZ settings on finite
+normal inputs. The earlier 512 conversion rows remain intact. The complete
+native suite passes 54 tests with three separately invoked external observers;
+52 intermediate tests exposed and corrected a cross-half word insertion issue
+before the final fixed-width aliases were admitted. Vector element insertion/
+extraction uses explicit 64-bit halves instead of relying on the pinned wide
+shift-at-zero lowering. Neither SharpRetro nor any frozen reference was edited.
+
+The native memory validator also tests already-owned TEB/stack spans before its
+unchanged image-region union, preserving all bounds and permissions. Together
+with the native poll quantum, the subsequent original replay reaches the SIMD
+math stop in 91.6 seconds versus 577.6 seconds for the prior MXCSR stop. Host
+load was uncontrolled and stop points differ slightly; this is an observed
+loading improvement, not an FPS benchmark or a claim of game equivalence.
+A following replay reaches a real denormal operand, the next numerical boundary.
+Original binary hashes agree before/after. No JIT window/frame is claimed yet.

@@ -72,6 +72,18 @@ pub unsafe extern "C" fn execute(
 ) -> u64 {
     let memory = unsafe { &mut *memory };
     let mxcsr = memory.fpu.borrow().mxcsr;
+    if op == 6 {
+        if input & !0xffff != 0 {
+            memory.cpu_fault = Some("LDMXCSR reserved bits require #GP delivery");
+            return 0;
+        }
+        memory.fpu.borrow_mut().mxcsr = input as u32;
+        return 1;
+    }
+    if op == 7 {
+        unsafe { output.write(mxcsr as u64) };
+        return 1;
+    }
     match convert(op, input, mxcsr) {
         Ok((value, mxcsr)) => {
             memory.fpu.borrow_mut().mxcsr = mxcsr;
@@ -251,5 +263,43 @@ mod reference {
             assert_eq!(actual, expected, "{words:x?}");
             assert_eq!(r.memory.fpu.borrow().mxcsr, words[6], "{words:x?}");
         }
+    }
+}
+
+#[cfg(test)]
+mod environment_tests {
+    use crate::{
+        Stop,
+        memory::{READ, WRITE},
+        tests::cpu,
+    };
+    #[test]
+    fn mxcsr_load_store_is_real_checked_state_and_reserved_bits_fail() {
+        for value in [0, 0x1f80, 0x9fc0, 0xffff, 0x3f80] {
+            let mut r = cpu(&[
+                0x0f, 0xae, 0x15, 1, 0, 2, 0, 0x0f, 0xae, 0x1d, 9, 0, 2, 0, 0xc3,
+            ]);
+            let mut data = [0x5a; 16];
+            data[1..5].copy_from_slice(&u32::to_le_bytes(value));
+            r.memory.map(0x20000, 16, READ | WRITE, &data).unwrap();
+            r.state[16] = 0xad7;
+            assert_eq!(r.run(4), Stop::Returned(0));
+            assert_eq!(r.memory.fpu.borrow().mxcsr, value);
+            data[9..13].copy_from_slice(&value.to_le_bytes());
+            assert_eq!(r.memory.read(0x20000, 16, READ).unwrap(), data);
+            assert_eq!(r.state[16], 0xad7);
+        }
+        let mut r = cpu(&[0x0f, 0xae, 0x15, 0, 0, 2, 0, 0xc3]);
+        r.memory
+            .map(0x20000, 4, READ, &0x10000u32.to_le_bytes())
+            .unwrap();
+        let before = r.state;
+        assert!(matches!(r.run(3), Stop::CpuFault { pc: 0x10000, .. }));
+        assert_eq!(r.state, before);
+        assert_eq!(r.memory.fpu.borrow().mxcsr, 0x1f80);
+        let mut r = cpu(&[0x0f, 0xae, 0x1d, 0, 0, 2, 0, 0xc3]);
+        r.memory.map(0x20000, 4, READ, &[0x5a; 4]).unwrap();
+        assert!(matches!(r.run(3), Stop::Fault { pc: 0x10000, .. }));
+        assert_eq!(r.memory.read(0x20000, 4, READ).unwrap(), [0x5a; 4]);
     }
 }

@@ -7635,3 +7635,14 @@ worker/TLS/FLS witness and new 12-word event-poll/worker-progress PE before/afte
 The scheduler's existing service quantum remains active; blocking waits and
 Rosetta remain unchanged. These are finite native ARM host assertions, with no
 new native Windows timing or game performance claim.
+
+The reached SIMD environment/math group passes 54 native CPU tests and the
+independent actual Rosetta 512 conversion + 1,024 arithmetic rows, with guest
+rounding/result bits/status and explicit failure coverage. Three external
+observation tests are invoked separately from the default suite. Fixed-width
+GPR/XMM move aliases, per-lane integer operations and MXCSR state are checked;
+the unimplemented numerical domain remains explicit. The original loader's
+subsequent stop is a real denormal SIMD operand. Loading reached the preceding
+math boundary in 91.6s versus 577.6s at the previous nearby boundary, with
+uncontrolled host load; no FPS/game equivalence claim follows. Original input
+binary hashes remain unchanged and there is still no native JIT window/frame.

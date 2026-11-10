@@ -91,16 +91,6 @@ impl ExecutionContext32<'_> {
         }
         let host = host_address(address as usize);
         let end = host + length;
-        let mask = (if rights & 1 != 0 { 0x40000000 } else { 0 })
-            | (if rights & 2 != 0 { 0x80000000 } else { 0 });
-        if self
-            .image
-            .regions
-            .iter()
-            .any(|&(a, b, r)| r & mask == mask && host >= a && end <= (b + PAGE - 1) & !(PAGE - 1))
-        {
-            return true;
-        }
         let teb = self.image.cpu.teb();
         if host >= teb.base as usize && end <= teb.base as usize + teb.len {
             return true;
@@ -110,6 +100,16 @@ impl ExecutionContext32<'_> {
             if host >= a && end <= a + STACK {
                 return true;
             }
+        }
+        let mask = (if rights & 1 != 0 { 0x40000000 } else { 0 })
+            | (if rights & 2 != 0 { 0x80000000 } else { 0 });
+        if self
+            .image
+            .regions
+            .iter()
+            .any(|&(a, b, r)| r & mask == mask && host >= a && end <= (b + PAGE - 1) & !(PAGE - 1))
+        {
+            return true;
         }
         if self
             .image

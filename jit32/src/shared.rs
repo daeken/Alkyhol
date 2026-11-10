@@ -201,7 +201,14 @@ fn execute_inner(context: &ExecutionContext32<'_>, entry: u32, stack: u32) -> Re
             instruction.code.enter(&mut state, &mut spill);
         }
         if let Some(reason) = memory.cpu_fault.take() {
-            return Err(format!("JIT32 CPU fault pc={pc:#x}: {reason}"));
+            return Err(format!(
+                "JIT32 CPU fault pc={pc:#x} {} code={:02x?}: {reason}; gpr={:x?}; xmm={:x?}; mxcsr={:x}",
+                context.location(pc),
+                context.read(pc, instruction.length, true)?,
+                &snapshot[..8],
+                &snapshot[24..40],
+                memory.fpu.borrow().mxcsr
+            ));
         }
         if let Some(fault) = memory.fault.take() {
             state = snapshot;
