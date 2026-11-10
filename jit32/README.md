@@ -209,3 +209,11 @@ The request is consumed; no guest state is modified. Malformed requests fail.
 `ALKYHOL_PE32_TRACE_INPUT=1` additionally emits bounded changed-state DirectInput
 snapshots and readable-output copy comparisons. These are diagnostic evidence,
 not an input-success or game-compatibility assertion.
+
+
+The reached FPATAN instruction uses a bounded mathematical atan2 profile, with
+certified software extended-precision rounding and explicit unsupported cases.
+It is not a bit-exact CPU polynomial/status oracle. Frozen native Windows and
+Rosetta observations can be checked with `python3 tools/check_jit32_atan2.py`
+and `--backend rosetta`. Adding `--strict` retains raw 80-bit/status differences
+as failed diagnostics. See docs/sharpretro.md for domain and measured counts.

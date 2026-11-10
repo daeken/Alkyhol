@@ -761,3 +761,59 @@ rejects its NOTACQUIRED result. A coordinated windowed foreground run remains
 necessary to inspect successful state reads and advance the original menu. Local
 window/input diagnostics and capture metadata remain ignored; no game code/data,
 frozen comparison, API acquisition rule or rendering quality was changed.
+
+
+After the independent playtest hid its window asynchronously, CoreGraphics
+reports display capture released and normal activation succeeds. The original
+native process acquires keyboard/mouse, copies successful DirectInput state with
+matching readback, and its original caller accepts S_OK with the expected flags.
+A foreground-verified, unobstructed desktop click at New Game delivers real
+motion and down/up bytes. Later captures are black/inactive while other guest
+thread activity begins. Because focus changes can also clear the background
+frame, this does not establish New Game activation. Character creation and
+original in-engine 3D have not yet been observed.
+
+That old run then reaches its explicit 10-billion instruction/service loop limit,
+not a new instruction or API failure; every original input hash remains unchanged.
+It is archived with PID/source/host-bound capture metadata. A clean replay now
+uses the already-built same native host with an explicit 100-billion limit and
+a held actual desktop mode that fits the complete window. No original code,
+assets, backbuffer size, API acquisition rule or shader/rendering quality is
+changed. The native UI condition has been isolated; loading/Orzammar parity is
+still the next execution goal.
+
+
+The clean replay confirms matching native client/screen mouse coordinates once
+our local helper refreshes window bounds after activation/repositioning. It
+visibly highlights New Game and then reaches a new explicit FPATAN stop in
+original game math: 7,363,291,599 native guest instructions, 40 entries, status 78,
+and unchanged original input hashes. Character creation, original in-engine 3D
+and Orzammar have still not been captured. The independent Wine playtest and its
+results remain separate.
+
+FPATAN now has an explicit mathematical profile: masked exceptions, nearest
+rounding and canonical finite normal/zero operands; when both are nonzero,
+the exponent separation is at most 1024. Outward software Quad intervals certify mathematical 64-significand
+rounding; an exact integer quotient residual plus alternating-series bounds
+handles tiny corrections. The instruction consumes ST(0), replaces ST(1), pops
+once, preserves unrelated registers and EFLAGS/MXCSR, and ignores the three valid precision
+settings. Other controls, stack underflow, nonfinite/subnormal/noncanonical data,
+out-of-range ratios and uncertifiable rounding fail without state commit.
+This follows the precision scope in [Intel SDM volume 1, sections 8.1.5.2 and 8.3.10](https://www.intel.com/content/dam/www/public/us/en/documents/manuals/64-ia-32-architectures-software-developer-vol-1-manual.pdf);
+it does not reproduce one CPU's polynomial or claim native C1/PE bit parity.
+
+[Native Windows AMD observer CI 42794807414](https://github.com/daeken/Alkyhol/actions/runs/42794807414)
+passes all three observer jobs at 858e2cf. Its 768 owned FPATAN rows and a separate
+768-row Rosetta table are frozen unchanged with source/artifact/host provenance.
+All binary64 results agree; each CPU result is within one extended-precision ulp
+of the mathematically rounded model. Windows has 6 raw 80-bit result differences
+and 12 defined-status differences; Rosetta has 12 and 309 respectively. The strict
+comparison fails on both and retains those failures via
+`tools/check_jit32_atan2.py --strict` (optional `--backend rosetta`). The default
+checker tests the stated math/stack/environment profile and reports differences;
+it never calls that strict CPU parity. No game-derived fixture is used in CI.
+
+All 90 default native JIT tests and runner Clippy pass. The two new external math
+comparisons pass separately; the two strict diagnostics fail as described, and
+the other 15 external observers remain separate. The next original replay uses
+the new FPATAN host; full application progress parity remains unestablished.

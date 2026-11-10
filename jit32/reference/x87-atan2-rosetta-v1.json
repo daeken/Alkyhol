@@ -1,0 +1,17 @@
+{
+  "backend": "actual x86_64 FPATAN assembly under Rosetta2",
+  "source_sha256": "05a5ad48308d6f8002e4ca9a95589267d2fc5a0afde1b1622cd47663f690a0b2",
+  "observer_sha256": "7eb02348024adbbb0f56f46fb149674498a08cc8045845e84d01ec2d6b9b41f1",
+  "observation_sha256": "6dd12f7c2cbca193625980ae187205fa818df1e63c4940aacc5205bfb29f72eb",
+  "rows": 768,
+  "host": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+  "physical_host": "Apple M4",
+  "schema": 1,
+  "source": "jit32/tests/x87_atan2_reference.c",
+  "source_lf_sha256": "05a5ad48308d6f8002e4ca9a95589267d2fc5a0afde1b1622cd47663f690a0b2",
+  "fixture": "jit32/reference/x87-atan2-rosetta-v1.bin.gz",
+  "fixture_sha256": "7a95efe0dd4f1c05a7c4a52837895e03e4373f244d582c5a9faee9d7d2d094dc",
+  "observation_bytes": 49152,
+  "row_size": 64,
+  "scope": "Owned finite nearest-rounding FPATAN observations; raw approximation and defined-status differences are retained, not game equivalence."
+}

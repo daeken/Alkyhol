@@ -1,10 +1,13 @@
 //! Experimental checked PE32 -> native ARM64 runner; no Rosetta or interpreter fallback.
 #![cfg(all(target_os = "macos", target_arch = "aarch64"))]
 #[cfg(test)]
+mod atan2_tests;
+#[cfg(test)]
 mod bit_tests;
 mod compiler;
 mod fpu;
 mod fpu_atan;
+mod fpu_atan2;
 mod fpu_math;
 mod fpu_ops;
 mod fpu_trig;

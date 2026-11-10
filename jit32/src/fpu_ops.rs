@@ -62,6 +62,7 @@ pub fn operation(name: &str) -> Option<u64> {
         "FLDLG2" => 131,
         "FLDLN2" => 132,
         "FXAM" => 133,
+        "FPATAN" => 134,
         "FLD-M32" => 2,
         "FLD-M64" => 3,
         "FLD-M80" => 4,
@@ -192,6 +193,38 @@ fn perform(
 ) -> Result<Option<(usize, u128)>, ()> {
     let mut output = None;
     match op {
+        134 => {
+            if state.control >> 10 & 3 != 0 || state.control >> 8 & 3 == 1 {
+                memory
+                    .cpu_fault
+                    .get_or_insert("FPATAN control outside the nearest finite profile");
+                return Err(());
+            }
+            if (0..2).any(|n| state.tag >> (((state.top() + n) & 7) * 2) & 3 == 3) {
+                memory
+                    .cpu_fault
+                    .get_or_insert("FPATAN requires two nonempty stack slots");
+                return Err(());
+            }
+            let x = state.get(0);
+            let y = state.get(1);
+            let angle = match super::fpu_atan2::atan2(y, x) {
+                Ok(value) => value,
+                Err(reason) => {
+                    memory.cpu_fault.get_or_insert(reason);
+                    return Err(());
+                }
+            };
+            state.set(1, angle.value.to_bits());
+            state.pop();
+            state.status &= !0x200;
+            if angle.rounded_up {
+                state.status |= 0x200;
+            }
+            if angle.inexact {
+                state.status |= 0x20;
+            }
+        }
         133 => {
             // Intel SDM FXAM: examine raw ST(0), including empty-register sign.
             // Do not use get(): examining an empty stack raises no stack fault.

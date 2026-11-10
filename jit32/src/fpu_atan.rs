@@ -66,7 +66,7 @@ impl Interval {
         }
     }
 }
-fn series(x: Interval) -> Interval {
+pub(crate) fn series(x: Interval) -> Interval {
     let square = x.mul(x);
     let mut power = x;
     let mut sum = Interval::integer(0);

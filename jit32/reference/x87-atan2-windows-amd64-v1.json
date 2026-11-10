@@ -1,0 +1,22 @@
+{
+  "backend": "native Windows x64 x87 atan2 assembly",
+  "source_sha256": "efa2afcf5f3f246ce2fa801e1d4e9c0a2d4e42970dfdf036cd73af25d6ffb9d6",
+  "observer_sha256": "36948cca34ec68fd3cda9259d60b6025ddf9a70a089edaf9bf45090ea45e5220",
+  "observation_sha256": "dac5b98944b098824dac52beb317ce3494d1231d49fa49c1b2fcaf8419eb86a4",
+  "rows": 768,
+  "native_machine": 34404,
+  "process_machine": 0,
+  "host": "Windows-2025Server-10.0.26100-SP0",
+  "processor": "AMD64 Family 25 Model 17 Stepping 1, AuthenticAMD",
+  "stderr_hex": "",
+  "revision": "858e2cfb5a9f1372cb53dae942c0e80dee7f4cd6",
+  "schema": 1,
+  "source": "jit32/tests/x87_atan2_reference.c",
+  "source_lf_sha256": "05a5ad48308d6f8002e4ca9a95589267d2fc5a0afde1b1622cd47663f690a0b2",
+  "fixture": "jit32/reference/x87-atan2-windows-amd64-v1.bin.gz",
+  "fixture_sha256": "0823f8822cd7eb67b8efb794c4a1cb8c874a69608eee9c1646b4ac64f333bcf8",
+  "observation_bytes": 49152,
+  "row_size": 64,
+  "scope": "Owned finite nearest-rounding FPATAN observations; raw approximation and defined-status differences are retained, not game equivalence.",
+  "workflow_run": "https://github.com/daeken/Alkyhol/actions/runs/42794807414"
+}
