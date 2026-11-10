@@ -7,6 +7,9 @@ def build(output):
     if platform.system()!='Darwin' or platform.machine()!='arm64':raise RuntimeError('shared JIT host requires native Apple Silicon/macOS')
     from check_jit32 import verify_sharpretro
     verify_sharpretro()
+    # Keep these large native debug hosts practical; callers can override either.
+    os.environ.setdefault('CARGO_PROFILE_DEV_DEBUG','0')
+    os.environ.setdefault('CARGO_INCREMENTAL','0')
     cargo=shutil.which('cargo') or str(Path.home()/'.cargo/bin/cargo')
     rustc=shutil.which('rustc') or str(Path.home()/'.cargo/bin/rustc')
     subprocess.run([cargo,'build','--manifest-path',str(ROOT/'jit32/Cargo.toml'),'--features','shared-runtime','--locked','--offline','--lib',*[item for package in ['alkyhol-jit32','alkyhol-pe','xfusion-recomp','sharpretro-jit'] for item in ['--config',f'profile.dev.package.{package}.opt-level=2']]],cwd=ROOT,check=True)

@@ -648,8 +648,9 @@ fn finish_cpu_ticket(ticket: u64) {
 }
 #[cfg(target_arch = "aarch64")]
 fn selectors() -> Result<(u16, u16)> {
-    Ok((0, 0))
-} // Host selectors are never used by the JIT.
+    // Virtual ring-3 flat selectors; no physical host LDT is installed.
+    Ok((0x1b, 0x23))
+}
 fn teb_descriptor(base: u32) -> u64 {
     0x0040f20000000fff
         | (u64::from(base & 0xffff) << 16)
@@ -1508,7 +1509,7 @@ impl<'a> LoadedImage32<'a> {
         ));
         for (id, &(_, argument_bytes)) in APIS.iter().enumerate() {
             #[cfg(target_arch = "aarch64")]
-            if id != 177 {
+            {
                 cpu.native_gates.borrow_mut().insert(
                     gates.base as u32 + api_offset(id) as u32,
                     (id as u32, cleanup_bytes(id, argument_bytes)),
@@ -2569,7 +2570,16 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
             146 => fileio32::information(image, args),
             147 => fileio32::end(image, args[0]),
             148..=176 => ui32::dispatch(image, id - 148, &words),
-            177 => raise32::deliver(image, args),
+            177 => {
+                #[cfg(target_arch = "x86_64")]
+                {
+                    raise32::deliver(image, args)
+                }
+                #[cfg(target_arch = "aarch64")]
+                {
+                    raise32::deliver_registers(image, executor32::exception_registers())
+                }
+            }
             178 => u32::MAX, // The documented current-process pseudo handle.
             179 => machine32::affinity(image, args),
             180 => {

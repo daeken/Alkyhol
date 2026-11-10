@@ -5,6 +5,18 @@ pub struct ExecutionContext32<'a> {
     image: &'a LoadedImage32<'a>,
 }
 pub type Execute32 = for<'a> fn(&ExecutionContext32<'a>, u32, u32) -> Result<u64>;
+thread_local! { static EXCEPTION_REGISTERS: std::cell::Cell<Option<[u32; 9]>> = const { std::cell::Cell::new(None) }; }
+pub(super) fn exception_registers() -> [u32; 9] {
+    EXCEPTION_REGISTERS
+        .get()
+        .unwrap_or_else(|| unsupported("native software exception requires actual CPU registers"))
+}
+struct ExceptionSnapshot;
+impl Drop for ExceptionSnapshot {
+    fn drop(&mut self) {
+        EXCEPTION_REGISTERS.set(None);
+    }
+}
 static EXECUTOR: OnceLock<Execute32> = OnceLock::new();
 pub fn install_executor32(executor: Execute32) -> Result<()> {
     EXECUTOR
@@ -137,6 +149,27 @@ impl ExecutionContext32<'_> {
     }
     pub fn gateway(&self, address: u32) -> Option<(u32, u16)> {
         self.image.cpu.native_gates.borrow().get(&address).copied()
+    }
+    /// Enter the existing software SEH dispatcher with the actual native CPU snapshot.
+    /// Nested delivery and changed continuations retain the ordinary explicit failure.
+    pub fn dispatch_exception(
+        &self,
+        address: u32,
+        stack: u32,
+        regs: [u32; 9],
+    ) -> Result<(u32, u16, bool)> {
+        if self.gateway(address).map(|v| v.0) != Some(177)
+            || regs[3].checked_add(4) != Some(stack)
+            || !self.permits(stack as u64, 20, 1)
+        {
+            return Err("invalid native software exception entry snapshot".into());
+        }
+        if EXCEPTION_REGISTERS.get().is_some() {
+            return Err("nested native software exception entry is unsupported".into());
+        }
+        EXCEPTION_REGISTERS.set(Some(regs));
+        let _snapshot = ExceptionSnapshot;
+        self.dispatch(address, stack)
     }
     /// Return actual EAX, cleanup byte count and non-returning-exit indication.
     pub fn dispatch(&self, address: u32, stack: u32) -> Result<(u32, u16, bool)> {

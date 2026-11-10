@@ -64,8 +64,30 @@ fn execute_inner(context: &ExecutionContext32<'_>, entry: u32, stack: u32) -> Re
     let mut instructions = 0u64;
     let mut services = 0u64;
     let progress = std::env::var_os("ALKYHOL_JIT32_TRACE_PROGRESS").is_some();
+    let trace_after = std::env::var("ALKYHOL_JIT32_TRACE_AFTER")
+        .ok()
+        .map(|v| {
+            u32::from_str_radix(v.trim_start_matches("0x"), 16)
+                .map_err(|_| "invalid JIT trace address")
+        })
+        .transpose()?;
+    let mut trace_remaining = 0;
+    let mut traced = false;
     for _ in 0..1_000_000_000u64 {
         let pc = state[17] as u32;
+        if !traced && trace_after == Some(pc) {
+            traced = true;
+            trace_remaining = 256;
+        }
+        if trace_remaining != 0 {
+            trace_remaining -= 1;
+            eprintln!(
+                "JIT32 trace: pc={pc:#x} {} flags={:#x} regs={:x?}",
+                context.location(pc),
+                state[16],
+                &state[..8]
+            );
+        }
         if pc == context.return_gate() {
             return Ok(state[0] as u32 as u64 | ((state[4] as u32 as u64) << 32));
         }
@@ -84,7 +106,28 @@ fn execute_inner(context: &ExecutionContext32<'_>, entry: u32, stack: u32) -> Re
                 });
                 continue;
             }
-            let (value, cleanup, exit) = context.dispatch(pc, sp)?;
+            let (value, cleanup, exit) = if id == 177 {
+                // Match the owned pushfl/pushal/fxsave wrapper without executing its
+                // x86 preservation instructions. Handlers still execute original code.
+                let saved_fpu = memory.fpu.borrow().clone();
+                let regs = [
+                    state[7] as u32,
+                    state[6] as u32,
+                    state[5] as u32,
+                    sp.checked_sub(4)
+                        .ok_or("exception snapshot stack underflow")?,
+                    state[3] as u32,
+                    state[2] as u32,
+                    state[1] as u32,
+                    state[0] as u32,
+                    state[16] as u32,
+                ];
+                let result = context.dispatch_exception(pc, sp, regs);
+                *memory.fpu.borrow_mut() = saved_fpu;
+                result?
+            } else {
+                context.dispatch(pc, sp)?
+            };
             services += 1;
             STATS.with(|s| {
                 let mut v = s.get();
@@ -94,7 +137,9 @@ fn execute_inner(context: &ExecutionContext32<'_>, entry: u32, stack: u32) -> Re
             if exit {
                 return Ok(value as u64);
             }
-            state[0] = value as u64;
+            if id != 177 {
+                state[0] = value as u64;
+            }
             state[4] = sp
                 .checked_add(4 + cleanup as u32)
                 .ok_or("service stack overflow")? as u64;

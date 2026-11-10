@@ -70,10 +70,6 @@ impl Drop for Storage<'_> {
     }
 }
 pub(super) fn deliver(image: &LoadedImage32<'_>, a: &[u32; 8]) -> u32 {
-    if ACTIVE.replace(true) {
-        unsupported("nested software exception dispatch is unsupported");
-    }
-    let _delivery = Delivery(alkyhol::ffi::GetLastError());
     if a[2] != 0x53454832
         || a[3] != 0
         || !a[1].is_multiple_of(16)
@@ -81,7 +77,14 @@ pub(super) fn deliver(image: &LoadedImage32<'_>, a: &[u32; 8]) -> u32 {
     {
         unsupported("software SEH requires its checked CPU entry snapshot");
     }
-    let regs = load::<9>(image, a[0]);
+    deliver_registers(image, load::<9>(image, a[0]))
+}
+/// Real pushad/flags snapshot, supplied either by the x86 wrapper or native CPU.
+pub(super) fn deliver_registers(image: &LoadedImage32<'_>, regs: [u32; 9]) -> u32 {
+    if ACTIVE.replace(true) {
+        unsupported("nested software exception dispatch is unsupported");
+    }
+    let _delivery = Delivery(alkyhol::ffi::GetLastError());
     let call_at = regs[3]
         .checked_add(4)
         .unwrap_or_else(|| unsupported("software exception stack overflow"));
@@ -152,7 +155,7 @@ pub(super) fn deliver(image: &LoadedImage32<'_>, a: &[u32; 8]) -> u32 {
     }
     let head = unsafe { image.cpu.teb().base.cast::<u32>().read_unaligned() };
     let mut frame = head;
-    let first = image.cpu.stack().base as usize + PAGE;
+    let first = image.cpu.stack().base as u32 as usize + PAGE;
     let last = first + STACK;
     for _ in 0..128 {
         if frame == u32::MAX {

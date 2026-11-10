@@ -7586,3 +7586,22 @@ advances to 338,719,466 instructions / 825,382 services and its owned software-
 exception snapshot entry, after writing its real startup log. The existing
 thread-naming filter must be entered with real CPU state next. Input hashes
 agree before/after; no native window or parity is inferred from this stop.
+
+The native software-exception entry passes the unchanged owned 15-word SEH
+contract with two original handlers executed, plus explicit rejection of all
+three excluded continuation modes. The separate actual Rosetta observer also
+passes the same four PEs. The x86 PE suite remains 229 units + 18 image tests
+(one existing skip); 41 native ARM JIT tests and runner Clippy pass. These are
+host tests and do not add a new native Windows exception observation. General
+FXSAVE/FXRSTOR, native signal delivery and C++ unwind remain unsupported; the
+native software API uses its real saved CPU registers and existing checked
+handler traversal instead of a fabricated snapshot.
+
+Original-input execution with native SEH reaches real worker entry procedures,
+Win32 class registration and an Apple M4/Metal D3D9 factory. Original platform
+validation rejects the currently declared scalar CPU's SSE/SSE2 capabilities;
+shutdown then stops at the existing owned-mutex-close exclusion. A local bounded
+instruction trace confirms those actual original CPUID branches. Input hashes
+remain unchanged. No JIT-created window, game frame or Rosetta cutscene parity
+has yet been observed. Frozen shared ABI/TLS/heap comparisons still pass all
+96 words at both bases with no fixture/reference changes.

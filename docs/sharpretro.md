@@ -228,3 +228,40 @@ log and reaches its thread-naming software exception at 338,719,466 instructions
 and 825,382 services. The next stop is the owned x86 exception wrapper's snapshot
 instruction; native ARM needs a CPU-aware service entry, not a fabricated handler
 return. Original inputs remain hash-identical.
+
+### Native software exception entry
+
+The shared native executor supplies RaiseException's actual integer registers and
+flags directly to the existing checked first-pass SEH dispatcher. Original guest
+registration records and original search/continuation handlers execute through
+normal reentrant JIT callbacks; there is no special-case successful return for
+thread naming. The native entry preserves the modeled x87/SIMD caller state as
+the owned x86 wrapper does, without pretending to implement general guest
+FXSAVE/FXRSTOR or inventing an extended context. The advertised context remains
+control/integer/segments only. Native guest selectors now use an explicit virtual
+flat ring-3 profile (CS 0x1b, data 0x23, FS 0x1017), separate from host registers.
+Nested exceptions, changed contexts and unhandled/noncontinuable exceptions still
+fail explicitly. A biased-host comparison in registration-chain bounds now uses
+guest stack addresses.
+
+`tools/check_jit32_software_exception.py` builds the unchanged existing owned
+software-exception PEs and executes their two original chained handlers on
+physical ARM. Their 15-word contract passes; unhandled, noncontinuable and
+context-mutation modes each stop with the expected unsupported reason. This is
+finite native ARM host evidence, not a new Windows measurement or full SEH/unwind
+support. The existing Rosetta exception observer remains separate.
+
+The original game now completes its actual thread-naming software notifications,
+starts its original worker procedures, registers its Win32 class and creates a
+real Metal-backed D3D9 factory. Its platform validation then rejects the scalar
+virtual CPU's absent SSE/SSE2 bits; an instruction trace confirms execution of
+both original CPUID checks. Shutdown reaches an existing explicit last-owned-
+mutex-close exclusion. No native JIT window or frame is claimed. This is further
+than the prior owned FXSAVE wrapper stop, but remains short of the preserved
+Rosetta cutscene boundary. All original input hashes agree before/after.
+
+Optional `ALKYHOL_JIT32_TRACE_AFTER=<hex guest PC>` records the next 256 original
+instructions/registers per entry for local diagnostics. It does not change guest
+control flow. Keep game-derived traces local. Shared-host builds now default to
+no debug info/incremental objects for practical build time; external Cargo
+profile overrides remain respected.
