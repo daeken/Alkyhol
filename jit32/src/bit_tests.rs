@@ -92,6 +92,19 @@ fn register_bit_tests_mask_indices_and_preserve_partial_registers() {
             }
         }
     }
+    for width in [16, 32] {
+        for (op, opcode) in OPS.into_iter().enumerate() {
+            let mut code = if width == 16 { vec![0x66] } else { vec![] };
+            code.extend([0x0f, opcode, 0xc0]); // destination and index both AX/EAX
+            let mut r = cpu(&code);
+            let input = 0xa5a55a5au32;
+            r.state[0] = input as u64;
+            assert!(matches!(r.run(1), Stop::Budget { .. }));
+            let mask = 1 << (input & (width - 1));
+            assert_eq!(r.state[0], changed(input, mask, op) as u64);
+            assert_eq!(r.flags() & 1, u32::from(input & mask != 0));
+        }
+    }
 }
 #[test]
 fn memory_bit_strings_use_signed_word_offsets_and_mask_immediates() {
