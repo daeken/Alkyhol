@@ -966,3 +966,13 @@ input is already in the owned profile for the next fresh original launch. The
 host now includes min/max and read-only compile-stop operand diagnostics, but its
 actual application progress beyond MINPS still requires a fresh observed replay.
 No original executable, DLL, save source or rendering geometry is patched.
+
+The fresh unchanged native replay now discovers the pre-staged shared scene
+input at startup: actual original menu captures show Resume and Load Game
+enabled. Its own DirectInput state readback also confirms the foreground Escape
+down/up events; the later intro-to-menu transition does not by itself prove
+which event caused it. Save parsing/loading, execution past MINPS, original
+in-engine 3D and Rosetta's Orzammar progress remain unobserved in this replay.
+The process is retained paused/hidden for the next coordinated input slot.
+This is original menu discovery evidence, not reference behavior for the
+replacement-generated save. Raw process/capture provenance stays ignored/local.
