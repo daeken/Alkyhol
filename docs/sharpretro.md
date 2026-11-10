@@ -591,3 +591,27 @@ the 15-byte length limit. All 74 default native tests and runner Clippy pass;
 eleven external observations remain separately invoked. Original input hashes
 remain unchanged and no Present has yet been observed. The next replay uses the
 new host without overwriting the preceding running executable.
+
+The XLAT replay clears that routine and advances to 1,685,086,081 loading-thread
+instructions (226.8s uncontrolled wall time, original hashes unchanged). It stops
+at FDIV m64 because the x87 arithmetic helper excludes nonfinite/denormal inputs.
+The helper now handles masked arithmetic special values, x87 NaN priority and
+indefinite results, sticky exceptions, directed overflow saturation and extended
+underflow. Reduced precision uses software 64-bit directed bounds with wider
+exponents and an exact software midpoint, avoiding host-f64 approximation and
+double rounding. Unmasked x87 data exceptions remain explicitly unsupported.
+CPU-fault diagnostics now retain the raw modeled x87 environment locally.
+
+Independent owned register-arithmetic assembly on native Windows AMD in
+[CI 42770518331](https://github.com/daeken/Alkyhol/actions/runs/42770518331)
+provides 19,200 rows across four operations, three precisions, four rounding
+modes and twenty operand classes. All result bits and defined exception/C1 bits
+agree through `tools/check_jit32_x87_windows.py`. Complete raw Windows and Rosetta
+tables/provenance are frozen separately under jit32/reference. Exactly one
+PC64 nearest division row differs by one result ULP and C1 on Rosetta; the model
+follows native Windows AMD, and the strict Rosetta comparator remains failed.
+Neither oracle nor acceptance criteria were rewritten to hide that difference.
+This is finite register arithmetic evidence, not a full memory-operand exception
+priority matrix, physical Intel evidence, game-frame or cutscene equivalence.
+All 76 default native tests and runner Clippy pass; twelve external observations
+are invoked separately. Original replay follows with the existing explicit budget.

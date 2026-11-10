@@ -183,3 +183,9 @@ overflow flags are asserted. These observations are separate from Windows.
 `python3 tools/check_jit32_xlat.py` compares all 256 byte-table indices under
 two initial flag states against actual Rosetta assembly; native tests separately
 exercise guest segment/address wrap and checked memory failures.
+
+`python3 tools/check_jit32_x87_windows.py` checks all 19,200 frozen native Windows
+AMD register-arithmetic rows, including masked exceptions and 24/53/64-bit x87
+precision. `tools/check_jit32_x87_arithmetic.py` separately runs actual Rosetta
+assembly and remains a strict failing diagnostic for its one differing division
+result/C1 row. Both complete observations and provenance are preserved.

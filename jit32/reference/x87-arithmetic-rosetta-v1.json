@@ -1,0 +1,24 @@
+{
+  "backend": "physical native ARM arithmetic vs actual x86/Rosetta assembly",
+  "source_sha256": "92e9064777228f7f5cbfa1bed7750117ab56697200c5da2a1e59ec92b42ac1f2",
+  "observer_sha256": "b06b3f81297a07c3a0083ddec3cc5f2cb241623121b054bedcd6231dfb61120b",
+  "observation_sha256": "1b6f756ea197d5d23d5811b4787d5ca99ef0289c859b486b2eed2c8619d78b2f",
+  "rows": 19200,
+  "model_status": 101,
+  "all_rows_match": false,
+  "host": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+  "revision": "6da15b5fc9af29628f8f018ec0f32ee6b25b7332",
+  "schema": 1,
+  "source": "jit32/tests/x87_arithmetic_reference.c",
+  "fixture": "jit32/reference/x87-arithmetic-rosetta-v1.bin.gz",
+  "fixture_sha256": "300559ac51c80588a82a3a632d4a43838c485148c372920d5bd1dd96f6d491f5",
+  "observation_bytes": 768000,
+  "scope": "Finite owned x87 observations, not full CPU/game equivalence or physical Intel evidence.",
+  "counterpart": "jit32/reference/x87-arithmetic-windows-amd64-v1.json",
+  "differences": {
+    "rows": [
+      17944
+    ],
+    "fields": "Result significand differs by one ULP and C1 differs for division at PC64 nearest; other 19199 rows agree."
+  }
+}

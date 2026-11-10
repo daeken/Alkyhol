@@ -1,0 +1,29 @@
+{
+  "backend": "native Windows x64 x87 arithmetic assembly",
+  "source_sha256": "4ae6cdcf056e16b4228611710c25587a974c18c11bb5eb7bab01d87ef7080b9b",
+  "observer_sha256": "abab6f19b72a43434821a6cfa8149ac0f5571b100302e9a21b846fda07c28aab",
+  "observation_sha256": "fe722df163ddcf5e9f5477bd39fe20fd742bd08deed60ec3e3ce4b5761babbec",
+  "rows": 19200,
+  "native_machine": 34404,
+  "process_machine": 0,
+  "host": "Windows-2025Server-10.0.26100-SP0",
+  "processor": "AMD64 Family 25 Model 1 Stepping 1, AuthenticAMD",
+  "stderr_hex": "",
+  "revision": "6da15b5fc9af29628f8f018ec0f32ee6b25b7332",
+  "schema": 1,
+  "source": "jit32/tests/x87_arithmetic_reference.c",
+  "fixture": "jit32/reference/x87-arithmetic-windows-amd64-v1.bin.gz",
+  "fixture_sha256": "daf7d35978c84cee402c55b7fcbae465013f3d76d74af03975ff19bbefc03994",
+  "observation_bytes": 768000,
+  "scope": "Finite owned x87 observations, not full CPU/game equivalence or physical Intel evidence.",
+  "counterpart": "jit32/reference/x87-arithmetic-rosetta-v1.json",
+  "differences": {
+    "rows": [
+      17944
+    ],
+    "fields": "Result significand differs by one ULP and C1 differs for division at PC64 nearest; other 19199 rows agree."
+  },
+  "source_lf_sha256": "92e9064777228f7f5cbfa1bed7750117ab56697200c5da2a1e59ec92b42ac1f2",
+  "source_transport": "Native raw CRLF source hash and verified LF-normalized identity both preserved.",
+  "workflow_run": "https://github.com/daeken/Alkyhol/actions/runs/42770518331"
+}
