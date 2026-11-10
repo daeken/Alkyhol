@@ -550,3 +550,17 @@ Windows CRLF versus macOS LF observer source identities are recorded explicitly;
 the Windows stdout transport uses binary mode. All 71 default native CPU tests
 and runner Clippy pass, with eight external observations invoked separately.
 The next original replay retains the explicit ten-billion budget.
+
+The next original replay passes CMPPD and reaches FXAM at 1,618,306,012
+loading-thread instructions (218.3s uncontrolled wall time, original input hashes
+unchanged). No Present was observed. FXAM now classifies raw physical ST(0),
+including empty-slot sign, without calling the stack-reading helper or changing
+exception flags, tags or register contents. Its C0/C1/C2/C3 behavior follows the
+[Intel FXAM contract](https://cdrdv2-public.intel.com/812383/253666-sdm-vol-2a.pdf);
+raw pseudo-denormals and unsupported extended encodings have explicit tests.
+`tools/check_jit32_examine.py` compares all 768 owned actual Rosetta/native ARM
+rows across twelve raw classes, both signs, empty/full slots, all TOP values
+and clear/sticky status. All agree, including preserved data/control and empty
+signs. This adds no native Windows or original game-frame evidence. The default
+native suite passes 72 tests, with nine external observations separately invoked;
+runner Clippy passes. Original replay follows with the same explicit budget.

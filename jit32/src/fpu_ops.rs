@@ -61,6 +61,7 @@ pub fn operation(name: &str) -> Option<u64> {
         "FLDL2E" => 130,
         "FLDLG2" => 131,
         "FLDLN2" => 132,
+        "FXAM" => 133,
         "FLD-M32" => 2,
         "FLD-M64" => 3,
         "FLD-M80" => 4,
@@ -181,6 +182,29 @@ fn perform(
 ) -> Result<Option<(usize, u128)>, ()> {
     let mut output = None;
     match op {
+        133 => {
+            // Intel SDM FXAM: examine raw ST(0), including empty-register sign.
+            // Do not use get(): examining an empty stack raises no stack fault.
+            let physical = state.top();
+            let bits = state.registers[physical];
+            let exponent = (bits >> 64) & 0x7fff;
+            let significand = bits as u64;
+            let integer = significand >> 63;
+            let class = if state.tag >> (physical * 2) & 3 == 3 {
+                0x4100
+            } else if exponent == 0 {
+                if significand == 0 { 0x4000 } else { 0x4400 }
+            } else if integer == 0 {
+                0 // Unsupported unnormal / pseudo-infinity / pseudo-NaN.
+            } else if exponent != 0x7fff {
+                0x400
+            } else if significand == 1 << 63 {
+                0x500
+            } else {
+                0x100
+            };
+            state.status = (state.status & !0x4700) | class | (((bits >> 79) as u16 & 1) << 9);
+        }
         0 => state.push(0x3fff8000000000000000),
         1 => state.push(0),
         128..=132 => {
@@ -497,7 +521,7 @@ pub(crate) unsafe extern "C" fn execute(
 ) -> u64 {
     let memory = unsafe { &mut *memory };
     let mut state = memory.fpu.borrow().clone();
-    if state.control & 0x3f != 0x3f {
+    if operation & 255 != 133 && state.control & 0x3f != 0x3f {
         memory
             .cpu_fault
             .get_or_insert("unmasked x87 data exceptions are not implemented");
@@ -701,6 +725,102 @@ mod constants_tests {
             let state = r.memory.fpu.borrow();
             assert_eq!(state.registers[7], bits, "op={op} cw={cw:x}");
             assert_eq!(state.status, sw as u16, "op={op} cw={cw:x}");
+        }
+    }
+}
+
+#[cfg(test)]
+mod examine_tests {
+    use crate::{Stop, tests::cpu};
+
+    #[test]
+    fn examines_raw_classes_empty_sign_and_top_without_stack_or_exception_changes() {
+        let cases = [
+            (0, 0x4000),
+            (1, 0x4400),
+            (0x8000000000000000, 0x4400), // Pseudo-denormal.
+            (0x3fff8000000000000000, 0x400),
+            (0x7fff8000000000000000, 0x500),
+            (0x7fffc000000000000001, 0x100),
+            (0x7fff8000000000000001, 0x100), // Signaling NaN: no invalid exception.
+            (0x00010000000000000001, 0),
+            (0x7fff0000000000000000, 0),
+        ];
+        for (bits, class) in cases {
+            for sign in 0..2 {
+                for top in 0..8 {
+                    for tag in 0..4 {
+                        let mut r = cpu(&[0xd9, 0xe5, 0xc3]);
+                        {
+                            let mut f = r.memory.fpu.borrow_mut();
+                            f.control = 0x340; // Unmasked exceptions, none pending.
+                            f.status = (top << 11) | 0x4700;
+                            f.tag = (0xffff & !(3 << (top * 2))) | (tag << (top * 2));
+                            f.registers[top as usize] = bits | (sign as u128) << 79;
+                        }
+                        let before = r.memory.fpu.borrow().clone();
+                        let regs = r.state;
+                        assert!(matches!(r.run(1), Stop::Budget { .. }));
+                        let f = r.memory.fpu.borrow();
+                        assert_eq!(
+                            f.status,
+                            (top << 11) | (sign << 9) | if tag == 3 { 0x4100 } else { class }
+                        );
+                        assert_eq!(f.control, before.control);
+                        assert_eq!(f.tag, before.tag);
+                        assert_eq!(f.registers, before.registers);
+                        assert_eq!(f.mxcsr, before.mxcsr);
+                        assert_eq!(&r.state[..17], &regs[..17]);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    #[ignore = "run tools/check_jit32_examine.py for actual x86 observations"]
+    fn actual_x86_examine_observations() {
+        let data = std::fs::read(
+            std::env::var_os("ALKYHOL_X87_EXAMINE_REFERENCE")
+                .expect("actual observer output required"),
+        )
+        .unwrap();
+        assert_eq!(data.len(), 768 * 32);
+        for (i, row) in data.chunks_exact(32).enumerate() {
+            let mut raw = [0; 16];
+            raw[..10].copy_from_slice(&row[..10]);
+            let bits = u128::from_le_bytes(raw);
+            let top = row[10] as usize;
+            let empty = row[11] != 0;
+            let mut r = cpu(&[0xd9, 0xe5, 0xc3]);
+            {
+                let mut f = r.memory.fpu.borrow_mut();
+                f.status = u16::from_le_bytes(row[12..14].try_into().unwrap());
+                f.tag = if empty {
+                    0xffff
+                } else {
+                    0xffff & !(3 << (top * 2))
+                };
+                f.registers[top] = bits;
+            }
+            let before = r.memory.fpu.borrow().clone();
+            let regs = r.state;
+            assert!(matches!(r.run(1), Stop::Budget { .. }));
+            let f = r.memory.fpu.borrow();
+            assert_eq!(
+                f.status,
+                u16::from_le_bytes(row[14..16].try_into().unwrap()),
+                "row={i} bits={bits:x}"
+            );
+            assert_eq!(&f.registers[top].to_le_bytes()[..10], &row[16..26]);
+            assert_eq!(
+                f.control,
+                u16::from_le_bytes(row[26..28].try_into().unwrap())
+            );
+            assert_eq!(row[28], if empty { 0 } else { 1 << top });
+            assert_eq!(f.tag, before.tag);
+            assert_eq!(f.registers, before.registers);
+            assert_eq!(&r.state[..17], &regs[..17]);
         }
     }
 }

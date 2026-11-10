@@ -171,3 +171,7 @@ preserved under reference/. Their masks/EFLAGS agree, but 152 NaN/denormal DE
 status rows differ. The runner follows the measured Windows AMD profile;
 `tools/check_jit32_compare.py` remains a strict Rosetta diagnostic and currently
 fails on those differences. Neither table is a universal CPU/game proof.
+
+`python3 tools/check_jit32_examine.py` compares the reached FXAM classification
+with 768 independent actual Rosetta assembly rows. This is finite x86/Rosetta
+evidence, separate from native Windows and original game progress.
