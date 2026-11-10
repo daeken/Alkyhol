@@ -1,8 +1,11 @@
 //! Native CPU plug-in boundary. Services retain their existing implementations.
 use super::*;
 use std::sync::OnceLock;
+#[path = "exec_ranges32.rs"]
+mod exec_ranges;
 pub struct ExecutionContext32<'a> {
     image: &'a LoadedImage32<'a>,
+    executable_regions: exec_ranges::StaticExecutableRegions<'a>,
 }
 pub type Execute32 = for<'a> fn(&ExecutionContext32<'a>, u32, u32) -> Result<u64>;
 thread_local! { static EXCEPTION_REGISTERS: std::cell::Cell<Option<[u32; 9]>> = const { std::cell::Cell::new(None) }; }
@@ -77,17 +80,16 @@ impl ExecutionContext32<'_> {
             let end = address + length as u64;
             let host = host_address(address as usize) as u64;
             let host_end = host + length as u64;
-            return self.image.regions.iter().any(|&(a, b, r)| {
-                r & 0x20000000 != 0
-                    && host >= a as u64
-                    && host_end <= (b as u64 + PAGE as u64 - 1) & !(PAGE as u64 - 1)
-            }) || self
-                .image
-                .cpu
-                .native_code
-                .borrow()
-                .iter()
-                .any(|&(a, b)| address >= a as u64 && end <= b as u64);
+            return self
+                .executable_regions
+                .contains(host as usize, host_end as usize)
+                || self
+                    .image
+                    .cpu
+                    .native_code
+                    .borrow()
+                    .iter()
+                    .any(|&(a, b)| address >= a as u64 && end <= b as u64);
         }
         let host = host_address(address as usize);
         let end = host + length;
@@ -198,6 +200,14 @@ pub(super) unsafe fn enter(entry: u32, stack: u32, _code: u32, _data: u32) -> u6
         let execute = EXECUTOR
             .get()
             .unwrap_or_else(|| unsupported("no native PE32 CPU executor installed"));
-        execute(&ExecutionContext32 { image }, entry, stack).unwrap_or_else(|e| unsupported(&e))
+        execute(
+            &ExecutionContext32 {
+                image,
+                executable_regions: exec_ranges::StaticExecutableRegions::new(&image.regions),
+            },
+            entry,
+            stack,
+        )
+        .unwrap_or_else(|e| unsupported(&e))
     })
 }

@@ -976,3 +976,29 @@ in-engine 3D and Rosetta's Orzammar progress remain unobserved in this replay.
 The process is retained paused/hidden for the next coordinated input slot.
 This is original menu discovery evidence, not reference behavior for the
 replacement-generated save. Raw process/capture provenance stays ignored/local.
+
+Native profiling of the original Bink replay identifies repeated immutable
+executable-section scans on instruction-cache hits. The shared executor now
+remembers one admitted static section per execution context. Zero length, rights
+and guest-extent validation still precede lookup; complete instruction bytes are
+still compared on every cache hit. Dynamic executable allocations use their
+existing live check and are never remembered by this cache. Separate contexts
+cannot inherit a previous image's bounds; adjacent sections are not merged.
+
+Three UI-free physical ARM tests cover equivalence to the previous full scan,
+unsorted/overlapping sections, gaps, page rounding, context isolation, biased
+host addresses and overflow. Reproduce with `rustc --edition 2024 --test -D warnings
+pe/probe_exec_ranges.rs -o local/jit32/executable-range-tests` and run that binary.
+The newly built native shared host still agrees with the frozen native Windows
+8 ABI, 24 TLS and 64 heap words in normal/rebased modes; the x86_64 PE library
+also passes its compile check. The full PE native-runtime library-test target
+fails on four absent CI-sqrt/atan symbol references on both the unchanged parent
+and changed tree; that pre-existing target failure is not counted as a pass.
+
+An isolated physical M4 benchmark of 128 fixed sections uses six alternating
+trials of ten million checks per path. Full scans take 790–912 ms, versus
+10.5–13.6 ms for repeated cached-range checks, with identical admitted counts.
+These are bounds-lookup timings, not an end-to-end DAO speedup or FPS result.
+The retained live original process still uses its earlier recorded host binary;
+this optimization applies to the next host build/replay. Raw reports stay in
+ignored `local/jit32/executable-range-*` and `exec-ranges-shared-check`.
