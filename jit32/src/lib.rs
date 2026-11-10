@@ -3,8 +3,11 @@
 mod compiler;
 pub mod memory;
 mod native;
+mod process;
+mod system;
 use alkyhol_pe::{Image, ImportSymbol};
 use memory::{EXEC, Fault, Memory, READ, WRITE};
+pub use process::{ImportGate, Module, ModuleInput, Phase, Process};
 use std::{collections::BTreeMap, fs::File};
 pub type Result<T> = std::result::Result<T, String>;
 const RETURN: u32 = 0x7fff_ff00;
@@ -15,6 +18,7 @@ const STACK_SIZE: usize = 1024 * 1024;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Stop {
     Returned(u32),
+    Import { pc: u32, gate: ImportGate },
     Fault { pc: u32, fault: Fault },
     Unsupported { pc: u32, reason: String },
     Budget { pc: u32 },
@@ -25,6 +29,7 @@ enum Service {
     SetLastError,
     GetStdHandle,
     WriteFile,
+    Kernel(system::Call),
 }
 impl Service {
     fn args(self) -> u32 {
@@ -32,6 +37,7 @@ impl Service {
             Self::GetLastError => 0,
             Self::SetLastError | Self::GetStdHandle => 1,
             Self::WriteFile => 5,
+            Self::Kernel(call) => call.args(),
         }
     }
     fn resolve(module: &str, symbol: &ImportSymbol) -> Result<Self> {
@@ -44,7 +50,9 @@ impl Service {
                 "SetLastError" => Ok(Self::SetLastError),
                 "GetStdHandle" => Ok(Self::GetStdHandle),
                 "WriteFile" => Ok(Self::WriteFile),
-                _ => Err(format!("unsupported import: {module}!{n}")),
+                _ => system::Call::resolve(n)
+                    .map(Self::Kernel)
+                    .ok_or_else(|| format!("unsupported import: {module}!{n}")),
             },
             _ => Err(format!("unsupported ordinal: {module}!{symbol:?}")),
         }
@@ -55,6 +63,9 @@ pub struct Runner {
     memory: Box<Memory>,
     state: [u64; 91],
     gates: BTreeMap<u32, Service>,
+    external_gates: BTreeMap<u32, ImportGate>,
+    teb: Option<u32>,
+    system: system::State,
     stdout: alkyhol::kernel::Handle,
     blocks: BTreeMap<u32, compiler::Instruction>,
     pub instructions: u64,
@@ -150,6 +161,9 @@ impl Runner {
             memory,
             state,
             gates,
+            external_gates: BTreeMap::new(),
+            teb: None,
+            system: system::State::default(),
             stdout,
             blocks: BTreeMap::new(),
             instructions: 0,
@@ -182,8 +196,20 @@ impl Runner {
             .checked_add(4 + service.args() as u64 * 4)
             .filter(|v| *v <= u32::MAX as u64)
             .ok_or("stdcall stack overflow")?;
+        if let Some(teb) = self.teb {
+            alkyhol::kernel::set_last_error(self.memory.word(teb as u64 + 0x34)?);
+        }
         let result = match service {
-            Service::GetLastError => alkyhol::kernel::get_last_error(),
+            Service::Kernel(call) => {
+                self.system
+                    .dispatch(call, &args, &mut self.memory, self.teb)?
+            }
+            Service::GetLastError => {
+                if let Some(teb) = self.teb {
+                    alkyhol::kernel::set_last_error(self.memory.word(teb as u64 + 0x34)?);
+                }
+                alkyhol::kernel::get_last_error()
+            }
             Service::SetLastError => {
                 alkyhol::kernel::set_last_error(args[0]);
                 self.state[0] as u32
@@ -227,6 +253,12 @@ impl Runner {
                 success as u32
             }
         };
+        if let Some(teb) = self.teb {
+            self.memory.write(
+                teb as u64 + 0x34,
+                &alkyhol::kernel::get_last_error().to_le_bytes(),
+            )?;
+        }
         self.state[0] = result as u64;
         self.state[4] = next_sp;
         self.state[17] = ret as u64;
@@ -241,6 +273,12 @@ impl Runner {
             let pc = self.pc();
             if pc == RETURN {
                 return Stop::Returned(self.state[0] as u32);
+            }
+            if let Some(gate) = self.external_gates.get(&pc) {
+                return Stop::Import {
+                    pc,
+                    gate: gate.clone(),
+                };
             }
             if let Some(&service) = self.gates.get(&pc) {
                 if let Err(reason) = self.service(service) {
@@ -303,7 +341,7 @@ impl Drop for Runner {
 #[cfg(test)]
 mod tests {
     use super::*;
-    fn cpu(code: &[u8]) -> Runner {
+    pub(super) fn cpu(code: &[u8]) -> Runner {
         let mut memory = Box::new(Memory::new().unwrap());
         memory.map(0x10000, 4096, READ | EXEC, code).unwrap();
         memory
@@ -335,6 +373,9 @@ mod tests {
             memory,
             state,
             gates: BTreeMap::new(),
+            external_gates: BTreeMap::new(),
+            teb: None,
+            system: system::State::default(),
             stdout,
             blocks: BTreeMap::new(),
             instructions: 0,
@@ -563,5 +604,100 @@ mod tests {
             alkyhol::kernel::ERROR_INVALID_HANDLE
         );
         assert_eq!(r.memory.word(STACK as u64 + 132).unwrap(), 0);
+    }
+}
+
+#[cfg(test)]
+mod extended_cpu_tests {
+    use super::*;
+    #[test]
+    fn segment_override_absolute_modrm_wrap_and_lea_use_distinct_address_rules() {
+        let mut r = tests::cpu(&[
+            0x64, 0xa1, 0x2c, 0, 0, 0, // MOV EAX,FS:[2c]
+            0x64, 0xa3, 0x30, 0, 0, 0, // MOV FS:[30],EAX
+            0x64, 0x8d, 0x0d, 0x2c, 0, 0, 0, // LEA ECX,[2c], ignores FS
+            0x64, 0x8b, 0x15, 0x30, 0, 0, 0, // MOV EDX,FS:[30]
+            0xc3,
+        ]);
+        r.memory.map(0x30000, 4096, READ | WRITE, &[]).unwrap();
+        r.state[22] = 0x30000;
+        r.memory
+            .write(0x3002c, &0xabcdef01u32.to_le_bytes())
+            .unwrap();
+        assert_eq!(r.run(10), Stop::Returned(0xabcdef01));
+        assert_eq!(r.registers()[1], 0x2c);
+        assert_eq!(r.registers()[2], 0xabcdef01);
+        assert_eq!(r.memory.word(0x30030).unwrap(), 0xabcdef01);
+        let mut r = tests::cpu(&[0x64, 0x8b, 0x04, 0x4d, 0x30, 0, 0, 0]); // FS:[ECX*2+30]
+        r.memory.map(0x30000, 4096, READ | WRITE, &[]).unwrap();
+        r.state[22] = 0x30000;
+        r.state[1] = 0x80000000;
+        r.memory
+            .write(0x30030, &0x11223344u32.to_le_bytes())
+            .unwrap();
+        assert_eq!(r.run(1), Stop::Budget { pc: 0x10008 });
+        assert_eq!(r.registers()[0], 0x11223344);
+    }
+    #[test]
+    fn leave_loads_four_bytes_and_commits_frame_only_after_a_valid_read() {
+        let mut r = tests::cpu(&[0xc9]);
+        r.state[5] = STACK as u64 + 64;
+        r.memory
+            .write(STACK as u64 + 64, &0x55667788u32.to_le_bytes())
+            .unwrap();
+        assert_eq!(r.run(1), Stop::Budget { pc: 0x10001 });
+        assert_eq!(r.registers()[4], STACK + 68);
+        assert_eq!(r.registers()[5], 0x55667788);
+        let mut r = tests::cpu(&[0xc9]);
+        r.state[5] = 0;
+        let saved = r.state;
+        assert!(matches!(r.run(1), Stop::Fault { .. }));
+        assert_eq!(r.state, saved);
+    }
+    #[test]
+    fn all_set_condition_register_forms_match_boolean_flag_contract() {
+        for bits in 0..32u32 {
+            let cf = bits & 1 != 0;
+            let pf = bits & 2 != 0;
+            let zf = bits & 4 != 0;
+            let sf = bits & 8 != 0;
+            let of = bits & 16 != 0;
+            let flags = 0x202
+                | u32::from(cf)
+                | (u32::from(pf) << 2)
+                | (u32::from(zf) << 6)
+                | (u32::from(sf) << 7)
+                | (u32::from(of) << 11);
+            let expected = [
+                of,
+                !of,
+                cf,
+                !cf,
+                zf,
+                !zf,
+                cf || zf,
+                !cf && !zf,
+                sf,
+                !sf,
+                pf,
+                !pf,
+                sf != of,
+                sf == of,
+                zf || sf != of,
+                !zf && sf == of,
+            ];
+            for (condition, &expected) in expected.iter().enumerate() {
+                let mut r = tests::cpu(&[0x0f, 0x90 + condition as u8, 0xc0]);
+                r.state[0] = 0xaabbcc00;
+                r.state[16] = flags as u64;
+                assert_eq!(r.run(1), Stop::Budget { pc: 0x10003 });
+                assert_eq!(
+                    r.registers()[0],
+                    0xaabbcc00 | u32::from(expected),
+                    "flags={flags:x} condition={condition}"
+                );
+                assert_eq!(r.flags(), flags);
+            }
+        }
     }
 }

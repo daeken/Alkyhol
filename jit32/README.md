@@ -36,11 +36,40 @@ cargo run --manifest-path jit32/Cargo.toml --locked --offline -- \
   local/pe/pe32/pe32.exe > local/jit32-output.bin
 ```
 
-The current executable contract is scalar, no CRT/DLL initialization or static
-TLS, with four real marshalled kernel services: GetLastError, SetLastError,
-GetStdHandle (inherited regular-file stdout) and synchronous WriteFile. Guest
-handles are tokens; buffers/output counts are checked and copied across the
-boundary. The loader rejects other imports/startup requirements before execution.
+There are two entry paths. `Runner::load` keeps the initial no-TLS/no-CRT
+contract. `Process::load` maps an EXE and explicitly supplied static dependencies,
+binds named/ordinal code/data imports and checked forwarders, prepares a shared
+TEB/static TLS, then invokes original TLS callbacks and DLL entry points in
+dependency order. Startup can pause/resume without repeating completed calls;
+failed attach or stdcall/nonvolatile violations block EXE entry. Only reachable
+DLLs acquire mappings/TLS/startup state. The static attach reserved argument is
+an owned non-NULL opaque indicator, following the documented
+[DllMain contract](https://learn.microsoft.com/en-us/windows/win32/dlls/dllmain).
+It is not an invented Windows startup structure.
+
+```sh
+python3 tools/check_jit32_startup.py
+cargo run --manifest-path jit32/Cargo.toml --locked --offline -- \
+  local/pe/pe32-tls-data/pe32-tls-data.exe --process > local/jit32-tls.bin
+```
+
+`--dll NAME=PATH` supplies original dependencies; `--startup-only` stops before
+EXE entry, and `--state` prints current registers/flags/caller at a stop. The
+explicit `--legacy-nt62` persona enables NT 6.2/build 9200 version responses.
+Without it version calls fail. Guest environment state starts explicitly empty,
+is case insensitive, and currently admits ASCII values through both A/W APIs.
+It is not silently populated from the host environment.
+
+Initial kernel marshalling now covers owned heaps (including preservation,
+zeroed growth and in-place shrink), recursive single-thread critical sections,
+dynamic TLS slots, pointer encoding, process/thread IDs, real clocks, environment
+copies and the selected version persona, alongside the original four I/O/error
+services. Handles/buffers remain checked guest objects; freed heap/environment
+storage loses logical access. Unsupported flags and unknown OS functions stop
+explicitly. Unknown calls produce an Import exit with PC, DLL and symbol while
+preserving the stopped guest continuation. Unprovided original DLLs and missing
+exports fail before execution. This is not a complete Win32 provider or dynamic
+LoadLibrary/GetProcAddress implementation.
 
 Guest memory uses sparse owned 4-GiB backing with checked logical mappings,
 permissions and bounds; it is not identity-mapped to host pointers. Writable
@@ -53,11 +82,22 @@ the runner counts import transitions and guest instructions against its run
 budget. SharpRetro watch instrumentation is not admitted.
 
 The Bits32 adapter explicitly corrects generated CALL's 64-bit return-PC store,
-PUSH imm8's encoded-width versus stack-width mixup, and 32-bit stack wrapping.
+PUSH imm8's encoded-width versus stack-width mixup, 32-bit address/stack wrapping,
+moffs segment overrides and LEA ignoring segment bases. LEAVE and register SETcc
+forms are admitted; a flag truth-table test exercises all 16 SETcc predicates.
 Targeted tests retain exact instruction bytes, register/flag and memory-footprint
 checks. These are adapter corrections, not tracked SharpRetro changes.
 
-This milestone compares one finite original owned PE, not DAO. DLL initialization,
-TEB/FS/TLS, callback/reentrant execution, x87/MXCSR/exception state, threads and the
-large Win32/COM/D3D9 marshalling surface remain required before replacing the
-working Rosetta DAO path. See `docs/sharpretro.md` and `docs/validation.md`.
+The startup comparator checks the unchanged existing TLS-data (24 words) and
+heap-resize (64 words) PEs against actual Rosetta runs and frozen native Windows
+observations, normal and forced-rebased. Inputs/references stay unchanged. These
+comparisons are separate from synthetic callback/order/fault and API-unit tests.
+
+DAO's original first CRT initializer now executes through native ARM JIT code;
+its latest capture maps/binds 12 static modules and stops at GetModuleHandleA.
+Neither CRT initialization nor EXE entry is complete. Extended x87/MXCSR/exception
+state, atomics/loops/SIMD, dynamic module lookup/loading, API callback reentry,
+threads, detach/rollback notifications and the larger Win32/COM/D3D9 bridge remain
+required before replacing the working Rosetta DAO path. Nonzero TLS zero-fill is
+still rejected for its separately documented native-evidence mismatch. See
+`docs/sharpretro.md` and `docs/validation.md`.

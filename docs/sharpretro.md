@@ -92,3 +92,53 @@ cannot be transplanted by casting emulator pointers into host pointers.
 The actual local DAO preflight currently stops explicitly at unsupported static
 TLS initialization, before game instructions execute. Bring up DLL/TLS startup
 and callbacks next; do not bypass them to manufacture a game-entry milestone.
+
+
+## Shared TLS and original DAO dependency startup
+
+The second milestone adds Process::load/run_startup/run_application. It validates
+and maps reachable explicitly provided DLLs, relocates them, binds names/ordinals
+and code/data exports (including checked forwarding), and rejects missing DLLs,
+exports, cycles and unsupported metadata. Image::check_emulated_startup32 admits
+validated TLS callbacks only for an emulator which actually invokes them; the
+older Rosetta/source preflight profiles retain their previous callback gates.
+
+Static TLS templates are copied after relocation/import binding, with stable
+indices, checked alignment and a shared FS-based TEB/vector. Original TLS callbacks
+run before each module's original DllMain, dependencies first; EXE TLS follows its
+DLL dependencies. Static attach uses a backed non-NULL opaque reserved indicator
+per the [DllMain contract](https://learn.microsoft.com/en-us/windows/win32/dlls/dllmain).
+The runner verifies stdcall stack restoration and nonvolatile GPRs, retains active
+continuations across budgets/import stops and never enters the EXE after rejected
+attach. General API callback reentry and detach/failed-load rollback notifications
+remain separate work. Nonzero TLS SizeOfZeroFill stays explicitly rejected.
+
+The actual existing TLS-data PE agrees with all 24 frozen Windows words, and the
+literal heap-resize PE agrees with all 64. Both execute as native ARM64 JIT code
+and through actual Rosetta, at preferred and forced-rebased addresses. These are
+finite independent Windows observations; synthetic initializer-order/rollback,
+flag and API units remain separately identified host/physical ARM assertions.
+
+DAO now reaches the real msvcr80.dll initializer with 12 static modules mapped and
+bound. With the explicit legacy NT 6.2/build 9200 persona and an explicitly empty
+guest environment, the captured original path executes 191 guest instructions
+and seven real API transitions, stopping at KERNEL32!GetModuleHandleA from
+msvcr80.dll+0x2fe3. The original CRT has not finished and EXE entry is not reached.
+Input identities, registers/flags, caller and diagnostics remain local. This
+replaces the earlier *preflight-only* TLS refusal as the current JIT boundary;
+the earlier refusal remains historical evidence. No JIT game frame is claimed.
+
+The checked service state now owns heap lifetimes/resize/quota, recursive critical
+sections, dynamic TLS slots, environment buffers, pointer encoding and real
+clock/identity outputs. Direct TEB last-error/TLS-slot writes are coherent with the
+marshaller. Unsupported flags, executable heaps and unavailable functions fail;
+unknown OS calls produce an Import exit rather than a fabricated return value.
+Module lookup/loading and exporting the implemented compatibility services are
+the next concrete CRT blockers. Do not report missing optional APIs as successful
+calls or assume the old low-pointer dispatcher can receive emulated offsets.
+
+The TLS witness exposed another generated-lifter omission: A0-A3 moffs loads/stores
+ignored segment overrides (64 A1 2C000000 read 0x2c instead of FS.base+0x2c).
+Local adapters correct that, wrap effective addresses before adding segments, and
+keep LEA segment independent. All 16 register SETcc predicates have direct boolean
+flag-contract tests. Shared SharpRetro tracked sources/pins remain untouched.

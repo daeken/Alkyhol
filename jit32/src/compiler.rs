@@ -29,7 +29,9 @@ struct Shared {
     guards: RefCell<Vec<usize>>,
     stored: Cell<bool>,
     call: bool,
-    stack: bool,
+    stack_read: bool,
+    stack_write: bool,
+    segment: Option<u32>,
 }
 struct Checked<'a> {
     inner: &'a mut Tier0,
@@ -51,6 +53,19 @@ fn width(ty: IlType) -> u64 {
     }
 }
 impl Checked<'_> {
+    fn address(&mut self, addr: u32, stack: bool) -> u32 {
+        // Address-size wrap happens before adding the segment base. Upstream's
+        // ModRM helper currently defers Bits32 masking; correct it at access.
+        if !stack && let Some(si) = self.shared.segment {
+            let segment = self.inner.reg_read(RegFile(2), si, IlType::U64);
+            let offset = self.inner.sub(addr, segment);
+            let offset = self.inner.cast(offset, IlType::U32);
+            let offset = self.inner.cast(offset, IlType::U64);
+            self.inner.add(segment, offset)
+        } else {
+            self.inner.cast(addr, IlType::U32)
+        }
+    }
     fn guard(&mut self, addr: u32, size: u64, write: bool) {
         assert!(addr < 4096, "spill limit");
         let e = &mut self.inner.enc;
@@ -79,11 +94,7 @@ impl Builder for Checked<'_> {
             !self.shared.stored.get(),
             "read after committed store requires precise partial-state support"
         );
-        let addr = if self.shared.stack {
-            self.inner.cast(addr, IlType::U32)
-        } else {
-            addr
-        };
+        let addr = self.address(addr, self.shared.stack_read);
         self.guard(addr, width(ty), false);
         let v = self.inner.mem_read(addr, ty);
         self.checked_val(v)
@@ -100,11 +111,7 @@ impl Builder for Checked<'_> {
         } else {
             value
         };
-        let addr = if self.shared.stack {
-            self.inner.cast(addr, IlType::U32)
-        } else {
-            addr
-        };
+        let addr = self.address(addr, self.shared.stack_write);
         self.guard(addr, width(self.inner.ty_of(value)), true);
         self.inner.mem_write(addr, value);
     }
@@ -451,26 +458,42 @@ pub(crate) fn compile(pc: u32, bytes: &[u8]) -> Result<Instruction> {
     // operations are outside the initial admitted subset. Never execute an empty
     // generated template as if it implemented a guest operation.
     const ADMITTED: &[&str] = &[
-        "MOV", "MOVZX", "MOVSX", "LEA", "PUSH", "POP", "CALL", "JMP", "RET", "RETI", "ADD", "SUB",
-        "ADC", "SBB", "INC", "DEC", "NEG", "NOT", "AND", "OR", "XOR", "CMP", "TEST", "SHL", "SHR",
-        "SAR", "SAL", "ROL", "ROR", "BSWAP", "NOP", "NOPL", "JO", "JNO", "JB", "JAE", "JE", "JNE",
-        "JBE", "JA", "JS", "JNS", "JP", "JNP", "JL", "JGE", "JLE", "JG", "JNB", "JZ", "JNZ",
-        "JNBE", "JNL", "JNLE", "SETZ", "SETNZ", "CMOVZ", "CMOVNZ",
+        "MOV", "MOVZX", "MOVSX", "LEA", "PUSH", "POP", "CALL", "JMP", "RET", "RETI", "LEAVE",
+        "ADD", "SUB", "ADC", "SBB", "INC", "DEC", "NEG", "NOT", "AND", "OR", "XOR", "CMP", "TEST",
+        "SHL", "SHR", "SAR", "SAL", "ROL", "ROR", "BSWAP", "NOP", "NOPL", "JO", "JNO", "JB", "JAE",
+        "JE", "JNE", "JBE", "JA", "JS", "JNS", "JP", "JNP", "JL", "JGE", "JLE", "JG", "JNB", "JZ",
+        "JNZ", "JNBE", "JNL", "JNLE", "SETZ", "SETNZ", "CMOVZ", "CMOVNZ", "SETO", "SETNO", "SETB",
+        "SETNB", "SETBE", "SETNBE", "SETS", "SETNS", "SETP", "SETNP", "SETL", "SETNL", "SETLE",
+        "SETNLE", "CMOVO", "CMOVNO", "CMOVB", "CMOVNB", "CMOVBE", "CMOVNBE", "CMOVS", "CMOVNS",
+        "CMOVP", "CMOVNP", "CMOVL", "CMOVNL", "CMOVLE", "CMOVNLE",
     ];
-    if !ADMITTED.contains(&mnemonic) || d.p.lock {
+    if !ADMITTED.contains(&mnemonic) || d.p.lock || d.p.ad_size {
         return Err(format!("unsupported instruction {mnemonic} at {pc:#x}"));
     }
-    if ["PUSH", "POP", "CALL", "RET", "RETI"].contains(&mnemonic)
+    if ["PUSH", "POP", "CALL", "RET", "RETI", "LEAVE"].contains(&mnemonic)
         && d.p.v_width_d64(XMode::Bits32) != 32
     {
         return Err(format!("16-bit stack operation is not admitted at {pc:#x}"));
+    }
+    if mnemonic == "POP" && d.op == 0x8f && !d.m.is_reg {
+        return Err("POP memory requires post-pop address evaluation support".into());
     }
     let mut inner = Tier0::with_layout(&LAYOUT);
     let shared = Shared {
         guards: RefCell::new(vec![]),
         stored: Cell::new(false),
         call: mnemonic == "CALL",
-        stack: ["PUSH", "POP", "CALL", "RET", "RETI"].contains(&mnemonic),
+        stack_read: ["POP", "RET", "RETI", "LEAVE"].contains(&mnemonic),
+        stack_write: ["PUSH", "CALL"].contains(&mnemonic),
+        segment: match d.p.segment {
+            0x26 => Some(0),
+            0x2e => Some(1),
+            0x36 => Some(2),
+            0x3e => Some(3),
+            0x64 => Some(4),
+            0x65 => Some(5),
+            _ => None,
+        },
     };
     let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let mut bd = Checked {
@@ -479,7 +502,36 @@ pub(crate) fn compile(pc: u32, bytes: &[u8]) -> Result<Instruction> {
         };
         // Generated def84 gives PUSH Ib-sx an 8-bit stack width. The ISA's
         // operand width is 32 here; only the encoded immediate has eight bits.
-        if mnemonic == "PUSH" && d.op == 0x6a {
+        if mnemonic == "MOV" && (0xa0..=0xa3).contains(&d.op) {
+            // Generated moffs operands omit the segment override entirely.
+            use xfusion_recomp::operand::{Operand, bind_fixed_reg, read_operand, write_operand};
+            let width = if d.op & 1 == 0 {
+                8
+            } else {
+                d.p.v_width(XMode::Bits32)
+            };
+            let mut addr = bd.literal(IlType::U64, d.imm0 as u32 as u128);
+            if let Some(si) = shared.segment {
+                let base = bd.reg_read(RegFile(2), si, IlType::U64);
+                addr = bd.add(base, addr);
+            }
+            let memory = Operand::Mem { addr, width };
+            let register = bind_fixed_reg(0, width);
+            let (dst, src) = if d.op & 2 == 0 {
+                (register, memory)
+            } else {
+                (memory, register)
+            };
+            let value = read_operand(&mut bd, &src);
+            write_operand(&mut bd, &dst, value);
+        } else if mnemonic == "LEA" {
+            // LEA never applies segment bases, even with an FS override.
+            let mut plain = d;
+            plain.p.segment = 0;
+            if !lift_one(&mut bd, &plain, pc as u64, XMode::Bits32, FLAGS_ALL_LIVE) {
+                return Err(String::from("LEA not lifted"));
+            }
+        } else if mnemonic == "PUSH" && d.op == 0x6a {
             let sp = bd.reg_read(RegFile(0), 4, IlType::U32);
             let four = bd.literal(IlType::U32, 4);
             let next_sp = bd.sub(sp, four);

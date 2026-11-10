@@ -7441,3 +7441,83 @@ returns `static TLS initialization is not implemented by JIT32` before executing
 any original game instruction. That is the next loader boundary; it was not
 bypassed. Its report remains in ignored local/jit32/dao-preflight.stderr. The JIT
 host itself is verified as an arm64 Mach-O executable.
+
+
+### Native ARM JIT: static TLS, DLL attach and the first original DAO initializer
+
+The new Process API materializes a checked static dependency graph using only
+explicitly supplied originals; unused available DLLs do not acquire imports,
+TLS blocks or initializers. It chooses disjoint addresses, applies HIGHLOW
+relocations, binds named/ordinal code/data exports and checked forwarders, and
+constructs actual single-thread TEB/static-TLS storage. TLS indices/templates
+retain relocated pointer initializers and requested alignment. A separate
+Image::check_emulated_startup32 validates callback metadata while preserving the
+old diagnostic/native startup restrictions for existing clients. Unknown CLR,
+unsupported auxiliary directories, missing dependencies/exports and dependency
+cycles remain failures. Nonzero TLS SizeOfZeroFill remains outside admission.
+
+The scheduler invokes original dependency TLS callbacks before original DLL
+entries, then EXE TLS callbacks, retaining a stopped call across budgets/import
+exits. Static attach receives the module base, reason 1 and a backed non-NULL
+opaque reserved indicator as specified by
+[DllMain](https://learn.microsoft.com/en-us/windows/win32/dlls/dllmain); no Windows
+startup-structure contents are fabricated. Stack/nonvolatile violations and
+FALSE attach prevent application entry. General API callback reentry, dynamic
+loading and detach/failed-load rollback notifications are still unimplemented.
+Synthetic tests establish the scheduler's tested ordering/state transitions;
+there is no new native Windows DLL-order capture in this milestone.
+
+The real service state supplies checked owned process/private heaps, size/free/
+validation/reallocation (including byte retention, zeroed growth and in-place
+shrink), recursive single-guest-thread critical sections, dynamic TLS slots,
+reversible pointer encoding, host-backed process/thread IDs and time/counter
+outputs, owned case-insensitive ASCII environment A/W buffers, and explicitly
+selected NT 6.2/build 9200 version queries. Environment starts explicitly empty,
+not inherited from host secrets. Executable heaps, unsupported flags, unknown
+calls and unavailable threading/dispatch do not receive successful stubs.
+Freed storage loses guest access; the marshaller synchronizes direct TEB last-error
+and dynamic TLS slot state. Clock/lock/environment/identity assertions are host
+units, not cross-Windows observations. The existing frozen load-config cookie
+policy is retained: only a default cookie with declared 72-byte metadata is
+seeded from actual entropy; 64-byte/other seeds are preserved. No SEH delivery is
+claimed from inspecting that metadata.
+
+The unchanged existing TLS-data PE (SHA-256
+967e546b33fdaddd01c107d0d3e0dfce5cb68f3bf4ef0a6d999945660d4de12a) executes
+135 guest instructions/four services/135 blocks. All 24 output words agree with
+actual Rosetta and the frozen Windows result. The unchanged literal heap-resize
+PE (9554b9ee95c3f06161495b73cfb2b67b342e0c327ceb8bef163a7863f368dbd5)
+executes 3789 instructions/46 services/449 blocks; all 64 words agree with both
+actual Rosetta and frozen native Windows. Each JIT and Rosetta test is run at
+preferred and forced-rebased addresses. tools/check_jit32_startup.py verifies
+source/PE/reference identities before and after execution and records raw bytes,
+host, code identity and counts in ignored local/jit32/startup-comparison. Windows
+was not rerun here; the unchanged frozen observations are the independent native
+evidence. The original eight-word ABI comparator still passes unchanged.
+
+The TLS witness also exposes a generated CPU omission: absolute A0-A3 memory
+operands ignored the segment override. The adapter now honors FS/other segment
+bases, wraps Bits32 effective addresses before adding a segment, and keeps LEA
+segment independent. LEAVE and register SETcc forms are admitted. Targeted ARM
+checks cover exact moffs/ModRM/LEA bytes, 32-bit wrapped index addressing, LEAVE
+fault rollback and all 16 SETcc predicates over all 32 relevant flag combinations.
+These synthetic CPU checks are distinct from the finite frozen Windows outputs;
+they do not establish whole-CPU equivalence. SharpRetro's tracked sources and
+pinned revision/artifacts are unchanged.
+
+A real original DAO startup probe now maps/binds 12 modules and enters the original
+msvcr80.dll initializer. It executes 191 guest instructions and seven real service
+transitions, then stops explicitly at KERNEL32!GetModuleHandleA, return caller
+msvcr80.dll+0x2fe3. The explicit NT 6.2 persona and empty environment are recorded;
+original module/input hashes, registers/flags/caller, elapsed time and diagnostics
+stay under ignored local/jit32. This is original dependency code executing through
+native ARM64, not complete CRT initialization, EXE entry, gameplay or shaded-frame
+parity. The earlier static-TLS preflight rejection and working Rosetta DAO build
+remain preserved. Module lookup/service exports are the next reached blocker.
+
+Twenty-eight JIT/process/service/CPU tests pass on physical M4, and the new
+emulator-preflight test brings the portable image32 suite to 18 passing tests.
+The x86-64/Rosetta PE suite also passes 229 units plus those 18 parser tests,
+retaining its existing one PAGEZERO-dependent skip. Runner Clippy and two strict
+Python transport tests pass. Shared original fixtures, native references and
+DAODecomp are untouched; no game-derived inputs/inventories are committed.

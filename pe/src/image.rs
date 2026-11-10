@@ -1157,7 +1157,7 @@ impl<'a> Image<'a> {
         if self.directories[3].1 != 0 {
             return Err("PE32 exception directory is unsupported".into());
         }
-        self.check_auxiliary_startup_mode(true)
+        self.check_auxiliary_startup_mode(true, false)
     }
     // Handler-registration metadata is retained here without claiming recovery:
     // the diagnostic profile stops on every fault instead of ignoring it.
@@ -1172,7 +1172,21 @@ impl<'a> Image<'a> {
         if self.directories[3].1 != 0 {
             return Err("PE32 exception directory is unsupported".into());
         }
-        self.check_auxiliary_startup_mode(true)
+        self.check_auxiliary_startup_mode(true, false)
+    }
+    /// Inspect startup metadata for an emulator which implements checked TLS
+    /// callbacks itself. This does not invoke callbacks or register SEH handlers;
+    /// fault delivery remains the emulator's explicit responsibility. Other
+    /// auxiliary directories keep the diagnostic profile's conservative gates.
+    pub fn check_emulated_startup32(&self) -> Result<()> {
+        if !self.i386 {
+            return Err("emulated startup requires PE32".into());
+        }
+        self.export_table(true)?;
+        if self.directories[3].1 != 0 {
+            return Err("PE32 exception directory is unsupported".into());
+        }
+        self.check_auxiliary_startup_mode(true, true)
     }
     fn diagnostic_delay_imports32(&self) -> Result<()> {
         let (rva, length) = self.directories[13];
@@ -1279,9 +1293,13 @@ impl<'a> Image<'a> {
         self.check_auxiliary_startup_except_static()
     }
     fn check_auxiliary_startup_except_static(&self) -> Result<()> {
-        self.check_auxiliary_startup_mode(false)
+        self.check_auxiliary_startup_mode(false, false)
     }
-    fn check_auxiliary_startup_mode(&self, allow_seh32: bool) -> Result<()> {
+    fn check_auxiliary_startup_mode(
+        &self,
+        allow_seh32: bool,
+        allow_tls_callbacks: bool,
+    ) -> Result<()> {
         for (i, name) in [
             (7, "architecture"),
             (8, "global pointer"),
@@ -1299,7 +1317,7 @@ impl<'a> Image<'a> {
                 }
                 if i == 9 && self.i386 {
                     let tls = self.static_tls32()?.ok_or("missing PE32 TLS metadata")?;
-                    if !tls.callbacks.is_empty() {
+                    if !allow_tls_callbacks && !tls.callbacks.is_empty() {
                         return Err("PE32 TLS callbacks are unsupported".into());
                     }
                     if tls.zero_fill != 0 {

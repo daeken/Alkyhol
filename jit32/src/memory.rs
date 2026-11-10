@@ -108,6 +108,27 @@ impl Memory {
         self.regions.sort_by_key(|r| r.start);
         Ok(())
     }
+    pub(crate) fn shrink(&mut self, address: u32, old: usize, new: usize) -> Result<()> {
+        if new == 0 || new > old {
+            return Err("invalid guest region shrink".into());
+        }
+        let region = self
+            .regions
+            .iter_mut()
+            .find(|r| r.start == address as u64 && r.end == address as u64 + old as u64)
+            .ok_or("shrink requires exact owned region")?;
+        region.end = region.start + new as u64;
+        Ok(())
+    }
+    pub(crate) fn unmap(&mut self, address: u32, size: usize) -> Result<()> {
+        let index = self
+            .regions
+            .iter()
+            .position(|r| r.start == address as u64 && r.end == address as u64 + size as u64)
+            .ok_or("unmap requires exact owned region")?;
+        self.regions.remove(index);
+        Ok(())
+    }
     pub fn read(&self, address: u64, size: usize, access: u8) -> Result<&[u8]> {
         self.check(address, size, access)
             .map_err(|f| format!("guest fault: {f:?}"))?;

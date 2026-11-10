@@ -861,3 +861,38 @@ fn cookie_cannot_alias_tls_template_or_index_loader_storage() {
             .is_err()
     );
 }
+
+#[test]
+fn emulator_preflight_admits_checked_callbacks_without_weakening_other_profiles() {
+    let mut b = tls_image();
+    p32(&mut b, 0xb10, 0); // The independently compared zero-fill-zero profile.
+    p32(&mut b, 0xb80, 0x401000);
+    directory(&mut b, 5, 0x2200, 44);
+    p32(&mut b, 0x810, 20);
+    p16(&mut b, 0x81c, 0x3180);
+    p16(&mut b, 0x81e, 0);
+    p32(&mut b, 0x820, 0x2000);
+    p32(&mut b, 0x824, 12);
+    p16(&mut b, 0x828, 0x3108);
+    let image = Image::parse_i386_diagnostic(&b, false).unwrap();
+    assert!(image.check_startup().is_err());
+    assert!(image.check_diagnostic_startup32().is_err());
+    image.check_emulated_startup32().unwrap();
+    for index in [3, 7, 8, 11, 14, 15] {
+        let mut bad = b.clone();
+        directory(&mut bad, index, 0x2300, 4);
+        assert!(
+            Image::parse_i386_diagnostic(&bad, false)
+                .unwrap()
+                .check_emulated_startup32()
+                .is_err()
+        );
+    }
+    p32(&mut b, 0xb10, 16);
+    assert!(
+        Image::parse_i386_diagnostic(&b, false)
+            .unwrap()
+            .check_emulated_startup32()
+            .is_err()
+    );
+}
