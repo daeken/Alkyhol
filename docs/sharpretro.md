@@ -3,7 +3,13 @@
 The sections below record chronological milestones. The latest shared-service
 entry and original-game progress are at the end of this document.
 
-The user now prioritizes a pure-Rust SharpRetro runner for unchanged DAO,
+Primary application testing has returned to Rosetta by explicit user choice.
+Preserve this runner and its frozen evidence for future CPU comparisons; do not
+continue ISA expansion or JIT performance work as the current application
+priority. Shared Win32/D3D9 fixes carry over to the Rosetta host. See
+[pe32.md](pe32.md) for the current direction.
+
+The user previously prioritized a pure-Rust SharpRetro runner for unchanged DAO,
 separate from the existing Rosetta path, to compare CPU behavior side by side.
 The first [checked native ARM64 runner](../jit32/README.md) executes the existing
 owned PE32 ABI contract unchanged. It is not yet a DAO game runner.

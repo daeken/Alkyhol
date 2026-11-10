@@ -8491,3 +8491,11 @@ is retained in ignored `local/jit32/shared-game-number-format-before`; the
 process is terminal and all its UI control is revoked. An independently authored
 PE witness covers custom decimal rounding, grouping, negative modes and output
 capacities; native Windows observation is pending, not a semantic test pass.
+
+The user subsequently switched primary DAO testing back to Rosetta to shorten
+the application iteration loop. SharpRetro expansion/performance work is paused;
+its tests, literal Windows observations, strict recorded differences and original
+run captures are preserved. Shared Win32/D3D9 fixes remain applicable to both
+hosts. The original Rosetta Orzammar GetLocalTime stop predates the tested clock
+implementation; a fresh Rosetta application run, rather than the native JIT's
+later loading stop or standalone tests, must establish current game progress.
