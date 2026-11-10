@@ -175,3 +175,7 @@ fails on those differences. Neither table is a universal CPU/game proof.
 `python3 tools/check_jit32_examine.py` compares the reached FXAM classification
 with 768 independent actual Rosetta assembly rows. This is finite x86/Rosetta
 evidence, separate from native Windows and original game progress.
+
+`python3 tools/check_jit32_rotates.py` compares 5,200 actual Rosetta narrow-rotate
+rows with both CL and immediate native forms. Only architecturally defined
+overflow flags are asserted. These observations are separate from Windows.

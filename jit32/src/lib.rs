@@ -1380,3 +1380,6 @@ mod extended_cpu_tests {
         }
     }
 }
+
+#[cfg(test)]
+mod rotate_tests;

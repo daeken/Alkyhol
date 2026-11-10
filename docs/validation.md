@@ -7797,3 +7797,17 @@ and clear/sticky status. All agree, including preserved data/control and empty
 signs. This adds no native Windows or original game-frame evidence. The default
 native suite passes 72 tests, with nine external observations separately invoked;
 runner Clippy passes. Original replay follows with the same explicit budget.
+
+FXAM clears the original stop; execution next reaches byte ROL in the same runtime
+routine, at 1,618,333,452 loading-thread instructions. The pinned native backend
+rejects rotate widths other than 32/64. Alkyhol's checked builder now lowers
+8/16-bit rotates using unsigned widened temporaries, masked narrow counts and
+final truncation; upstream files remain unchanged. Existing lifted rotate flag
+semantics are retained. All 5,200 independent actual Rosetta rows agree for both
+CL and immediate forms (10,400 native cases), covering byte/high-byte/word
+registers, memory, masked/wrapped counts and two initial flag states. Undefined
+OF for multi-step rotates is not asserted. Native tests also check preserved
+partial registers and no write/flag commitment on read-only memory faults. The
+73 default tests and runner Clippy pass; ten external observations are separate.
+Original inputs are unchanged, no Present has been observed, and cutscene parity
+remains unestablished. Next replay retains the explicit ten-billion budget.

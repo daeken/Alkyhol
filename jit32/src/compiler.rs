@@ -403,6 +403,27 @@ impl Builder for Checked<'_> {
         self.checked_val(v)
     }
     fn rotr(&mut self, a: Self::Val, b: Self::Val) -> Self::Val {
+        if let IlType::I {
+            width: bits @ (8 | 16),
+            ..
+        } = self.ty_of(a)
+        {
+            // Tier0 only emits native 32/64-bit rotates. Build narrow rotates
+            // in unsigned 32-bit temporaries, then truncate to the source type.
+            // A zero count uses a left shift by 8/16, never by the host width.
+            let ty = self.ty_of(a);
+            let value = self.inner.cast(a, IlType::U32);
+            let count = self.inner.cast(b, IlType::U32);
+            let mask = self.inner.literal(IlType::U32, (bits - 1) as u128);
+            let count = self.inner.and(count, mask);
+            let width = self.inner.literal(IlType::U32, bits as u128);
+            let inverse = self.inner.sub(width, count);
+            let lo = self.inner.shr(value, count);
+            let hi = self.inner.shl(value, inverse);
+            let result = self.inner.or(lo, hi);
+            let result = self.inner.cast(result, ty);
+            return self.checked_val(result);
+        }
         let v = self.inner.rotr(a, b);
         self.checked_val(v)
     }
