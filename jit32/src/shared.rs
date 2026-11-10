@@ -6,7 +6,9 @@ use std::{
     cell::{Cell, RefCell},
     collections::BTreeMap,
     rc::Rc,
+    sync::atomic::{AtomicU64, Ordering},
 };
+static REQUESTED_TRACE_PC: AtomicU64 = AtomicU64::new(0);
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Stats {
     pub instructions: u64,
@@ -38,6 +40,25 @@ fn instruction_budget() -> Result<u64> {
         Err(std::env::VarError::NotPresent) => parse_instruction_budget(None),
         Err(_) => Err("JIT32 instruction budget is not valid Unicode".into()),
     }
+}
+fn trace_pc(value: &str) -> Result<u32> {
+    u32::from_str_radix(value.trim().trim_start_matches("0x"), 16)
+        .map_err(|_| "invalid JIT trace address".into())
+}
+fn trace_request(path: &std::path::Path) -> Result<Option<u32>> {
+    let metadata = match std::fs::metadata(path) {
+        Ok(v) => v,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(format!("read JIT trace request metadata: {e}")),
+    };
+    if !metadata.is_file() || metadata.len() > 16 {
+        return Err("JIT trace request must be a regular file of at most 16 bytes".into());
+    }
+    let value =
+        std::fs::read_to_string(path).map_err(|e| format!("read JIT trace request: {e}"))?;
+    let pc = trace_pc(&value)?;
+    std::fs::remove_file(path).map_err(|e| format!("consume JIT trace request: {e}"))?;
+    Ok(Some(pc))
 }
 struct Cached {
     bytes: Vec<u8>,
@@ -99,15 +120,28 @@ fn execute_inner(context: &ExecutionContext32<'_>, entry: u32, stack: u32) -> Re
     let progress = std::env::var_os("ALKYHOL_JIT32_TRACE_PROGRESS").is_some();
     let trace_after = std::env::var("ALKYHOL_JIT32_TRACE_AFTER")
         .ok()
-        .map(|v| {
-            u32::from_str_radix(v.trim_start_matches("0x"), 16)
-                .map_err(|_| "invalid JIT trace address")
-        })
+        .map(|v| trace_pc(&v))
         .transpose()?;
+    let trace_path = std::env::var_os("ALKYHOL_JIT32_TRACE_REQUEST").map(std::path::PathBuf::from);
     let mut trace_remaining = 0;
     let mut traced = false;
-    for _ in 0..instruction_budget()? {
+    for step in 0..instruction_budget()? {
+        if step % 65536 == 0
+            && let Some(path) = &trace_path
+            && let Some(pc) = trace_request(path)?
+        {
+            REQUESTED_TRACE_PC.store(pc as u64 + 1, Ordering::Release);
+            eprintln!("JIT32 accepted bounded trace request for {pc:#x}");
+        }
         let pc = state[17] as u32;
+        if trace_path.is_some()
+            && REQUESTED_TRACE_PC.load(Ordering::Acquire) == pc as u64 + 1
+            && REQUESTED_TRACE_PC
+                .compare_exchange(pc as u64 + 1, 0, Ordering::AcqRel, Ordering::Acquire)
+                .is_ok()
+        {
+            trace_remaining = 256;
+        }
         if !traced && trace_after == Some(pc) {
             traced = true;
             trace_remaining = 256;
@@ -285,5 +319,32 @@ mod tests {
         ] {
             assert!(parse_instruction_budget(Some(v)).is_err(), "{v:?}");
         }
+    }
+}
+
+#[cfg(test)]
+mod trace_tests {
+    use super::*;
+    #[test]
+    fn trace_requests_are_finite_validated_and_consumed_once() {
+        for value in ["", "-1", "100000000", "bogus", "12 34"] {
+            assert!(trace_pc(value).is_err());
+        }
+        assert_eq!(trace_pc("0xffffffff\n").unwrap(), u32::MAX);
+        assert_eq!(trace_pc(" 0x1234 ").unwrap(), 0x1234);
+        let path =
+            std::env::temp_dir().join(format!("alkyhol-trace-request-{}", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(trace_request(&path).unwrap(), None);
+        std::fs::write(&path, "0xc9ddd7\n").unwrap();
+        assert_eq!(trace_request(&path).unwrap(), Some(0xc9ddd7));
+        assert!(!path.exists());
+        assert_eq!(trace_request(&path).unwrap(), None);
+        std::fs::write(&path, "garbage").unwrap();
+        assert!(trace_request(&path).is_err());
+        assert!(path.exists());
+        std::fs::write(&path, "00000000000000000").unwrap();
+        assert!(trace_request(&path).is_err());
+        std::fs::remove_file(path).unwrap();
     }
 }

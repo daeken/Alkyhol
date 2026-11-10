@@ -7945,3 +7945,34 @@ retains the latter failure; it is not dropped or relabeled as a pass. All 84
 default native tests and runner Clippy pass; fifteen external observations are
 separate. The next original replay retains all assets, rendering and the explicit
 instruction budget, and continues toward menu/Orzammar progress parity.
+
+Original execution at ae16f00 now reaches the complete main menu, with animated
+background, logo, text and New Game/other controls visible in physical M4 window
+captures. This is original video/UI rendering; it is not yet original in-engine
+3D or Orzammar evidence. The initial menu run was explicitly terminated for input
+instrumentation (not a game crash), with original input hashes unchanged. A
+second input-traced run confirms actual native keyboard/mouse acquisition,
+key/button delivery and explicit relative motion, but no New Game activation
+has yet been observed. Foreground/focus were checked through actual native
+window state; a live debugger attach did not complete or change trace settings.
+The menu/control captures and raw input evidence remain ignored and local.
+
+Optional input diagnostics now record at most 128 changed DirectInput state
+snapshots per device, with HRESULT, nonzero bytes and a readback comparison when
+the output storage is readable. They do not alter API results or require an
+architectural read of write-only output. An opt-in ALKYHOL_JIT32_TRACE_REQUEST
+file accepts one hexadecimal guest PC, at most 16 bytes, and requests 256
+instruction snapshots on the first guest thread reaching it. Requests are
+consumed once; malformed requests fail explicitly. No guest PC/register/data is
+modified. These bounded logs are for identifying the next actual DAO blocker.
+
+All 86 default native JIT tests and runner Clippy pass, including the same
+production input-deduplication helper and trace-request parser. A direct owned
+frozen-ABI run consumes a request and emits exactly 256 trace lines while keeping
+all eight Windows output words unchanged. The existing complete shared 8 ABI,
+24 TLS and 64 heap-word comparisons also pass normal/rebased modes. A direct
+native PE crate unit-test build remains blocked by pre-existing missing legacy
+x87 test symbols; no native full-PE-unit result is claimed, and no oracle/fixture
+was changed. The input helper is tested from its production source file through
+the native JIT test target. Another original input/caller-traced run follows;
+New Game, Quick Play and Orzammar progress parity remain unestablished.

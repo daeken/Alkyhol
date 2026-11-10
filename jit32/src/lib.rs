@@ -1533,3 +1533,7 @@ mod streaming_store_tests {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "../../pe/src/input_trace32.rs"]
+mod input_state_trace_tests;

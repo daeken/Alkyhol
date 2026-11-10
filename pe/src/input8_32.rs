@@ -65,6 +65,10 @@ struct Format {
     size: usize,
     bindings: Vec<Binding>,
 }
+#[path = "input_trace32.rs"]
+mod state_trace;
+use state_trace::StateTrace;
+
 struct Device {
     parent: u32,
     kind: Kind,
@@ -72,7 +76,9 @@ struct Device {
     cooperative: Option<(u32, u32)>,
     buffer: usize,
     source: Option<host::Source>,
+    trace_state: StateTrace,
 }
+
 enum Body {
     Factory,
     Device(Device),
@@ -453,6 +459,7 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32
                     cooperative: None,
                     buffer: 0,
                     source: None,
+                    trace_state: StateTrace::default(),
                 }),
             );
             words(image, a[2], &[device]);
@@ -653,6 +660,14 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32
         (1, 9) => {
             let device = device_mut(&mut s, a[0]);
             if device.source.is_none() {
+                if std::env::var_os("ALKYHOL_PE32_TRACE_INPUT").is_some()
+                    && device.trace_state.changed(NOTACQUIRED, &[])
+                {
+                    eprintln!(
+                        "PE32 DirectInput state result: object={:x} status={NOTACQUIRED:x}",
+                        a[0]
+                    );
+                }
                 return NOTACQUIRED;
             }
             if let Some((window, _)) = device.cooperative
@@ -673,6 +688,30 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32
             match source.state() {
                 Ok(bytes) => {
                     write(image, a[2], &bytes);
+                    if std::env::var_os("ALKYHOL_PE32_TRACE_INPUT").is_some()
+                        && device.trace_state.changed(0, &bytes)
+                    {
+                        let nonzero: Vec<_> = bytes
+                            .iter()
+                            .copied()
+                            .enumerate()
+                            .filter(|(_, b)| *b != 0)
+                            .collect();
+                        let copied =
+                            image
+                                .permits(a[2] as usize, bytes.len(), false)
+                                .then(|| unsafe {
+                                    std::slice::from_raw_parts(a[2] as *const u8, bytes.len())
+                                        == bytes
+                                });
+                        eprintln!(
+                            "PE32 DirectInput state result: object={:x} kind={:?} status=0 output={:x} size={} nonzero={nonzero:x?} readback_matches={copied:?}",
+                            a[0],
+                            device.kind,
+                            a[2],
+                            bytes.len()
+                        );
+                    }
                     0
                 }
                 Err(_) => {

@@ -201,3 +201,11 @@ relative error <=3/8192 using integer inequalities. Normal estimate bit equality
 is explicitly not required. Downstream Newton-refined values may differ from a
 specific CPU. The strict `tools/check_jit32_rsqrt.py` Rosetta diagnostic retains
 its forced-MXCSR-mask failure; both raw observation tables are frozen.
+
+For an explicitly enabled live diagnostic, set `ALKYHOL_JIT32_TRACE_REQUEST` to
+an ignored local path. Atomically write a hexadecimal guest PC (at most 16 bytes)
+to request 256 instruction snapshots on the first guest thread reaching it.
+The request is consumed; no guest state is modified. Malformed requests fail.
+`ALKYHOL_PE32_TRACE_INPUT=1` additionally emits bounded changed-state DirectInput
+snapshots and readable-output copy comparisons. These are diagnostic evidence,
+not an input-success or game-compatibility assertion.
