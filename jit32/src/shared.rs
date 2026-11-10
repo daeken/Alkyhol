@@ -28,6 +28,13 @@ unsafe fn validate(context: *const (), address: u64, length: usize, rights: u8) 
     context.permits(address, length, rights)
 }
 pub fn install() -> Result<()> {
+    match std::env::var("ALKYHOL_JIT32_EXPERIMENTAL_SSE2") {
+        Err(std::env::VarError::NotPresent) => {}
+        Ok(v) if v == "1" => eprintln!(
+            "JIT32 experimental SSE/SSE2 CPU profile: incomplete ISA; every unsupported operation stops"
+        ),
+        _ => return Err("invalid experimental SSE2 profile setting".into()),
+    }
     alkyhol_pe::install_executor32(execute)
 }
 fn execute(context: &ExecutionContext32<'_>, entry: u32, stack: u32) -> Result<u64> {

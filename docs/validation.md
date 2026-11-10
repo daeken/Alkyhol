@@ -7605,3 +7605,15 @@ instruction trace confirms those actual original CPUID branches. Input hashes
 remain unchanged. No JIT-created window, game frame or Rosetta cutscene parity
 has yet been observed. Frozen shared ABI/TLS/heap comparisons still pass all
 96 words at both bases with no fixture/reference changes.
+
+An opt-in incomplete SSE/SSE2 development CPU profile now enters the original
+feature branches without patching game code; missing instructions remain fatal.
+The reached original FMOD scalar conversion is implemented as a six-form family
+with software rounding and guest MXCSR. Physical M4 passes 43 default JIT tests
+(one separately invoked observer test ignored by default). The independent
+actual Rosetta assembly/native ARM comparison passes 512 conversion rows,
+including all rounding modes, DAZ, signed boundaries and NaN/infinity status.
+Runner Clippy passes. These rows are not new native Windows or physical Intel
+observations, and the experimental profile does not promise full SIMD support.
+Original DAO now proceeds beyond platform validation into original ERF resource
+indexing; no new native JIT window/frame is established by this interim run.

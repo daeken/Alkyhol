@@ -265,3 +265,30 @@ instructions/registers per entry for local diagnostics. It does not change guest
 control flow. Keep game-derived traces local. Shared-host builds now default to
 no debug info/incremental objects for practical build time; external Cargo
 profile overrides remain respected.
+
+### Opt-in SIMD bring-up and reached scalar conversions
+
+`ALKYHOL_JIT32_EXPERIMENTAL_SSE2=1` selects an explicit **incomplete development
+CPU profile** exposing SSE/SSE2 to original feature checks. It is off by default,
+prints a warning and leaves every unimplemented opcode/control/exception path
+fatal. This is not a claim of full SSE/SSE2 or game support. The Win32 processor
+feature provider and CPUID agree on this selected profile; original game bytes
+and conditional branches are unchanged.
+
+This immediately reaches original FMOD CVTTSD2SI during DLL initialization.
+Six scalar integer/float conversion forms now use software APFloat with actual
+guest MXCSR rounding, sticky IE/PE status, DAZ inputs, masked integer-indefinite
+results and checked operand widths. Unmasked exceptions stop before committing
+the destination; no #XM handler delivery is invented. Other registers, scalar
+upper XMM lanes and EFLAGS are preserved. The behavior follows the conversion
+exception rules in [Intel SDM Volume 1, §11.5](https://cdrdv2-public.intel.com/868137/325462-089-sdm-vol-1-2abcd-3abcd-4.pdf).
+
+`tools/check_jit32_sse.py` independently assembles an owned x86 observer, executes
+it under actual Rosetta on this M4, then compares the same encoded conversions
+on native ARM. All 512 rows agree including result bits/MXCSR across all four
+rounding modes, DAZ settings, finite values, boundary integers, infinities,
+quiet/signaling NaNs and tiny inputs. Two additional ARM tests check denied
+reads, unmasked precision failures and preserved state. The complete default
+suite passes 43 tests with one explicit external-observer test ignored; that
+external test passes separately through the checker. These are finite Rosetta
+and native ARM observations, not new Windows or physical Intel observations.

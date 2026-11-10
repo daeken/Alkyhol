@@ -133,3 +133,12 @@ arithmetic and bounded software math, plus legacy XMM transfers/bitwise logic.
 Unimplemented arithmetic, exception delivery and uncertified numerical paths
 still stop explicitly. Open rustc_apfloat supplies software 80-bit conversions;
 there is no proprietary converter or host binary64 substitute for x87 arithmetic.
+
+Native software RaiseException now invokes the original checked SEH chain with
+real saved registers. For SIMD bring-up only, `ALKYHOL_JIT32_EXPERIMENTAL_SSE2=1`
+selects an explicitly incomplete profile exposing SSE/SSE2 feature checks; it
+prints a warning and still stops on unsupported instructions. Leave it unset for
+the conservative scalar profile and frozen ABI/TLS/heap comparisons. Six reached
+scalar float/integer conversions honor guest MXCSR; reproduce their 512-row
+actual Rosetta/native ARM comparison with `python3 tools/check_jit32_sse.py`.
+This is finite host evidence, not full SIMD/SEH or game compatibility.

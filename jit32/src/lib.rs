@@ -9,6 +9,7 @@ mod fpu_trig;
 #[cfg(feature = "shared-runtime")]
 pub mod shared;
 mod stack_bank;
+mod sse;
 #[cfg(feature = "shared-runtime")]
 pub use alkyhol_pe as shared_pe;
 pub mod memory;

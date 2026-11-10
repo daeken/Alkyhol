@@ -653,6 +653,12 @@ pub(crate) fn compile(pc: u32, bytes: &[u8]) -> Result<Instruction> {
         "IMUL",
         "IMUL3",
         "IMUL1",
+        "CVTTSD2SI",
+        "CVTTSS2SI",
+        "CVTSD2SI",
+        "CVTSS2SI",
+        "CVTSI2SD",
+        "CVTSI2SS",
         "MOVAPS",
         "MOVUPS",
         "MOVAPD",
@@ -928,6 +934,43 @@ pub(crate) fn compile(pc: u32, bytes: &[u8]) -> Result<Instruction> {
             let at = e.here();
             e.cbz(0, 0);
             shared.guards.borrow_mut().push(at);
+        } else if let Some((operation, source_width, dest_width)) = crate::sse::conversion(mnemonic)
+        {
+            use xfusion_recomp::operand::{
+                bind_modrm_reg, bind_modrm_rm, bind_xmm_reg, bind_xmm_rm, read_operand,
+                write_operand,
+            };
+            let source = if operation < 4 {
+                bind_xmm_rm(&mut bd, &d, pc as u64, XMode::Bits32, source_width)
+            } else {
+                bind_modrm_rm(&mut bd, &d, pc as u64, XMode::Bits32, source_width)
+            };
+            let input = read_operand(&mut bd, &source);
+            let output = bd.literal(
+                if dest_width == 64 {
+                    IlType::U64
+                } else {
+                    IlType::U32
+                },
+                0,
+            );
+            let e = &mut bd.inner.enc;
+            e.ldr_x(0, 28, 90 * 8);
+            e.mov_imm64(1, (output * 8) as u64);
+            e.add_r(1, 27, 1);
+            e.mov_imm64(2, operation);
+            e.ldr_x(3, 27, input * 8);
+            e.mov_imm64(16, crate::sse::execute as *const () as u64);
+            e.put_raw(0xd63f0200);
+            let at = e.here();
+            e.cbz(0, 0);
+            shared.guards.borrow_mut().push(at);
+            let dest = if operation < 4 {
+                bind_modrm_reg(&d, 32)
+            } else {
+                bind_xmm_reg(&d, dest_width)
+            };
+            write_operand(&mut bd, &dest, output);
         } else if let Some(operation) = crate::fpu_ops::operation(mnemonic) {
             let address = if !d.m.is_reg && d.op != 0 {
                 xfusion_recomp::operand::addr_from_modrm(&mut bd, &d, pc as u64, XMode::Bits32)

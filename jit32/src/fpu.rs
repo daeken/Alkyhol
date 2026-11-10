@@ -52,20 +52,39 @@ pub(crate) unsafe extern "C" fn control(memory: *mut Memory, op: u64, value: u64
 
 /// Declared scalar virtual CPU, matching native-runtime32's machine profile.
 /// No host CPUID, feature probing or SIMD capability is inferred from ARM.
-pub(crate) unsafe extern "C" fn cpuid(_memory: *mut Memory, registers: *mut u64) -> u64 {
+pub(crate) unsafe extern "C" fn cpuid(memory: *mut Memory, registers: *mut u64) -> u64 {
     let regs = unsafe { std::slice::from_raw_parts_mut(registers, 91) };
-    let values: [u32; 4] = match regs[0] as u32 {
-        0 => [1, 0x756e6547, 0x6c65746e, 0x49656e69], // EAX, EBX, ECX, EDX
-        1 => [0x600, 1 << 16, 0, 1 << 4],
-        0x80000000 => [0x80000000, 0, 0, 0],
-        // Intel SDM CPUID: out-of-range basic/extended inputs return
-        // the highest supported basic leaf (our declared leaf 1).
-        _ => [0x600, 1 << 16, 0, 1 << 4],
+    let experimental = match std::env::var("ALKYHOL_JIT32_EXPERIMENTAL_SSE2") {
+        Err(std::env::VarError::NotPresent) => false,
+        Ok(v) if v == "1" => true,
+        _ => {
+            unsafe { &mut *memory }.cpu_fault = Some("invalid experimental SSE2 profile setting");
+            return 0;
+        }
     };
+    let values = cpuid_values(regs[0] as u32, experimental);
     for (reg, value) in [0, 3, 1, 2].into_iter().zip(values) {
         regs[reg] = value as u64;
     }
     1
+}
+fn cpuid_values(leaf: u32, experimental: bool) -> [u32; 4] {
+    // This opt-in development profile unlocks original SSE/SSE2 branches. It
+    // does not promise complete ISA coverage: missing operations remain fatal.
+    let features = (1 << 4)
+        | if experimental {
+            (1 << 25) | (1 << 26)
+        } else {
+            0
+        };
+    match leaf {
+        0 => [1, 0x756e6547, 0x6c65746e, 0x49656e69], // EAX, EBX, ECX, EDX
+        1 => [0x600, 1 << 16, 0, features],
+        0x80000000 => [0x80000000, 0, 0, 0],
+        // Intel SDM CPUID: out-of-range basic/extended inputs return
+        // the highest supported basic leaf (our declared leaf 1).
+        _ => [0x600, 1 << 16, 0, features],
+    }
 }
 
 impl State {

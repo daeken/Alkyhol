@@ -35,7 +35,12 @@ pub(super) fn processor_feature(feature: u32) -> Result<u32> {
     if feature == 0 {
         return Ok(0);
     } // This virtual CPU does not emulate the Pentium FDIV erratum.
-    instruction_feature(feature, 0, Some(0))
+    let basic = match std::env::var("ALKYHOL_JIT32_EXPERIMENTAL_SSE2") {
+        Err(std::env::VarError::NotPresent) => 0,
+        Ok(v) if v == "1" => (1 << 25) | (1 << 26),
+        _ => return Err("invalid experimental SSE2 profile setting".into()),
+    };
+    instruction_feature(feature, basic, Some(0))
 }
 #[cfg(target_arch = "x86_64")]
 pub(super) fn processor_feature(feature: u32) -> Result<u32> {
