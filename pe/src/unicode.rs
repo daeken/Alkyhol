@@ -81,7 +81,8 @@ fn windows_utf8_lossy(bytes: &[u8]) -> String {
     text.push_str(&String::from_utf8_lossy(&bytes[start..]));
     text
 }
-unsafe extern "win64" fn MultiByteToWideChar(
+#[alkyhol_host_abi::host_abi]
+    unsafe extern "win64" fn MultiByteToWideChar(
     page: u32,
     flags: u32,
     source: *const u8,
@@ -107,7 +108,8 @@ unsafe extern "win64" fn MultiByteToWideChar(
     let wide: Vec<u16> = text.encode_utf16().collect();
     unsafe { output(&wide, target, capacity) }
 }
-unsafe extern "win64" fn WideCharToMultiByte(
+#[alkyhol_host_abi::host_abi]
+    unsafe extern "win64" fn WideCharToMultiByte(
     page: u32,
     flags: u32,
     source: *const u16,
@@ -145,7 +147,7 @@ pub(crate) fn address(name: &str) -> Option<usize> {
         _ => None,
     }
 }
-#[cfg(test)]
+#[cfg(all(test,target_arch="x86_64"))]
 mod tests {
     use super::*;
     #[test]

@@ -1,6 +1,16 @@
 //! Experimental checked PE32 -> native ARM64 runner; no Rosetta or interpreter fallback.
 #![cfg(all(target_os = "macos", target_arch = "aarch64"))]
 mod compiler;
+mod fpu;
+mod fpu_atan;
+mod fpu_math;
+mod fpu_ops;
+mod fpu_trig;
+#[cfg(feature = "shared-runtime")]
+pub mod shared;
+mod stack_bank;
+#[cfg(feature = "shared-runtime")]
+pub use alkyhol_pe as shared_pe;
 pub mod memory;
 mod native;
 mod process;
@@ -22,6 +32,7 @@ pub enum Stop {
     Fault { pc: u32, fault: Fault },
     Unsupported { pc: u32, reason: String },
     Budget { pc: u32 },
+    CpuFault { pc: u32, reason: String },
 }
 #[derive(Debug, Clone, Copy)]
 enum Service {
@@ -319,6 +330,13 @@ impl Runner {
             unsafe {
                 block.code.enter(&mut self.state, &mut spill);
             }
+            if let Some(reason) = self.memory.cpu_fault.take() {
+                self.state = snapshot;
+                return Stop::CpuFault {
+                    pc,
+                    reason: reason.into(),
+                };
+            }
             if let Some(fault) = self.memory.fault.take() {
                 self.state = snapshot;
                 return Stop::Fault { pc, fault };
@@ -381,6 +399,440 @@ mod tests {
             instructions: 0,
             service_calls: 0,
         }
+    }
+    #[test]
+    fn reached_sincos_float_stores_match_physical_x86_observations() {
+        for (input, sine, cosine, status) in [
+            (0u32, 0u32, 0x3f800000u32, 0u16),
+            (0x80000000, 0x80000000, 0x3f800000, 0),
+            (0x3f800000, 0x3f576aa4, 0x3f0a5140, 0x20),
+            (0xbf800000, 0xbf576aa4, 0x3f0a5140, 0x20),
+            (0x40490fdb, 0xb3bbbd2e, 0xbf800000, 0x20),
+            (0x3fc90fdb, 0x3f800000, 0xb33bbd2e, 0x220),
+            (0x40c90fdb, 0x343bbd2e, 0x3f800000, 0x20),
+            (0x3e000000, 0x3dff5577, 0x3f7e00ab, 0x20),
+            (0xc0c90fdb, 0xb43bbd2e, 0x3f800000, 0x20),
+            (0x44800000, 0xbe225693, 0x3f7cc335, 0x20),
+            (0x1e3ce508, 0x1e3ce508, 0x3f800000, 0x20),
+        ] {
+            let mut r = cpu(&[
+                0xd9, 0x05, 0, 0, 2, 0, 0xd9, 0xfb, 0xd9, 0x1d, 4, 0, 2, 0, 0xd9, 0x1d, 8, 0, 2, 0,
+                0xc3,
+            ]);
+            r.memory
+                .map(0x20000, 12, READ | WRITE, &input.to_le_bytes())
+                .unwrap();
+            assert_eq!(r.run(10), Stop::Returned(0), "input {input:x}");
+            assert_eq!(r.memory.word(0x20004).unwrap(), cosine, "cos {input:x}");
+            assert_eq!(r.memory.word(0x20008).unwrap(), sine, "sin {input:x}");
+            assert_eq!(r.memory.fpu.borrow().status, status, "status {input:x}");
+            assert_eq!(r.memory.fpu.borrow().tag, 0xffff);
+        }
+    }
+    #[test]
+    fn legacy_vector_moves_and_logic_preserve_bits_and_check_alignment() {
+        let mut r = cpu(&[
+            0x0f, 0x28, 0x05, 0, 0, 2, 0, 0x0f, 0x28, 0xc8, 0x66, 0x0f, 0xef, 0xc8, 0x0f, 0x11,
+            0x05, 0x31, 0, 2, 0, 0x0f, 0x29, 0x0d, 0x20, 0, 2, 0, 0xc3,
+        ]);
+        let mut bytes = vec![0xcc; 96];
+        for (i, b) in bytes[..16].iter_mut().enumerate() {
+            *b = (i * 17) as u8;
+        }
+        r.memory.map(0x20000, 96, READ | WRITE, &bytes).unwrap();
+        r.memory.fpu.borrow_mut().mxcsr = 0x5f80;
+        assert_eq!(r.run(10), Stop::Returned(0));
+        assert_eq!(r.memory.read(0x20031, 16, READ).unwrap(), &bytes[..16]);
+        assert_eq!(r.memory.read(0x20020, 16, READ).unwrap(), [0; 16]);
+        assert_eq!(
+            [r.state[24], r.state[25]],
+            [
+                u64::from_le_bytes(bytes[..8].try_into().unwrap()),
+                u64::from_le_bytes(bytes[8..16].try_into().unwrap())
+            ]
+        );
+        assert_eq!([r.state[26], r.state[27]], [0, 0]);
+        assert_eq!(r.memory.fpu.borrow().mxcsr, 0x5f80);
+        let mut r = cpu(&[0x0f, 0x28, 0x05, 1, 0, 2, 0]);
+        r.memory.map(0x20000, 32, READ, &[0x5a; 32]).unwrap();
+        let before = r.state;
+        assert!(matches!(r.run(1), Stop::CpuFault { pc: 0x10000, .. }));
+        assert_eq!(r.state, before);
+        let mut r = cpu(&[0x0f, 0x11, 0x05, 0, 0, 2, 0]);
+        r.memory.map(0x20000, 8, READ | WRITE, &[0x5a; 8]).unwrap();
+        let before = r.state;
+        assert!(matches!(r.run(1), Stop::Fault { pc: 0x10000, .. }));
+        assert_eq!(r.state, before);
+        assert_eq!(r.memory.read(0x20000, 8, READ).unwrap(), [0x5a; 8]);
+        // MOVSS register merge; MOVSS memory load clears the upper 96 bits.
+        let mut r = cpu(&[
+            0xf3, 0x0f, 0x10, 0xc1, 0xf3, 0x0f, 0x10, 0x05, 0, 0, 2, 0, 0xc3,
+        ]);
+        r.memory
+            .map(0x20000, 4, READ, &0x7fa12345u32.to_le_bytes())
+            .unwrap();
+        r.state[24] = 0xaabbccdd11223344;
+        r.state[25] = 0xfeedface12345678;
+        r.state[26] = 0x5566778887654321;
+        r.state[27] = u64::MAX;
+        assert!(matches!(r.run(1), Stop::Budget { .. }));
+        assert_eq!(r.state[24], 0xaabbccdd87654321);
+        assert_eq!(r.state[25], 0xfeedface12345678);
+        assert!(matches!(r.run(3), Stop::Returned(_)));
+        assert_eq!(r.state[24], 0x7fa12345);
+        assert_eq!(r.state[25], 0);
+        assert_eq!(r.memory.fpu.borrow().mxcsr, 0x1f80);
+    }
+    #[test]
+    fn register_banks_preserve_word_upper_halves_and_skip_saved_stack_pointer() {
+        for word in [false, true] {
+            let mut r = cpu(if word {
+                &[0x66, 0x60, 0x66, 0x61, 0xc3]
+            } else {
+                &[0x60, 0x61, 0xc3]
+            });
+            let sp = r.state[4];
+            for i in [0, 1, 2, 3, 5, 6, 7] {
+                r.state[i] = 0xa5000100 + i as u64;
+            }
+            let before = r.state;
+            let length = if word { 16 } else { 32 };
+            assert!(matches!(r.run(1), Stop::Budget { .. }));
+            assert_eq!(r.state[4], sp - length);
+            let frame = r.memory.read(sp - length, length as usize, READ).unwrap();
+            let width = if word { 2 } else { 4 };
+            for (i, reg) in [7, 6, 5, 4, 3, 2, 1, 0].into_iter().enumerate() {
+                assert_eq!(
+                    &frame[i * width..(i + 1) * width],
+                    &(before[reg] as u32).to_le_bytes()[..width]
+                );
+            }
+            for i in [0, 1, 2, 3, 5, 6, 7] {
+                r.state[i] = 0x77000200 + i as u64;
+            }
+            assert!(matches!(r.run(1), Stop::Budget { .. }));
+            assert_eq!(r.state[4], sp);
+            for i in [0, 1, 2, 3, 5, 6, 7] {
+                assert_eq!(
+                    r.state[i],
+                    if word {
+                        0x77000000 | (before[i] & 0xffff)
+                    } else {
+                        before[i]
+                    }
+                );
+            }
+            assert!(matches!(r.run(1), Stop::Returned(_)));
+        }
+        let mut r = cpu(&[0x60]);
+        r.state[4] = STACK as u64 + 16;
+        let before = r.state;
+        assert!(matches!(r.run(1), Stop::CpuFault { .. }));
+        assert_eq!(r.state, before);
+    }
+    #[test]
+    fn reached_multiply_word_flags_and_real_timestamp_contracts() {
+        for (op, a, b, lo, hi, overflow) in [
+            (0xe1u8, u32::MAX, 2, 0xfffffffe, 1, true),
+            (0xe9, 0x80000000, 2, 0, 0xffffffff, true),
+            (0xe9, (-17i32) as u32, 19, (-323i32) as u32, u32::MAX, false),
+        ] {
+            let mut r = cpu(&[0xf7, op, 0xc3]);
+            r.state[0] = a as u64;
+            r.state[1] = b as u64;
+            assert_eq!(r.run(5), Stop::Returned(lo));
+            assert_eq!(r.registers()[2], hi);
+            assert_eq!(r.flags() & 0x801, if overflow { 0x801 } else { 0 });
+        }
+        let mut r = cpu(&[0x66, 0x9c, 0x66, 0x9d, 0xc3]);
+        r.state[16] = 0x200ed7;
+        let sp = r.state[4];
+        assert_eq!(r.run(1), Stop::Budget { pc: 0x10002 });
+        assert_eq!(r.state[4], sp - 2);
+        assert_eq!(
+            r.memory.read(sp - 2, 2, READ).unwrap(),
+            0xed7u16.to_le_bytes()
+        );
+        assert_eq!(r.memory.word(sp).unwrap(), RETURN);
+        assert_eq!(r.run(1), Stop::Budget { pc: 0x10004 });
+        assert_eq!(r.state[4], sp);
+        assert_eq!(r.flags(), 0x200ed7);
+        assert_eq!(r.run(1), Stop::Returned(0));
+        let mut r = cpu(&[0x0f, 0x31, 0xc3]);
+        r.state[16] = 0xad7;
+        r.state[1] = 0x1234;
+        r.state[3] = 0x5678;
+        let before = unsafe { crate::fpu::timestamp() };
+        let stop = r.run(3);
+        let after = unsafe { crate::fpu::timestamp() };
+        assert!(matches!(stop, Stop::Returned(_)));
+        let measured = (r.registers()[2] as u64) << 32 | r.registers()[0] as u64;
+        assert!((before..=after).contains(&measured));
+        assert_eq!(r.flags(), 0xad7);
+        assert_eq!(r.registers()[1], 0x1234);
+        assert_eq!(r.registers()[3], 0x5678);
+    }
+    #[test]
+    fn x87_compare_pop_and_eflags_paths_preserve_their_separate_flags() {
+        for (op, expected, top) in [(0xd8u8, 0x3100, 6), (0xdc, 0x3900, 7)] {
+            // FLD1; FLDZ; FCOM[P] ST1; FNSTSW AX
+            let code = [
+                0xd9,
+                0xe8,
+                0xd9,
+                0xee,
+                0xd8,
+                if op == 0xd8 { 0xd1 } else { 0xd9 },
+                0xdf,
+                0xe0,
+                0xc3,
+            ];
+            let mut r = cpu(&code);
+            assert_eq!(r.run(10), Stop::Returned(expected));
+            assert_eq!(r.memory.fpu.borrow().top(), top);
+        }
+        let mut r = cpu(&[0xd9, 0xe8, 0xd9, 0xee, 0xdb, 0xf1, 0xc3]); // FCOMI ST0,ST1
+        r.state[16] = 0xed7;
+        assert_eq!(r.run(10), Stop::Returned(0));
+        assert_eq!(r.flags() & 0x8d5, 1);
+        assert_ne!(r.flags() & 0x400, 0);
+        assert_eq!(r.memory.fpu.borrow().status & 0x4500, 0);
+        let mut r = cpu(&[0x9e, 0x9f, 0xc3]);
+        r.state[0] = 0xd500;
+        r.state[16] = 0xa02;
+        assert_eq!(r.run(5), Stop::Returned(0xd700));
+        assert_eq!(r.flags() & 0x8d5, 0x8d5);
+    }
+    #[test]
+    fn x87_reduced_precision_avoids_both_double_rounding_directions() {
+        for (sig, sign) in [(0x8000000000000400u64, 0u16), (0x8000000000000c00, 0x8000)] {
+            let mut input = sig.to_le_bytes().to_vec();
+            input.extend(0x3fffu16.to_le_bytes());
+            input.resize(16, 0);
+            input.extend(0x8000000000000000u64.to_le_bytes());
+            input.extend((0x3f9bu16 | sign).to_le_bytes());
+            input.resize(48, 0);
+            // FLD tbyte a; FLD tbyte b; FADDP; FSTP tbyte result
+            let mut r = cpu(&[
+                0xdb, 0x2d, 0, 0, 2, 0, 0xdb, 0x2d, 0x10, 0, 2, 0, 0xde, 0xc1, 0xdb, 0x3d, 0x20, 0,
+                2, 0, 0xc3,
+            ]);
+            r.memory.map(0x20000, 48, READ | WRITE, &input).unwrap();
+            r.memory.fpu.borrow_mut().control = 0x27f;
+            assert_eq!(r.run(10), Stop::Returned(0));
+            assert_eq!(
+                r.memory.read(0x20020, 10, READ).unwrap(),
+                [0, 8, 0, 0, 0, 0, 0, 0x80, 0xff, 0x3f]
+            );
+            assert_eq!(r.memory.fpu.borrow().status, 0x20);
+        }
+        let mut r = cpu(&[0x9b, 0xc3]);
+        r.memory.fpu.borrow_mut().status = 0x21;
+        assert_eq!(r.run(3), Stop::Returned(0));
+        assert_eq!(r.memory.fpu.borrow().status, 0x21);
+        let mut r = cpu(&[0x9b]);
+        r.memory.fpu.borrow_mut().status = 1;
+        r.memory.fpu.borrow_mut().control &= !1;
+        assert!(matches!(r.run(1), Stop::CpuFault { pc: 0x10000, .. }));
+        let mut r = cpu(&[0x9d]);
+        r.memory.write(r.state[4], &0x302u32.to_le_bytes()).unwrap();
+        let before = r.state;
+        assert!(matches!(r.run(1), Stop::CpuFault { pc: 0x10000, .. }));
+        assert_eq!(r.state, before);
+    }
+    #[test]
+    fn x87_transfers_precision_and_integer_rounding_match_x86_observations() {
+        // Independent original x86 assembly lives in tests/x87_reference.c.
+        // The same finite rows were executed under actual Rosetta on this M4.
+        for (control, significand, status) in [
+            (0x27fu16, 0x8000000000000000u64, 0x20),
+            (0x37f, 0x8000000000000400, 0),
+        ] {
+            // FILD qword [0x20000]; FLD1; FADDP ST1; FSTP tbyte [0x20010]
+            let mut r = cpu(&[
+                0xdf, 0x2d, 0, 0, 2, 0, 0xd9, 0xe8, 0xde, 0xc1, 0xdb, 0x3d, 0x10, 0, 2, 0, 0xc3,
+            ]);
+            r.memory
+                .map(
+                    0x20000,
+                    32,
+                    READ | WRITE,
+                    &9007199254740992i64.to_le_bytes(),
+                )
+                .unwrap();
+            r.memory.fpu.borrow_mut().control = control;
+            assert_eq!(r.run(10), Stop::Returned(0));
+            let mut expected = significand.to_le_bytes().to_vec();
+            expected.extend(0x4034u16.to_le_bytes());
+            assert_eq!(r.memory.read(0x20010, 10, READ).unwrap(), expected);
+            assert_eq!(r.memory.fpu.borrow().status, status);
+            assert_eq!(r.memory.fpu.borrow().tag, 0xffff);
+        }
+        for (mode, result, status) in [
+            (0, -2i64, 0x220),
+            (1, -2, 0x220),
+            (2, -1, 0x20),
+            (3, -1, 0x20),
+        ] {
+            let mut r = cpu(&[0xdd, 0x05, 0, 0, 2, 0, 0xdf, 0x3d, 8, 0, 2, 0, 0xc3]); // FLD m64; FISTP m64
+            r.memory
+                .map(
+                    0x20000,
+                    16,
+                    READ | WRITE,
+                    &(-1.5f64).to_bits().to_le_bytes(),
+                )
+                .unwrap();
+            r.memory.fpu.borrow_mut().control = 0x37f | (mode << 10);
+            assert_eq!(r.run(10), Stop::Returned(0));
+            assert_eq!(
+                r.memory.read(0x20008, 8, READ).unwrap(),
+                result.to_le_bytes()
+            );
+            assert_eq!(r.memory.fpu.borrow().status, status);
+        }
+        let mut r = cpu(&[0xd9, 0xe8, 0xdb, 0x3d, 0, 0, 0, 0]); // FLD1; denied FSTP m80
+        assert!(matches!(r.run(5), Stop::Fault { pc: 0x10002, .. }));
+        assert_eq!(r.memory.fpu.borrow().top(), 7);
+        assert_eq!(r.memory.fpu.borrow().tag, 0x3fff);
+        assert_eq!(r.memory.fpu.borrow().registers[7], 0x3fff8000000000000000);
+        let mut r = cpu(&[0xd9, 0x05, 0, 0, 0, 0]);
+        assert!(matches!(r.run(2), Stop::Fault { pc: 0x10000, .. }));
+        assert_eq!(r.memory.fpu.borrow().tag, 0xffff);
+    }
+    #[test]
+    fn flag_stack_cpuid_xchg_and_x87_environment_are_real_state() {
+        let mut r = cpu(&[
+            0x9c, 0x58, 0x35, 0, 0, 0x20, 0, 0x50, 0x9d, 0x9c, 0x58, 0xc3,
+        ]);
+        r.state[16] = 0xad7;
+        let before = r.memory.word(STACK as u64 + 4092).unwrap();
+        assert_eq!(r.run(20), Stop::Returned(0x200ad7));
+        assert_eq!(r.flags(), 0x200ad7);
+        assert_eq!(r.memory.word(STACK as u64 + 4092).unwrap(), before);
+        let mut r = cpu(&[0x0f, 0xa2, 0xc3]);
+        assert_eq!(r.run(3), Stop::Returned(1));
+        assert_eq!(r.registers()[3], 0x756e6547);
+        assert_eq!(r.registers()[1], 0x6c65746e);
+        assert_eq!(r.registers()[2], 0x49656e69);
+        let mut r = cpu(&[0x87, 0x05, 0, 0, 2, 0, 0x99, 0xc3]);
+        r.memory
+            .map(0x20000, 4, READ | WRITE, &0x80000000u32.to_le_bytes())
+            .unwrap();
+        r.state[0] = 0x12345678;
+        assert_eq!(r.run(4), Stop::Returned(0x80000000));
+        assert_eq!(r.memory.word(0x20000).unwrap(), 0x12345678);
+        assert_eq!(r.registers()[2], u32::MAX);
+        // FLDCW [0x20000]; FNCLEX; FNSTCW [0x20002]; FNSTSW AX
+        let mut r = cpu(&[
+            0xd9, 0x2d, 0, 0, 2, 0, 0xdb, 0xe2, 0xd9, 0x3d, 2, 0, 2, 0, 0xdf, 0xe0, 0xc3,
+        ]);
+        r.memory
+            .map(0x20000, 4, READ | WRITE, &[0x34, 0x12, 0, 0])
+            .unwrap();
+        r.memory.fpu.borrow_mut().status = 0x85ff;
+        assert_eq!(r.run(10), Stop::Returned(0x500));
+        assert_eq!(&r.memory.read(0x20002, 2, READ).unwrap(), &[0x74, 0x12]);
+        assert_eq!(r.memory.fpu.borrow().control, 0x1274);
+        assert_eq!(r.memory.fpu.borrow().status, 0x500);
+        let mut r = cpu(&[0xdb, 0xe3, 0xc3]);
+        r.memory.fpu.borrow_mut().mxcsr = 0x5f80;
+        r.memory.fpu.borrow_mut().control = 0x1274;
+        assert_eq!(r.run(3), Stop::Returned(0));
+        assert_eq!(r.memory.fpu.borrow().control, 0x37f);
+        assert_eq!(r.memory.fpu.borrow().tag, 0xffff);
+        assert_eq!(r.memory.fpu.borrow().mxcsr, 0x5f80);
+    }
+    #[test]
+    fn repeated_strings_commit_exactly_completed_iterations() {
+        let mut r = cpu(&[0xf3, 0xa5, 0xc3]); // REP MOVSD
+        r.memory
+            .map(0x20000, 8, READ, &[1, 2, 3, 4, 5, 6, 7, 8])
+            .unwrap();
+        r.memory.map(0x30000, 4, READ | WRITE, &[]).unwrap();
+        r.state[1] = 2;
+        r.state[6] = 0x20000;
+        r.state[7] = 0x30000;
+        let flags = r.flags();
+        assert!(matches!(r.run(5), Stop::Fault { pc: 0x10000, .. }));
+        assert_eq!(r.registers()[1], 1);
+        assert_eq!(r.registers()[6], 0x20004);
+        assert_eq!(r.registers()[7], 0x30004);
+        assert_eq!(r.memory.word(0x30000).unwrap(), 0x04030201);
+        assert_eq!(r.flags(), flags);
+        let mut r = cpu(&[0xf3, 0xa4, 0xc3]);
+        r.state[1] = 0;
+        r.state[6] = u32::MAX as u64;
+        r.state[7] = 0;
+        assert_eq!(r.run(3), Stop::Returned(0));
+        assert_eq!(r.registers()[6], u32::MAX);
+        let mut r = cpu(&[0xf2, 0xae, 0xc3]); // REPNE SCASB, stop on first equal
+        r.memory.map(0x20000, 4, READ, &[1, 2, 0x7f, 4]).unwrap();
+        r.state[0] = 0x7f;
+        r.state[1] = 4;
+        r.state[7] = 0x20000;
+        assert_eq!(r.run(10), Stop::Returned(0x7f));
+        assert_eq!(r.registers()[1], 1);
+        assert_eq!(r.registers()[7], 0x20003);
+        assert_ne!(r.flags() & 0x40, 0);
+        let mut r = cpu(&[0xfd, 0xf3, 0xab, 0xfc, 0xc3]); // STD; REP STOSD; CLD
+        r.memory.map(0x20000, 8, READ | WRITE, &[]).unwrap();
+        r.state[0] = 0x12345678;
+        r.state[1] = 2;
+        r.state[7] = 0x20004;
+        assert_eq!(r.run(10), Stop::Returned(0x12345678));
+        assert_eq!(r.memory.word(0x20000).unwrap(), 0x12345678);
+        assert_eq!(r.memory.word(0x20004).unwrap(), 0x12345678);
+        assert_eq!(r.registers()[7], 0x1fffc);
+        assert_eq!(r.flags() & 0x400, 0);
+    }
+    #[test]
+    fn integer_division_results_and_precise_de_faults() {
+        for signed in [false, true] {
+            for (n, d) in if signed {
+                vec![
+                    (-12345i64 as u64, -97i32 as u32),
+                    (i64::from(i32::MIN) as u64, 1),
+                    (987654321, 123),
+                ]
+            } else {
+                vec![(0xffffffff, 1), (0x1ffffffff, 3), (0xabcdef1234, 0x1000)]
+            } {
+                let mut r = cpu(&[0xf7, if signed { 0xf9 } else { 0xf1 }, 0xc3]); // (I)DIV ECX
+                r.state[0] = n as u32 as u64;
+                r.state[2] = n >> 32;
+                r.state[1] = d as u64;
+                let q = if signed {
+                    ((n as i64) / (d as i32 as i64)) as u32
+                } else {
+                    (n / d as u64) as u32
+                };
+                let rem = if signed {
+                    ((n as i64) % (d as i32 as i64)) as u32
+                } else {
+                    (n % d as u64) as u32
+                };
+                assert_eq!(r.run(2), Stop::Returned(q));
+                assert_eq!(r.registers()[2], rem);
+            }
+        }
+        for (op, n, d) in [
+            (0xf1, 123, 0),
+            (0xf1, 0x100000000, 1),
+            (0xf9, i64::from(i32::MIN) as u64, u32::MAX),
+            (0xf9, i64::MIN as u64, u32::MAX),
+        ] {
+            let mut r = cpu(&[0xf7, op]);
+            r.state[0] = n as u32 as u64;
+            r.state[2] = n >> 32;
+            r.state[1] = d as u64;
+            let before = r.state;
+            assert!(matches!(r.run(1), Stop::CpuFault { pc: 0x10000, .. }));
+            assert_eq!(r.state, before);
+            assert_eq!(r.instructions, 0);
+        }
+        let mut r = cpu(&[0xf7, 0x35, 0, 0, 0, 0]); // DIV [0], fault before divide
+        assert!(matches!(r.run(1), Stop::Fault { pc: 0x10000, .. }));
     }
     #[test]
     fn actual_bits32_increment_wrap_flags_and_return() {
@@ -506,8 +958,8 @@ mod tests {
     fn unsupported_instructions_and_fetch_failures_are_explicit() {
         for code in [
             &[0x0f, 0x0b][..],
-            &[0xd9, 0xe8],
-            &[0xf3, 0xa4],
+            &[0xd9, 0xf0],
+            &[0xf0, 0x90],
             &[0x66, 0x50],
         ] {
             let mut r = cpu(code);

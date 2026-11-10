@@ -15,3 +15,5 @@ __pycache__/
 /d3d9/target/
 
 /jit32/target/
+
+/pe/host-abi/target/

@@ -252,6 +252,8 @@ impl Heap {
         Ok(block.size as u32)
     }
     pub(super) fn permits(&self, address: usize, len: usize) -> bool {
+        #[cfg(target_arch = "aarch64")]
+        let address = super::guest_address(address);
         let Some(end) = address.checked_add(len) else {
             return false;
         };
@@ -259,6 +261,20 @@ impl Heap {
             heap.blocks
                 .iter()
                 .any(|(&first, b)| address >= first as usize && end <= first as usize + b.size)
+        })
+    }
+    #[cfg(target_arch = "aarch64")]
+    pub(super) fn cpu_permits(&self, address: usize, len: usize) -> bool {
+        // CPUs see committed arena pages, including allocation padding. API
+        // buffer checks above still require an actual live requested extent.
+        let address = super::host_address(address);
+        address.checked_add(len).is_some_and(|end| {
+            self.objects.values().any(|h| {
+                h.regions.iter().any(|r| {
+                    address >= r.memory.base as usize
+                        && end <= r.memory.base as usize + r.memory.len
+                })
+            })
         })
     }
     pub(super) fn clear(&mut self) {

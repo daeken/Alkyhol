@@ -577,6 +577,7 @@ fn table(cpu: &Cpu32, state: &mut State, kind: u32) -> Result<u32> {
     let base = m.base as u32;
     let mut bytes = vec![0u8; 2 * PAGE];
     let mut cs = 0u16;
+    #[cfg(target_arch="x86_64")]
     unsafe {
         std::arch::asm!("mov {0:x}, cs",out(reg)cs,options(nomem,nostack,preserves_flags));
     }
@@ -584,6 +585,9 @@ fn table(cpu: &Cpu32, state: &mut State, kind: u32) -> Result<u32> {
         let id = BASE + kind * 256 + slot;
         let at = PAGE + slot as usize * 32;
         let address = base + at as u32;
+        #[cfg(target_arch="aarch64")]
+        cpu.native_gates.borrow_mut().insert(address,(id,signature(id).map_or(0,|s|s.1)));
+
         bytes[slot as usize * 4..slot as usize * 4 + 4].copy_from_slice(&address.to_le_bytes());
         bytes[at] = 0x68;
         bytes[at + 1..at + 5].copy_from_slice(&(address + 16).to_le_bytes());
@@ -601,6 +605,8 @@ fn table(cpu: &Cpu32, state: &mut State, kind: u32) -> Result<u32> {
     }
     m.protect(0, PAGE, 1)?;
     m.protect(PAGE, PAGE, 5)?;
+    #[cfg(target_arch="aarch64")]
+    cpu.native_code.borrow_mut().push((base+PAGE as u32,base+2*PAGE as u32));
     cpu.com_storage.borrow_mut().push((m, false));
     state.tables.insert(kind, base);
     Ok(base)

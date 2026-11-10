@@ -18,11 +18,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "alkyhol-host-abi"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
 name = "alkyhol-pe"
 version = "0.1.0"
 dependencies = [
  "alkyhol",
  "alkyhol-d3d9",
+ "alkyhol-host-abi",
  "roxmltree",
 ]
 

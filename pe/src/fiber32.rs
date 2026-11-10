@@ -73,8 +73,8 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
             if callback != 0
                 && !image.regions.iter().any(|&(first, last, rights)| {
                     rights & 0x20000000 != 0
-                        && callback as usize >= first
-                        && (callback as usize) < last
+                        && super::host_code_address(callback) >= first
+                        && super::host_code_address(callback) < last
                 })
             {
                 unsupported("FlsAlloc callback outside executable guest storage");

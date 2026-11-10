@@ -208,7 +208,7 @@ pub(super) fn create(image: &LoadedImage32<'_>, a: &[u32; 8]) -> u32 {
     if !image
         .code_regions
         .iter()
-        .any(|&(first, last)| a[2] as usize >= first && (a[2] as usize) < last)
+        .any(|&(first, last)| super::host_code_address(a[2]) >= first && super::host_code_address(a[2]) < last)
     {
         unsupported("thread entry outside executable guest storage");
     }

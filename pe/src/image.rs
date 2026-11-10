@@ -1269,7 +1269,7 @@ impl<'a> Image<'a> {
         }
         Err("unterminated PE32 delay descriptors".into())
     }
-    #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
+    #[cfg(all(target_os = "macos", any(target_arch = "x86_64",feature="native-runtime32")))]
     pub(crate) fn check_library_startup(&self) -> Result<()> {
         if !self.is_dll {
             return Err("expected DLL image".into());

@@ -21,7 +21,8 @@ macro_rules! argument {
 }
 macro_rules! bridge {
     ($name:ident($($arg:ident: $ty:ty),* $(,)?) -> $ret:ty) => {
-        unsafe extern "win64" fn $name($($arg: $ty),*) -> $ret {
+        #[alkyhol_host_abi::host_abi]
+    unsafe extern "win64" fn $name($($arg: $ty),*) -> $ret {
             // SAFETY: same pointee/width contract; compiler performs the ABI bridge.
             unsafe { ffi::$name($(argument!($arg, $arg)),*) }
         }
@@ -35,6 +36,7 @@ mod shims {
     bridge!(SetLastError(error: u32) -> ());
     // Windows -1/-2 are current-process/current-thread pseudo-handles. Closing
     // them has no effect; do not send those identities to the owned-handle table.
+    #[alkyhol_host_abi::host_abi]
     unsafe extern "win64" fn CloseHandle(h: usize) -> i32 {
         let h = kernel_handle(h);
         if h == usize::MAX || h == usize::MAX - 1 {
@@ -43,6 +45,7 @@ mod shims {
             crate::process::close_stream(h).unwrap_or_else(|| ffi::CloseHandle(h))
         }
     }
+    #[alkyhol_host_abi::host_abi]
     unsafe extern "win64" fn CreateFileW(
         name: *const u16,
         access: u32,
@@ -56,6 +59,7 @@ mod shims {
             crate::process::create_file(name, access, share, security, disposition, flags, template)
         }
     }
+    #[alkyhol_host_abi::host_abi]
     unsafe extern "win64" fn ReadFile(
         h: usize,
         buffer: *mut c_void,
@@ -67,6 +71,7 @@ mod shims {
         unsafe { crate::process::stream_io(h, buffer, count, transferred, overlapped, false) }
             .unwrap_or_else(|| unsafe { ffi::ReadFile(h, buffer, count, transferred, overlapped) })
     }
+    #[alkyhol_host_abi::host_abi]
     unsafe extern "win64" fn WriteFile(
         h: usize,
         buffer: *const c_void,
@@ -106,6 +111,7 @@ mod shims {
     bridge!(TlsFree(index: u32) -> i32);
     bridge!(TlsGetValue(index: u32) -> *mut c_void);
     bridge!(TlsSetValue(index: u32, value: *mut c_void) -> i32);
+    #[alkyhol_host_abi::host_abi]
     unsafe extern "win64" fn ExitProcess(status: u32) -> ! {
         // Unix process status cannot represent the full Windows DWORD.
         if status > 255 {
@@ -147,9 +153,13 @@ mod shims {
 
 pub(crate) fn resolve(module: &str, name: &str) -> Option<usize> {
     if module.eq_ignore_ascii_case("kernel32.dll") {
-        return shims::address(name)
+        let address=shims::address(name)
             .or_else(|| crate::process::address(name))
-            .or_else(|| crate::unicode::address(name))
+            .or_else(|| crate::unicode::address(name));
+        #[cfg(target_arch="aarch64")]
+        return address;
+        #[cfg(target_arch="x86_64")]
+        return address
             .or_else(|| crate::function_tables::address(name))
             .or_else(|| crate::virtual_unwind::address(name))
             .or_else(|| crate::module_context::address(name));
@@ -157,9 +167,11 @@ pub(crate) fn resolve(module: &str, name: &str) -> Option<usize> {
     if module.eq_ignore_ascii_case("shell32.dll") {
         return crate::process::shell_address(name);
     }
+    #[cfg(target_arch="x86_64")]
     if module.eq_ignore_ascii_case("d3dcompiler_47.dll") {
         return crate::binary_com::address(name);
     }
+    #[cfg(target_arch="x86_64")]
     if module.eq_ignore_ascii_case("d3d12.dll") {
         return crate::binary_com::d3d12_address(name);
     }
@@ -176,7 +188,7 @@ pub(crate) fn is_builtin(module: &str) -> bool {
     .any(|name| module.eq_ignore_ascii_case(name))
 }
 
-#[cfg(test)]
+#[cfg(all(test,target_arch="x86_64"))]
 mod tests {
     use super::*;
     #[test]

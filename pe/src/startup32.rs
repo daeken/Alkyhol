@@ -204,7 +204,7 @@ pub(super) fn create_file_legacy(image: &LoadedImage32<'_>, args: &[u32; 8], ans
             return u32::MAX;
         }
     };
-    let call: unsafe extern "win64" fn(
+    let call = alkyhol_host_abi::host_call!((
         *const u16,
         u32,
         u32,
@@ -212,7 +212,7 @@ pub(super) fn create_file_legacy(image: &LoadedImage32<'_>, args: &[u32; 8], ans
         u32,
         u32,
         usize,
-    ) -> usize = unsafe { std::mem::transmute(function("CreateFileW")) };
+    ) -> usize; function("CreateFileW"));
     let h = unsafe {
         call(
             name.as_ptr(),
@@ -277,8 +277,7 @@ pub(super) fn io(image: &LoadedImage32<'_>, args: &[u32; 8], write: bool) -> u32
     let mut transferred = 0u32;
     // Both ABI signatures have identical machine-level argument types. Mutable
     // staging is valid for WriteFile's const source as well as ReadFile output.
-    let call: unsafe extern "win64" fn(usize, *mut c_void, u32, *mut u32, *mut c_void) -> i32 =
-        unsafe { std::mem::transmute(function(if write { "WriteFile" } else { "ReadFile" })) };
+    let call = alkyhol_host_abi::host_call!((usize, *mut c_void, u32, *mut u32, *mut c_void) -> i32; function(if write { "WriteFile" } else { "ReadFile" }));
     let result = unsafe {
         call(
             handle(image, args[0]),
@@ -334,7 +333,7 @@ fn convert(image: &LoadedImage32<'_>, args: &[u32; 8], wide_source: bool) -> u32
             return 0;
         };
         let mut target = vec![0u8; capacity as usize];
-        let call: unsafe extern "win64" fn(
+        let call = alkyhol_host_abi::host_call!((
             u32,
             u32,
             *const u16,
@@ -343,7 +342,7 @@ fn convert(image: &LoadedImage32<'_>, args: &[u32; 8], wide_source: bool) -> u32
             i32,
             *const u8,
             *mut i32,
-        ) -> i32 = unsafe { std::mem::transmute(function("WideCharToMultiByte")) };
+        ) -> i32; function("WideCharToMultiByte"));
         result = unsafe {
             call(
                 page,
@@ -366,8 +365,7 @@ fn convert(image: &LoadedImage32<'_>, args: &[u32; 8], wide_source: bool) -> u32
             return 0;
         };
         let mut target = vec![0u16; capacity as usize];
-        let call: unsafe extern "win64" fn(u32, u32, *const u8, i32, *mut u16, i32) -> i32 =
-            unsafe { std::mem::transmute(function("MultiByteToWideChar")) };
+        let call = alkyhol_host_abi::host_call!((u32, u32, *const u8, i32, *mut u16, i32) -> i32; function("MultiByteToWideChar"));
         result = unsafe {
             call(
                 page,
@@ -529,8 +527,7 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
             }) {
                 return 1;
             }
-            let call: unsafe extern "win64" fn(usize) -> i32 =
-                unsafe { std::mem::transmute(function("CloseHandle")) };
+            let call = alkyhol_host_abi::host_call!((usize) -> i32; function("CloseHandle"));
             let h = handle(image, args[0]);
             let result = unsafe { call(h) as u32 };
             if result != 0 {
@@ -603,8 +600,7 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
                 return 0;
             };
             let wide = super::ansi32::decode(&name);
-            let call: unsafe extern "win64" fn(*const u16, *mut u16, u32) -> u32 =
-                unsafe { std::mem::transmute(function("GetEnvironmentVariableW")) };
+            let call = alkyhol_host_abi::host_call!((*const u16, *mut u16, u32) -> u32; function("GetEnvironmentVariableW"));
             let required = unsafe { call(wide.as_ptr(), ptr::null_mut(), 0) };
             if required == 0 {
                 return 0;

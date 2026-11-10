@@ -4,11 +4,23 @@
 #include <mach/mach.h>
 #include <mach/mach_vm.h>
 #include <stdint.h>
+#include <stdio.h>
+#include <errno.h>
 #include <sys/mman.h>
 
 int alkyhol_pe32_allocate_hole(uint64_t minimum, uint64_t end, uint64_t size,
                              uint64_t alignment, uint64_t *output) {
-    if (!output || minimum < 65536 || end > UINT64_C(0x100000000) ||
+#if defined(__aarch64__) || defined(__arm64__)
+    size=(size+16383)&~UINT64_C(16383);
+    if (alignment<16384) alignment=16384;
+#endif
+    if (!output || minimum < 65536 || end >
+#if defined(__aarch64__) || defined(__arm64__)
+        UINT64_C(0x8100000000)
+#else
+        UINT64_C(0x100000000)
+#endif
+        ||
         minimum >= end || !size || size % 4096 || alignment < 4096 ||
         (alignment & (alignment - 1)) || alignment > UINT64_C(0x100000000))
         return KERN_INVALID_ARGUMENT;
@@ -29,9 +41,21 @@ int alkyhol_pe32_allocate_hole(uint64_t minimum, uint64_t end, uint64_t size,
             // mmap without MAP_FIXED is also safe against a racing allocation.
             // Rosetta's MAP_32BIT path admits low mappings that the ordinary
             // mach_vm_allocate entry point can reject as INVALID_ADDRESS.
+#if defined(__aarch64__) || defined(__arm64__)
+            mach_vm_address_t fixed = candidate;
+            // FIXED without OVERWRITE never replaces a racing allocation.
+            status = mach_vm_allocate(mach_task_self(), &fixed, size, VM_FLAGS_FIXED);
+            if (status != KERN_SUCCESS) { candidate += alignment; continue; }
+            void *mapped = (void *)(uintptr_t)fixed;
+#else
             void *mapped = mmap((void *)(uintptr_t)candidate, size, PROT_READ | PROT_WRITE,
-                               MAP_PRIVATE | MAP_ANON | 0x8000 /* MAP_32BIT */, -1, 0);
-            if (mapped == MAP_FAILED) return KERN_RESOURCE_SHORTAGE;
+                               MAP_PRIVATE | MAP_ANON
+#if defined(__x86_64__)
+                               | 0x8000 /* MAP_32BIT */
+#endif
+                               , -1, 0);
+            if (mapped == MAP_FAILED) { fprintf(stderr,"PE32 mmap failed: address=%llx size=%llx errno=%d\n",(unsigned long long)candidate,(unsigned long long)size,errno); return KERN_RESOURCE_SHORTAGE; }
+#endif
             uint64_t chosen = (uint64_t)(uintptr_t)mapped;
             if (chosen >= minimum && chosen < end && size <= end - chosen && !(chosen & (alignment - 1))) {
                 *output = chosen;

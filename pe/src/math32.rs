@@ -1,7 +1,10 @@
 //! Copy a checked, position-independent i386 x87 template into owned RX gates.
 use super::{PAGE, unsupported};
+#[cfg(target_arch = "x86_64")]
 std::arch::global_asm!(include_str!("ci_sqrt32.S"), options(att_syntax));
+#[cfg(target_arch = "x86_64")]
 std::arch::global_asm!(include_str!("ci_atan32.S"), options(att_syntax));
+#[cfg(target_arch = "x86_64")]
 unsafe extern "C" {
     static alkyhol_ci_sqrt32_start: u8;
     static alkyhol_ci_sqrt32_end: u8;
@@ -15,9 +18,22 @@ pub(super) const GATE_SIZE: usize = 3 * PAGE;
 pub(super) const OFFSET: usize = PAGE;
 pub(super) const ATAN_OFFSET: usize = PAGE + 256;
 pub(super) fn emit(template: &mut [u8], base: u32, failure: u32) -> crate::Result<()> {
-    let start = std::ptr::addr_of!(alkyhol_ci_sqrt32_start) as usize;
-    let end = std::ptr::addr_of!(alkyhol_ci_sqrt32_end) as usize;
-    let patch = std::ptr::addr_of!(alkyhol_ci_sqrt32_failure) as usize - start;
+    #[cfg(target_arch = "x86_64")]
+    let (start, end, patch) = {
+        let start = std::ptr::addr_of!(alkyhol_ci_sqrt32_start) as usize;
+        let end = std::ptr::addr_of!(alkyhol_ci_sqrt32_end) as usize;
+        let patch = std::ptr::addr_of!(alkyhol_ci_sqrt32_failure) as usize - start;
+        (start, end, patch)
+    };
+    #[cfg(target_arch = "aarch64")]
+    let (start, end, patch) = {
+        let bytes = super::guest_templates::SQRT;
+        (
+            bytes.as_ptr() as usize,
+            bytes.as_ptr() as usize + bytes.len(),
+            super::guest_templates::SQRT_PATCH,
+        )
+    };
     install(
         template,
         base,
@@ -26,9 +42,22 @@ pub(super) fn emit(template: &mut [u8], base: u32, failure: u32) -> crate::Resul
     )
 }
 pub(super) fn emit_atan(template: &mut [u8], base: u32, failure: u32) -> crate::Result<()> {
-    let start = std::ptr::addr_of!(alkyhol_ci_atan32_start) as usize;
-    let end = std::ptr::addr_of!(alkyhol_ci_atan32_end) as usize;
-    let patch = std::ptr::addr_of!(alkyhol_ci_atan32_failure) as usize - start;
+    #[cfg(target_arch = "x86_64")]
+    let (start, end, patch) = {
+        let start = std::ptr::addr_of!(alkyhol_ci_atan32_start) as usize;
+        let end = std::ptr::addr_of!(alkyhol_ci_atan32_end) as usize;
+        let patch = std::ptr::addr_of!(alkyhol_ci_atan32_failure) as usize - start;
+        (start, end, patch)
+    };
+    #[cfg(target_arch = "aarch64")]
+    let (start, end, patch) = {
+        let bytes = super::guest_templates::ATAN;
+        (
+            bytes.as_ptr() as usize,
+            bytes.as_ptr() as usize + bytes.len(),
+            super::guest_templates::ATAN_PATCH,
+        )
+    };
     install(
         template,
         base,

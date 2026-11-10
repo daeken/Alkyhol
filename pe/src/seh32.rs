@@ -165,6 +165,11 @@ impl<'a> SignalGuard<'a> {
     pub(super) fn install_diagnostic(image: &'a LoadedImage32<'_>) -> Result<Self> {
         Self::install_mode(image, true)
     }
+    #[cfg(target_arch="aarch64")]
+    fn install_mode(_image:&'a LoadedImage32<'_>,_diagnostic:bool)->Result<Self>{
+        Err("native x86 signal continuation is unavailable with the ARM executor".into())
+    }
+    #[cfg(target_arch="x86_64")]
     fn install_mode(image: &'a LoadedImage32<'_>, diagnostic: bool) -> Result<Self> {
         let mut mask = 0u32;
         if unsafe { pthread_sigmask(3, ptr::null(), &mut mask) } != 0
@@ -335,6 +340,7 @@ impl Drop for SignalGuard<'_> {
 }
 extern "C" fn signal(number: i32, info: *const SignalInfo, context: *mut UserContext) {
     let mut fs = 0u16;
+    #[cfg(target_arch="x86_64")]
     unsafe {
         std::arch::asm!("mov {0:x}, fs",out(reg) fs,options(nomem,nostack,preserves_flags));
     }
@@ -380,7 +386,11 @@ extern "C" fn signal(number: i32, info: *const SignalInfo, context: *mut UserCon
     if HANDLING.swap(true, Ordering::SeqCst) {
         async_fail(b"Alkyhol PE32 unsupported: nested hardware exception\n");
     }
+    #[cfg(target_arch="aarch64")]
+    let native_sp=0usize;
+    #[cfg(target_arch="x86_64")]
     let native_sp: usize;
+    #[cfg(target_arch="x86_64")]
     unsafe {
         std::arch::asm!("mov {}, rsp",out(reg) native_sp,options(nomem,nostack,preserves_flags));
     }

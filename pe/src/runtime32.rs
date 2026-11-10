@@ -106,7 +106,17 @@ mod window_host32;
 #[path = "winsock32.rs"]
 mod winsock32;
 pub use process32::{ProcessImage32, ProcessOptions32, TimeZone32};
+#[cfg(target_arch = "x86_64")]
 std::arch::global_asm!(include_str!("transition32.S"), options(att_syntax));
+#[cfg(target_arch = "aarch64")]
+#[path = "executor32.rs"]
+pub(crate) mod executor32;
+#[cfg(target_arch = "aarch64")]
+mod guest_templates {
+    include!(concat!(env!("OUT_DIR"), "/guest_templates.rs"));
+}
+#[cfg(target_arch = "aarch64")]
+use executor32::enter as alkyhol_enter_pe32;
 unsafe extern "C" {
     fn mmap(
         address: *mut c_void,
@@ -129,10 +139,42 @@ unsafe extern "C" {
     fn getentropy(buffer: *mut c_void, len: usize) -> i32;
     fn i386_get_ldt(start: i32, entries: *mut u64, count: i32) -> i32;
     fn i386_set_ldt(start: i32, entries: *const u64, count: i32) -> i32;
+    #[cfg(target_arch = "x86_64")]
     fn alkyhol_enter_pe32(entry: u32, stack: u32, code: u32, data: u32) -> u64;
+    #[cfg(target_arch = "x86_64")]
     static alkyhol_pe32_gate_start: u8;
+    #[cfg(target_arch = "x86_64")]
     static alkyhol_pe32_gate_end: u8;
+    #[cfg(target_arch = "x86_64")]
     static alkyhol_pe32_dispatch_slot: u8;
+}
+#[cfg(target_arch = "aarch64")]
+const GUEST_BIAS: usize = 0x8000000000;
+#[cfg(target_arch = "aarch64")]
+fn host_address(address: usize) -> usize {
+    if address != 0 && address <= u32::MAX as usize {
+        GUEST_BIAS + address
+    } else {
+        address
+    }
+}
+#[cfg(target_arch = "aarch64")]
+fn guest_address(address: usize) -> usize {
+    if (GUEST_BIAS..GUEST_BIAS + 0x100000000).contains(&address) {
+        address - GUEST_BIAS
+    } else {
+        address
+    }
+}
+fn host_code_address(address: u32) -> usize {
+    #[cfg(target_arch = "aarch64")]
+    {
+        host_address(address as usize)
+    }
+    #[cfg(target_arch = "x86_64")]
+    {
+        address as usize
+    }
 }
 const PAGE: usize = 4096;
 const STACK: usize = 1024 * 1024;
@@ -556,6 +598,7 @@ fn cleanup_bytes(id: usize, arguments: u16) -> u16 {
     if cdecl_api(id) { 0 } else { arguments }
 }
 static SELECTORS: OnceLock<Result<(u16, u16)>> = OnceLock::new();
+#[cfg(target_arch = "x86_64")]
 fn selectors() -> Result<(u16, u16)> {
     SELECTORS
         .get_or_init(|| {
@@ -603,6 +646,10 @@ fn finish_cpu_ticket(ticket: u64) {
         .unwrap_or_else(|| unsupported("CPU ticket namespace exhausted"));
     CPU_READY.notify_all();
 }
+#[cfg(target_arch = "aarch64")]
+fn selectors() -> Result<(u16, u16)> {
+    Ok((0, 0))
+} // Host selectors are never used by the JIT.
 fn teb_descriptor(base: u32) -> u64 {
     0x0040f20000000fff
         | (u64::from(base & 0xffff) << 16)
@@ -663,18 +710,21 @@ impl TebLease {
                 .unwrap_or_else(|_| unsupported("exclusive CPU lease poisoned"));
             (guard, ticket)
         };
-        let mut descriptor = 0u64;
-        let count = unsafe { i386_get_ldt(514, &mut descriptor, 1) };
-        if !(0..=8192).contains(&count) || (count > 514 && descriptor != 0) {
-            drop(guard);
-            finish_cpu_ticket(ticket);
-            return Err("PE32 FS slot 514 is already occupied or cannot be inspected".into());
-        }
-        descriptor = teb_descriptor(base);
-        if unsafe { i386_set_ldt(514, &descriptor, 1) } != 514 {
-            drop(guard);
-            finish_cpu_ticket(ticket);
-            return Err("cannot install bounded PE32 TEB descriptor".into());
+        #[cfg(target_arch = "x86_64")]
+        {
+            let mut descriptor = 0u64;
+            let count = unsafe { i386_get_ldt(514, &mut descriptor, 1) };
+            if !(0..=8192).contains(&count) || (count > 514 && descriptor != 0) {
+                drop(guard);
+                finish_cpu_ticket(ticket);
+                return Err("PE32 FS slot 514 is already occupied or cannot be inspected".into());
+            }
+            descriptor = teb_descriptor(base);
+            if unsafe { i386_set_ldt(514, &descriptor, 1) } != 514 {
+                drop(guard);
+                finish_cpu_ticket(ticket);
+                return Err("cannot install bounded PE32 TEB descriptor".into());
+            }
         }
         Ok(Self {
             guard: Some(guard),
@@ -684,17 +734,21 @@ impl TebLease {
 }
 impl Drop for TebLease {
     fn drop(&mut self) {
-        let empty = 0u64;
-        if unsafe { i386_set_ldt(514, &empty, 1) } != 514 {
-            // Host FS is restored before this guard is dropped. Do not leave an
-            // apparently reusable descriptor pointing at soon-to-be-freed memory.
-            eprintln!("Alkyhol PE32 unsupported: cannot clear owned FS descriptor");
-            std::process::abort();
+        #[cfg(target_arch = "x86_64")]
+        {
+            let empty = 0u64;
+            if unsafe { i386_set_ldt(514, &empty, 1) } != 514 {
+                // Host FS is restored before this guard is dropped. Do not leave an
+                // apparently reusable descriptor pointing at soon-to-be-freed memory.
+                eprintln!("Alkyhol PE32 unsupported: cannot clear owned FS descriptor");
+                std::process::abort();
+            }
         }
         drop(self.guard.take());
         finish_cpu_ticket(self.ticket);
     }
 }
+#[cfg(target_arch = "x86_64")]
 fn segment_state() -> [u16; 5] {
     let (mut ds, mut es, mut ss, mut fs, mut gs) = (0u16, 0u16, 0u16, 0u16, 0u16);
     unsafe {
@@ -703,6 +757,10 @@ fn segment_state() -> [u16; 5] {
         out(reg) fs, out(reg) gs, options(nomem, nostack, preserves_flags));
     }
     [ds, es, ss, fs, gs]
+}
+#[cfg(target_arch = "aarch64")]
+fn segment_state() -> [u16; 5] {
+    [0; 5]
 }
 fn teb_bytes(base: u32, stack_limit: u32, stack_size: u32) -> Result<[u8; PAGE]> {
     let stack_base = stack_limit
@@ -766,8 +824,17 @@ impl LowMapping {
         let mut address = 0u64;
         let status = unsafe {
             alkyhol_pe32_allocate_hole(
-                bounds.minimum as u64,
-                bounds.end,
+                host_code_address(bounds.minimum as u32) as u64,
+                {
+                    #[cfg(target_arch = "x86_64")]
+                    {
+                        bounds.end
+                    }
+                    #[cfg(target_arch = "aarch64")]
+                    {
+                        GUEST_BIAS as u64 + bounds.end
+                    }
+                },
                 len as u64,
                 alignment as u64,
                 &mut address,
@@ -790,6 +857,51 @@ impl LowMapping {
         eprintln!("PE32 bounded mapping placed: address={address:#x} len={len:#x}");
         Ok(mapping)
     }
+    #[cfg(target_arch = "aarch64")]
+    fn new(len: usize, alignment: usize, hint: usize) -> Result<Self> {
+        let page = unsafe { getpagesize() } as usize;
+        let physical = len
+            .checked_add(page - 1)
+            .map(|v| v & !(page - 1))
+            .ok_or("native mapping size overflow")?;
+        let mut address = 0u64;
+        let min = GUEST_BIAS as u64
+            + if hint >= 65536 {
+                hint as u32 as u64
+            } else {
+                65536
+            };
+        let mut status = unsafe {
+            alkyhol_pe32_allocate_hole(
+                min,
+                GUEST_BIAS as u64 + 0x100000000,
+                physical as u64,
+                alignment.max(page) as u64,
+                &mut address,
+            )
+        };
+        if status != 0 && min != GUEST_BIAS as u64 + 65536 {
+            status = unsafe {
+                alkyhol_pe32_allocate_hole(
+                    GUEST_BIAS as u64 + 65536,
+                    GUEST_BIAS as u64 + 0x100000000,
+                    physical as u64,
+                    alignment.max(page) as u64,
+                    &mut address,
+                )
+            };
+        }
+        if status != 0 {
+            return Err(format!(
+                "native low guest mapping failed: Mach status {status}"
+            ));
+        }
+        Ok(Self {
+            base: address as *mut u8,
+            len,
+        })
+    }
+    #[cfg(target_arch = "x86_64")]
     fn new(len: usize, alignment: usize, hint: usize) -> Result<Self> {
         let reserve = len
             .checked_add(alignment)
@@ -823,6 +935,12 @@ impl LowMapping {
         if start.checked_add(len).is_none_or(|end| end > self.len) {
             return Err("low protection extent".into());
         }
+        #[cfg(target_arch = "aarch64")]
+        {
+            let _ = rights;
+            return Ok(());
+        } // Guest permissions are checked at every CPU/service access.
+        #[cfg(target_arch = "x86_64")]
         if unsafe { mprotect(self.base.add(start).cast(), len, rights) } != 0 {
             return Err("low protection failed".into());
         }
@@ -832,7 +950,11 @@ impl LowMapping {
 impl Drop for LowMapping {
     fn drop(&mut self) {
         unsafe {
-            munmap(self.base.cast(), self.len);
+            #[cfg(target_arch = "aarch64")]
+            let len = self.len.div_ceil(getpagesize() as usize) * getpagesize() as usize;
+            #[cfg(target_arch = "x86_64")]
+            let len = self.len;
+            munmap(self.base.cast(), len);
         }
     }
 }
@@ -883,9 +1005,22 @@ struct Module32 {
     retired: bool,
     dependencies: Vec<u32>,
 }
+#[cfg(target_arch = "aarch64")]
+fn native_generation() -> u64 {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NEXT: AtomicU64 = AtomicU64::new(1);
+    NEXT.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_add(1))
+        .unwrap_or_else(|_| unsupported("native process generation exhausted"))
+}
 struct Cpu32 {
     stack: LowMapping,
     teb: LowMapping,
+    #[cfg(target_arch = "aarch64")]
+    native_gates: RefCell<std::collections::BTreeMap<u32, (u32, u16)>>,
+    #[cfg(target_arch = "aarch64")]
+    native_code: RefCell<Vec<(u32, u32)>>,
+    #[cfg(target_arch = "aarch64")]
+    native_generation: u64,
     blocks: RefCell<Vec<startup32::Block>>,
     command: Cell<u32>,
     command_ansi: Cell<u32>,
@@ -1015,6 +1150,12 @@ impl Cpu32 {
         Ok(Self {
             stack,
             teb,
+            #[cfg(target_arch = "aarch64")]
+            native_gates: RefCell::new(Default::default()),
+            #[cfg(target_arch = "aarch64")]
+            native_code: RefCell::new(Vec::new()),
+            #[cfg(target_arch = "aarch64")]
+            native_generation: native_generation(),
             blocks: RefCell::new(Vec::new()),
             command: Cell::new(0),
             command_ansi: Cell::new(0),
@@ -1220,6 +1361,11 @@ impl<'a> LoadedImage32<'a> {
         if ACTIVE.with(|s| !s.get().is_null()) {
             return Err("PE32 loading during guest entry is unsupported".into());
         }
+        #[cfg(target_arch = "aarch64")]
+        if !executor32::installed() {
+            return Err("native PE32 requires an installed checked executor".into());
+        }
+        #[cfg(target_arch = "x86_64")]
         if unsafe { getpagesize() } != PAGE as i32 {
             return Err("PE32 requires 4-KiB host pages".into());
         }
@@ -1284,7 +1430,7 @@ impl<'a> LoadedImage32<'a> {
             },
             bounds,
         )?;
-        let relocated = image.base as u64 != parsed.base;
+        let relocated = u64::from(image.base as u32) != parsed.base;
         if rebase && !relocated {
             return Err("forced PE32 rebase did not move".into());
         }
@@ -1324,34 +1470,50 @@ impl<'a> LoadedImage32<'a> {
                 })
             })
             .transpose()?;
-        let mut cs64 = 0u16;
-        unsafe {
-            std::arch::asm!("mov {0:x}, cs",out(reg) cs64,options(nomem,nostack,preserves_flags));
-        }
         let mut template = vec![0u8; math32::GATE_SIZE];
-        // 32-bit near return -> far jump into low 64-bit gate -> host continuation.
-        template[..2].copy_from_slice(&[0xff, 0x2d]);
-        template[2..6].copy_from_slice(&((gates.base as u32) + 8).to_le_bytes());
-        template[8..12].copy_from_slice(&((gates.base as u32) + 16).to_le_bytes());
-        template[12..14].copy_from_slice(&cs64.to_le_bytes());
-        // Capture actual post-RET ESP before recovering the host stack. This
-        // checks cdecl/stdcall cleanup rather than hiding a guest stack imbalance.
-        template[16..24].copy_from_slice(&[0x89, 0xe2, 0x4c, 0x89, 0xe4, 0x41, 0xff, 0xe5]);
-        let start = ptr::addr_of!(alkyhol_pe32_gate_start) as usize;
-        let end = ptr::addr_of!(alkyhol_pe32_gate_end) as usize;
-        let slot = ptr::addr_of!(alkyhol_pe32_dispatch_slot) as usize - start;
-        if end - start > 192 || slot + 8 > end - start {
-            return Err("invalid CPU gate template".into());
+        #[allow(unused_mut)]
+        let mut cs64 = 0u16;
+        #[cfg(target_arch = "x86_64")]
+        {
+            unsafe {
+                std::arch::asm!("mov {0:x}, cs",out(reg) cs64,options(nomem,nostack,preserves_flags));
+            }
+            // 32-bit near return -> far jump into low 64-bit gate -> host continuation.
+            template[..2].copy_from_slice(&[0xff, 0x2d]);
+            template[2..6].copy_from_slice(&((gates.base as u32) + 8).to_le_bytes());
+            template[8..12].copy_from_slice(&((gates.base as u32) + 16).to_le_bytes());
+            template[12..14].copy_from_slice(&cs64.to_le_bytes());
+            // Capture actual post-RET ESP before recovering the host stack. This
+            // checks cdecl/stdcall cleanup rather than hiding a guest stack imbalance.
+            template[16..24].copy_from_slice(&[0x89, 0xe2, 0x4c, 0x89, 0xe4, 0x41, 0xff, 0xe5]);
+            let start = ptr::addr_of!(alkyhol_pe32_gate_start) as usize;
+            let end = ptr::addr_of!(alkyhol_pe32_gate_end) as usize;
+            let slot = ptr::addr_of!(alkyhol_pe32_dispatch_slot) as usize - start;
+            if end - start > 192 || slot + 8 > end - start {
+                return Err("invalid CPU gate template".into());
+            }
+            template[64..64 + end - start].copy_from_slice(unsafe {
+                std::slice::from_raw_parts(start as *const u8, end - start)
+            });
+            template[64 + slot..72 + slot]
+                .copy_from_slice(&(dispatch as *const () as u64).to_le_bytes());
         }
-        template[64..64 + end - start].copy_from_slice(unsafe {
-            std::slice::from_raw_parts(start as *const u8, end - start)
-        });
-        template[64 + slot..72 + slot]
-            .copy_from_slice(&(dispatch as *const () as u64).to_le_bytes());
         if api_offset(APIS.len() - 1) + 32 > math32::GATE_SIZE {
             return Err("API table exceeds its checked gateway banks".into());
         }
+        #[cfg(target_arch = "aarch64")]
+        cpu.native_code.borrow_mut().push((
+            gates.base as u32,
+            gates.base as u32 + math32::GATE_SIZE as u32,
+        ));
         for (id, &(_, argument_bytes)) in APIS.iter().enumerate() {
+            #[cfg(target_arch = "aarch64")]
+            if id != 177 {
+                cpu.native_gates.borrow_mut().insert(
+                    gates.base as u32 + api_offset(id) as u32,
+                    (id as u32, cleanup_bytes(id, argument_bytes)),
+                );
+            }
             let mut at = api_offset(id);
             let mut base = gates.base as u32 + at as u32;
             if matches!(id, 89 | 92) {
@@ -1394,6 +1556,10 @@ impl<'a> LoadedImage32<'a> {
         let public = api_offset(177);
         let private = raise32::OFFSET + 256;
         let private_base = gates.base as u32 + private as u32;
+        #[cfg(target_arch = "aarch64")]
+        cpu.native_gates
+            .borrow_mut()
+            .insert(private_base, (177 as u32, 0));
         let normal: [u8; 32] = template[public..public + 32].try_into().unwrap();
         template[private..private + 32].copy_from_slice(&normal);
         template[private + 1..private + 5].copy_from_slice(&(private_base + 16).to_le_bytes());
@@ -1471,6 +1637,12 @@ impl<'a> LoadedImage32<'a> {
         image.protect(0, parsed.size, 0)?;
         image.protect(0, parsed.headers, 1)?;
         let mut regions = Vec::new();
+        #[cfg(target_arch = "aarch64")]
+        regions.push((
+            image.base as usize,
+            image.base as usize + parsed.headers,
+            0x40000000,
+        ));
         let mut code_regions = Vec::new();
         for section in &parsed.sections {
             let rights = ((section.rights >> 30) & 1)
@@ -1494,9 +1666,7 @@ impl<'a> LoadedImage32<'a> {
         regions.extend_from_slice(context.regions);
         regions.sort_unstable();
         regions.dedup();
-        let standard: unsafe extern "win64" fn(u32) -> usize = unsafe {
-            std::mem::transmute(crate::abi::resolve("kernel32.dll", "GetStdHandle").unwrap())
-        };
+        let standard = alkyhol_host_abi::host_call!((u32) -> usize; crate::abi::resolve("kernel32.dll", "GetStdHandle").unwrap());
         let handles = unsafe {
             [
                 standard(0xfffffff6),
@@ -1542,6 +1712,8 @@ impl<'a> LoadedImage32<'a> {
         self.relocated
     }
     fn permits(&self, address: usize, len: usize, write: bool) -> bool {
+        #[cfg(target_arch = "aarch64")]
+        let address = host_address(address);
         let Some(end) = address.checked_add(len) else {
             return false;
         };
@@ -1768,12 +1940,14 @@ impl<'a> LoadedImage32<'a> {
             return Err("PE32 callback nesting limit".into());
         }
         if !self.regions.iter().any(|&(first, last, rights)| {
-            rights & 0x20000000 != 0 && entry as usize >= first && (entry as usize) < last
+            rights & 0x20000000 != 0
+                && host_code_address(entry) >= first
+                && host_code_address(entry) < last
         }) {
             return Err("PE32 callback outside executable guest storage".into());
         }
         let top = self.cpu.callback_stack().get();
-        let limit = self.cpu.stack().base as usize + PAGE + STACK;
+        let limit = self.cpu.stack().base as u32 as usize + PAGE + STACK;
         let frame = top
             .checked_sub(32 + frame_bytes as u32)
             .and_then(|v| (v & !15).checked_sub(4))
@@ -1843,11 +2017,9 @@ impl<'a> LoadedImage32<'a> {
         convention: CallingConvention32,
     ) -> Result<u32> {
         let (offset, expected_offset) = call_stack(args.len(), convention)?;
-        if !self
-            .code_regions
-            .iter()
-            .any(|&(first, last)| entry as usize >= first && (entry as usize) < last)
-        {
+        if !self.code_regions.iter().any(|&(first, last)| {
+            host_code_address(entry) >= first && host_code_address(entry) < last
+        }) {
             return Err("PE32 call target is outside executable image storage".into());
         }
         ACTIVE.with(|slot| {
@@ -1864,6 +2036,7 @@ impl<'a> LoadedImage32<'a> {
             if before[3] != 0 {
                 return Err("PE32 requires an unused host FS selector".into());
             }
+            #[cfg(target_arch = "x86_64")]
             let _diagnostic_signals = if self.cpu.diagnostic.is_some() {
                 Some(seh32::SignalGuard::install_diagnostic(self)?)
             } else {
@@ -2732,6 +2905,12 @@ mod tests {
                 len: 0,
             },
             cpu: Rc::new(Cpu32 {
+                #[cfg(target_arch = "aarch64")]
+                native_generation: native_generation(),
+                #[cfg(target_arch = "aarch64")]
+                native_gates: Default::default(),
+                #[cfg(target_arch = "aarch64")]
+                native_code: Default::default(),
                 stack: LowMapping {
                     base: 0x400000usize as *mut u8,
                     len: STACK + 2 * PAGE,

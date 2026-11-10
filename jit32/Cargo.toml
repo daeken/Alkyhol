@@ -5,12 +5,19 @@ edition = "2024"
 license = "MIT"
 description = "Checked experimental PE32 runner using SharpRetro ARM64 JIT"
 
+[features]
+shared-runtime = ["alkyhol-pe/native-runtime32"]
+
 [dependencies]
 alkyhol = { path = ".." }
 alkyhol-pe = { path = "../pe" }
 xfusion-recomp = { path = "../../SharpRetro/rust/xfusion-recomp" }
 sharpretro-jit = { path = "../../SharpRetro/rust/sharpretro-jit" }
 libc = "0.2"
+rustc_apfloat = "=0.2.3"
 
 [patch.crates-io]
 wgpu-hal = { path = "../vendor/wgpu-hal" }
+
+[dev-dependencies]
+serde_json = "1"

@@ -36,7 +36,7 @@ cargo run --manifest-path jit32/Cargo.toml --locked --offline -- \
   local/pe/pe32/pe32.exe > local/jit32-output.bin
 ```
 
-There are two entry paths. `Runner::load` keeps the initial no-TLS/no-CRT
+The initial standalone runner has two entry paths. `Runner::load` keeps the initial no-TLS/no-CRT
 contract. `Process::load` maps an EXE and explicitly supplied static dependencies,
 binds named/ordinal code/data imports and checked forwarders, prepares a shared
 TEB/static TLS, then invokes original TLS callbacks and DLL entry points in
@@ -75,8 +75,9 @@ Guest memory uses sparse owned 4-GiB backing with checked logical mappings,
 permissions and bounds; it is not identity-mapped to host pointers. Writable
 executable mappings are rejected. Every native memory access is guarded. Blocks
 contain one guest instruction, with a retained pre-instruction CPU snapshot.
-Multiple stores, reads after committed stores, atomics, string loops, FP/SIMD,
-16-bit stack operations and unwired instructions are explicitly rejected. The
+General multiple stores/reads after stores, unaligned atomics, unsupported
+FP/SIMD and unwired instructions are explicitly rejected. The expanded reached
+subset and shared-service entry are described below. The
 bounded code cache admits at most 4096 instructions, each at most 1 MiB of code;
 the runner counts import transitions and guest instructions against its run
 budget. SharpRetro watch instrumentation is not admitted.
@@ -101,3 +102,34 @@ threads, detach/rollback notifications and the larger Win32/COM/D3D9 bridge rema
 required before replacing the working Rosetta DAO path. Nonzero TLS zero-fill is
 still rejected for its separately documented native-evidence mismatch. See
 `docs/sharpretro.md` and `docs/validation.md`.
+
+## Shared Win32/COM/D3D9 service path
+
+For the unchanged original application driver, build the native CPU into the
+existing PE32 service launcher:
+
+```sh
+python3 tools/build_jit32_shared.py
+python3 tools/check_jit32_shared.py
+```
+
+This uses `shared-runtime` and the original startup launcher's arguments. The
+CPU, service crate and SharpRetro packages build with optimization level 2;
+shader quality/geometry are unaffected. Supply the same explicitly configured
+DLLs and backing profile used by Rosetta. Native memory backing is biased above
+hard PAGEZERO; guest fields keep their original 32-bit layouts. CPU page access
+and API live-buffer checks are deliberately distinct.
+
+`ALKYHOL_PE32_TRACE_CALLS=first` limits repeated service diagnostics;
+`ALKYHOL_JIT32_TRACE_PROGRESS=1` prints million-instruction progress. The current
+shared entry budget is one billion instruction/service transitions per entry;
+exhaustion is an explicit failure. Native callbacks keep separate integer
+continuations and shared guest-thread x87 state. See docs/sharpretro.md and
+docs/validation.md for precise current game progress and evidence limits.
+
+The reached CPU subset now additionally includes checked aligned atomics,
+restartable REP iterations, flag/register-bank operations, normal finite x87
+arithmetic and bounded software math, plus legacy XMM transfers/bitwise logic.
+Unimplemented arithmetic, exception delivery and uncertified numerical paths
+still stop explicitly. Open rustc_apfloat supplies software 80-bit conversions;
+there is no proprietary converter or host binary64 substitute for x87 arithmetic.

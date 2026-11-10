@@ -17,10 +17,19 @@ struct Region {
     end: u64,
     rights: u8,
 }
+#[cfg(feature = "shared-runtime")]
+struct Foreign {
+    context: *const (),
+    validate: unsafe fn(*const (), u64, usize, u8) -> bool,
+}
 pub struct Memory {
     base: *mut u8,
     regions: Vec<Region>,
+    pub(crate) fpu: std::rc::Rc<std::cell::RefCell<crate::fpu::State>>,
+    #[cfg(feature = "shared-runtime")]
+    foreign: Option<Foreign>,
     pub(crate) fault: Option<Fault>,
+    pub(crate) cpu_fault: Option<&'static str>,
 }
 impl Memory {
     pub fn new() -> Result<Self> {
@@ -44,8 +53,37 @@ impl Memory {
         Ok(Self {
             base: base.cast(),
             regions: Vec::new(),
+            fpu: Default::default(),
+            #[cfg(feature = "shared-runtime")]
+            foreign: None,
             fault: None,
+            cpu_fault: None,
         })
+    }
+    /// Only used within a synchronous checked runtime invocation. The supplied
+    /// context must outlive this view and validate real owned native mappings.
+    #[cfg(feature = "shared-runtime")]
+    pub(crate) unsafe fn foreign(
+        context: *const (),
+        base: u64,
+        validate: unsafe fn(*const (), u64, usize, u8) -> bool,
+    ) -> Self {
+        Self {
+            base: base as *mut u8,
+            regions: vec![],
+            fpu: Default::default(),
+            fault: None,
+            cpu_fault: None,
+            foreign: Some(Foreign { context, validate }),
+        }
+    }
+    fn pointer(&self, address: u64) -> *mut u8 {
+        #[cfg(feature = "shared-runtime")]
+        if self.foreign.is_some() {
+            return (self.base as u64 + address) as *mut u8;
+        }
+        // Every caller validates the offset before translating it.
+        unsafe { self.base.add(address as usize) }
     }
     pub(crate) fn base(&self) -> u64 {
         self.base as u64
@@ -62,6 +100,14 @@ impl Memory {
             .ok_or_else(fail)?;
         if length == 0 || access == 0 || access & !(READ | WRITE | EXEC) != 0 {
             return Err(fail());
+        }
+        #[cfg(feature = "shared-runtime")]
+        if let Some(foreign) = &self.foreign {
+            return if unsafe { (foreign.validate)(foreign.context, address, length, access) } {
+                Ok(())
+            } else {
+                Err(fail())
+            };
         }
         // Walk adjacent regions too; instruction/data spans may cross sections.
         let mut at = address;
@@ -80,6 +126,10 @@ impl Memory {
         Err(fail())
     }
     pub fn map(&mut self, address: u32, size: usize, rights: u8, initial: &[u8]) -> Result<()> {
+        #[cfg(feature = "shared-runtime")]
+        if self.foreign.is_some() {
+            return Err("cannot map through a borrowed guest view".into());
+        }
         let start = address as u64;
         let end = start
             .checked_add(size as u64)
@@ -132,17 +182,13 @@ impl Memory {
     pub fn read(&self, address: u64, size: usize, access: u8) -> Result<&[u8]> {
         self.check(address, size, access)
             .map_err(|f| format!("guest fault: {f:?}"))?;
-        Ok(unsafe { std::slice::from_raw_parts(self.base.add(address as usize), size) })
+        Ok(unsafe { std::slice::from_raw_parts(self.pointer(address), size) })
     }
     pub fn write(&mut self, address: u64, bytes: &[u8]) -> Result<()> {
         self.check(address, bytes.len(), WRITE)
             .map_err(|f| format!("guest fault: {f:?}"))?;
         unsafe {
-            std::ptr::copy_nonoverlapping(
-                bytes.as_ptr(),
-                self.base.add(address as usize),
-                bytes.len(),
-            );
+            std::ptr::copy_nonoverlapping(bytes.as_ptr(), self.pointer(address), bytes.len());
         }
         Ok(())
     }
@@ -154,8 +200,14 @@ impl Memory {
 }
 impl Drop for Memory {
     fn drop(&mut self) {
+        #[cfg(feature = "shared-runtime")]
+        if self.foreign.is_some() {
+            return;
+        }
         unsafe {
-            libc::munmap(self.base.cast(), EXTENT);
+            if !self.base.is_null() {
+                libc::munmap(self.base.cast(), EXTENT);
+            }
         }
     }
 }
@@ -209,5 +261,79 @@ mod tests {
             assert_eq!(guard(&mut m, 0x1004, 4, 1), 0);
         }
         assert_eq!(m.fault.as_ref().unwrap().address, 0);
+    }
+}
+
+/// x86 DIV/IDIV raise #DE for zero divisors and unrepresentable quotients.
+/// AArch64 division does neither, so guard before touching the guest result.
+pub(crate) unsafe extern "C" fn divide_guard(
+    context: *mut Memory,
+    numerator: u64,
+    denominator: u64,
+    signed: u64,
+) -> u64 {
+    let valid = if signed != 0 {
+        let d = denominator as i64 as i128;
+        d != 0 && {
+            let q = (numerator as i64 as i128) / d;
+            (i32::MIN as i128..=i32::MAX as i128).contains(&q)
+        }
+    } else {
+        denominator != 0 && numerator / denominator <= u32::MAX as u64
+    };
+    if valid {
+        1
+    } else {
+        unsafe {
+            (*context)
+                .cpu_fault
+                .get_or_insert("x86 #DE: zero divisor or quotient overflow");
+        }
+        0
+    }
+}
+
+pub(crate) unsafe extern "C" fn atomic_alignment(
+    memory: *mut Memory,
+    address: u64,
+    size: u64,
+) -> u64 {
+    if address.is_multiple_of(size) {
+        1
+    } else {
+        unsafe {
+            (*memory)
+                .cpu_fault
+                .get_or_insert("unaligned x86 atomic requires a split-lock implementation");
+        }
+        0
+    }
+}
+
+pub(crate) unsafe extern "C" fn pop_flags(memory: *mut Memory, flags: u64) -> u64 {
+    // TF delivery, nested-task state and alignment-check faults require CPU
+    // exception support. Do not silently drop a guest request to enable them.
+    if flags & ((1 << 8) | (1 << 14) | (1 << 18)) != 0 {
+        unsafe {
+            (*memory)
+                .cpu_fault
+                .get_or_insert("POPF requests unsupported TF/NT/AC exception state");
+        }
+        0
+    } else {
+        1
+    }
+}
+
+pub(crate) unsafe extern "C" fn vector_alignment(memory: *mut Memory, address: u64) -> u64 {
+    if address.is_multiple_of(16) {
+        1
+    } else {
+        unsafe {
+            (*memory)
+                .cpu_fault
+                .get_or_insert("x86 #GP: aligned vector access is misaligned");
+        }
+        0
     }
 }

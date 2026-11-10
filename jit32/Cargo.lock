@@ -18,12 +18,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "alkyhol-host-abi"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
 name = "alkyhol-jit32"
 version = "0.1.0"
 dependencies = [
  "alkyhol",
  "alkyhol-pe",
  "libc",
+ "rustc_apfloat",
+ "serde_json",
  "sharpretro-jit",
  "xfusion-recomp",
 ]
@@ -34,6 +45,7 @@ version = "0.1.0"
 dependencies = [
  "alkyhol",
  "alkyhol-d3d9",
+ "alkyhol-host-abi",
  "roxmltree",
 ]
 
@@ -645,6 +657,16 @@ name = "rustc-hash"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "08d43f7aa6b08d49f382cde6a7982047c3426db949b1424bc4b7ec9ae12c6ce2"
+
+[[package]]
+name = "rustc_apfloat"
+version = "0.2.3+llvm-462a31f5a5ab"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "486c2179b4796f65bfe2ee33679acf0927ac83ecf583ad6c91c3b4570911b9ad"
+dependencies = [
+ "bitflags",
+ "smallvec",
+]
 
 [[package]]
 name = "rustversion"

@@ -7521,3 +7521,58 @@ The x86-64/Rosetta PE suite also passes 229 units plus those 18 parser tests,
 retaining its existing one PAGEZERO-dependent skip. Runner Clippy and two strict
 Python transport tests pass. Shared original fixtures, native references and
 DAODecomp are untouched; no game-derived inputs/inventories are committed.
+
+### Native ARM shared PE32 runtime and original EXE startup
+
+The new `jit32/shared-runtime` feature executes original guest instructions with
+SharpRetro on the physical M4 while reusing the existing Win32/COM/D3D9 services.
+It has no Rosetta or interpreter fallback. The native host has ordinary hard
+PAGEZERO protection; checked biased backing keeps guest pointer fields 32-bit.
+API extents and CPU page/arena access checks remain separate. See
+[the execution contract](sharpretro.md#native-arm-execution-through-the-existing-pe32-services).
+
+`tools/check_jit32_shared.py` runs the unchanged ABI, TLS and heap witnesses at
+preferred and forced-rebased addresses. All 8 + 24 + 64 output words agree with
+the frozen Windows observations; PE/source/reference identities are checked
+before and after, with positive native CPU/service counters. This is a new native
+ARM execution path, not a new Windows measurement. The existing standalone JIT
+and actual Rosetta comparators remain intact.
+
+Physical M4 CPU tests now cover reached divide/#DE behavior, REP progress and
+fault boundaries, atomic/vector alignment, XMM bit preservation, 16/32-bit flag
+and register-bank stack layouts, real TSC bracketing, x87 environments, transfers,
+comparisons and precision. An independent owned x86 assembly observer in
+jit32/tests/x87_reference.c ran under actual Rosetta: precision control, four
+integer rounding modes, both reduced-precision double-rounding directions and
+11 sin/cos float-store cases agree with the ARM tests. These are finite host
+observations; they are not native Windows observations or proof of the game.
+Software CRT math also matches the unchanged accepted frozen Windows sqrt/atan
+components: 20 + 11 rows, checking result80/control/status/lower operand, without
+editing those inputs or acceptance data. General exceptional/uncertified FP
+paths still fail explicitly; no full shaded frame or transcendental hardware-bit
+parity is inferred from these rows.
+
+The original DLL graph now completes under native ARM and enters DAOrigins.exe's
+own startup. The recorded original-input run reaches 332,460,348 guest
+instructions / 798,587 services before FSINCOS; with bounded trig it advances to
+337,870,384 instructions / 821,784 services and a memory-SAR lowering limitation.
+The input binaries' SHA-256 values agree before/after. Raw game-derived state,
+addresses, bytes and logs remain local. No JIT window, gameplay or Rosetta
+cutscene parity is claimed here. The Rosetta game boundary remains separately
+preserved, as do the working source/PE64/Metal sample paths.
+
+On this physical M4, 39 JIT CPU/process/service tests pass, including the reached
+trig and SIMD transfer cases. The x86/Rosetta PE suite passes 229 units plus 18
+image32 tests, retaining its existing one PAGEZERO-dependent skip. The new
+syntax-adapter test and three strict Python transport tests pass; runner Clippy
+passes with warnings denied for the runner itself. These counts do not include
+new full native-Windows or game-frame measurements.
+
+The DLL inputs retain the existing explicitly configured staged/unpacked
+dependencies; their exact identities remain in the local capture. The original
+DAOrigins.exe file is unchanged.
+
+The preexisting comparators also pass again: unchanged standalone JIT and actual
+Rosetta executions match the same frozen 8-word ABI and 24/64-word TLS/heap
+results at both bases. The new shared service path matches those 96 words at
+both bases independently; no frozen sources, PEs or Windows references changed.

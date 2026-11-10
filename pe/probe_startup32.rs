@@ -1,7 +1,11 @@
 //! Explicit diagnostic execution of a caller-supplied original PE32/DLL graph.
 //! External-service imports are inaccessible guards, never successful stubs.
+#[cfg(alkyhol_native_jit32)]
+use alkyhol_jit32::shared_pe as alkyhol_pe;
 use alkyhol_pe::{ProcessContext, ProcessImage32, ProcessOptions32, TimeZone32};
 fn main() {
+    #[cfg(alkyhol_native_jit32)]
+    alkyhol_jit32::shared::install().expect("install native checked executor");
     let args: Vec<_> = std::env::args().skip(1).collect();
     let result = (|| -> alkyhol_pe::Result<u32> {
         let path = args.first().ok_or("expected EXE path")?;
@@ -228,6 +232,8 @@ fn main() {
         }
         Ok(status)
     })();
+    #[cfg(alkyhol_native_jit32)]
+    eprintln!("JIT32 shared runtime: {:?}",alkyhol_jit32::shared::stats());
     match result {
         Ok(status) if status <= 255 => std::process::exit(status as i32),
         Ok(_) => {

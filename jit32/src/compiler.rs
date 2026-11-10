@@ -19,7 +19,7 @@ static LAYOUT: StateLayout = StateLayout {
     reg_off: |file, idx| match file.0 {
         0 if idx < 8 => idx * 8,
         2 if idx < 6 => (18 + idx) * 8,
-        // SIMD/FP state is not admitted by this initial scalar runner.
+        3 if idx < 8 => (24 + idx * 2) * 8, // eight legacy XMM registers
         _ => panic!("unadmitted register file/index: {file:?}/{idx}"),
     },
     off_rr: 0,
@@ -28,10 +28,12 @@ static LAYOUT: StateLayout = StateLayout {
 struct Shared {
     guards: RefCell<Vec<usize>>,
     stored: Cell<bool>,
-    call: bool,
+    stack_store: Option<IlType>,
     stack_read: bool,
     stack_write: bool,
     segment: Option<u32>,
+    signed_division: bool,
+    aligned_vector: bool,
 }
 struct Checked<'a> {
     inner: &'a mut Tier0,
@@ -49,6 +51,9 @@ fn width(ty: IlType) -> u64 {
                 unreachable!()
             }
         }
+        IlType::V128 | IlType::I { width: 128, .. } => 16,
+        IlType::F { width: 32 } => 4,
+        IlType::F { width: 64 } => 8,
         _ => panic!("unadmitted memory type {ty:?}"),
     }
 }
@@ -79,6 +84,49 @@ impl Checked<'_> {
         e.cbz(0, 0); // failure goes straight to this instruction's epilogue
         self.shared.guards.borrow_mut().push(at);
     }
+    fn vector_alignment(&mut self, addr: u32) {
+        if !self.shared.aligned_vector {
+            return;
+        }
+        let e = &mut self.inner.enc;
+        e.ldr_x(0, 28, 90 * 8);
+        e.ldr_x(1, 27, addr * 8);
+        e.mov_imm64(16, memory::vector_alignment as *const () as u64);
+        e.put_raw(0xd63f0200);
+        let at = e.here();
+        e.cbz(0, 0);
+        self.shared.guards.borrow_mut().push(at);
+    }
+    fn atomic_address(&mut self, addr: u32, size: u64) -> u32 {
+        assert!(
+            !self.shared.stored.replace(true),
+            "multiple committed writes"
+        );
+        let addr = self.address(addr, false);
+        self.guard(addr, size, false);
+        self.guard(addr, size, true);
+        let e = &mut self.inner.enc;
+        e.ldr_x(0, 28, 90 * 8);
+        e.ldr_x(1, 27, addr * 8);
+        e.mov_imm64(2, size);
+        e.mov_imm64(16, memory::atomic_alignment as *const () as u64);
+        e.put_raw(0xd63f0200);
+        let at = e.here();
+        e.cbz(0, 0);
+        self.shared.guards.borrow_mut().push(at);
+        addr
+    }
+    fn fp_control(&mut self, op: u64, value: u32) -> u32 {
+        let result = self.inner.literal(IlType::U64, 0);
+        let e = &mut self.inner.enc;
+        e.ldr_x(0, 28, 90 * 8);
+        e.mov_imm64(1, op);
+        e.ldr_x(2, 27, value * 8);
+        e.mov_imm64(16, crate::fpu::control as *const () as u64);
+        e.put_raw(0xd63f0200);
+        e.str_x(0, 27, result * 8);
+        result
+    }
     fn checked_val(&self, v: u32) -> u32 {
         assert!(v < 4096, "spill limit");
         v
@@ -95,6 +143,7 @@ impl Builder for Checked<'_> {
             "read after committed store requires precise partial-state support"
         );
         let addr = self.address(addr, self.shared.stack_read);
+        self.vector_alignment(addr);
         self.guard(addr, width(ty), false);
         let v = self.inner.mem_read(addr, ty);
         self.checked_val(v)
@@ -106,12 +155,13 @@ impl Builder for Checked<'_> {
         );
         // Generated CALL currently uses a U64 return-PC literal even in Bits32.
         // Store exactly four guest bytes, as required by the 32-bit CALL ABI.
-        let value = if self.shared.call {
-            self.inner.cast(value, IlType::U32)
+        let value = if let Some(ty) = self.shared.stack_store {
+            self.inner.cast(value, ty)
         } else {
             value
         };
         let addr = self.address(addr, self.shared.stack_write);
+        self.vector_alignment(addr);
         self.guard(addr, width(self.inner.ty_of(value)), true);
         self.inner.mem_write(addr, value);
     }
@@ -180,13 +230,28 @@ impl Builder for Checked<'_> {
         let v = self.inner.mul(a, b);
         self.checked_val(v)
     }
-    #[allow(unused_variables)]
     fn div(&mut self, a: Self::Val, b: Self::Val) -> Self::Val {
-        panic!("unsupported JIT operation: div")
+        assert_eq!(
+            width(self.inner.ty_of(a)),
+            8,
+            "only 32-bit DIV/IDIV operands admitted"
+        );
+        let e = &mut self.inner.enc;
+        e.ldr_x(0, 28, 90 * 8);
+        e.ldr_x(1, 27, a * 8);
+        e.ldr_x(2, 27, b * 8);
+        e.mov_imm64(3, self.shared.signed_division as u64);
+        e.mov_imm64(16, memory::divide_guard as *const () as u64);
+        e.put_raw(0xd63f0200);
+        let at = e.here();
+        e.cbz(0, 0);
+        self.shared.guards.borrow_mut().push(at);
+        let v = self.inner.div(a, b);
+        self.checked_val(v)
     }
-    #[allow(unused_variables)]
     fn rem(&mut self, a: Self::Val, b: Self::Val) -> Self::Val {
-        panic!("unsupported JIT operation: rem")
+        let v = self.inner.rem(a, b);
+        self.checked_val(v)
     }
     fn neg(&mut self, a: Self::Val) -> Self::Val {
         let v = self.inner.neg(a);
@@ -388,11 +453,13 @@ impl Builder for Checked<'_> {
         _val: Self::Val,
         _ty: IlType,
     ) -> Self::Val {
-        panic!("unsupported JIT operation: mem_rmw_atomic")
+        let addr = self.atomic_address(_addr, width(_ty));
+        let v = self.inner.mem_rmw_atomic(_op, addr, _val, _ty);
+        self.checked_val(v)
     }
     #[allow(unused_variables)]
     fn fence(&mut self) {
-        panic!("unsupported JIT operation: fence")
+        self.inner.fence();
     }
     #[allow(unused_variables)]
     fn mem_cas_atomic(
@@ -402,7 +469,9 @@ impl Builder for Checked<'_> {
         _new: Self::Val,
         _ty: IlType,
     ) -> Self::Val {
-        panic!("unsupported JIT operation: mem_cas_atomic")
+        let addr = self.atomic_address(_addr, width(_ty));
+        let v = self.inner.mem_cas_atomic(addr, _expected, _new, _ty);
+        self.checked_val(v)
     }
     #[allow(unused_variables)]
     fn loop_n(&mut self, n: Self::Val, body: &mut dyn FnMut(&mut Self)) {
@@ -437,7 +506,19 @@ impl Builder for Checked<'_> {
     }
     #[allow(unused_variables)]
     fn call_intrinsic(&mut self, id: IntrinsicId, args: &[Self::Val]) -> Option<Self::Val> {
-        panic!("unsupported JIT operation: call_intrinsic")
+        if id == IntrinsicId(343) && args.is_empty() {
+            let e = &mut self.inner.enc;
+            e.ldr_x(0, 28, 90 * 8);
+            e.mov_r(1, 28);
+            e.mov_imm64(16, crate::fpu::cpuid as *const () as u64);
+            e.put_raw(0xd63f0200);
+            let at = e.here();
+            e.cbz(0, 0);
+            self.shared.guards.borrow_mut().push(at);
+            None
+        } else {
+            panic!("unsupported JIT intrinsic {}", id.0)
+        }
     }
 }
 
@@ -451,40 +532,250 @@ pub(crate) fn compile(pc: u32, bytes: &[u8]) -> Result<Instruction> {
             "SharpRetro watch instrumentation is outside the checked runner contract".into(),
         );
     }
-    let d =
-        decode_insn(bytes, XMode::Bits32).ok_or_else(|| format!("decode failure at {pc:#x}"))?;
-    let mnemonic = DEF_MNEMONICS[d.def_id as usize];
+    // The pinned decoder has no RDTSC definition. Admit only its exact plain
+    // two-byte encoding; retain explicit failures for other missing encodings.
+    let bank = match bytes {
+        [0x60, ..] => Some((0, 1)),
+        [0x61, ..] => Some((1, 1)),
+        [0x66, 0x60, ..] => Some((2, 2)),
+        [0x66, 0x61, ..] => Some((3, 2)),
+        _ => None,
+    };
+    let rdtsc = bytes.starts_with(&[0x0f, 0x31]);
+    let d = if let Some((_, len)) = bank {
+        xfusion_recomp::decode::DecodedInsn {
+            len,
+            ..Default::default()
+        }
+    } else if rdtsc {
+        xfusion_recomp::decode::DecodedInsn {
+            len: 2,
+            op: 0x31,
+            ..Default::default()
+        }
+    } else {
+        decode_insn(bytes, XMode::Bits32).ok_or_else(|| format!("decode failure at {pc:#x}"))?
+    };
+    let mnemonic = if let Some((op, _)) = bank {
+        if op & 1 == 0 { "PUSHA" } else { "POPA" }
+    } else if rdtsc {
+        "RDTSC"
+    } else {
+        DEF_MNEMONICS[d.def_id as usize]
+    };
     // String loops, FP/SIMD, interrupts, system instructions and implicit memory
     // operations are outside the initial admitted subset. Never execute an empty
     // generated template as if it implemented a guest operation.
     const ADMITTED: &[&str] = &[
-        "MOV", "MOVZX", "MOVSX", "LEA", "PUSH", "POP", "CALL", "JMP", "RET", "RETI", "LEAVE",
-        "ADD", "SUB", "ADC", "SBB", "INC", "DEC", "NEG", "NOT", "AND", "OR", "XOR", "CMP", "TEST",
-        "SHL", "SHR", "SAR", "SAL", "ROL", "ROR", "BSWAP", "NOP", "NOPL", "JO", "JNO", "JB", "JAE",
-        "JE", "JNE", "JBE", "JA", "JS", "JNS", "JP", "JNP", "JL", "JGE", "JLE", "JG", "JNB", "JZ",
-        "JNZ", "JNBE", "JNL", "JNLE", "SETZ", "SETNZ", "CMOVZ", "CMOVNZ", "SETO", "SETNO", "SETB",
-        "SETNB", "SETBE", "SETNBE", "SETS", "SETNS", "SETP", "SETNP", "SETL", "SETNL", "SETLE",
-        "SETNLE", "CMOVO", "CMOVNO", "CMOVB", "CMOVNB", "CMOVBE", "CMOVNBE", "CMOVS", "CMOVNS",
-        "CMOVP", "CMOVNP", "CMOVL", "CMOVNL", "CMOVLE", "CMOVNLE",
+        "CMPXCHG",
+        "XADD",
+        "CDQ",
+        "CWDE",
+        "SAHF",
+        "LAHF",
+        "RDTSC",
+        "PUSHF",
+        "POPF",
+        "CPUID",
+        "FWAIT",
+        "FNCLEX",
+        "FNINIT",
+        "FNSTCW",
+        "FNSTSW-M",
+        "FNSTSW-AX",
+        "FLDCW",
+        "XCHG",
+        "CLD",
+        "STD",
+        "MOVSB",
+        "MOVSV",
+        "STOSB",
+        "STOSV",
+        "LODSB",
+        "LODSV",
+        "CMPSB",
+        "CMPSV",
+        "SCASB",
+        "SCASV",
+        "DIV",
+        "IDIV",
+        "MUL",
+        "IMUL",
+        "IMUL3",
+        "IMUL1",
+        "MOVAPS",
+        "MOVUPS",
+        "MOVAPD",
+        "MOVUPD",
+        "MOVDQA",
+        "MOVDQU",
+        "MOVD",
+        "MOVQ",
+        "MOVSS",
+        "MOVSS-LD",
+        "MOVSD-X",
+        "MOVSD-LD",
+        "PXOR",
+        "PAND",
+        "POR",
+        "PANDN",
+        "XORPS",
+        "XORPD",
+        "ANDPS",
+        "ANDPD",
+        "ORPS",
+        "ORPD",
+        "ANDNPS",
+        "ANDNPD",
+        "MOV",
+        "MOVZX",
+        "MOVSX",
+        "LEA",
+        "PUSH",
+        "POP",
+        "CALL",
+        "JMP",
+        "RET",
+        "RETI",
+        "LEAVE",
+        "ADD",
+        "SUB",
+        "ADC",
+        "SBB",
+        "INC",
+        "DEC",
+        "NEG",
+        "NOT",
+        "AND",
+        "OR",
+        "XOR",
+        "CMP",
+        "TEST",
+        "SHL",
+        "SHR",
+        "SAR",
+        "SAL",
+        "ROL",
+        "ROR",
+        "BSWAP",
+        "NOP",
+        "NOPL",
+        "JO",
+        "JNO",
+        "JB",
+        "JAE",
+        "JE",
+        "JNE",
+        "JBE",
+        "JA",
+        "JS",
+        "JNS",
+        "JP",
+        "JNP",
+        "JL",
+        "JGE",
+        "JLE",
+        "JG",
+        "JNB",
+        "JZ",
+        "JNZ",
+        "JNBE",
+        "JNL",
+        "JNLE",
+        "SETZ",
+        "SETNZ",
+        "CMOVZ",
+        "CMOVNZ",
+        "SETO",
+        "SETNO",
+        "SETB",
+        "SETNB",
+        "SETBE",
+        "SETNBE",
+        "SETS",
+        "SETNS",
+        "SETP",
+        "SETNP",
+        "SETL",
+        "SETNL",
+        "SETLE",
+        "SETNLE",
+        "CMOVO",
+        "CMOVNO",
+        "CMOVB",
+        "CMOVNB",
+        "CMOVBE",
+        "CMOVNBE",
+        "CMOVS",
+        "CMOVNS",
+        "CMOVP",
+        "CMOVNP",
+        "CMOVL",
+        "CMOVNL",
+        "CMOVLE",
+        "CMOVNLE",
     ];
-    if !ADMITTED.contains(&mnemonic) || d.p.lock || d.p.ad_size {
+    if (bank.is_none()
+        && !ADMITTED.contains(&mnemonic)
+        && crate::fpu_ops::operation(mnemonic).is_none())
+        || (d.p.lock
+            && ![
+                "ADD", "SUB", "AND", "OR", "XOR", "INC", "DEC", "NEG", "NOT", "CMPXCHG", "XADD",
+                "XCHG",
+            ]
+            .contains(&mnemonic))
+        || d.p.vex_valid
+        || d.p.evex_valid
+        || d.p.ad_size
+    {
         return Err(format!("unsupported instruction {mnemonic} at {pc:#x}"));
     }
-    if ["PUSH", "POP", "CALL", "RET", "RETI", "LEAVE"].contains(&mnemonic)
+    if [
+        "PUSHF", "POPF", "PUSH", "POP", "CALL", "RET", "RETI", "LEAVE",
+    ]
+    .contains(&mnemonic)
         && d.p.v_width_d64(XMode::Bits32) != 32
+        && !["PUSHF", "POPF"].contains(&mnemonic)
     {
         return Err(format!("16-bit stack operation is not admitted at {pc:#x}"));
     }
     if mnemonic == "POP" && d.op == 0x8f && !d.m.is_reg {
         return Err("POP memory requires post-pop address evaluation support".into());
     }
+    if ["DIV", "IDIV"].contains(&mnemonic) && (d.op == 0xf6 || d.p.v_width(XMode::Bits32) != 32) {
+        return Err(format!("non-32-bit division not admitted at {pc:#x}"));
+    }
+    if ["MUL", "IMUL1"].contains(&mnemonic) && (d.op == 0xf6 || d.p.v_width(XMode::Bits32) != 32) {
+        return Err(format!(
+            "non-32-bit widening multiply not admitted at {pc:#x}"
+        ));
+    }
+    let string = [
+        "MOVSB", "MOVSV", "STOSB", "STOSV", "LODSB", "LODSV", "CMPSB", "CMPSV", "SCASB", "SCASV",
+    ]
+    .contains(&mnemonic);
+    if string && d.p.segment != 0 {
+        return Err(format!(
+            "segmented string operation not admitted at {pc:#x}"
+        ));
+    }
     let mut inner = Tier0::with_layout(&LAYOUT);
     let shared = Shared {
         guards: RefCell::new(vec![]),
         stored: Cell::new(false),
-        call: mnemonic == "CALL",
-        stack_read: ["POP", "RET", "RETI", "LEAVE"].contains(&mnemonic),
-        stack_write: ["PUSH", "CALL"].contains(&mnemonic),
+        stack_store: match mnemonic {
+            "CALL" => Some(IlType::U32),
+            "PUSHF" => Some(if d.p.op_size {
+                IlType::U16
+            } else {
+                IlType::U32
+            }),
+            _ => None,
+        },
+        stack_read: ["POPF", "POP", "RET", "RETI", "LEAVE"].contains(&mnemonic),
+        stack_write: ["PUSHF", "PUSH", "CALL"].contains(&mnemonic),
+        signed_division: mnemonic == "IDIV",
+        aligned_vector: ["MOVAPS", "MOVAPD", "MOVDQA"].contains(&mnemonic),
         segment: match d.p.segment {
             0x26 => Some(0),
             0x2e => Some(1),
@@ -500,9 +791,179 @@ pub(crate) fn compile(pc: u32, bytes: &[u8]) -> Result<Instruction> {
             inner: &mut inner,
             shared: &shared,
         };
+        if mnemonic == "POPF" {
+            let sp = bd.reg_read(RegFile(0), 4, IlType::U32);
+            let value = bd.mem_read(
+                sp,
+                if d.p.op_size {
+                    IlType::U16
+                } else {
+                    IlType::U32
+                },
+            );
+            let e = &mut bd.inner.enc;
+            e.ldr_x(0, 28, 90 * 8);
+            e.ldr_x(1, 27, value * 8);
+            e.mov_imm64(16, memory::pop_flags as *const () as u64);
+            e.put_raw(0xd63f0200);
+            let at = e.here();
+            e.cbz(0, 0);
+            shared.guards.borrow_mut().push(at);
+        }
         // Generated def84 gives PUSH Ib-sx an 8-bit stack width. The ISA's
         // operand width is 32 here; only the encoded immediate has eight bits.
-        if mnemonic == "MOV" && (0xa0..=0xa3).contains(&d.op) {
+        if let Some((operation, _)) = bank {
+            let e = &mut bd.inner.enc;
+            e.ldr_x(0, 28, 90 * 8);
+            e.mov_r(1, 28);
+            e.mov_imm64(2, operation);
+            e.mov_imm64(16, crate::stack_bank::execute as *const () as u64);
+            e.put_raw(0xd63f0200);
+            let at = e.here();
+            e.cbz(0, 0);
+            shared.guards.borrow_mut().push(at);
+        } else if ["SAHF", "LAHF"].contains(&mnemonic) {
+            // Generated fixed register 4 means SPL, not AH. Bind AH explicitly.
+            if mnemonic == "SAHF" {
+                let ax = bd.reg_read(RegFile(0), 0, IlType::U32);
+                let eight = bd.literal(IlType::U32, 8);
+                let ah = bd.shr(ax, eight);
+                for bit in [0, 2, 4, 6, 7] {
+                    let shift = bd.literal(IlType::U32, bit);
+                    let value = bd.shr(ah, shift);
+                    let one = bd.literal(IlType::U32, 1);
+                    let value = bd.and(value, one);
+                    let value = bd.cast(value, IlType::Bool);
+                    bd.reg_write(RegFile(1), bit as u32, value);
+                }
+            } else {
+                let mut ah = bd.literal(IlType::U32, 2);
+                for bit in [0, 2, 4, 6, 7] {
+                    let flag = bd.reg_read(RegFile(1), bit, IlType::Bool);
+                    let flag = bd.cast(flag, IlType::U32);
+                    let shift = bd.literal(IlType::U32, bit as u128);
+                    let value = bd.shl(flag, shift);
+                    ah = bd.or(ah, value);
+                }
+                xfusion_recomp::operand::write_operand(
+                    &mut bd,
+                    &xfusion_recomp::operand::Operand::Reg {
+                        idx: 0,
+                        width: 8,
+                        high8: true,
+                    },
+                    ah,
+                );
+            }
+        } else if mnemonic == "RDTSC" {
+            let value = bd.inner.literal(IlType::U64, 0);
+            let e = &mut bd.inner.enc;
+            e.mov_imm64(16, crate::fpu::timestamp as *const () as u64);
+            e.put_raw(0xd63f0200);
+            e.str_x(0, 27, value * 8);
+            let low = bd.cast(value, IlType::U32);
+            bd.reg_write(RegFile(0), 0, low);
+            let shift = bd.literal(IlType::U64, 32);
+            let high = bd.shr(value, shift);
+            let high = bd.cast(high, IlType::U32);
+            bd.reg_write(RegFile(0), 2, high);
+        } else if mnemonic == "FWAIT" {
+            let e = &mut bd.inner.enc;
+            e.ldr_x(0, 28, 90 * 8);
+            e.mov_imm64(16, crate::fpu::wait as *const () as u64);
+            e.put_raw(0xd63f0200);
+            let at = e.here();
+            e.cbz(0, 0);
+            shared.guards.borrow_mut().push(at);
+        } else if let Some(operation) = crate::fpu_ops::operation(mnemonic) {
+            let address = if !d.m.is_reg && d.op != 0 {
+                xfusion_recomp::operand::addr_from_modrm(&mut bd, &d, pc as u64, XMode::Bits32)
+            } else {
+                bd.literal(IlType::U32, 0)
+            };
+            let address = bd.address(address, false);
+            let e = &mut bd.inner.enc;
+            e.ldr_x(0, 28, 90 * 8);
+            e.mov_imm64(1, operation | ((d.m.rm as u64 & 7) << 8));
+            e.ldr_x(2, 27, address * 8);
+            e.mov_r(3, 28);
+            e.mov_imm64(16, crate::fpu_ops::execute as *const () as u64);
+            e.put_raw(0xd63f0200);
+            let at = e.here();
+            e.cbz(0, 0);
+            shared.guards.borrow_mut().push(at);
+        } else if [
+            "FNCLEX",
+            "FNINIT",
+            "FNSTCW",
+            "FNSTSW-M",
+            "FNSTSW-AX",
+            "FLDCW",
+        ]
+        .contains(&mnemonic)
+        {
+            use xfusion_recomp::operand::{
+                bind_fixed_reg, bind_modrm_rm, read_operand, write_operand,
+            };
+            let zero = bd.literal(IlType::U64, 0);
+            match mnemonic {
+                "FNCLEX" => {
+                    bd.fp_control(0, zero);
+                }
+                "FNINIT" => {
+                    bd.fp_control(3, zero);
+                }
+                "FNSTCW" | "FNSTSW-M" => {
+                    let op = bind_modrm_rm(&mut bd, &d, pc as u64, XMode::Bits32, 16);
+                    let value = bd.fp_control(if mnemonic == "FNSTCW" { 1 } else { 4 }, zero);
+                    let value = bd.cast(value, IlType::U16);
+                    write_operand(&mut bd, &op, value);
+                }
+                "FNSTSW-AX" => {
+                    let value = bd.fp_control(4, zero);
+                    write_operand(&mut bd, &bind_fixed_reg(0, 16), value);
+                }
+                "FLDCW" => {
+                    let op = bind_modrm_rm(&mut bd, &d, pc as u64, XMode::Bits32, 16);
+                    let value = read_operand(&mut bd, &op);
+                    bd.fp_control(2, value);
+                }
+                _ => unreachable!(),
+            }
+        } else if string && (d.p.rep || d.p.rep_nz) {
+            // One real iteration per checked entry keeps completed iterations
+            // committed on a later page fault, including ECX/ESI/EDI/flags.
+            let count = bd.reg_read(RegFile(0), 1, IlType::U32);
+            let zero = bd.literal(IlType::U32, 0);
+            let empty = bd.eq(count, zero);
+            bd.cond(
+                empty,
+                &mut |bd| {
+                    let next = bd.literal(IlType::U32, pc.wrapping_add(d.len as u32) as u128);
+                    bd.branch(next, false);
+                },
+                &mut |bd| {
+                    let mut one = d;
+                    one.p.rep = false;
+                    one.p.rep_nz = false;
+                    assert!(lift_one(bd, &one, pc as u64, XMode::Bits32, FLAGS_ALL_LIVE));
+                    let one = bd.literal(IlType::U32, 1);
+                    let left = bd.sub(count, one);
+                    bd.reg_write(RegFile(0), 1, left);
+                    let zero = bd.literal(IlType::U32, 0);
+                    let mut again = bd.ne(left, zero);
+                    if ["CMPSB", "CMPSV", "SCASB", "SCASV"].contains(&mnemonic) {
+                        let zf = bd.reg_read(RegFile(1), 6, IlType::Bool);
+                        let same = if d.p.rep { zf } else { bd.not(zf) };
+                        again = bd.and(again, same);
+                    }
+                    let repeat = bd.literal(IlType::U32, pc as u128);
+                    let next = bd.literal(IlType::U32, pc.wrapping_add(d.len as u32) as u128);
+                    let target = bd.ternary(again, repeat, next);
+                    bd.branch(target, false);
+                },
+            );
+        } else if mnemonic == "MOV" && (0xa0..=0xa3).contains(&d.op) {
             // Generated moffs operands omit the segment override entirely.
             use xfusion_recomp::operand::{Operand, bind_fixed_reg, read_operand, write_operand};
             let width = if d.op & 1 == 0 {
@@ -538,7 +999,18 @@ pub(crate) fn compile(pc: u32, bytes: &[u8]) -> Result<Instruction> {
             let value = bd.literal(IlType::U32, d.imm0 as i8 as i32 as u32 as u128);
             bd.mem_write(next_sp, value);
             bd.reg_write(RegFile(0), 4, next_sp);
-        } else if !lift_one(&mut bd, &d, pc as u64, XMode::Bits32, FLAGS_ALL_LIVE) {
+        } else if !lift_one(
+            &mut bd,
+            &d,
+            pc as u64,
+            XMode::Bits32,
+            FLAGS_ALL_LIVE
+                | if mnemonic == "POPF" && !d.p.op_size {
+                    1 << 21
+                } else {
+                    0
+                },
+        ) {
             return Err(String::from("instruction not lifted"));
         }
         if !bd.branched() {

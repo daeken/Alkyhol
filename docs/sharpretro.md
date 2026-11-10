@@ -1,5 +1,8 @@
 # SharpRetro execution backend: coordination contract
 
+The sections below record chronological milestones. The latest shared-service
+entry and original-game progress are at the end of this document.
+
 The user now prioritizes a pure-Rust SharpRetro runner for unchanged DAO,
 separate from the existing Rosetta path, to compare CPU behavior side by side.
 The first [checked native ARM64 runner](../jit32/README.md) executes the existing
@@ -142,3 +145,73 @@ ignored segment overrides (64 A1 2C000000 read 0x2c instead of FS.base+0x2c).
 Local adapters correct that, wrap effective addresses before adding segments, and
 keep LEA segment independent. All 16 register SETcc predicates have direct boolean
 flag-contract tests. Shared SharpRetro tracked sources/pins remain untouched.
+
+## Native ARM execution through the existing PE32 services
+
+The opt-in `jit32/shared-runtime` path now builds the existing PE32 process,
+Win32, COM and D3D9 implementation for native ARM. It uses the same startup
+launcher and supplied DLL graph as Rosetta, with a CPU executor at the guest-call
+boundary. `tools/build_jit32_shared.py` builds that launcher;
+`tools/check_jit32_shared.py` checks unchanged owned inputs against the frozen
+Windows bytes. The older standalone `Runner`/`Process` contracts remain separate.
+
+ARM macOS enforces a four-GiB hard page zero ([XNU mach_loader.c](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/kern/mach_loader.c)).
+Guest pointers remain 32-bit. Owned backing uses a checked fixed bias at
+`0x8000000000`; no small-PAGEZERO or native i386 execution is required. An internal
+syntax adapter translates explicit service pointer casts, retaining numeric
+sizes, handles and guest pointer fields. The existing service buffer checks
+remain; the CPU additionally sees committed heap arenas, readable image headers
+and logical page permissions. This distinguishes CPU-accessible allocation
+padding from live API buffer extents. Physical ARM pages stay writable backing;
+all guest access/fetch permissions are enforced by the CPU/service checks at
+four-KiB guest granularity. Host native code lives separately in MAP_JIT storage.
+
+Native host calls use C ABI; the x86 build retains Win64 ABI. Existing owned x86
+exception/math templates are extracted from assembler-produced objects for the
+ARM build, not from game files. COM entry addresses register checked guest gates.
+Reentrant API callbacks receive separate CPU continuations and share the guest
+thread's floating-point state. FPU state keys include process generation and
+host-owned thread identity, so address reuse or a guest TEB write cannot silently
+select another floating-point environment. Native x86 signal continuation is not
+installed on ARM; unimplemented exception delivery still stops explicitly.
+
+CPU additions are driven by actual original DAO startup: integer divide faults,
+widening multiplication, aligned atomics, restartable REP iterations, flag-stack
+widths, AH binding for SAHF/LAHF, complete admitted PUSHA/POPA frames, CPUID and a
+real host-clock TSC. The virtual family-6 CPU advertises one logical processor
+and no SIMD arithmetic facilities. Out-of-range CPUID inputs follow the
+[documented highest-basic-leaf rule](https://cdrdv2-public.intel.com/858441/252046-080-sdm-change-document.pdf).
+RDTSC and register-bank encodings absent from the pinned decoder have explicit
+local adapters. SharpRetro sources and its audited pin remain unchanged.
+
+Guest x87 environments, transfers, comparisons and normal finite arithmetic use
+pinned open [rustc_apfloat](https://github.com/rust-lang/rustc_apfloat)
+(`0.2.3+llvm-462a31f5a5ab`, Apache-2.0 WITH LLVM-exception). Directed bounds and an
+exact wider midpoint prevent reduced-precision double rounding; square root uses
+an integer radicand. Bounded atan/trig use outward-rounded intervals and explicit
+series-tail bounds. Uncertified rounding, unsupported argument domains, unmasked
+data exceptions and exceptional arithmetic stop. Trig implements certified
+mathematical rounding; it does **not** claim Intel's proprietary approximation is
+bit-identical. SIMD transfers/bitwise operations preserve raw bits and check
+aligned accesses; general SIMD arithmetic remains unimplemented.
+
+ARM `_CIsqrt`/`_CIatan` service adapters consume real guest x87 operands under the
+same bounded contracts as the existing Rosetta providers. They preserve the
+caller integer continuation and return actual floating-point results, without
+executing the owned x86 wrapper or invoking Rosetta. Twenty sqrt and eleven atan
+accepted frozen Windows rows agree on result80, control, status and the retained
+lower stack operand. This is component evidence, not execution of the complete
+numeric PE observer or a full CPU equivalence claim.
+
+The native ARM process has completed every original DAO DLL initializer and
+entered the EXE's own CRT/engine startup. A local original-input run executes
+332,460,348 guest instructions and 798,587 services before its next explicit
+FSINCOS stop; after trig bring-up it reaches a generated memory-SAR read-after-
+store limitation at 337,870,384 instructions and 821,784 services. No native
+window, shaded JIT game frame or cutscene parity is claimed at this milestone.
+Input identities, exact PCs/bytes and captures remain ignored under local/jit32;
+original game/dependency files are hash-checked before and after the run.
+
+The DLL inputs retain the existing explicitly configured staged/unpacked
+dependencies; their exact identities remain in the local capture. The original
+DAOrigins.exe file is unchanged.

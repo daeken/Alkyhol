@@ -8,6 +8,8 @@ pub(super) struct Bounds {
 }
 impl Bounds {
     pub(super) fn contains(self, start: usize, len: usize) -> bool {
+        #[cfg(target_arch = "aarch64")]
+        let start = super::guest_address(start);
         start >= self.minimum
             && (start as u64)
                 .checked_add(len as u64)
@@ -27,6 +29,15 @@ fn instruction_feature(feature: u32, basic: u32, extended: Option<u32>) -> Resul
     };
     Ok(u32::from(bit != 0))
 }
+#[cfg(target_arch = "aarch64")]
+pub(super) fn processor_feature(feature: u32) -> Result<u32> {
+    // Initial declared scalar emulated CPU. Do not advertise unimplemented SIMD.
+    if feature == 0 {
+        return Ok(0);
+    } // This virtual CPU does not emulate the Pentium FDIV erratum.
+    instruction_feature(feature, 0, Some(0))
+}
+#[cfg(target_arch = "x86_64")]
 pub(super) fn processor_feature(feature: u32) -> Result<u32> {
     let basic = std::arch::x86_64::__cpuid(1).edx;
     let max = std::arch::x86_64::__cpuid(0x80000000).eax;
@@ -93,6 +104,19 @@ impl Machine {
             ],
         })
     }
+    #[cfg(target_arch = "aarch64")]
+    pub(super) fn host(large: bool) -> Result<Self> {
+        // Explicit emulated x86 family-6, one logical processor, 4KiB guest
+        // pages. These are guest settings, not observations of an Intel host.
+        Self::observed(
+            large,
+            4096,
+            1,
+            [1, 0x756e6547, 0x6c65746e, 0x49656e69],
+            0x00000600,
+        )
+    }
+    #[cfg(target_arch = "x86_64")]
     pub(super) fn host(large: bool) -> Result<Self> {
         let vendor = std::arch::x86_64::__cpuid(0);
         let processor = std::arch::x86_64::__cpuid(1);

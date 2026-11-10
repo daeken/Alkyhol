@@ -10,7 +10,9 @@ impl Drop for Delivery {
         alkyhol::ffi::SetLastError(self.0);
     }
 }
+#[cfg(target_arch = "x86_64")]
 std::arch::global_asm!(include_str!("raise32.S"), options(att_syntax));
+#[cfg(target_arch = "x86_64")]
 unsafe extern "C" {
     static alkyhol_raise32_start: u8;
     static alkyhol_raise32_end: u8;
@@ -18,9 +20,22 @@ unsafe extern "C" {
 }
 pub(super) const OFFSET: usize = 2 * PAGE;
 pub(super) fn emit(bytes: &mut [u8], base: u32, service: u32) -> Result<()> {
-    let first = std::ptr::addr_of!(alkyhol_raise32_start) as usize;
-    let last = std::ptr::addr_of!(alkyhol_raise32_end) as usize;
-    let slot = std::ptr::addr_of!(alkyhol_raise32_service) as usize - first;
+    #[cfg(target_arch = "x86_64")]
+    let (first, last, slot) = {
+        let first = std::ptr::addr_of!(alkyhol_raise32_start) as usize;
+        let last = std::ptr::addr_of!(alkyhol_raise32_end) as usize;
+        let slot = std::ptr::addr_of!(alkyhol_raise32_service) as usize - first;
+        (first, last, slot)
+    };
+    #[cfg(target_arch = "aarch64")]
+    let (first, last, slot) = {
+        let bytes = super::guest_templates::RAISE;
+        (
+            bytes.as_ptr() as usize,
+            bytes.as_ptr() as usize + bytes.len(),
+            super::guest_templates::RAISE_PATCH,
+        )
+    };
     let size = last
         .checked_sub(first)
         .filter(|&v| v <= 256)

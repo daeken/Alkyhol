@@ -27,7 +27,7 @@ fn unsupported(reason: &str) -> ! {
     std::process::exit(78)
 }
 impl Registry {
-    #[cfg(test)]
+    #[cfg(all(test,target_arch="x86_64"))]
     pub(crate) fn entry_count_for_test(&self) -> usize {
         self.entries
     }
@@ -163,6 +163,7 @@ impl Registry {
         None
     }
 }
+#[alkyhol_host_abi::host_abi]
 unsafe extern "win64" fn RtlAddFunctionTable(
     table: *const RuntimeFunction,
     count: u32,
@@ -173,12 +174,14 @@ unsafe extern "win64" fn RtlAddFunctionTable(
         None => fail(50),
     })
 }
+#[alkyhol_host_abi::host_abi]
 unsafe extern "win64" fn RtlDeleteFunctionTable(table: *const RuntimeFunction) -> u8 {
     crate::process::with_function_tables(|registry| match registry {
         Some(registry) => registry.delete(table),
         None => fail(50),
     })
 }
+#[alkyhol_host_abi::host_abi]
 unsafe extern "win64" fn RtlLookupFunctionEntry(
     pc: u64,
     image_base: *mut u64,
@@ -214,7 +217,7 @@ pub(crate) fn address(name: &str) -> Option<usize> {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test,target_arch="x86_64"))]
 mod tests {
     use super::*;
     fn context() -> crate::ProcessContext {
