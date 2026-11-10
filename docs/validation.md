@@ -8721,3 +8721,18 @@ covering W/A deletion, repeated absence, defined errors, sharing, stack cleanup
 and non-mutation on explicit exclusions. The two import routes/cleanup are
 checked separately. Existing native Windows CI now observes the seven ordinary
 cases of the identical PE; that new result and original save replay are pending.
+
+Clean 0a8d8af's rebuilt original Rosetta replay (PID 17783) now renders the
+Castle Cousland scene with both pipeline and upload reuse active. Original
+EXE/provided DLL identities remain unchanged. Local evidence is
+`local/pe/dao-uploads/restored-with-uploads.json`. Destination allocations settled
+at 14 with 1,187,856 resident destination bytes; pipeline builds settled at 110
+with no evictions. The original menu measured about 28 FPS, whereas completed
+world presentation intervals vary approximately 3–7 FPS. These successive runs
+are not a controlled fixed-state benchmark; game performance is still poor.
+Steady service-time reports show substantial draw work and CPU-handoff overhead.
+Their inclusive elapsed durations cannot be added as CPU percentages: nested
+callbacks and long calls spanning report boundaries can exceed the current
+report period. Original save completion remains unverified after the new delete
+support. The current running process is handed back for user playtesting;
+no further automated gameplay input or replacement is scheduled in this turn.
