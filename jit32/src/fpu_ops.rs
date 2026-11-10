@@ -147,6 +147,16 @@ fn load<F: Float + FloatConvert<X>>(state: &mut State, bits: u128) -> u128 {
     flags(state, result.status);
     result.value.to_bits()
 }
+fn arithmetic_load<F: Float + FloatConvert<X>>(bits: u128) -> (u128, bool) {
+    let source = F::from_bits(bits);
+    // Widening finite binary32/64 is exact. Keep sNaNs signaling until the
+    // arithmetic chooses its NaN and resolves IE/ZE/DE exception priority.
+    let mut wide: X = source.convert(&mut false).value;
+    if source.is_signaling() {
+        wide = X::from_bits(wide.to_bits() & !(1 << 62));
+    }
+    (wide.to_bits(), source.is_denormal())
+}
 fn store<F: Float + FloatConvert<X>>(state: &mut State, value: u128) -> u128
 where
     X: FloatConvert<F>,
@@ -474,14 +484,19 @@ fn perform(
             let kind = code % 4;
             let dest = if form == 3 || form == 4 { index } else { 0 };
             let a = state.get(dest);
+            let mut source_denormal = false;
             let b = match form {
                 0 => {
                     let bits = read(memory, address, 4)?;
-                    load::<Single>(state, bits)
+                    let (value, denormal) = arithmetic_load::<Single>(bits);
+                    source_denormal = denormal;
+                    value
                 }
                 1 => {
                     let bits = read(memory, address, 8)?;
-                    load::<Double>(state, bits)
+                    let (value, denormal) = arithmetic_load::<Double>(bits);
+                    source_denormal = denormal;
+                    value
                 }
                 2 => state.get(index),
                 5 => {
@@ -495,7 +510,8 @@ fn perform(
                 _ => state.get(0),
             };
             let (a, b) = if reverse { (b, a) } else { (a, b) };
-            let value = match super::fpu_math::arithmetic(state, a, b, kind) {
+            let value = match super::fpu_math::arithmetic_source(state, a, b, kind, source_denormal)
+            {
                 Ok(value) => value,
                 Err(reason) => {
                     memory.cpu_fault.get_or_insert(reason);
@@ -821,6 +837,84 @@ mod examine_tests {
             assert_eq!(f.tag, before.tag);
             assert_eq!(f.registers, before.registers);
             assert_eq!(&r.state[..17], &regs[..17]);
+        }
+    }
+}
+
+#[cfg(test)]
+mod memory_reference {
+    use crate::{Stop, memory::READ, tests::cpu};
+    #[test]
+    #[ignore = "run tools/check_jit32_x87_memory.py for actual x86 observations"]
+    fn actual_x86_memory_arithmetic_observations() {
+        let data =
+            std::fs::read(std::env::var_os("ALKYHOL_X87_MEMORY_REFERENCE").unwrap()).unwrap();
+        assert_eq!(data.len(), 1440 * 40);
+        for (i, row) in data.chunks_exact(40).enumerate() {
+            fn raw(b: &[u8]) -> u128 {
+                let mut x = [0; 16];
+                x[..10].copy_from_slice(b);
+                u128::from_le_bytes(x)
+            }
+            let op = u32::from_le_bytes(row[..4].try_into().unwrap());
+            let cw = u32::from_le_bytes(row[4..8].try_into().unwrap());
+            let mut r = cpu(&[0xdc, 0x05 | ([0u8, 1, 4, 6][op as usize] << 3), 0, 0, 2, 0]);
+            r.memory.map(0x20000, 8, READ, &row[18..26]).unwrap();
+            {
+                let mut f = r.memory.fpu.borrow_mut();
+                f.control = cw as u16;
+                f.push(raw(&row[8..18]));
+            }
+            assert!(matches!(r.run(1), Stop::Budget { .. }), "row={i}");
+            let f = r.memory.fpu.borrow();
+            assert_eq!(f.registers[f.top()], raw(&row[26..36]), "result row={i}");
+            assert_eq!(
+                f.status & 0x23f,
+                u16::from_le_bytes(row[36..38].try_into().unwrap()) & 0x23f,
+                "status row={i}"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod memory_priority_tests {
+    use crate::{Stop, memory::READ, tests::cpu};
+    #[test]
+    fn binary32_and_binary64_memory_sources_preserve_nan_and_denormal_priority() {
+        for (opcode, size, snan, qnan, shift) in [
+            (0xd8, 4, 0x7f800002u64, 0x7fc00002u64, 40),
+            (0xdc, 8, 0x7ff0000000000002, 0x7ff8000000000002, 11),
+        ] {
+            for (st, source, result, exceptions) in [
+                (
+                    0x7fffc000000000000001u128,
+                    snan,
+                    0x7fffc000000000000001u128,
+                    1,
+                ),
+                (0x7fffc000000000000001, 1, 0x7fffc000000000000001, 0),
+                (
+                    0x7fff8000000000000001,
+                    qnan,
+                    0x7fffc000000000000000 | (2u128 << shift),
+                    1,
+                ),
+            ] {
+                let mut r = cpu(&[opcode, 5, 0, 0, 2, 0]);
+                r.memory
+                    .map(0x20000, size, READ, &source.to_le_bytes()[..size])
+                    .unwrap();
+                {
+                    let mut f = r.memory.fpu.borrow_mut();
+                    f.push(st);
+                    f.status |= 0x20;
+                }
+                assert!(matches!(r.run(1), Stop::Budget { .. }));
+                let f = r.memory.fpu.borrow();
+                assert_eq!(f.registers[f.top()], result);
+                assert_eq!(f.status & 0x23f, 0x20 | exceptions);
+            }
         }
     }
 }

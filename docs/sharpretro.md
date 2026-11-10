@@ -615,3 +615,14 @@ This is finite register arithmetic evidence, not a full memory-operand exception
 priority matrix, physical Intel evidence, game-frame or cutscene equivalence.
 All 76 default native tests and runner Clippy pass; twelve external observations
 are invoked separately. Original replay follows with the existing explicit budget.
+
+A focused follow-up checks the actual reached m64 arithmetic form separately.
+Memory widening previously quieted sNaNs and set DE before arithmetic resolved
+exception priority. Binary32/64 arithmetic operands now retain signaling NaNs
+and defer source-denormal status until that resolution. All 1,440 independent
+actual Rosetta m64 rows agree across the four operations, precisions/rounding
+and normal/zero/denormal/NaN/infinity combinations. A native Windows memory
+observation job is added; its result is pending. Separate native units cover
+binary32/64 quiet-versus-signaling priority and sticky flags. The unchanged
+19,200-row native Windows register matrix still passes. The running original
+host is retained while a separate output path holds the new build.

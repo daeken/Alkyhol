@@ -50,11 +50,21 @@ fn reduce_wide<S: Semantics>(value: W111, round: Round) -> StatusAnd<X> {
     let reduced: StatusAnd<IeeeFloat<S>> = value.convert_r(round, &mut false);
     reduced.status.and(reduced.value.convert(&mut false).value)
 }
+#[cfg(test)]
 pub fn arithmetic(
     state: &mut State,
     a: u128,
     b: u128,
     operation: u64,
+) -> Result<u128, &'static str> {
+    arithmetic_source(state, a, b, operation, false)
+}
+pub(super) fn arithmetic_source(
+    state: &mut State,
+    a: u128,
+    b: u128,
+    operation: u64,
+    source_denormal: bool,
 ) -> Result<u128, &'static str> {
     let (a, b) = (X::from_bits(a), X::from_bits(b));
     let pc = state.control >> 8 & 3;
@@ -82,7 +92,9 @@ pub fn arithmetic(
         super::fpu_ops::flags(state, result.status);
         return Ok(0xffffc000000000000000); // x87 masked invalid indefinite.
     }
-    if !result.status.contains(Status::DIV_BY_ZERO) && (a.is_denormal() || b.is_denormal()) {
+    if !result.status.contains(Status::DIV_BY_ZERO)
+        && (a.is_denormal() || b.is_denormal() || source_denormal)
+    {
         state.status |= 2;
     }
     if !a.is_finite() || !b.is_finite() || result.status.contains(Status::DIV_BY_ZERO) {

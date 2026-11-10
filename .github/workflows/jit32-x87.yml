@@ -3,11 +3,13 @@ on:
   push:
     paths:
       - jit32/tests/x87_arithmetic_reference.c
+      - jit32/tests/x87_memory_reference.c
       - tools/observe_jit32_x87_arithmetic_native.py
       - .github/workflows/jit32-x87.yml
   pull_request:
     paths:
       - jit32/tests/x87_arithmetic_reference.c
+      - jit32/tests/x87_memory_reference.c
       - tools/observe_jit32_x87_arithmetic_native.py
       - .github/workflows/jit32-x87.yml
   workflow_dispatch:
@@ -32,4 +34,24 @@ jobs:
         with:
           name: native-x87-arithmetic
           path: local/jit32/native-x87-arithmetic-reference/
+          if-no-files-found: error
+
+  native-memory-x64:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - name: Observe owned memory arithmetic on native x64 Windows
+        run: python tools/observe_jit32_x87_arithmetic_native.py --memory
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-x87-memory
+          path: local/jit32/native-x87-memory-reference/
           if-no-files-found: error
