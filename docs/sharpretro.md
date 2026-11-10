@@ -1036,8 +1036,15 @@ RC/DAZ/FTZ combinations, sticky flags, a 32-value special-source set and
 deterministic raw bits. Every result bit, complete MXCSR and defined EFLAGS
 agrees with physical ARM execution; requested and actually loaded MXCSR also
 agree in this masked corpus. Source/observer/data identities and the compressed
-table are frozen; `python3 tools/check_jit32_sqrt.py` replays it. The existing
-native Windows observer workflow now includes this unit; its result is still
-pending. No older frozen comparison is weakened. A fresh original replay is
+table are frozen; `python3 tools/check_jit32_sqrt.py` replays it. All five jobs in the native observer workflow pass at 925b667 in
+[CI 42836887248](https://github.com/daeken/Alkyhol/actions/runs/42836887248).
+The square-root host reports native AMD64 Windows Server build 26100 and
+AuthenticAMD Family 25/Model 17; native/process machine checks are retained.
+Its entire 2,621,440-byte table is byte-identical to the separate Rosetta table,
+and all 32,768 rows match physical ARM result bits, MXCSR and defined flags.
+The native source/artifact/table identities and compressed fixture are frozen;
+reproduce with `python3 tools/check_jit32_sqrt.py --backend windows-amd64`.
+The clean 925b667 shared host also retains the frozen Windows ABI/TLS/heap words
+in normal/rebased cases. No older frozen comparison is weakened. A fresh original replay is
 required to verify this square-root implementation in DAO, and Rosetta's
 Orzammar progress parity remains unestablished.

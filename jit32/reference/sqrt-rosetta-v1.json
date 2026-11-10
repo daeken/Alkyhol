@@ -17,5 +17,6 @@
   "revision": "9ff7ac34d146182766c9819ac5b3917eb30cf289",
   "tracked_tree_clean_at_observation": false,
   "source_tracked_at_observation": false,
-  "observation_file_mtime_ns": 1794321575495539396
+  "observation_file_mtime_ns": 1794321575495539396,
+  "source_commit_verified_from_identical_blob": "925b667eb80c02e4bb46b524beade9736c1d8cc1"
 }

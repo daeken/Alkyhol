@@ -1,0 +1,23 @@
+{
+  "backend": "native Windows x64 legacy SIMD square-root assembly",
+  "source_sha256": "341fba49c418378ea089965f9b25401067e9f4680bc9c4e29c9f7178c505e961",
+  "source_lf_sha256": "0db8acf59ee3ccd3f9b40914e5ea40a4466d220b90d780c0715c9f99b8479eae",
+  "observer_sha256": "2246affcd8d4ce0b6924c728ac6588eb546e063b35b57a8dc8e4e0e5fac6caf9",
+  "observation_sha256": "efee1ea7aa23f2d532f3d49ab049d2a81c3c83668b802e3a16762f18a01bb8f2",
+  "rows": 32768,
+  "native_machine": 34404,
+  "process_machine": 0,
+  "host": "Windows-2025Server-10.0.26100-SP0",
+  "processor": "AMD64 Family 25 Model 17 Stepping 1, AuthenticAMD",
+  "stderr_hex": "",
+  "revision": "925b667eb80c02e4bb46b524beade9736c1d8cc1",
+  "fixture": "jit32/reference/sqrt-windows-amd64-v1.bin.gz",
+  "fixture_sha256": "f5c09fd915f33bb85ebac103d924dec28004d210c2e12add60986565eda94f29",
+  "source": "jit32/tests/sqrt_reference.c",
+  "row_bytes": 80,
+  "result_bit_equality_required": true,
+  "masked_exception_observations": true,
+  "mxcsr_before_instruction": "captured after LDMXCSR; requested value retained separately",
+  "workflow_run": 42836887248,
+  "workflow_artifact": 13774261872
+}
