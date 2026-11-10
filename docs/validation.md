@@ -7918,3 +7918,30 @@ and invalid encodings. All 81 default native tests and runner Clippy pass; the
 fourteen external observations remain separate. These tests do not prove a full
 concurrent x86 memory model. Another original replay follows toward the menu and
 preserved Rosetta cutscene progress.
+
+The streaming-store replay progresses through original video playback and reaches
+RSQRTSS in the original D3DX9 DLL at 2,356,949,458 loading-thread instructions
+(438.2s uncontrolled wall time, input hashes unchanged). No original menu/3D
+scene has yet been observed. The checked RSQRTSS/RSQRTPS implementation computes
+a deterministic software estimate, preserving scalar upper lanes, source/GPR/
+EFLAGS and all MXCSR bits. Signed zero/denormal/infinity/NaN behavior is explicit;
+rounding control, DAZ/FTZ and masks do not change the instruction's results.
+The [Intel architectural contract](https://www.intel.com/content/dam/www/public/us/en/documents/manuals/64-ia-32-architectures-software-developer-vol-2b-manual.pdf)
+allows normal-result relative error up to 3/8192; it does not specify one CPU's
+result bits. Bounds are checked with exact integer products rather than a
+floating-point reference tolerance. More than 65,536 deterministic normal input
+checks and native scalar/packed/aliased/memory/fault/preservation units pass.
+
+[Native Windows AMD CI 42775871328](https://github.com/daeken/Alkyhol/actions/runs/42775871328)
+provides 16,640 owned assembly rows. Exact special/state checks and all normal
+error bounds pass via tools/check_jit32_rsqrt_windows.py. Of 41,120 active
+positive-normal lanes, 40,800 model estimate bit patterns differ from that CPU;
+this is a bounded architectural estimate profile, not bitwise CPU emulation.
+Downstream Newton-refined D3DX/game float bits are not claimed identical.
+Both complete raw Windows and Rosetta tables/provenance are frozen separately.
+Rosetta differs from Windows in 22,480 allowed estimate lanes, and forces MXCSR
+mask bits on in 8,320 initially unmasked rows. The strict Rosetta diagnostic
+retains the latter failure; it is not dropped or relabeled as a pass. All 84
+default native tests and runner Clippy pass; fifteen external observations are
+separate. The next original replay retains all assets, rendering and the explicit
+instruction budget, and continues toward menu/Orzammar progress parity.

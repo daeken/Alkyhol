@@ -1,0 +1,23 @@
+{
+  "backend": "physical native ARM arithmetic vs actual x86/Rosetta assembly",
+  "source_sha256": "5887edd65b80c3af5b13b08c75bcf363d684f286b8e7b9db6eb30c1aa983c886",
+  "observer_sha256": "59e93dcc1ef4a8c06ef0131c63e54453a8242eb27fc9468f1532f2f1ace4b341",
+  "observation_sha256": "0599be7e0b9bb90d3a44b362fe58c40481ab0129e93d31929c15e6bc7b656d3a",
+  "rows": 16640,
+  "model_status": 101,
+  "all_contract_checks_pass": false,
+  "normal_bit_equality_required": false,
+  "normal_relative_error_limit": "3/8192",
+  "special_values_and_state_exact": true,
+  "host": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+  "revision": "5795647aad8522a988a4f1ef987ae65b45bb2c94",
+  "schema": 1,
+  "source": "jit32/tests/rsqrt_reference.c",
+  "fixture": "jit32/reference/rsqrt-rosetta-v1.bin.gz",
+  "fixture_sha256": "52bc4865cb3cc7c46de94b653a88f3aae8199c90d6d8411bf7873a09bbcc1d98",
+  "observation_bytes": 1198080,
+  "scope": "Finite RSQRT architectural-bound evidence; no particular CPU normal-result bit profile or game equivalence claim.",
+  "rosetta_native_mxcsr_difference_rows": 8320,
+  "rosetta_native_mxcsr_difference_bits": "0x1f80 masks forced on by Rosetta for initially unmasked rows",
+  "rosetta_native_estimate_different_lanes": 22480
+}

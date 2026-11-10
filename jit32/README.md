@@ -194,3 +194,10 @@ result/C1 row. Both complete observations and provenance are preserved.
 8,320 actual Rosetta rows (both immediate/CL native forms) and four read-only
 protection probes. `tools/check_jit32_x87_memory_windows.py` checks the separate
 1,440-row native Windows Intel memory-arithmetic fixture, identical to Rosetta.
+
+`python3 tools/check_jit32_rsqrt_windows.py` checks a bounded RSQRT profile
+against 16,640 native Windows rows: exact special values and state, plus normal
+relative error <=3/8192 using integer inequalities. Normal estimate bit equality
+is explicitly not required. Downstream Newton-refined values may differ from a
+specific CPU. The strict `tools/check_jit32_rsqrt.py` Rosetta diagnostic retains
+its forced-MXCSR-mask failure; both raw observation tables are frozen.

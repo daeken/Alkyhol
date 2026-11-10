@@ -19,6 +19,7 @@ pub fn operation(name: &str) -> Option<u64> {
         "SUB" => 1,
         "MUL" => 2,
         "DIV" => 3,
+        "RSQRT" if form == 0 || form == 2 => 4,
         _ => return None,
     };
     Some(op | (form << 4))
@@ -169,7 +170,9 @@ fn perform(
         let shift = lane * width;
         let a = old >> shift & mask;
         let b = source >> shift & mask;
-        let (value, next) = if width == 32 {
+        let (value, next) = if op == 4 && width == 32 {
+            (crate::sse_estimate::rsqrt(b as u32)? as u128, mxcsr)
+        } else if width == 32 {
             calculate::<Single, Wide32>(a, b, op, mxcsr)?
         } else {
             calculate::<Double, Wide64>(a, b, op, mxcsr)?

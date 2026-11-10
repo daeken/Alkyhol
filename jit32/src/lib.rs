@@ -15,6 +15,7 @@ mod sse_arithmetic;
 #[cfg(test)]
 mod sse_bits_tests;
 mod sse_compare;
+mod sse_estimate;
 mod stack_bank;
 #[cfg(test)]
 mod string_tests;
