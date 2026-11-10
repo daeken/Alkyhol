@@ -3277,11 +3277,13 @@ fn dispatch_inner(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32 {
     if o.refs == 0 || o.body.kind() != kind {
         unsupported("D3D9 COM this/type mismatch or missing external reference");
     }
-    eprintln!(
-        "PE32 D3D9 COM: kind={kind} slot={slot} this={:x} args={:x?}",
-        a[0],
-        &a[1..signature(id).unwrap().1 as usize / 4]
-    );
+    if !image.cpu.trace_first_calls {
+        eprintln!(
+            "PE32 D3D9 COM: kind={kind} slot={slot} this={:x} args={:x?}",
+            a[0],
+            &a[1..signature(id).unwrap().1 as usize / 4]
+        );
+    }
     match slot {
         0 => {
             if a[2] == 0 {

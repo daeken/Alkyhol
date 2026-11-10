@@ -8634,3 +8634,16 @@ cached/uncached pixel/timing/failure test exercise the new cache units. Shader
 quality, geometry, texture/mip/color-space behavior and all per-draw dynamic
 validation remain intact. Original DAO's cursor fix and cache integration must
 still be replayed; the finite timing result is not application frame rate.
+
+The requested first-call diagnostic mode now covers service/COM gate IDs as
+well as fixed Win32 import IDs; its former array-range check logged every COM
+call. The redundant raw D3D9 COM dump is suppressed in first-call mode, while
+HRESULT failures and explicit unsupported stops remain visible. Full-call mode
+retains the prior output. Two physical Rosetta executions of the same owned
+legacy-shader PE (first/all) produce identical 8,396-byte output, SHA-256
+32f2d8ff8d615da007be4ded2cbd2318d91c378cf65853c7afde6f5a174acffe.
+Repeated Clear, constant updates and draws appear once per gate in first mode
+versus twice in full mode; full mode retains 52 raw COM lines versus zero in
+first mode. Multiple interface kinds can share a textual method name, so first
+is defined by gate ID, not name. PE library Clippy passes. This does not itself
+establish a measured game-performance improvement.

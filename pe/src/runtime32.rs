@@ -1048,7 +1048,7 @@ struct Cpu32 {
     executable: Cell<u32>,
     diagnostic: Option<diagnostic32::Traps>,
     trace_first_calls: bool,
-    trace_seen: RefCell<[bool; APIS.len()]>,
+    trace_seen: RefCell<std::collections::BTreeSet<u32>>,
     heap: RefCell<heap32::Heap>,
     crt: RefCell<crt32::State>,
     fls: RefCell<fiber32::Slots>,
@@ -1184,7 +1184,7 @@ impl Cpu32 {
                 std::env::var("ALKYHOL_PE32_TRACE_CALLS").as_deref(),
                 Ok("first")
             ),
-            trace_seen: RefCell::new([false; APIS.len()]),
+            trace_seen: RefCell::new(Default::default()),
             heap: RefCell::new(heap32::Heap::with_bounds(bounds)),
             crt: RefCell::new(Default::default()),
             fls: RefCell::new(Default::default()),
@@ -2370,12 +2370,7 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
         }
         let args: &[u32; 8] = words[..8].try_into().expect("fixed gateway prefix");
         let trace_call = image.cpu.diagnostic.is_some()
-            && (id as usize >= APIS.len() || !image.cpu.trace_first_calls || {
-                let mut seen = image.cpu.trace_seen.borrow_mut();
-                let first = !seen[id as usize];
-                seen[id as usize] = true;
-                first
-            });
+            && (!image.cpu.trace_first_calls || image.cpu.trace_seen.borrow_mut().insert(id));
         if trace_call {
             let return_address = (arguments as usize)
                 .checked_sub(4)
@@ -2991,7 +2986,7 @@ mod tests {
                     std::env::var("ALKYHOL_PE32_TRACE_CALLS").as_deref(),
                     Ok("first")
                 ),
-                trace_seen: RefCell::new([false; APIS.len()]),
+                trace_seen: RefCell::new(Default::default()),
                 heap: RefCell::new(Default::default()),
                 crt: RefCell::new(Default::default()),
                 fls: RefCell::new(Default::default()),
