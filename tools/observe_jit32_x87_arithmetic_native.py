@@ -7,9 +7,10 @@ def sha(p):
     import hashlib
     return hashlib.sha256(p.read_bytes()).hexdigest()
 def observe():
-    parser=argparse.ArgumentParser();parser.add_argument("--memory",action="store_true");args=parser.parse_args()
-    stem="memory" if args.memory else "arithmetic"
-    count=1440 if args.memory else 19200
+    parser=argparse.ArgumentParser();mode=parser.add_mutually_exclusive_group();mode.add_argument("--memory",action="store_true");mode.add_argument("--atan2",action="store_true");args=parser.parse_args()
+    stem="atan2" if args.atan2 else "memory" if args.memory else "arithmetic"
+    count=768 if args.atan2 else 1440 if args.memory else 19200
+    row_size=64 if args.atan2 else 40
     if os.name!='nt':raise RuntimeError('requires native x64 Windows')
     from ctypes import wintypes
     kernel=ctypes.WinDLL('kernel32',use_last_error=True)
@@ -23,7 +24,7 @@ def observe():
     raw=host.read_bytes();at=struct.unpack_from('<I',raw,0x3c)[0]
     if raw[at:at+4]!=b'PE\0\0' or struct.unpack_from('<H',raw,at+4)[0]!=0x8664:raise ValueError('observer is not PE64 AMD64')
     with data.open('wb') as stream:r=subprocess.run([str(host)],stdout=stream,stderr=subprocess.PIPE,timeout=30,check=True)
-    if data.stat().st_size!=count*40:raise ValueError(f'incomplete native observation: {data.stat().st_size} bytes, expected {count*40}')
+    if data.stat().st_size!=count*row_size:raise ValueError(f'incomplete native observation: {data.stat().st_size} bytes, expected {count*row_size}')
     report=dict(backend=f'native Windows x64 x87 {stem} assembly',source_sha256=sha(source),observer_sha256=sha(host),observation_sha256=sha(data),rows=count,native_machine=native.value,process_machine=process.value,host=platform.platform(),processor=platform.processor(),stderr_hex=r.stderr.hex(),revision=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip())
     (output/'report.json').write_text(json.dumps(report,indent=2)+'\n');print(json.dumps(report,indent=2))
 if __name__=='__main__':observe()
