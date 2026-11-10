@@ -667,3 +667,21 @@ successful API stub. Native tests verify full register/FPU/flag preservation,
 next PC and inaccessible/FS/wrapped addresses, while rejecting invalid/truncated
 encodings and LOCK. All 79 default CPU tests and runner Clippy pass; the existing
 fourteen external observers remain separate. Original replay follows.
+
+The prefetch replay again presents original video and next reaches MOVNTPS in
+Bink's frame copy at 2,205,415,328 loading-thread instructions (324.0s uncontrolled
+wall time). A foreground-verified held Escape was posted through process-targeted
+Quartz input; a menu/skip result was not established before the explicit stop.
+Original input hashes remain unchanged. MOVNTPS/MOVNTPD/MOVNTDQ now use the pinned
+bit-preserving vector store lifters with the existing full-range write guard and
+16-byte alignment check. The host uses ordinary coherent stores as its cache
+policy; it does not emulate x86 write-combining cache placement. SFENCE uses the
+pinned native DMB ISH emitter, not an empty operation.
+
+Native tests cover every XMM source register, arbitrary NaN/denormal bit patterns,
+sentinel bytes around the complete 16-byte write, unchanged registers/flags/FPU,
+actual fence execution, precise misalignment/read-only/truncated-range failure,
+and invalid encodings. All 81 default native tests and runner Clippy pass; the
+fourteen external observations remain separate. These tests do not prove a full
+concurrent x86 memory model. Another original replay follows toward the menu and
+preserved Rosetta cutscene progress.

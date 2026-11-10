@@ -1440,3 +1440,95 @@ mod prefetch_tests {
         }
     }
 }
+
+#[cfg(test)]
+mod streaming_store_tests {
+    use super::*;
+    #[test]
+    fn aligned_streaming_stores_copy_all_bits_and_fence_without_fp_side_effects() {
+        for kind in 0..3 {
+            for reg in 0..8 {
+                let mut code = vec![];
+                if kind != 0 {
+                    code.push(0x66);
+                }
+                code.extend([0x0f, if kind == 2 { 0xe7 } else { 0x2b }, reg << 3]);
+                code.extend([0x0f, 0xae, 0xf8]);
+                let mut r = tests::cpu(&code);
+                r.memory
+                    .map(0x20000, 48, READ | WRITE, &[0xa5; 48])
+                    .unwrap();
+                r.state[0] = 0x20010;
+                r.state[16] = 0xad7;
+                for i in 0..16 {
+                    r.state[24 + i] = 0x7ff0000000000001u64.rotate_left(i as u32) ^ i as u64;
+                }
+                {
+                    let mut f = r.memory.fpu.borrow_mut();
+                    f.push(0x3fff8000000000000000);
+                    f.mxcsr = 0x5fc1;
+                }
+                let before = r.state;
+                let fp = r.memory.fpu.borrow().clone();
+                assert!(matches!(r.run(2), Stop::Budget { .. }));
+                let bytes = r.memory.read(0x20000, 48, READ).unwrap();
+                assert_eq!(&bytes[..16], &[0xa5; 16]);
+                assert_eq!(&bytes[32..], &[0xa5; 16]);
+                assert_eq!(&bytes[16..24], &before[24 + reg as usize * 2].to_le_bytes());
+                assert_eq!(&bytes[24..32], &before[25 + reg as usize * 2].to_le_bytes());
+                assert_eq!(&r.state[..17], &before[..17]);
+                assert_eq!(&r.state[18..], &before[18..]);
+                let after = r.memory.fpu.borrow();
+                assert_eq!(after.mxcsr, fp.mxcsr);
+                assert_eq!(after.status, fp.status);
+                assert_eq!(after.registers, fp.registers);
+            }
+        }
+    }
+    #[test]
+    fn streaming_stores_check_full_destination_alignment_and_write_rights_before_commit() {
+        for prefix in [vec![], vec![0x66]] {
+            for op in [0x2b, 0xe7] {
+                if prefix.is_empty() && op == 0xe7 {
+                    continue;
+                }
+                let mut code = prefix.clone();
+                code.extend([0x0f, op, 0]);
+                for (address, length, rights, alignment) in [
+                    (0x20000, 16, READ, false),
+                    (0x20000, 8, READ | WRITE, false),
+                    (0x20001, 16, READ | WRITE, true),
+                ] {
+                    let mut r = tests::cpu(&code);
+                    r.state[0] = address;
+                    r.state[16] = 0xad7;
+                    r.state[24] = u64::MAX;
+                    r.state[25] = 0x12345678;
+                    r.memory
+                        .map(address as u32, length, rights, &vec![0xa5; length])
+                        .unwrap();
+                    let before = r.state;
+                    let stop = r.run(1);
+                    if alignment {
+                        assert!(matches!(stop, Stop::CpuFault { .. }));
+                    } else {
+                        assert!(matches!(stop, Stop::Fault { .. }));
+                    }
+                    assert_eq!(&r.state[..17], &before[..17]);
+                    assert_eq!(&r.state[18..], &before[18..]);
+                    assert_eq!(
+                        r.memory.read(address, length, READ).unwrap(),
+                        vec![0xa5; length]
+                    );
+                }
+            }
+        }
+        for code in [
+            &[0x0f, 0x2b, 0xc0][..],
+            &[0xf0, 0x0f, 0x2b, 0][..],
+            &[0x0f, 0x2b][..],
+        ] {
+            assert!(compiler::compile(0x10000, code).is_err());
+        }
+    }
+}

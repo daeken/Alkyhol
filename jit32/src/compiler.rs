@@ -835,6 +835,10 @@ pub(crate) fn compile(pc: u32, bytes: &[u8]) -> Result<Instruction> {
         "MOVUPD",
         "MOVDQA",
         "MOVDQU",
+        "MOVNTPS",
+        "MOVNTPD",
+        "MOVNTDQ",
+        "SFENCE",
         "MOVD-X",
         "MOVD-XS",
         "MOVQ-X",
@@ -1053,7 +1057,7 @@ pub(crate) fn compile(pc: u32, bytes: &[u8]) -> Result<Instruction> {
         signed_division: mnemonic == "IDIV",
         aligned_vector: [
             "MOVAPS", "MOVAPD", "MOVDQA", "UNPCKLPD", "UNPCKHPD", "UNPCKLPS", "UNPCKHPS", "SHUFPS",
-            "SHUFPD",
+            "SHUFPD", "MOVNTPS", "MOVNTPD", "MOVNTDQ",
         ]
         .contains(&mnemonic)
             || VARIABLE_SHIFTS.contains(&mnemonic),
