@@ -1223,3 +1223,18 @@ under `local/jit32/movemask-rosetta*`. This is a standalone translated-sequence
 observation, not a game or universal CPU diagnosis. A native AMD64 Windows job
 is added to the existing SIMD observer workflow; its result is pending. A fresh
 original replay is still required to pass the reached PMOVMSKB in DAO.
+
+All six SIMD observation jobs pass in
+[CI 42865344245](https://github.com/daeken/Alkyhol/actions/runs/42865344245)
+at ac966ba. The new sign-mask observer runs on native AMD64 Windows Server
+build 26100 (AuthenticAMD Family 25/Model 17; process machine 0, native 0x8664).
+All 65,556 rows agree exactly with physical ARM in mask bits, complete MXCSR
+after-state, defined flags and requested control loads. Native table SHA-256 is
+`4a3cc30a2af46340a75beea9e0e3684f6f04f961f802c314760f9600754a756c`.
+The source/observer/table identities and compressed native/Rosetta tables are
+frozen. `python3 tools/check_jit32_movemask.py` now selects the native Windows
+capture by default; `--backend rosetta` remains a deliberate strict failure.
+The two raw tables differ only in the loaded/after MXCSR DWORDs for those
+32,778 requested unmasked loads. Other observed fields, including all results
+and flags, are byte-identical. No existing oracle is weakened; this finite
+sequence evidence does not establish an application replay past PMOVMSKB.

@@ -1,0 +1,35 @@
+{
+  "backend": "native Windows x64 legacy SIMD sign-mask assembly",
+  "source": "jit32/tests/movemask_reference.c",
+  "source_lf_sha256": "c67868c277db62f00263d41a896dda5a94ae440e32fc65dfa953bc202b5612ff",
+  "fixture": "jit32/reference/movemask-windows-amd64-v1.bin.gz",
+  "fixture_sha256": "bb379e3729a4c6866cb091fcce1ced4ec7d4434451de50372a27543153e6e0fc",
+  "observation_sha256": "4a3cc30a2af46340a75beea9e0e3684f6f04f961f802c314760f9600754a756c",
+  "observer_sha256": "67e7b0f893f4f2ab75dd1e42786626f0f4548ddadf742b3d93751c302a3bae55",
+  "rows": 65556,
+  "row_bytes": 64,
+  "exact_results_and_flags_required": true,
+  "strict_requested_mxcsr_load": true,
+  "native_report": {
+    "backend": "native Windows x64 legacy SIMD sign-mask assembly",
+    "source_sha256": "f14951b008b577806597acd19fdc7e15ce736238924b48dd70091e379117db9c",
+    "source_lf_sha256": "c67868c277db62f00263d41a896dda5a94ae440e32fc65dfa953bc202b5612ff",
+    "observer_sha256": "67e7b0f893f4f2ab75dd1e42786626f0f4548ddadf742b3d93751c302a3bae55",
+    "observation_sha256": "4a3cc30a2af46340a75beea9e0e3684f6f04f961f802c314760f9600754a756c",
+    "rows": 65556,
+    "native_machine": 34404,
+    "process_machine": 0,
+    "host": "Windows-2025Server-10.0.26100-SP0",
+    "processor": "AMD64 Family 25 Model 17 Stepping 1, AuthenticAMD",
+    "stderr_hex": "",
+    "revision": "ac966ba71c36bf090c64c574cbf8c873612e8fe6"
+  },
+  "model_observation": {
+    "rows": 65556,
+    "result_differences": 0,
+    "mxcsr_differences": 0,
+    "flags_differences": 0,
+    "requested_mxcsr_load_differences": 0
+  },
+  "workflow_run": 42865344245
+}

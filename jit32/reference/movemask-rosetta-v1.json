@@ -1,0 +1,29 @@
+{
+  "backend": "actual x86 assembly under Rosetta",
+  "source": "jit32/tests/movemask_reference.c",
+  "source_lf_sha256": "c67868c277db62f00263d41a896dda5a94ae440e32fc65dfa953bc202b5612ff",
+  "fixture": "jit32/reference/movemask-rosetta-v1.bin.gz",
+  "fixture_sha256": "0ebd79f8f581c413098c5aafc9711f1812f5c64649c1902e4595ca6ca8a08201",
+  "observation_sha256": "53fbd61c8a0dd3a601f6cbc0c132048652dfb8cdf4765d0919558ff079e58cc4",
+  "observer_sha256": "55cc3f3f1191c658490f6db7026f1b4eeefd55eacc2dafa164f733157ac6a6ce",
+  "rows": 65556,
+  "row_bytes": 64,
+  "exact_results_and_flags_required": true,
+  "strict_requested_mxcsr_load": true,
+  "native_report": {
+    "backend": "actual x86 assembly under Rosetta",
+    "source_sha256": "c67868c277db62f00263d41a896dda5a94ae440e32fc65dfa953bc202b5612ff",
+    "observer_sha256": "55cc3f3f1191c658490f6db7026f1b4eeefd55eacc2dafa164f733157ac6a6ce",
+    "observation_sha256": "53fbd61c8a0dd3a601f6cbc0c132048652dfb8cdf4765d0919558ff079e58cc4",
+    "rows": 65556,
+    "stderr_hex": "",
+    "platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O"
+  },
+  "model_observation": {
+    "rows": 65556,
+    "result_differences": 0,
+    "mxcsr_differences": 0,
+    "flags_differences": 0,
+    "requested_mxcsr_load_differences": 32778
+  }
+}
