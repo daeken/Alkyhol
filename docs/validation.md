@@ -8809,3 +8809,22 @@ PE CI 42904367406 identifies an unnecessary usize cast in the earlier deletion
 unit; that test-only cast is removed, and all-target Clippy is rerun locally.
 Other native startup comparison failures remain distinct from the new feature
 evidence; the whole CI suite is not claimed green.
+
+The user confirms audible original music/effects. PID 12820 also loads the
+newly written Slot_1 Castle Cousland save and renders the restored in-engine
+scene; state restoration is observed, exact equivalence unmeasured. The saved
+thumbnail is absent from the earlier failed screenshot stage. A fresh local
+backup precedes the coordinator's next F5 test. That quicksave advances to
+original EXE RVA 0x479a40 and stops (78) after writing its new state/metadata.
+The observed instructions request dynamic BC1 storage for the screenshot, and
+the preceding cropped/scaled StretchRect returns unavailable. Those two real
+operations now pass a focused GPU test and owned PE witness; original completion
+is pending a new replay. All old PID 12820 controls are revoked.
+
+An eight-second Instruments capture before that save contains 8.996 sampled
+CPU seconds, 6.303 seconds with no identified symbol and 7.473 seconds in
+truncated stacks. Inclusive identified D3D9 dispatch accounts for 1.326 sampled
+seconds and programmable GPU draw backend 0.632. Rosetta's large unidentified
+portion prevents attributing the whole bottleneck to the graphics bridge.
+These overlapping CPU samples are not additive wall/GPU percentages; no exact
+FMOD/game attribution is inferred. Raw traces and summaries remain ignored.

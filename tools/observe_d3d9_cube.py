@@ -10,6 +10,7 @@ HEADERS=False
 BUFFERS=False
 TEXTURE_STORAGE=False
 RENDER_CAPS=False
+SAVE_RESOURCES=False
 SOURCES=[SOURCE/'cube-pe.cpp',SOURCE/'include/d3d9.h',SOURCE/'include/strsafe.h',ROOT/'samples/d3d9/create_device/CreateDevice.cpp',ROOT/'samples/d3d9/provenance.json']
 def identity(d):return {'source':{p.relative_to(ROOT).as_posix():sha(p) for p in SOURCES},'pe':sha(d/(PREFIX+'.exe'))}
 def build(d):
@@ -27,7 +28,7 @@ def build(d):
 def decode(data,headers=False,buffers=False,texture_storage=False):
  if len(data)!=32:raise ValueError('cube resource report length differs')
  words=list(struct.unpack('<8I',data))
- expected=[0x52544350,1,0,1,1,1,4,8] if RENDER_CAPS else [0x54455841,1,0,1,1,1,768,8] if texture_storage else [0x42554641,1,0,1,1,1,2,8] if buffers else [0x434f4d48,1,0,1,1,1,2,8] if headers else [0x43554245,1,0,1,1,1,1,8]
+ expected=[0x53415645,1,0,1,1,1,3,8] if SAVE_RESOURCES else [0x52544350,1,0,1,1,1,4,8] if RENDER_CAPS else [0x54455841,1,0,1,1,1,768,8] if texture_storage else [0x42554641,1,0,1,1,1,2,8] if buffers else [0x434f4d48,1,0,1,1,1,2,8] if headers else [0x43554245,1,0,1,1,1,1,8]
  if words!=expected:raise ValueError('resource COM, storage, lifetime or stack contract differs: '+repr(words))
  return words
 def execute(d,native=False):
@@ -43,10 +44,11 @@ def execute(d,native=False):
  if native:
   peer=json.loads((d/(PREFIX+'-host.json')).read_text())
   if peer['inputs']!=ident or peer['status'] or peer['stdout_hex']!=report['stdout_hex']:raise ValueError('identical cube PE native/host contract differs')
- path.write_text(json.dumps(report,indent=2)+'\n');print('Advertised BGRA render surfaces/textures create, bind and clear on the actual GPU' if RENDER_CAPS else '768 textures and all mips, later allocations, shared alias and bound lifetime validate' if TEXTURE_STORAGE else '4094 vertex and index buffers, all contents, retained binding and arena rollover validate' if BUFFERS else 'Two cycles of 4094 live COM declarations, all descriptors, retained binding and rollover validate' if HEADERS else 'Six cube faces, all mips, COM identities, surface aliases, raw locks and bound lifetime validate')
+ path.write_text(json.dumps(report,indent=2)+'\n');print('Actual dynamic BC1 storage and downsampled region pixels validate' if SAVE_RESOURCES else 'Advertised BGRA render surfaces/textures create, bind and clear on the actual GPU' if RENDER_CAPS else '768 textures and all mips, later allocations, shared alias and bound lifetime validate' if TEXTURE_STORAGE else '4094 vertex and index buffers, all contents, retained binding and arena rollover validate' if BUFFERS else 'Two cycles of 4094 live COM declarations, all descriptors, retained binding and rollover validate' if HEADERS else 'Six cube faces, all mips, COM identities, surface aliases, raw locks and bound lifetime validate')
 if __name__=='__main__':
- p=argparse.ArgumentParser(description=__doc__);p.add_argument('--output',type=Path,default=ROOT/'local/pe/d3d9-microtests');p.add_argument('--com-headers',action='store_true');p.add_argument('--buffer-storage',action='store_true');p.add_argument('--texture-storage',action='store_true');p.add_argument('--render-caps',action='store_true');g=p.add_mutually_exclusive_group();g.add_argument('--host',action='store_true');g.add_argument('--native',action='store_true');a=p.parse_args();d=a.output.resolve()
- if sum([a.com_headers,a.buffer_storage,a.texture_storage,a.render_caps])>1:p.error('choose one resource witness')
+ p=argparse.ArgumentParser(description=__doc__);p.add_argument('--output',type=Path,default=ROOT/'local/pe/d3d9-microtests');p.add_argument('--com-headers',action='store_true');p.add_argument('--buffer-storage',action='store_true');p.add_argument('--texture-storage',action='store_true');p.add_argument('--render-caps',action='store_true');p.add_argument('--save-resources',action='store_true');g=p.add_mutually_exclusive_group();g.add_argument('--host',action='store_true');g.add_argument('--native',action='store_true');a=p.parse_args();d=a.output.resolve()
+ if sum([a.com_headers,a.buffer_storage,a.texture_storage,a.render_caps,a.save_resources])>1:p.error('choose one resource witness')
+ if a.save_resources:SAVE_RESOURCES=True;PREFIX='d3d9-save-resources';SOURCES[0]=SOURCE/'save-resources-pe.cpp'
  if a.render_caps:RENDER_CAPS=True;PREFIX='d3d9-render-caps';SOURCES[0]=SOURCE/'render-caps-pe.cpp'
  if a.texture_storage:TEXTURE_STORAGE=True;PREFIX='d3d9-texture-storage';SOURCES[0]=SOURCE/'texture-storage-pe.cpp'
  if a.buffer_storage:BUFFERS=True;PREFIX='d3d9-buffer-storage';SOURCES[0]=SOURCE/'buffer-storage-pe.cpp'

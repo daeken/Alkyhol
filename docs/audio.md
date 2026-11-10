@@ -96,3 +96,8 @@ CommitDeferredSettings execute. Physical AudioQueue reports millions of consumed
 frames with increasing nonzero PCM counts while the original menu renders.
 This is physical original-binary output evidence; listener audibility/quality
 confirmation and exact native Windows waveform parity remain separate.
+
+The user confirms that music and effects are playing in the original 7943c38
+replay. This establishes audible output on this physical host, alongside the
+consumed/nonzero PCM evidence. It does not establish native waveform equality
+or complete spatial audio/effects support.

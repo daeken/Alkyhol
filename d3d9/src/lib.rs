@@ -24,6 +24,7 @@ pub use depth::Depth;
 mod render_state;
 pub use render_state::RenderState;
 mod texture;
+mod stretch;
 mod texture_stages;
 pub use legacy_gpu::{LegacyDraw, LegacyPipelineStats, viewport_from_words};
 pub mod fixed_vertex;

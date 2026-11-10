@@ -1102,11 +1102,11 @@ fn offscreen(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
     write(image, a[5], &[o]);
     0
 }
-fn stretch(s: &State, a: &[u32; 16]) -> u32 {
+fn stretch(image: &LoadedImage32<'_>, s: &State, a: &[u32; 16]) -> u32 {
     let Body::Device { gpu, target, .. } = &s.objects[&a[0]].body else {
         unreachable!()
     };
-    if a[2] != 0 || a[4] != 0 || a[5] != 0 {
+    if a[5] > 1 {
         return UNAVAILABLE;
     }
     let attachment = |pointer| match s.objects.get(&pointer) {
@@ -1137,9 +1137,23 @@ fn stretch(s: &State, a: &[u32; 16]) -> u32 {
     let Some((mut destination, destination_format)) = attachment(a[3]) else {
         return INVALID;
     };
-    match gpu.copy_target(
+    let (sw, sh) = source.dimensions();
+    let (dw, dh) = destination.dimensions();
+    let source_rect = if a[2] == 0 {
+        [0, 0, sw, sh]
+    } else {
+        read::<4>(image, a[2])
+    };
+    let destination_rect = if a[4] == 0 {
+        [0, 0, dw, dh]
+    } else {
+        read::<4>(image, a[4])
+    };
+    match gpu.stretch_target_region(
         &source,
+        source_rect,
         &mut destination,
+        destination_rect,
         source_format == 22 || destination_format == 22,
     ) {
         Ok(()) => 0,
@@ -2964,7 +2978,8 @@ fn create_texture(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16], cube:
     let Some(format) = sample_format(a[5]) else {
         return UNAVAILABLE;
     };
-    if a[4] > 1
+    let dynamic = a[4] == 0x200 && a[6] == 0 && a[3] == 1 && !cube;
+    if a[4] > 1 && !dynamic
         || a[4] == 1 && format != SampleFormat::Bgra8
         || ![0, 1, 2].contains(&a[6])
         || a[8] != 0
@@ -3194,14 +3209,18 @@ fn texture_operation(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16], sl
             0
         }
         19 => {
-            if *usage != 0 {
+            if ![0, 0x200].contains(usage) {
                 return INVALID;
             }
             if a[2] == 0 || level.lock.is_some() {
                 return INVALID;
             }
-            if a[4] & !0x8810 != 0 {
+            if a[4] & !0xa810 != 0 {
                 return UNAVAILABLE;
+            }
+            let discard = a[4] & 0x2000 != 0;
+            if discard && (*usage != 0x200 || a[3] != 0 || a[4] & 16 != 0) {
+                return INVALID;
             }
             let rectangle = if a[3] == 0 {
                 [0, 0, level.width, level.height]
@@ -3214,6 +3233,9 @@ fn texture_operation(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16], sl
                 return UNAVAILABLE;
             };
             let readonly = a[4] & 16 != 0;
+            if discard {
+                level.initialized = false;
+            }
             if a[1].is_multiple_of(mips) && !readonly && a[4] & 0x8000 == 0 {
                 level.dirty = true;
             }
@@ -3397,7 +3419,7 @@ fn dispatch_inner(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32 {
                 return INVALID;
             }
             if a[5] == 3
-                && a[4] & !0x80000 == 0
+                && a[4] & !0x80200 == 0
                 && sample_format(a[6]).is_some_and(SampleFormat::compressed)
             {
                 let Body::Factory(gpu, _) = &s.objects[&a[0]].body else {
@@ -3415,6 +3437,9 @@ fn dispatch_inner(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32 {
             }
             // Real BGRA8 color/sample storage and non-lockable D16 surfaces.
             if a[4] == 2 && a[5] == 1 && [75, 80].contains(&a[6]) {
+                return 0;
+            }
+            if a[4] == 0x200 && a[5] == 3 && [21, 22].contains(&a[6]) {
                 return 0;
             }
             // Vertex textures and other formats remain unavailable.
@@ -3896,7 +3921,7 @@ fn dispatch_inner(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32 {
         (1, 29) => create_depth(image, &mut s, a),
         (1, 39 | 40) => depth_binding(image, &mut s, a, slot == 40),
         (1, 32) => transfer(image, &mut s, a),
-        (1, 34) => stretch(&s, a),
+        (1, 34) => stretch(image, &s, a),
         (1, 41) | (1, 42) => {
             let Body::Device { scene, .. } = &mut s.objects.get_mut(&a[0]).unwrap().body else {
                 unreachable!()
