@@ -10,7 +10,10 @@ mod fpu_atan;
 mod fpu_atan2;
 mod fpu_math;
 mod fpu_ops;
+mod fpu_remainder;
 mod fpu_trig;
+#[cfg(test)]
+mod movemask_tests;
 #[cfg(feature = "shared-runtime")]
 pub mod shared;
 mod sse;
@@ -19,10 +22,9 @@ mod sse_arithmetic;
 mod sse_bits_tests;
 mod sse_compare;
 mod sse_estimate;
-mod sse_reciprocal;
 mod sse_minmax;
+mod sse_reciprocal;
 mod sse_sqrt;
-mod fpu_remainder;
 mod stack_bank;
 #[cfg(test)]
 mod string_tests;

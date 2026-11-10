@@ -517,7 +517,8 @@ impl Builder for Checked<'_> {
     }
     #[allow(unused_variables)]
     fn vmovmsk(&mut self, a: Self::Val, ew: u32) -> Self::Val {
-        panic!("unsupported JIT operation: vmovmsk")
+        let value = self.inner.vmovmsk(a, ew);
+        self.checked_val(value)
     }
     #[allow(unused_variables)]
     fn vfun(&mut self, a: Self::Val, ew: u32, op: u32) -> Self::Val {
@@ -830,6 +831,9 @@ pub(crate) fn compile(pc: u32, bytes: &[u8]) -> Result<Instruction> {
         "PINSRW",
         "PEXTRW",
         "MOVAPS",
+        "PMOVMSKB",
+        "MOVMSKPS",
+        "MOVMSKPD",
         "MOVUPS",
         "MOVAPD",
         "MOVUPD",
@@ -998,6 +1002,13 @@ pub(crate) fn compile(pc: u32, bytes: &[u8]) -> Result<Instruction> {
         && !bytes.iter().take_while(|&&b| b != 0x0f).any(|&b| b == 0x66)
     {
         return Err("MMX variable shifts are outside the native XMM profile".into());
+    }
+    if ["PMOVMSKB", "MOVMSKPS", "MOVMSKPD"].contains(&mnemonic)
+        && (!d.m.is_reg
+            || (mnemonic == "PMOVMSKB"
+                && !bytes.iter().take_while(|&&b| b != 0x0f).any(|&b| b == 0x66)))
+    {
+        return Err("vector sign masks require the legacy XMM register form".into());
     }
     if ["BT", "BTS", "BTR", "BTC"].contains(&mnemonic)
         && (d.p.lock && d.m.is_reg || d.p.ad_size && !d.m.is_reg)

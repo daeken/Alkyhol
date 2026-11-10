@@ -1198,3 +1198,28 @@ eleven staged scene-input byte hashes also remain unchanged. No original native
 in-engine frame or Rosetta cutscene progress parity is claimed. Evidence is
 archived in ignored `local/jit32/shared-game-pmovmskb-before`; the process is
 terminal and its UI control is revoked.
+
+The reached PMOVMSKB now uses SharpRetro's existing native ARM sign-mask
+emitter through the checked Alkyhol wrapper, together with the related
+MOVMSKPS/MOVMSKPD register forms. Memory forms, MMX, LOCK, address-size and VEX
+forms remain explicitly rejected. No source in SharpRetro is modified.
+The physical M4 tests exhaust all 65,536 byte masks, all 16 single-lane sign
+patterns and all four double-lane patterns; all 64 source/destination register
+routes retain unrelated CPU/vector/x87/MXCSR state. Signaling-NaN payloads and
+unmasked MXCSR controls are bit extractions, not floating arithmetic. All 109
+default JIT tests pass, with 22 external observers ignored by default; runner
+Clippy and formatting checks pass. See the
+[Microsoft intrinsic roster](https://learn.microsoft.com/en-us/cpp/intrinsics/x86-intrinsics-list)
+for the three legacy SSE/SSE2 mask forms.
+
+The independent owned x86/Rosetta assembly table records 65,556 source/result
+pairs plus actual MXCSR loads, after-state and flags. Every mask result,
+instruction MXCSR after-state and defined flag agrees with physical ARM.
+However 32,778 requested unmasked MXCSR loads are observed with exception-mask
+bits set. The full comparison deliberately remains a strict failure on those
+changed input controls; no old oracle or acceptance criterion is weakened.
+Both the initial failure and the complete difference report stay ignored/local
+under `local/jit32/movemask-rosetta*`. This is a standalone translated-sequence
+observation, not a game or universal CPU diagnosis. A native AMD64 Windows job
+is added to the existing SIMD observer workflow; its result is pending. A fresh
+original replay is still required to pass the reached PMOVMSKB in DAO.
