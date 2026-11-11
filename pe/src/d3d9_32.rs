@@ -14,7 +14,12 @@ use alkyhol_d3d9::{
     compiler::{self, Compiled, Compiler},
     legacy::Stage,
 };
-use std::{cell::RefCell, collections::BTreeMap, rc::Rc};
+use std::{
+    cell::RefCell,
+    collections::BTreeMap,
+    rc::Rc,
+    time::{Duration, Instant},
+};
 use transforms::Transforms;
 pub(super) const BASE: u32 = 0x9000;
 const INVALID: u32 = 0x8876086c;
@@ -138,7 +143,11 @@ enum Body {
     SwapChain {
         parent: u32,
     },
-    Factory(Rc<Gpu>, Rc<super::window_host32::DisplayModes>),
+    Factory {
+        gpu: Rc<Gpu>,
+        modes: Rc<super::window_host32::DisplayModes>,
+        present_profile: RefCell<Option<PresentProfile>>,
+    },
     Device {
         parent: u32,
         gpu: Rc<Gpu>,
@@ -210,7 +219,7 @@ impl Body {
         match self {
             Self::Query { .. } => 11,
             Self::Volume { .. } => 13,
-            Self::Factory(..) => 0,
+            Self::Factory { .. } => 0,
             Self::Device { .. } => 1,
             Self::Surface { .. } => 2,
             Self::VertexBuffer { .. } => 3,
@@ -667,7 +676,7 @@ fn release(s: &mut State, p: u32) -> u32 {
         return refs;
     }
     let parent = match &o.body {
-        Body::Factory(..) => None,
+        Body::Factory { .. } => None,
         Body::Device { parent, .. }
         | Body::Surface { parent, .. }
         | Body::VertexBuffer { parent, .. }
@@ -824,7 +833,11 @@ pub(super) fn create(image: &LoadedImage32<'_>, sdk: u32) -> u32 {
     object(
         &image.cpu,
         &mut image.cpu.d3d9.borrow_mut(),
-        Body::Factory(Rc::new(gpu), Rc::new(modes)),
+        Body::Factory {
+            gpu: Rc::new(gpu),
+            modes: Rc::new(modes),
+            present_profile: RefCell::new(None),
+        },
         1,
     )
 }
@@ -832,7 +845,7 @@ fn identifier(image: &LoadedImage32<'_>, s: &State, a: &[u32; 16]) -> u32 {
     if a[1] != 0 || a[2] & !2 != 0 {
         return INVALID;
     }
-    let Body::Factory(gpu, _) = &s.objects[&a[0]].body else {
+    let Body::Factory { gpu, .. } = &s.objects[&a[0]].body else {
         unreachable!()
     };
     let mut bytes = [0u8; 1100];
@@ -941,7 +954,7 @@ fn device(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16]) -> u32 {
         return UNAVAILABLE;
     }
     p[3] = 1;
-    let Body::Factory(gpu, _) = &s.objects[&a[0]].body else {
+    let Body::Factory { gpu, .. } = &s.objects[&a[0]].body else {
         unreachable!()
     };
     let gpu = gpu.clone();
@@ -2096,7 +2109,7 @@ fn device_mode(image: &LoadedImage32<'_>, s: &State, device: u32, out: u32) -> u
     let Body::Device { parent, .. } = &s.objects[&device].body else {
         unreachable!()
     };
-    let Body::Factory(_, modes) = &s.objects[parent].body else {
+    let Body::Factory { modes, .. } = &s.objects[parent].body else {
         unreachable!()
     };
     let mode = modes.current;
@@ -2559,34 +2572,80 @@ fn draw_buffer(
     }
     0
 }
-// Opt-in completed-Present throughput, without GPU readbacks beyond the existing
-// presentation path. Windows/game state is not changed by this diagnostic.
-fn profile_present(gpu: &Gpu, image: &LoadedImage32<'_>) {
+struct PresentProfile {
+    start: Instant,
+    frames: u64,
+    readback: Duration,
+    window: Duration,
+}
+impl PresentProfile {
+    fn new() -> Self {
+        Self {
+            start: Instant::now(),
+            frames: 0,
+            readback: Duration::ZERO,
+            window: Duration::ZERO,
+        }
+    }
+}
+
+// Report completed Presents and optional host wall times without extra readbacks.
+fn profile_present(
+    gpu: &Gpu,
+    image: &LoadedImage32<'_>,
+    slot: &RefCell<Option<PresentProfile>>,
+    phases: Option<(Duration, Duration)>,
+) {
     static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    if !*ENABLED.get_or_init(|| std::env::var_os("ALKYHOL_D3D9_PROFILE").is_some()) {
+    if phases.is_none()
+        && !*ENABLED.get_or_init(|| std::env::var_os("ALKYHOL_D3D9_PROFILE").is_some())
+    {
         return;
     }
-    std::thread_local! {
-        static PERIOD: std::cell::RefCell<Option<(std::time::Instant,u64)>> = const { std::cell::RefCell::new(None) };
-    }
-    PERIOD.with(|slot| {
-        let mut slot=slot.borrow_mut();
-        let (start,frames)=slot.get_or_insert_with(|| (std::time::Instant::now(),0));
-        *frames+=1;
-        let seconds=start.elapsed().as_secs_f64();
-        if seconds>=5. {
-            let stats=gpu.legacy_pipeline_cache_stats();
-            let uploads=gpu.legacy_upload_stats();
-            let resources=gpu.legacy_resource_cache_stats();
-            super::dsound32::report(image);
-            if super::perf32::enabled() {
-                let (service_seconds, service_calls) = super::perf32::take();
-                eprintln!("PE32 D3D9 service timing [Win32,draw,other-D3D9,CPU-handoff]: seconds={service_seconds:?} calls={service_calls:?}");
-            }
-            eprintln!("PE32 D3D9 completed Present profile: frames={frames} seconds={seconds:.6} fps={:.3} pipelines={stats:?} uploads={uploads:?} resources={resources:?}",*frames as f64/seconds);
-            *start=std::time::Instant::now();*frames=0;
+    let mut slot = slot.borrow_mut();
+    let Some(period) = slot.as_mut() else {
+        if phases.is_some() {
+            gpu.take_legacy_draw_profile();
         }
-    });
+        *slot = Some(PresentProfile::new());
+        return;
+    };
+    period.frames += 1;
+    if let Some((readback, window)) = phases {
+        period.readback += readback;
+        period.window += window;
+    }
+    let seconds = period.start.elapsed().as_secs_f64();
+    if seconds >= 5. {
+        let stats = gpu.legacy_pipeline_cache_stats();
+        let uploads = gpu.legacy_upload_stats();
+        let resources = gpu.legacy_resource_cache_stats();
+        super::dsound32::report(image);
+        if super::perf32::enabled() {
+            let (service_seconds, service_calls) = super::perf32::take();
+            eprintln!(
+                "PE32 D3D9 service timing [Win32,draw,other-D3D9,CPU-handoff]: seconds={service_seconds:?} calls={service_calls:?}"
+            );
+        }
+        let frames = period.frames;
+        if phases.is_some() {
+            let draws = gpu.take_legacy_draw_profile();
+            eprintln!(
+                "PE32 D3D9 phase timing: draws={} frames={frames} prepare_s={:.6} encode_s={:.6} submit_s={:.6} readback_s={:.6} window_s={:.6}",
+                draws.draws,
+                draws.prepare.as_secs_f64(),
+                draws.encode.as_secs_f64(),
+                draws.submit.as_secs_f64(),
+                period.readback.as_secs_f64(),
+                period.window.as_secs_f64(),
+            );
+        }
+        eprintln!(
+            "PE32 D3D9 completed Present profile: frames={frames} seconds={seconds:.6} fps={:.3} pipelines={stats:?} uploads={uploads:?} resources={resources:?}",
+            frames as f64 / seconds
+        );
+        *period = PresentProfile::new();
+    }
 }
 fn capture_present(width: u32, height: u32, bytes: &[u8]) {
     use std::io::Write;
@@ -3388,7 +3447,7 @@ fn dispatch_inner(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32 {
         (0, 4) => 1,
         (0, 5) => identifier(image, &s, a),
         (0, 6) => {
-            let Body::Factory(_, modes) = &s.objects[&a[0]].body else {
+            let Body::Factory { modes, .. } = &s.objects[&a[0]].body else {
                 unreachable!()
             };
             if a[1] != 0 || a[2] != 22 {
@@ -3398,7 +3457,7 @@ fn dispatch_inner(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32 {
             }
         }
         (0, 7) => {
-            let Body::Factory(_, modes) = &s.objects[&a[0]].body else {
+            let Body::Factory { modes, .. } = &s.objects[&a[0]].body else {
                 unreachable!()
             };
             if a[1] != 0 || a[2] != 22 || a[4] == 0 {
@@ -3411,7 +3470,7 @@ fn dispatch_inner(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32 {
             0
         }
         (0, 8) => {
-            let Body::Factory(_, modes) = &s.objects[&a[0]].body else {
+            let Body::Factory { modes, .. } = &s.objects[&a[0]].body else {
                 unreachable!()
             };
             if a[1] != 0 || a[2] == 0 {
@@ -3437,7 +3496,7 @@ fn dispatch_inner(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32 {
                 && a[4] & !0x80200 == 0
                 && sample_format(a[6]).is_some_and(SampleFormat::compressed)
             {
-                let Body::Factory(gpu, _) = &s.objects[&a[0]].body else {
+                let Body::Factory { gpu, .. } = &s.objects[&a[0]].body else {
                     unreachable!()
                 };
                 return if gpu.supports_bc() { 0 } else { UNAVAILABLE };
@@ -4007,6 +4066,7 @@ fn dispatch_inner(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32 {
                 return UNAVAILABLE;
             }
             let Body::Device {
+                parent,
                 gpu,
                 target,
                 hwnd,
@@ -4019,20 +4079,33 @@ fn dispatch_inner(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32 {
             if *scene {
                 return INVALID;
             }
+            let Body::Factory {
+                present_profile, ..
+            } = &s.objects[parent].body
+            else {
+                unreachable!()
+            };
+            let readback_start = gpu.legacy_profile_enabled().then(Instant::now);
             let mut bytes = gpu.readback(target).unwrap_or_else(|e| unsupported(&e));
+            let readback_time = readback_start.map(|start| start.elapsed());
             let (width, height) = target.dimensions();
             capture_present(width, height, &bytes);
+            let window_start = readback_start.map(|_| Instant::now());
             for p in bytes.as_chunks_mut::<4>().0 {
                 p[3] = 255;
             }
-            let (w, h) = target.dimensions();
             image
                 .cpu
                 .ui
                 .borrow()
-                .graphics_present(*hwnd, w, h, &bytes)
+                .graphics_present(*hwnd, width, height, &bytes)
                 .unwrap_or_else(|e| unsupported(&e));
-            profile_present(gpu, image);
+            profile_present(
+                gpu,
+                image,
+                present_profile,
+                readback_time.zip(window_start.map(|start| start.elapsed())),
+            );
             0
         }
         (2, 10) => 1,

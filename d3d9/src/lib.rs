@@ -26,7 +26,7 @@ pub use render_state::RenderState;
 mod stretch;
 mod texture;
 mod texture_stages;
-pub use legacy_gpu::{LegacyDraw, LegacyPipelineStats, viewport_from_words};
+pub use legacy_gpu::{LegacyDraw, LegacyDrawProfile, LegacyPipelineStats, viewport_from_words};
 pub mod fixed_vertex;
 pub mod fixed_xyz;
 pub use texture::{
@@ -45,6 +45,7 @@ pub struct Device {
     legacy_pipelines: std::sync::Mutex<legacy_gpu::PipelineCache>,
     legacy_uploads: std::sync::Mutex<legacy_upload::Uploads>,
     legacy_samplers: std::sync::Mutex<texture::Samplers>,
+    legacy_profile_enabled: bool,
 }
 #[derive(Clone)]
 pub struct Target {
@@ -114,6 +115,7 @@ impl Device {
             legacy_pipelines: Default::default(),
             legacy_uploads: Default::default(),
             legacy_samplers: Default::default(),
+            legacy_profile_enabled: std::env::var_os("ALKYHOL_D3D9_PROFILE_PHASES").is_some(),
         })
     }
     pub fn adapter_name(&self) -> &str {
@@ -133,6 +135,9 @@ impl Device {
             .poll(wgpu::PollType::Poll)
             .map(|_| ())
             .map_err(|e| e.to_string())
+    }
+    pub fn legacy_profile_enabled(&self) -> bool {
+        self.legacy_profile_enabled
     }
     fn scope(&self) {
         self.device.push_error_scope(wgpu::ErrorFilter::OutOfMemory);

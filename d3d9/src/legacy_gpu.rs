@@ -5,6 +5,7 @@ use std::{
     collections::{BTreeMap, BTreeSet, HashMap, VecDeque},
     sync::Arc,
     sync::atomic::Ordering,
+    time::{Duration, Instant},
 };
 /// Per-device bounded cache counters; these measure reuse, not game frame rate.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -15,6 +16,16 @@ pub struct LegacyPipelineStats {
     pub entries: usize,
     pub key_bytes: usize,
 }
+
+/// Host wall times of completed programmable draws on this device.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct LegacyDrawProfile {
+    pub draws: u64,
+    pub prepare: Duration,
+    pub encode: Duration,
+    pub submit: Duration,
+}
+
 #[derive(Clone, Hash, PartialEq, Eq)]
 struct PipelineKey {
     vs: Vec<u8>,
@@ -194,6 +205,10 @@ impl Device {
     pub fn legacy_pipeline_cache_stats(&self) -> LegacyPipelineStats {
         self.legacy_pipelines.lock().unwrap().stats
     }
+    /// Return and reset the accumulated opt-in programmable draw timings.
+    pub fn take_legacy_draw_profile(&self) -> LegacyDrawProfile {
+        std::mem::take(&mut self.legacy_uploads.lock().unwrap().profile)
+    }
     fn prepare_pipeline(
         &self,
         draw: &LegacyDraw<'_>,
@@ -329,6 +344,7 @@ impl Device {
         depth: Option<&Depth>,
         viewport: [f32; 6],
     ) -> Result<()> {
+        let started = self.legacy_profile_enabled().then(Instant::now);
         validate_viewport(viewport, target.width, target.height)?;
         let depth = if state.get(7)? != 0 || state.get(52)? != 0 {
             depth
@@ -425,6 +441,7 @@ impl Device {
         });
         let mut uploads = self.legacy_uploads.lock().unwrap();
         uploads.drain_if_over_budget(self, crate::legacy_upload::STAGING_BUDGET)?;
+        let encode_started = started.map(|_| Instant::now());
         self.scope();
         let mut encoder = self.device.create_command_encoder(&Default::default());
         let buffers: Vec<_> = (0..3)
@@ -535,11 +552,20 @@ impl Device {
             query.resolve(&mut encoder);
         }
         uploads.finish();
+        let submit_started = started.map(|_| Instant::now());
         self.queue.submit([encoder.finish()]);
         uploads.recall();
         self.finish()?;
         if let Some(query) = query {
             query.submitted()?;
+        }
+        if let (Some(started), Some(encode_started), Some(submit_started)) =
+            (started, encode_started, submit_started)
+        {
+            uploads.profile.draws += 1;
+            uploads.profile.prepare += encode_started - started;
+            uploads.profile.encode += submit_started - encode_started;
+            uploads.profile.submit += submit_started.elapsed();
         }
         Ok(())
     }
@@ -719,7 +745,8 @@ mod cache_timing {
     #[test]
     #[ignore = "requires an actual GPU; prints finite draw-batch timing, not game FPS"]
     fn cached_and_uncached_draws_match_and_failed_pipelines_are_not_admitted() {
-        let device = Device::new().unwrap();
+        let mut device = Device::new().unwrap();
+        device.legacy_profile_enabled = true;
         let mut target = device.create_target(32, 32).unwrap();
         let vertices: Vec<u8> = [(0f32, 0.75f32), (0.75, -0.75), (-0.75, -0.75)]
             .into_iter()
@@ -775,17 +802,27 @@ mod cache_timing {
             device.clear(&mut target, 0xff0000ff).unwrap();
             device.draw_legacy(&mut target, &draw).unwrap();
             device.readback(&target).unwrap();
+            assert_eq!(device.take_legacy_draw_profile().draws, 1);
             let start = std::time::Instant::now();
             for _ in 0..128 {
                 device.draw_legacy(&mut target, &draw).unwrap();
             }
             let pixels = device.readback(&target).unwrap();
             let elapsed = start.elapsed();
+            let profile = device.take_legacy_draw_profile();
+            assert_eq!(profile.draws, 128);
+            let measured = profile.prepare + profile.encode + profile.submit;
+            assert!(measured > Duration::ZERO && measured <= elapsed);
+            assert_eq!(
+                device.take_legacy_draw_profile(),
+                LegacyDrawProfile::default()
+            );
             let stats = device.legacy_pipeline_cache_stats();
             eprintln!(
                 "finite_pipeline_batch pipeline_cache={enabled} upload_reuse={reuse} draws=128 seconds={:.6} stats={stats:?}",
                 elapsed.as_secs_f64()
             );
+            eprintln!("finite_draw_profile {profile:?}");
             assert_eq!(stats.builds, if enabled { 1 } else { 129 });
             assert_eq!(stats.hits, if enabled { 128 } else { 0 });
             let upload_stats = device.legacy_upload_stats();
@@ -808,6 +845,7 @@ mod cache_timing {
         assert_eq!(device.legacy_pipeline_cache_stats().builds, before.builds);
         draw.vertex_constants = &constants[..16]; // aligned but shorter than the shader's actual binding
         assert!(device.draw_legacy(&mut target, &draw).is_err());
+        assert_eq!(device.take_legacy_draw_profile().draws, 0);
         draw.vertex_constants = &constants;
         device.draw_legacy(&mut target, &draw).unwrap(); // failure did not poison scopes/cache/uploads
     }

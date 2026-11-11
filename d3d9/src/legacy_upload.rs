@@ -22,6 +22,7 @@ pub(crate) struct Uploads {
     staging_buffers: HashSet<wgpu::Buffer>,
     staging_bytes: u64,
     pub(crate) stats: LegacyUploadStats,
+    pub(crate) profile: crate::LegacyDrawProfile,
 }
 impl Default for Uploads {
     fn default() -> Self {
@@ -32,6 +33,7 @@ impl Default for Uploads {
             staging_buffers: HashSet::new(),
             staging_bytes: 0,
             stats: Default::default(),
+            profile: Default::default(),
         }
     }
 }
