@@ -323,6 +323,10 @@ jobs:
         run: |
           python tools/observe_pe32_thread_family.py
           python tools/observe_pe32_thread_family.py --host
+      - name: Execute a guest-only rendezvous through the parallel PE32 runner
+        run: |
+          python tools/observe_pe32_parallel_threads.py
+          python tools/observe_pe32_parallel_threads.py --host
       - name: Execute current-process identity and real available processor relationships
         run: |
           python tools/observe_pe32_process_family.py
@@ -482,6 +486,9 @@ jobs:
             local/pe/startup-microtests/gdi-window-*-host.json
             local/pe/startup-microtests/thread-family-inputs.json
             local/pe/startup-microtests/thread-family-host.json
+            local/pe/startup-microtests/parallel-threads.exe
+            local/pe/startup-microtests/parallel-threads-inputs.json
+            local/pe/startup-microtests/parallel-threads-host.json
             local/pe/startup-microtests/process-family-inputs.json
             local/pe/startup-microtests/process-family-host.json
             local/pe/startup-microtests/software-exception-inputs.json
@@ -700,6 +707,9 @@ jobs:
       - name: Compare identical original-worker PE on native Windows
         if: ${{ success() || failure() }}
         run: python tools/observe_pe32_thread_family.py --native
+      - name: Compare the identical guest rendezvous and host update report on Windows
+        if: ${{ success() || failure() }}
+        run: python tools/observe_pe32_parallel_threads.py --native
       - name: Compare identical process identity PE on native Windows
         if: ${{ success() || failure() }}
         run: python tools/observe_pe32_process_family.py --native

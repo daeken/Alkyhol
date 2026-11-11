@@ -48,6 +48,7 @@ fn main() {
                     ));
                 }
                 "--host-machine-info" => profile.host_machine_info = true,
+                "--parallel-guest-threads" => profile.parallel_guest_threads = true,
                 "--nt62-workstation-version" => profile.version_workstation = true,
                 "--private-profile-files" => profile.private_profile_files = true,
                 "--casefold-file-opens" => profile.casefold_file_opens = true,
@@ -132,6 +133,7 @@ fn main() {
             || profile.private_profile_files
             || profile.casefold_file_opens
             || profile.host_machine_info
+            || profile.parallel_guest_threads
             || profile.version_workstation
             || profile.registry_catalog.is_some()
             || profile.object_directory.is_some()

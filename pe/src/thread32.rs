@@ -1,4 +1,4 @@
-//! Native host threads with distinct guest stacks/TEBs and serialized CPU entries.
+//! Native host threads with distinct guest stacks/TEBs and serialized host state.
 //! Guest execution yields at API boundaries. Windows CPU affinity/preemption and
 //! arbitrary asynchronous thread suspension are not implemented.
 use super::{
@@ -27,6 +27,7 @@ const SERVICE_QUANTUM: (u32, std::time::Duration) = if cfg!(target_arch = "x86_6
 thread_local! {
     static CURRENT: Cell<*const Record> = const { Cell::new(ptr::null()) };
     static GUEST_FS: Cell<u16> = const { Cell::new(0) };
+    static PARALLEL: Cell<bool> = const { Cell::new(false) };
     static LEASE: RefCell<Option<CpuLease>> = const { RefCell::new(None) };
     static QUANTUM: RefCell<Option<(u32,std::time::Instant)>> = const { RefCell::new(None) };
 }
@@ -144,13 +145,14 @@ pub(super) struct ThreadEntry {
     _selector: TebSelector,
 }
 impl ThreadEntry {
-    pub(super) fn install(teb: u32, wait: bool) -> Result<Self> {
+    pub(super) fn install(teb: u32, wait: bool, parallel: bool) -> Result<Self> {
         if guest_fs() != 0 {
             return Err("nested PE32 thread entry".into());
         }
-        let lease = CpuLease::acquire(wait)?;
+        let lease = CpuLease::acquire(wait, parallel)?;
         let selector = TebSelector::allocate(teb)?;
         GUEST_FS.set(selector.value());
+        PARALLEL.set(parallel);
         LEASE.with(|slot| *slot.borrow_mut() = Some(lease));
         Ok(Self {
             _selector: selector,
@@ -160,22 +162,78 @@ impl ThreadEntry {
 impl Drop for ThreadEntry {
     fn drop(&mut self) {
         GUEST_FS.set(0);
+        PARALLEL.set(false);
         LEASE.with(|slot| drop(slot.borrow_mut().take()));
     }
 }
+pub(super) fn parallel_guest() -> bool {
+    PARALLEL.get()
+}
+
+fn acquire_lease() {
+    let lease = CpuLease::acquire(true, parallel_guest()).unwrap_or_else(|e| unsupported(&e));
+    LEASE.with(|slot| {
+        let old = slot.replace(Some(lease));
+        debug_assert!(old.is_none());
+    });
+}
+
+fn release_lease() {
+    drop(
+        LEASE
+            .with(|slot| slot.borrow_mut().take())
+            .unwrap_or_else(|| unsupported("PE32 thread has no active execution lease")),
+    );
+}
+
+// The outer native transition may run concurrently. Loader and other nested
+// callbacks continue using their caller's service lease and callback stack.
+pub(super) unsafe fn enter_guest(entry: u32, stack: u32, code: u16, data: u16) -> u64 {
+    let parallel = PARALLEL.get();
+    if parallel {
+        release_lease();
+        super::window_host32::pump_tasks();
+    }
+    let result = unsafe {
+        super::alkyhol_enter_pe32(
+            entry,
+            stack,
+            u32::from(code),
+            u32::from(data),
+            u32::from(guest_fs()),
+        )
+    };
+    if parallel {
+        acquire_lease();
+    }
+    result
+}
+
+pub(super) struct ServiceLease;
+impl ServiceLease {
+    pub(super) fn enter() -> Option<Self> {
+        if !PARALLEL.get() || LEASE.with(|slot| slot.borrow().is_some()) {
+            return None;
+        }
+        acquire_lease();
+        Some(Self)
+    }
+}
+impl Drop for ServiceLease {
+    fn drop(&mut self) {
+        release_lease();
+    }
+}
+
 // All process RefCell borrows must end before this function. The closure may
 // touch only independently synchronized host objects, never shared guest state.
 pub(super) fn without_cpu<T>(_image: &LoadedImage32<'_>, call: impl FnOnce() -> T) -> T {
     let saved = alkyhol::ffi::GetLastError();
-    let lease = LEASE
-        .with(|slot| slot.borrow_mut().take())
-        .unwrap_or_else(|| unsupported("guest wait without an exclusive CPU lease"));
-    drop(lease);
+    release_lease();
     super::window_host32::pump_tasks();
     let value = call();
     super::window_host32::pump_tasks();
-    let lease = CpuLease::acquire(true).unwrap_or_else(|e| unsupported(&e));
-    LEASE.with(|slot| *slot.borrow_mut() = Some(lease));
+    acquire_lease();
     QUANTUM.with(|q| *q.borrow_mut() = Some((0, std::time::Instant::now())));
     alkyhol::ffi::SetLastError(saved);
     value
@@ -323,6 +381,7 @@ pub(super) fn create(image: &LoadedImage32<'_>, a: &[u32; 8]) -> u32 {
     let entry = a[2];
     let parameter = a[3];
     let snapshot = crate::process::child_snapshot().unwrap_or_else(|e| unsupported(&e));
+    let parallel = image.cpu.parallel_guest_threads;
     let (send, receive) = std::sync::mpsc::channel();
     let join = std::thread::Builder::new()
         .name("Alkyhol PE32 worker".into())
@@ -339,8 +398,9 @@ pub(super) fn create(image: &LoadedImage32<'_>, a: &[u32; 8]) -> u32 {
             drop(suspended);
             // SAFETY: Box allocation and image outlive every worker. The parent
             // holds the CPU lease until insertion is complete. Every subsequent
-            // guest/process access is under that same exclusive lease; suspended
-            // host waits touch only Arc/atomic/Mutex state. Workers never clone Rc.
+            // mutable host process state is accessed under the same lease.
+            // Native guest execution outside it uses only mapped guest memory.
+            // Workers never clone Rc.
             unsafe {
                 run(
                     image_at as *const LoadedImage32<'_>,
@@ -348,6 +408,7 @@ pub(super) fn create(image: &LoadedImage32<'_>, a: &[u32; 8]) -> u32 {
                     entry,
                     parameter,
                     snapshot,
+                    parallel,
                 );
             }
         })
@@ -391,10 +452,12 @@ unsafe fn run(
     entry: u32,
     parameter: u32,
     snapshot: crate::process::ChildSnapshot,
+    parallel: bool,
 ) {
     let record = unsafe { &*record };
-    let _thread =
-        ThreadEntry::install(record.teb.base as u32, true).unwrap_or_else(|e| unsupported(&e));
+    let _thread = ThreadEntry::install(record.teb.base as u32, true, parallel)
+        .unwrap_or_else(|e| unsupported(&e));
+    let image = unsafe { &*image };
     let native_segments = super::segment_state();
     let native_fs = native_segments[3];
     if ![0, 0x23].contains(&native_fs) {
@@ -402,10 +465,9 @@ unsafe fn run(
     }
     record.host_fs.set(native_fs);
     CURRENT.set(record);
-    super::ACTIVE.set(image.cast::<c_void>());
+    super::ACTIVE.set(ptr::from_ref(image).cast::<c_void>());
     let _process =
         crate::ProcessContext::install_snapshot(snapshot).unwrap_or_else(|e| unsupported(&e));
-    let image = unsafe { &*image };
     let top = record.stack.base as u32 + PAGE as u32 + STACK as u32 - 32;
     record.callback_stack.set(top);
     notify(image, 2);
@@ -414,15 +476,7 @@ unsafe fn run(
         (frame as *mut u32).write(image.gates.base as u32);
         ((frame + 4) as *mut u32).write(parameter);
     }
-    let result = unsafe {
-        super::alkyhol_enter_pe32(
-            entry,
-            frame,
-            u32::from(image.code),
-            u32::from(image.data),
-            u32::from(guest_fs()),
-        )
-    };
+    let result = unsafe { enter_guest(entry, frame, image.code, image.data) };
     if super::segment_state() != native_segments {
         unsupported("PE32 worker did not restore native segment selectors");
     }
@@ -648,10 +702,11 @@ pub(super) fn wait_event_set(
     })
 }
 pub(super) fn switch_to_thread(image: &LoadedImage32<'_>) -> u32 {
-    let before = super::CPU_TICKETS.lock().unwrap().serving;
+    let parallel = parallel_guest();
+    let before = super::execution_epoch(parallel);
     without_cpu(image, std::thread::yield_now);
-    let after = super::CPU_TICKETS.lock().unwrap().serving;
-    // Releasing and immediately reacquiring costs one ticket. More than one
-    // means another guest thread actually ran under the FIFO CPU lease.
-    u32::from(after - before > 1)
+    let after = super::execution_epoch(parallel);
+    // The caller always reacquires once. Count observed admissions from other
+    // threads, including host calls in the parallel profile.
+    u32::from(after.wrapping_sub(before) > 1)
 }

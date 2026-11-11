@@ -1,4 +1,4 @@
-//! Closed, single-thread PE32 process ownership. No filesystem DLL search.
+//! Closed PE32 process ownership. No filesystem DLL search.
 use super::{CallingConvention32, Cpu32, LoadedImage32, MapContext32, Module32, Phase32};
 use crate::{ExportTarget, Image, ImportSymbol, ProcessContext, Result};
 use std::{collections::BTreeMap, rc::Rc};
@@ -31,6 +31,7 @@ struct GuestProfile32 {
     utc: bool,
     version_workstation: bool,
     host_machine_info: bool,
+    parallel_guest_threads: bool,
     registry: Option<super::registry32::State>,
     mutexes: Option<super::mutex32::State>,
     sections: Option<super::section32::State>,
@@ -303,6 +304,10 @@ pub struct ProcessOptions32 {
     /// Opt into host-backed x86 machine information and enforced ordinary/LAA
     /// address bands. Other CPU vendors, page sizes and >32 CPU groups stop.
     pub host_machine_info: bool,
+    /// Experimental Rosetta execution with native guest threads and serialized
+    /// host dispatch. Guest code must synchronize lifetimes and access to any
+    /// memory shared with other threads or passed to an API.
+    pub parallel_guest_threads: bool,
     /// Explicit NT 6.2/build 9200 workstation persona, no service pack/suites.
     /// Enables extended A/W records without inferring a Windows installation.
     pub version_workstation: bool,
@@ -469,6 +474,9 @@ impl<'a> ProcessImage32<'a> {
         process: &'a ProcessContext,
         options: &ProcessOptions32,
     ) -> Result<Self> {
+        if options.parallel_guest_threads && !cfg!(target_arch = "x86_64") {
+            return Err("parallel PE32 guest threads require the Rosetta runner".into());
+        }
         let system_directory = options
             .system_directory
             .as_deref()
@@ -559,6 +567,7 @@ impl<'a> ProcessImage32<'a> {
                     utc: matches!(options.time_zone, Some(TimeZone32::Utc)),
                     version_workstation: options.version_workstation,
                     host_machine_info: options.host_machine_info,
+                    parallel_guest_threads: options.parallel_guest_threads,
                     registry,
                     mutexes,
                     sections,
@@ -598,6 +607,7 @@ impl<'a> ProcessImage32<'a> {
         cpu.casefold_file_opens = directories.casefold_file_opens;
         cpu.utc_timezone = directories.utc;
         cpu.version_workstation = directories.version_workstation;
+        cpu.parallel_guest_threads = directories.parallel_guest_threads;
         cpu.registry = directories.registry.map(std::cell::RefCell::new);
         cpu.mutexes = directories.mutexes.map(std::cell::RefCell::new);
         if let Some(sections) = directories.sections {
@@ -743,6 +753,9 @@ impl<'a> ProcessImage32<'a> {
                 entry: mappings[*index].entry,
             })
             .collect();
+        if let Some(diagnostic) = &cpu.diagnostic {
+            diagnostic.bind_modules(&cpu.modules.borrow())?;
+        }
         let mut result = Self {
             mappings,
             attached: 0,

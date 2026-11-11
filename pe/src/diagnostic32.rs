@@ -1,6 +1,6 @@
 //! Opt-in startup instrumentation. Unimplemented imports have inaccessible
 //! addresses: function execution AND data reads stop, never fabricate values.
-use super::{LoadedImage32, LowMapping, PAGE, STACK};
+use super::{LoadedImage32, LowMapping, Module32, PAGE, STACK};
 use crate::{ImportSymbol, Result};
 struct Trap {
     owner: String,
@@ -8,9 +8,16 @@ struct Trap {
     symbol: ImportSymbol,
     label: String,
 }
+struct FaultModule {
+    base: u64,
+    end: u64,
+    name: String,
+}
+
 pub(super) struct Traps {
     memory: LowMapping,
     entries: Vec<Trap>,
+    modules: std::sync::OnceLock<Vec<FaultModule>>,
 }
 impl Traps {
     pub(super) fn new(entries: Vec<(String, String, ImportSymbol)>) -> Result<Self> {
@@ -31,7 +38,24 @@ impl Traps {
                 }
             })
             .collect();
-        Ok(Self { memory, entries })
+        Ok(Self {
+            memory,
+            entries,
+            modules: std::sync::OnceLock::new(),
+        })
+    }
+    pub(super) fn bind_modules(&self, modules: &[Module32]) -> Result<()> {
+        let snapshot = modules
+            .iter()
+            .map(|m| FaultModule {
+                base: u64::from(m.base),
+                end: u64::from(m.base) + m.size as u64,
+                name: m.name.clone(),
+            })
+            .collect();
+        self.modules
+            .set(snapshot)
+            .map_err(|_| "diagnostic module attribution already initialized".into())
     }
     pub(super) fn address(&self, owner: &str, module: &str, symbol: &ImportSymbol) -> Option<u32> {
         self.entries
@@ -123,17 +147,19 @@ pub(super) fn fault(image: &LoadedImage32<'_>, exception: &[u8; 16], registers: 
             }
         }
     }
-    // This registry cannot change while guest instructions execute. Avoid TLS
-    // access and RefCell bookkeeping on the signal path.
-    for module in unsafe { &*image.cpu.modules.as_ptr() } {
-        if source >= u64::from(module.base) && source < u64::from(module.base) + module.size as u64
-        {
-            out(b"; source_module=");
-            out(module.name.as_bytes());
-            out(b"+");
-            hex(source - u64::from(module.base));
-            break;
-        }
+    // The loader may be updating its registry on a different host thread.
+    // Only the immutable mapping snapshot is safe on this signal path.
+    if let Some(module) = image
+        .cpu
+        .diagnostic
+        .as_ref()
+        .and_then(|t| t.modules.get())
+        .and_then(|modules| modules.iter().find(|m| source >= m.base && source < m.end))
+    {
+        out(b"; source_module=");
+        out(module.name.as_bytes());
+        out(b"+");
+        hex(source - module.base);
     }
     out(b"\n");
     unsafe { _exit(78) }

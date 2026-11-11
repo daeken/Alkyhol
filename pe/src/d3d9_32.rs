@@ -2709,8 +2709,13 @@ fn profile_present(
         super::dsound32::report(image);
         if super::perf32::enabled() {
             let (service_seconds, service_calls) = super::perf32::take();
+            let scheduling = if super::thread32::parallel_guest() {
+                "host-gate"
+            } else {
+                "CPU-handoff"
+            };
             eprintln!(
-                "PE32 D3D9 service timing [Win32,draw,other-D3D9,CPU-handoff]: seconds={service_seconds:?} calls={service_calls:?}"
+                "PE32 D3D9 service timing [Win32,draw,other-D3D9,{scheduling}]: seconds={service_seconds:?} calls={service_calls:?}"
             );
             for (id, seconds, calls) in super::perf32::take_apis().into_iter().take(8) {
                 let (name, _) = super::gateway_signature(id).unwrap();

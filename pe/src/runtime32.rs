@@ -9,7 +9,10 @@ use std::{
     marker::PhantomData,
     ptr,
     rc::Rc,
-    sync::{Arc, Condvar, Mutex, MutexGuard, OnceLock},
+    sync::{
+        Arc, Condvar, Mutex, MutexGuard, OnceLock, TryLockError,
+        atomic::{AtomicBool, AtomicU64, Ordering},
+    },
 };
 #[path = "raise32.rs"]
 mod raise32;
@@ -659,9 +662,10 @@ fn selectors() -> Result<(u16, u16)> {
         })
         .clone()
 }
-// The process state and borrowed guest buffers currently require exclusive
-// execution. TEB selector ownership is independent of this admission lock.
+// All host accesses to shared process state use this lease. Serialized guest
+// entry also holds it across guest execution. Root ownership spans both modes.
 static GUEST_CPU: Mutex<()> = Mutex::new(());
+static ROOT_ENTRY: Mutex<()> = Mutex::new(());
 // FIFO admission prevents a polling main thread from starving behind workers.
 struct CpuTickets {
     next: u64,
@@ -716,13 +720,65 @@ fn teb_descriptor(base: u32) -> u64 {
         | (u64::from((base >> 16) & 0xff) << 32)
         | (u64::from(base >> 24) << 56)
 }
+// A FIFO turn on every import forces an OS handoff between threads that
+// continually call Win32. The parallel profile uses the host mutex directly.
+// Host main still needs bounded wakeups to service AppKit requests.
+static HOST_ADMISSIONS: AtomicU64 = AtomicU64::new(0);
+static MAIN_GATE_WAITING: AtomicBool = AtomicBool::new(false);
+static MAIN_GATE_THREAD: OnceLock<std::thread::Thread> = OnceLock::new();
+
+fn acquire_host_gate(wait: bool) -> Result<MutexGuard<'static, ()>> {
+    match GUEST_CPU.try_lock() {
+        Ok(guard) => return Ok(guard),
+        Err(TryLockError::Poisoned(_)) => return Err("PE32 host gate poisoned".into()),
+        Err(TryLockError::WouldBlock) if !wait => return Err("PE32 host gate is busy".into()),
+        Err(TryLockError::WouldBlock) => (),
+    }
+    if !window_host32::is_main_thread() {
+        return GUEST_CPU
+            .lock()
+            .map_err(|_| "PE32 host gate poisoned".into());
+    }
+    MAIN_GATE_THREAD.get_or_init(std::thread::current);
+    MAIN_GATE_WAITING.store(true, Ordering::Release);
+    let result = loop {
+        match GUEST_CPU.try_lock() {
+            Ok(guard) => break Ok(guard),
+            Err(TryLockError::Poisoned(_)) => break Err("PE32 host gate poisoned".into()),
+            Err(TryLockError::WouldBlock) => {
+                window_host32::pump_tasks();
+                std::thread::park_timeout(std::time::Duration::from_micros(100));
+            }
+        }
+    };
+    MAIN_GATE_WAITING.store(false, Ordering::Release);
+    result
+}
+
+fn execution_epoch(parallel: bool) -> u64 {
+    if parallel {
+        HOST_ADMISSIONS.load(Ordering::Relaxed)
+    } else {
+        CPU_TICKETS.lock().unwrap().serving
+    }
+}
+
 struct CpuLease {
     guard: Option<MutexGuard<'static, ()>>,
-    ticket: u64,
+    ticket: Option<u64>,
     profile_started: Option<std::time::Instant>,
 }
 impl CpuLease {
-    fn acquire(wait: bool) -> Result<Self> {
+    fn acquire(wait: bool, parallel: bool) -> Result<Self> {
+        if parallel {
+            let guard = acquire_host_gate(wait)?;
+            HOST_ADMISSIONS.fetch_add(1, Ordering::Relaxed);
+            return Ok(Self {
+                guard: Some(guard),
+                ticket: None,
+                profile_started: perf32::start(),
+            });
+        }
         let (guard, ticket) = if !wait {
             let mut queue = CPU_TICKETS
                 .lock()
@@ -770,7 +826,7 @@ impl CpuLease {
         };
         Ok(Self {
             guard: Some(guard),
-            ticket,
+            ticket: Some(ticket),
             profile_started: perf32::start(),
         })
     }
@@ -779,7 +835,13 @@ impl Drop for CpuLease {
     fn drop(&mut self) {
         perf32::record_lease(self.profile_started.take());
         drop(self.guard.take());
-        finish_cpu_ticket(self.ticket);
+        if let Some(ticket) = self.ticket {
+            finish_cpu_ticket(ticket);
+        } else if MAIN_GATE_WAITING.load(Ordering::Acquire)
+            && let Some(main) = MAIN_GATE_THREAD.get()
+        {
+            main.unpark();
+        }
     }
 }
 #[cfg(target_arch = "x86_64")]
@@ -1070,6 +1132,7 @@ struct Cpu32 {
     builtins: RefCell<std::collections::BTreeMap<String, LowMapping>>,
     executable: Cell<u32>,
     diagnostic: Option<diagnostic32::Traps>,
+    parallel_guest_threads: bool,
     trace_first_calls: bool,
     trace_seen: RefCell<std::collections::BTreeSet<u32>>,
     heap: RefCell<heap32::Heap>,
@@ -1204,6 +1267,7 @@ impl Cpu32 {
             builtins: RefCell::new(Default::default()),
             executable: Cell::new(0),
             diagnostic: None,
+            parallel_guest_threads: false,
             trace_first_calls: matches!(
                 std::env::var("ALKYHOL_PE32_TRACE_CALLS").as_deref(),
                 Ok("first")
@@ -2080,6 +2144,9 @@ impl<'a> LoadedImage32<'a> {
             if !slot.get().is_null() {
                 return Err("nested PE32 entry unsupported".into());
             }
+            let _root = ROOT_ENTRY
+                .try_lock()
+                .map_err(|_| "another PE32 root entry is active")?;
             if self.cpu.exit.get().is_some() && self.cpu.phase.get() != Phase32::Detaching {
                 return Err("PE32 process already requested ExitProcess".into());
             }
@@ -2096,7 +2163,11 @@ impl<'a> LoadedImage32<'a> {
             } else {
                 None
             };
-            let _thread = thread32::ThreadEntry::install(self.cpu.teb().base as u32, false)?;
+            let _thread = thread32::ThreadEntry::install(
+                self.cpu.teb().base as u32,
+                false,
+                self.cpu.parallel_guest_threads,
+            )?;
             slot.set(ptr::from_ref(self).cast());
             let _guard = ActiveGuard;
             let sp = self.cpu.stack().base as u32 + offset as u32;
@@ -2121,15 +2192,7 @@ impl<'a> LoadedImage32<'a> {
                     );
                 }
             }
-            let result = unsafe {
-                alkyhol_enter_pe32(
-                    entry,
-                    sp,
-                    u32::from(self.code),
-                    u32::from(self.data),
-                    u32::from(thread32::guest_fs()),
-                )
-            };
+            let result = unsafe { thread32::enter_guest(entry, sp, self.code, self.data) };
             self.cpu.threads.borrow().require_completed();
             if segment_state() != before {
                 unsupported("PE32 host segment selectors were not restored");
@@ -2347,6 +2410,12 @@ extern "C" fn dispatch(id: u32, arguments: *const u32) -> u64 {
     if seh32::in_handler() {
         seh32::async_fail(b"Alkyhol PE32 unsupported: imports from an exception handler\n");
     }
+    let parallel = thread32::parallel_guest();
+    let parallel_wait = if parallel { perf32::start() } else { None };
+    let boundary = thread32::ServiceLease::enter();
+    if boundary.is_some() {
+        perf32::record(3, None, parallel_wait);
+    }
     let exit_state = || {
         ACTIVE.with(|slot| {
             unsafe { slot.get().cast::<LoadedImage32<'_>>().as_ref() }
@@ -2371,9 +2440,11 @@ extern "C" fn dispatch(id: u32, arguments: *const u32) -> u64 {
         };
         perf32::record(category, Some(id), Some(timer));
     }
-    let timer = perf32::start();
-    thread32::yield_cpu();
-    perf32::record(3, None, timer);
+    if boundary.is_none() {
+        let timer = if parallel { None } else { perf32::start() };
+        thread32::yield_cpu();
+        perf32::record(3, None, timer);
+    }
     // ExitProcess and CRT termination escapes are non-returning guest operations.
     // The assembly gate uses
     // a separate control bit, never a forged stdcall return-stack observation.
@@ -3117,6 +3188,7 @@ mod tests {
                 builtins: RefCell::new(Default::default()),
                 executable: Cell::new(0),
                 diagnostic: None,
+                parallel_guest_threads: false,
                 trace_first_calls: matches!(
                     std::env::var("ALKYHOL_PE32_TRACE_CALLS").as_deref(),
                     Ok("first")
@@ -3316,7 +3388,7 @@ mod tests {
         assert_eq!(guest_error, 127);
         alkyhol::ffi::SetLastError(previous);
         let _occupied = GUEST_CPU.lock().unwrap();
-        assert!(CpuLease::acquire(false).is_err());
+        assert!(CpuLease::acquire(false, false).is_err());
     }
     #[test]
     fn tls_buffer_permissions_use_the_logical_template_extent_without_page_padding() {

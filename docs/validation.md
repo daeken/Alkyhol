@@ -9135,3 +9135,59 @@ recursive ownership, foreign release, thread-exit abandonment and closure.
 The 255 PE library tests, all-target PE Clippy and native ARM shared-runtime
 check pass with this change. CI first stopped on the selector commit's Rust
 formatting check. This follow-up also passes the full PE formatting check.
+
+### Parallel Rosetta guest instructions with serialized host calls
+
+The experimental `--parallel-guest-threads` profile releases the execution
+lease during outer x86 guest entry and reacquires it at the host gateway.
+Nested callbacks use the caller's lease. The root entry stays exclusive
+across the entire invocation. Diagnostic fault attribution uses an
+immutable module map, independent of loader mutations. Native AppKit events
+are pumped outside the host gate while captured events drain under the gate.
+
+An owned PE requires the original main and two worker threads to rendezvous
+using x86 atomics without any intervening API call. The serialized control hits
+the two-second process deadline. The parallel runner completes and checks
+three distinct TEBs, 6,144 host atomic updates, 384 heap allocate/write/free
+lifecycles, thread-local LastError and both worker exit codes. The existing
+CI builds the witness in the hosted Rosetta job and sends the identical PE to
+the native Windows comparison. Local PE library tests pass 255 with two ignored.
+PE formatting, all-target Clippy, the native ARM runtime compile and 86
+source-layer tests pass.
+
+The first DAO parallel trial remained on the splash screen for over three
+minutes. A sample observed the splash worker waiting for AppKit while holding
+the host gate. Releasing that wait and waking host main on lease completion
+allowed the FIFO variant to reach the matched Castle Cousland view in 203
+seconds. Its frame rate regressed against the previous serialized result.
+Using the host mutex directly removes FIFO allocation and a forced handoff
+from each contended API entry. That run reached the same view in 90 seconds.
+
+The M4 replays use the same original executable and DLLs, saved camera,
+shader-cache seed and 1710×1107 backbuffer. Only throughput and first-call
+logging are enabled. Each window covers twelve complete Present intervals.
+
+| Schedule | Frames | Elapsed | Frame time | FPS |
+| --- | ---: | ---: | ---: | ---: |
+| Earlier serialized control, `032a76d` | 211 | 61.717 s | 292.5 ms | 3.42 |
+| Parallel guest, FIFO host gate | 131 | 63.067 s | 481.4 ms | 2.08 |
+| Parallel guest, direct host mutex | 340 | 61.660 s | 181.4 ms | 5.51 |
+
+Both parallel runs match the saved-view screenshot crop with a mean RGB
+difference rounding to 0.0. They average about 264 cached draws and 1,198
+upload writes per frame, with zero new pipeline builds or staging drains.
+The direct-mutex run's five-second rates span 5.11–6.21 FPS. Background
+activity remains uncontrolled. This profile stays opt-in while compatibility
+and guest-memory synchronization coverage expand.
+
+Twelve repeated runs of the parallel PE with heap lifecycles pass. The
+unchanged worker, deferred-library, worker-window, software exception and
+unnamed-mutex witnesses pass with parallel mode enabled. The guarded import
+function and data cases still stop explicitly with the original module
+attribution.
+
+The direct-mutex DAO run receives keyboard movement, writes new quicksave
+state and metadata plus a valid 512×256 BC1 thumbnail, and loads that
+quicksave back into the rendered world. The save bytes stay intact after F9.
+AudioQueue continues consuming nonzero PCM. These checks use isolated
+Documents copies. The original input hashes are unchanged at shutdown.
