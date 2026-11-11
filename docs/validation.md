@@ -8964,3 +8964,40 @@ keyboard and mouse actions then create a separate pause-menu manual save with
 state, metadata, portrait, story and thumbnail. Earlier manual slots retain
 their bytes. AudioQueue continues consuming nonzero audio. These operations
 use an isolated profile copy and leave the primary saves intact.
+
+### FIFO handoff experiment and per-thread timing
+
+The lease counters had been emitted from the gamma-ramp handler. They now
+report at the completed-Present interval alongside the service timings. This
+was verified in the original game's menu and Castle Cousland world. In one
+5.26-second world interval there were 4,919 completed guest execution leases.
+The busiest thread held the lease for 2.69 seconds across 490
+turns, while nine other threads held it for under 0.03 seconds each across
+roughly 340 turns apiece. These totals include host work under the lease.
+
+A local scheduler experiment reserved the yielding thread's next FIFO position
+before releasing its current slot, skipped switches when no other ticket was
+queued, and let the native main thread wake on its own ticket while continuing
+to service AppKit tasks. The unchanged thread, deferred DLL and worker-window
+PE witnesses passed, including TEB/TLS, LastError and UI callbacks. The normal
+PE suite passed 254 tests and the native ARM shared runtime compiled.
+The trial's idle return follows the documented zero result when no other
+thread is ready. [Microsoft SwitchToThread documentation](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-switchtothread)
+
+The original Castle Cousland replay under this trial presents 121 frames in
+63.862 seconds, averaging 527.8 ms per frame. The preceding run with the
+existing scheduler presents 146 in 62.637 seconds, averaging 429.0 ms.
+Both use the same quicksave, camera, 1710×1107 backbuffer and profiling flags.
+The trial was slower in this pair and remains outside the shipped scheduler.
+The confirmed profiler correction is retained.
+
+Two isolated physical Rosetta probes used distinct FS selectors for two
+pthread guests. Both guests entered i386 mode and met at a guest-memory
+rendezvous, then checked their separate FS-backed markers one million times
+per thread. A second probe added 4,096 guest-to-host-to-guest calls per thread,
+serialized the host callback under a mutex and checked both the host FS
+restoration and the restored guest marker. All five runs passed. These probes
+establish the hardware transition behavior for a future parallel runtime.
+Alkyhol's game runner still shares its exclusive guest slot. Host state
+ownership, nested callbacks and exception handling still need runtime work
+for concurrent execution. Raw probes and benchmark artifacts remain local.

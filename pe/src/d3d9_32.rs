@@ -2716,6 +2716,11 @@ fn profile_present(
                 let (name, _) = super::gateway_signature(id).unwrap();
                 eprintln!("PE32 D3D9 API timing: api={name} seconds={seconds:.6} calls={calls}");
             }
+            for (thread, seconds, leases) in super::perf32::take_leases() {
+                eprintln!(
+                    "PE32 D3D9 guest lease timing: thread={thread:?} seconds={seconds:.6} leases={leases}"
+                );
+            }
         }
         let frames = period.frames;
         if phases.is_some() {
@@ -3525,11 +3530,6 @@ fn dispatch_inner(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32 {
             if a[1] != 0 || a[2] > 1 {
                 unsupported(
                     "SetGammaRamp supports only implicit swap chain zero and documented flags",
-                );
-            }
-            for (thread, seconds, leases) in super::perf32::take_leases() {
-                eprintln!(
-                    "PE32 D3D9 guest lease timing: thread={thread:?} seconds={seconds:.6} leases={leases}"
                 );
             }
             checked(image, a[3], 3 * 256 * 2, false);
