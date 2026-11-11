@@ -1,10 +1,10 @@
-//! Unnamed process-local mutexes with real guest-thread ownership. All metadata
-//! transitions occur under the CPU lease; contended waits release it. Native
-//! worker exit abandons owned mutexes before signaling thread completion.
+//! Unnamed process-local mutexes with independently synchronized ownership.
+//! Native worker exit abandons owned mutexes before signaling completion.
 use super::{LoadedImage32, LowMapping, PAGE, unsupported};
 use crate::Result;
 use std::{
     collections::BTreeMap,
+    sync::{Arc, Condvar, Mutex},
     time::{Duration, Instant},
 };
 #[derive(Default)]
@@ -40,47 +40,109 @@ impl Ownership {
         }
         true
     }
-    fn abandon(&mut self, thread: u32) {
-        if self.depth != 0 && self.owner == thread {
-            self.depth = 0;
-            self.owner = 0;
-            self.abandoned = true;
+    fn abandon(&mut self, thread: u32) -> bool {
+        if self.depth == 0 || self.owner != thread {
+            return false;
+        }
+        self.depth = 0;
+        self.owner = 0;
+        self.abandoned = true;
+        true
+    }
+}
+#[derive(Default)]
+struct Waitable {
+    ownership: Mutex<Ownership>,
+    available: Condvar,
+}
+impl Waitable {
+    fn poll(&self, thread: u32) -> Result<u32> {
+        self.ownership.lock().unwrap().poll(thread)
+    }
+
+    fn wait(&self, thread: u32, deadline: Option<Instant>) -> Result<u32> {
+        let main = super::window_host32::is_main_thread();
+        let mut ownership = self.ownership.lock().unwrap();
+        loop {
+            let result = ownership.poll(thread)?;
+            if result != 258 {
+                return Ok(result);
+            }
+            let remaining = deadline.map(|end| end.saturating_duration_since(Instant::now()));
+            if remaining.is_some_and(|duration| duration.is_zero()) {
+                return Ok(258);
+            }
+            if main {
+                // The owner may require synchronous AppKit work to release.
+                let slice = Duration::from_millis(1);
+                (ownership, _) = self
+                    .available
+                    .wait_timeout(ownership, remaining.map_or(slice, |time| time.min(slice)))
+                    .unwrap();
+                drop(ownership);
+                super::window_host32::pump_tasks();
+                ownership = self.ownership.lock().unwrap();
+            } else if let Some(remaining) = remaining {
+                (ownership, _) = self.available.wait_timeout(ownership, remaining).unwrap();
+            } else {
+                ownership = self.available.wait(ownership).unwrap();
+            }
+        }
+    }
+
+    fn release(&self, thread: u32) -> bool {
+        let mut ownership = self.ownership.lock().unwrap();
+        let released = ownership.release(thread);
+        if released && ownership.depth == 0 {
+            self.available.notify_one();
+        }
+        released
+    }
+
+    fn abandon(&self, thread: u32) {
+        if self.ownership.lock().unwrap().abandon(thread) {
+            self.available.notify_one();
         }
     }
 }
+
 struct Entry {
     _token: LowMapping,
-    ownership: Ownership,
-    waiters: u32,
+    state: Arc<Waitable>,
 }
 #[derive(Default)]
 pub(super) struct State {
-    entries: BTreeMap<u32, Entry>,
+    entries: Mutex<BTreeMap<u32, Entry>>,
 }
 impl State {
     pub(super) fn contains(&self, handle: u32) -> bool {
-        self.entries.contains_key(&handle)
+        self.entries.lock().unwrap().contains_key(&handle)
     }
-    pub(super) fn clear(&mut self) {
-        self.entries.clear();
+    pub(super) fn clear(&self) {
+        self.entries.lock().unwrap().clear();
     }
-    pub(super) fn abandon(&mut self, thread: u32) {
-        for entry in self.entries.values_mut() {
-            entry.ownership.abandon(thread);
+    pub(super) fn abandon(&self, thread: u32) {
+        for entry in self.entries.lock().unwrap().values() {
+            entry.state.abandon(thread);
         }
     }
-    pub(super) fn close(&mut self, handle: u32) -> Result<bool> {
-        if self.entries.get(&handle).is_some_and(|e| e.waiters != 0) {
+    pub(super) fn close(&self, handle: u32) -> Result<bool> {
+        let mut entries = self.entries.lock().unwrap();
+        if entries
+            .get_mut(&handle)
+            .is_some_and(|entry| Arc::get_mut(&mut entry.state).is_none())
+        {
             return Err(
-                "closing a mutex during a pending wait is outside the defined profile".into(),
+                "closing a mutex during an active operation is outside the defined profile".into(),
             );
         }
-        Ok(self.entries.remove(&handle).is_some())
+        Ok(entries.remove(&handle).is_some())
     }
 }
+
 pub(super) fn create(image: &LoadedImage32<'_>, initial: bool) -> u32 {
-    let mut state = image.cpu.unnamed_mutexes.borrow_mut();
-    if state.entries.len() >= 1024 {
+    let mut entries = image.cpu.unnamed_mutexes.entries.lock().unwrap();
+    if entries.len() >= 1024 {
         unsupported("unnamed mutex handle budget exhausted");
     }
     let token = image
@@ -91,33 +153,36 @@ pub(super) fn create(image: &LoadedImage32<'_>, initial: bool) -> u32 {
         .protect(0, PAGE, 0)
         .unwrap_or_else(|e| unsupported(&e));
     let handle = token.base as u32;
-    let mut ownership = Ownership::default();
+    let state = Arc::new(Waitable::default());
     if initial {
-        ownership.poll(alkyhol::ffi::GetCurrentThreadId()).unwrap();
+        state.poll(alkyhol::ffi::GetCurrentThreadId()).unwrap();
     }
-    state.entries.insert(
+    entries.insert(
         handle,
         Entry {
             _token: token,
-            ownership,
-            waiters: 0,
+            state,
         },
     );
     alkyhol::ffi::SetLastError(0);
     handle
 }
+
 pub(super) fn operation(image: &LoadedImage32<'_>, args: &[u32; 8], wait: bool) -> u32 {
     let thread = alkyhol::ffi::GetCurrentThreadId();
-    if !wait {
-        let released = image
+    let state = Arc::clone(
+        &image
             .cpu
             .unnamed_mutexes
-            .borrow_mut()
             .entries
-            .get_mut(&args[0])
+            .lock()
+            .unwrap()
+            .get(&args[0])
             .unwrap_or_else(|| unsupported("unknown unnamed mutex handle"))
-            .ownership
-            .release(thread);
+            .state,
+    );
+    if !wait {
+        let released = state.release(thread);
         if !released {
             alkyhol::ffi::SetLastError(288);
         }
@@ -127,35 +192,13 @@ pub(super) fn operation(image: &LoadedImage32<'_>, args: &[u32; 8], wait: bool) 
         unsupported("alertable unnamed mutex waits require APC delivery");
     }
     let start = Instant::now();
-    let mut registered = false;
-    loop {
-        let mut state = image.cpu.unnamed_mutexes.borrow_mut();
-        let entry = state
-            .entries
-            .get_mut(&args[0])
-            .unwrap_or_else(|| unsupported("mutex closed during an active wait"));
-        let result = entry
-            .ownership
-            .poll(thread)
-            .unwrap_or_else(|e| unsupported(&e));
-        let timeout =
-            args[1] != u32::MAX && start.elapsed() >= Duration::from_millis(args[1] as u64);
-        if result != 258 || timeout {
-            if registered {
-                entry.waiters -= 1;
-            }
-            return result;
-        }
-        if !registered {
-            entry.waiters += 1;
-            registered = true;
-        }
-        drop(state);
-        super::thread32::without_cpu(image, || {
-            super::window_host32::pump_tasks();
-            std::thread::sleep(Duration::from_millis(1));
-        });
+    let result = state.poll(thread).unwrap_or_else(|e| unsupported(&e));
+    if result != 258 || args[1] == 0 {
+        return result;
     }
+    let deadline = (args[1] != u32::MAX).then(|| start + Duration::from_millis(u64::from(args[1])));
+    super::thread32::without_cpu(image, || state.wait(thread, deadline))
+        .unwrap_or_else(|e| unsupported(&e))
 }
 #[cfg(test)]
 mod tests {

@@ -152,7 +152,9 @@ impl ThreadEntry {
         let selector = TebSelector::allocate(teb)?;
         GUEST_FS.set(selector.value());
         LEASE.with(|slot| *slot.borrow_mut() = Some(lease));
-        Ok(Self { _selector: selector })
+        Ok(Self {
+            _selector: selector,
+        })
     }
 }
 impl Drop for ThreadEntry {
@@ -391,8 +393,8 @@ unsafe fn run(
     snapshot: crate::process::ChildSnapshot,
 ) {
     let record = unsafe { &*record };
-    let _thread = ThreadEntry::install(record.teb.base as u32, true)
-        .unwrap_or_else(|e| unsupported(&e));
+    let _thread =
+        ThreadEntry::install(record.teb.base as u32, true).unwrap_or_else(|e| unsupported(&e));
     let native_segments = super::segment_state();
     let native_fs = native_segments[3];
     if ![0, 0x23].contains(&native_fs) {
@@ -457,7 +459,6 @@ unsafe fn run(
     image
         .cpu
         .unnamed_mutexes
-        .borrow_mut()
         .abandon(alkyhol::ffi::GetCurrentThreadId());
     image
         .cpu

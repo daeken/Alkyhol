@@ -9119,3 +9119,19 @@ and bounded hardware exception PEs pass on physical Rosetta. The thread-family
 witness covers actual contended guest critical sections. A new host unit also
 checks that a native waiter acquires only after the recursive owner performs
 its final release.
+
+Both normal and relocated hardware SEH reports match the 32 frozen native
+Windows DWORDs and retain the four explicit host-only rejections. The exact
+source and PE identities match the frozen observation. The final compiled
+transition probe also passed 50 warmed runs and 50 cold runs in a later
+batch, consistent with the earlier cold failure being intermittent.
+
+Unnamed A/W mutexes now synchronize their handle table and ownership
+independently. A worker waits on the object until release, abandonment or its
+deadline, without the former 1 ms polling. The native main thread still
+services AppKit requests while waiting. The unchanged 39-word mutex PE matches
+its retained physical Rosetta report byte-for-byte, covering finite waits,
+recursive ownership, foreign release, thread-exit abandonment and closure.
+The 255 PE library tests, all-target PE Clippy and native ARM shared-runtime
+check pass with this change. CI first stopped on the selector commit's Rust
+formatting check. This follow-up also passes the full PE formatting check.

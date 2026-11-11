@@ -496,7 +496,6 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
             if image
                 .cpu
                 .unnamed_mutexes
-                .borrow_mut()
                 .close(args[0])
                 .unwrap_or_else(|e| unsupported(&e))
             {

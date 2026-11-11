@@ -307,7 +307,7 @@ pub(super) fn handle_information(image: &LoadedImage32<'_>, handle: u32, out: u3
         || (0x70000001..=0x70000003).contains(&handle)
         || image.cpu.events.borrow().contains(handle)
         || image.cpu.threads.borrow().contains(handle)
-        || image.cpu.unnamed_mutexes.borrow().contains(handle)
+        || image.cpu.unnamed_mutexes.contains(handle)
         || image.cpu.watches.borrow().contains(handle);
     alkyhol::ffi::SetLastError(if known { 120 } else { 6 });
     0

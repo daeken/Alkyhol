@@ -99,10 +99,10 @@ mod shell_folder32;
 mod startup32;
 #[path = "sync32.rs"]
 mod sync32;
-#[path = "thread32.rs"]
-mod thread32;
 #[path = "teb_selector32.rs"]
 mod teb_selector32;
+#[path = "thread32.rs"]
+mod thread32;
 #[path = "time32.rs"]
 mod time32;
 #[path = "ui32.rs"]
@@ -1108,7 +1108,7 @@ struct Cpu32 {
     d3d9: RefCell<d3d9_32::State>,
     input8: RefCell<input8_32::State>,
     dsound: RefCell<dsound32::State>,
-    unnamed_mutexes: RefCell<unnamed_mutex32::State>,
+    unnamed_mutexes: unnamed_mutex32::State,
     com: RefCell<com32::State>,
     wave: RefCell<wave32::State>,
     com_storage: RefCell<Vec<(LowMapping, bool)>>,
@@ -1132,7 +1132,7 @@ impl Cpu32 {
             unsupported("PE32 thread-exit FLS callbacks are unsupported; pending values remain");
         }
         self.fls.borrow_mut().clear();
-        self.unnamed_mutexes.borrow_mut().clear();
+        self.unnamed_mutexes.clear();
         self.com.borrow_mut().clear();
         self.heap.borrow_mut().clear();
         *self.crt.borrow_mut() = Default::default();
@@ -1247,7 +1247,7 @@ impl Cpu32 {
             d3d9: RefCell::new(Default::default()),
             input8: RefCell::new(Default::default()),
             dsound: RefCell::new(Default::default()),
-            unnamed_mutexes: RefCell::new(Default::default()),
+            unnamed_mutexes: Default::default(),
             com: RefCell::new(Default::default()),
             wave: RefCell::new(Default::default()),
             com_storage: RefCell::new(Default::default()),
@@ -2591,7 +2591,7 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
             109 => mutex32::create(image, args),
             111 => directory32::set(image, args[0]),
             112 => directory32::get(image, args),
-            113 | 114 if image.cpu.unnamed_mutexes.borrow().contains(args[0]) => {
+            113 | 114 if image.cpu.unnamed_mutexes.contains(args[0]) => {
                 unnamed_mutex32::operation(image, args, id == 113)
             }
             113 if image.cpu.watches.borrow().contains(args[0]) => thread32::wait(image, args),
@@ -2617,7 +2617,7 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
             133 => directory32::get_ansi(image, args),
             134 | 135 => bulk32::attributes(image, args[0], id == 135),
             136 => {
-                if image.cpu.unnamed_mutexes.borrow().contains(args[0]) {
+                if image.cpu.unnamed_mutexes.contains(args[0]) {
                     return unnamed_mutex32::operation(image, args, true);
                 }
                 if image.cpu.threads.borrow().contains(args[0])
@@ -3158,7 +3158,7 @@ mod tests {
                 d3d9: RefCell::new(Default::default()),
                 input8: RefCell::new(Default::default()),
                 dsound: RefCell::new(Default::default()),
-                unnamed_mutexes: RefCell::new(Default::default()),
+                unnamed_mutexes: Default::default(),
                 com: RefCell::new(Default::default()),
                 wave: RefCell::new(Default::default()),
                 com_storage: RefCell::new(Default::default()),
