@@ -8888,3 +8888,28 @@ builds or staging drains during that interval. Peak tracked staging capacity
 is 7.37 MiB, and AudioQueue continues consuming nonzero audio. This playtest
 resumed a manual save and the camera moved, so its throughput is not a matched
 comparison with the baseline. The fixed-camera candidate replay remains pending.
+
+### Draw phase profiling and indexed vertex fetch
+
+The opt-in phase profiler on `d993c0a` separates programmable draw preparation,
+encoding and submission from Present readback and the AppKit handoff. The
+physical M4 D3D9 suite passes all 57 tests. The cached draw test checks that
+phase totals count only completed draws, fit within the elapsed interval and
+reset on read. These are host wall timings. GPU work can overlap the CPU, and
+readback can wait for already submitted draws.
+
+The indexed PE32 path now uses a distinct vertex list for CPU fetch and
+validates each bound stream once per draw. A sparse-index unit checks first-use
+order, duplicates and range rejection. A local Rosetta CPU harness using the
+same vertex expansion processes a synthetic grid of 5,766 indices over 1,024
+vertices. Both paths emit identical packed vertex bytes. Across twelve
+alternating 500-draw batches, the median time for this isolated work changes
+from 218 to 46 microseconds per draw. Original Castle Cousland throughput
+still needs a matched replay.
+
+The physical M4 release runners before and after the fetch change both match
+the saved indexed, user-memory draw, separate-stream and save-resources PE
+output byte-for-byte. The standard x86_64 PE library suite passes 251 tests
+with two ignored. The low-PAGEZERO test configuration also passes the new
+indexed unit. Its full run trips the PE64 test that assumes a high mapping,
+which passes with standard PAGEZERO. Both crates pass all-target Clippy.

@@ -2167,6 +2167,8 @@ fn stream_source(s: &mut State, a: &[u32; 16]) -> u32 {
     };
     0
 }
+const MAX_DRAW_VERTEX_BYTES: usize = 64 * 1024 * 1024;
+
 // Validate every source independently: offsets and strides belong to bindings,
 // while the vertex/index selection is shared by all declaration streams.
 fn vertex_span(
@@ -2182,8 +2184,27 @@ fn vertex_span(
     let first = start.checked_mul(stride)?.checked_add(offset)?;
     let size = count.checked_mul(stride)?;
     let end = first.checked_add(size)?;
-    (size <= 64 * 1024 * 1024 && end <= length).then_some((first, size))
+    (size as usize <= MAX_DRAW_VERTEX_BYTES && end <= length).then_some((first, size))
 }
+
+// This list is only for CPU fetch validation and expansion. The GPU receives
+// the original normalized index order, including repeated and degenerate ones.
+fn unique_vertex_indices(indices: &[u32], count: u32) -> Option<Vec<u32>> {
+    let count = count as usize;
+    if count > MAX_DRAW_VERTEX_BYTES / 16 {
+        return None;
+    }
+    let mut visited = vec![false; count];
+    let mut unique = Vec::new();
+    for &index in indices {
+        let seen = visited.get_mut(index as usize)?;
+        if !std::mem::replace(seen, true) {
+            unique.push(index);
+        }
+    }
+    Some(unique)
+}
+
 fn vertex_stream(
     image: &LoadedImage32<'_>,
     s: &State,
@@ -2315,7 +2336,18 @@ fn draw_buffer(
     let Some(vertex_count) = vertices else {
         return INVALID;
     };
-    let referenced = indexed.as_ref().map(|(_, indices)| indices.as_slice());
+    let unique = match &indexed {
+        Some((_, indices)) if !fixed => {
+            let Some(unique) = unique_vertex_indices(indices, vertex_count) else {
+                return INVALID;
+            };
+            Some(unique)
+        }
+        _ => None,
+    };
+    let referenced = unique
+        .as_deref()
+        .or_else(|| indexed.as_ref().map(|(_, indices)| indices.as_slice()));
     let fixed_source = if fixed {
         let Some(source) =
             user.or_else(|| vertex_stream(image, s, streams[0], a[2], vertex_count, referenced))
@@ -2360,6 +2392,7 @@ fn draw_buffer(
         let Body::Declaration { elements, .. } = &s.objects[&decl].body else {
             unreachable!()
         };
+        let mut validated_streams = [None; 16];
         for input in &s.programs[&program_key].inputs {
             let Some(element) = elements.iter().find(|e| {
                 semantic(e[1] >> 16 & 255) == Some(input.semantic.as_str())
@@ -2371,11 +2404,17 @@ fn draw_buffer(
             let ty = element[1] & 255;
             let size = alkyhol_d3d9::vertex::element_size(ty).unwrap() as u64;
             let stream = (element[0] & 65535) as usize;
-            let Some((address, length, stride)) = (if user.is_some() {
-                if stream == 0 { user } else { None }
+            let source = if let Some(source) = user {
+                (stream == 0).then_some(source)
             } else {
-                vertex_stream(image, s, streams[stream], a[2], vertex_count, referenced)
-            }) else {
+                let validated = &mut validated_streams[stream];
+                if validated.is_none() {
+                    *validated =
+                        vertex_stream(image, s, streams[stream], a[2], vertex_count, referenced);
+                }
+                *validated
+            };
+            let Some((address, length, stride)) = source else {
                 return INVALID;
             };
             if offset + size > u64::from(stride) {
@@ -2396,9 +2435,9 @@ fn draw_buffer(
     let packed_stride = fetch.len() * 16;
     let mut packed = Vec::new();
     if !fixed {
-        let size = (vertices.unwrap() as usize)
+        let size = (vertex_count as usize)
             .checked_mul(packed_stride)
-            .filter(|&size| size != 0 && size <= 64 * 1024 * 1024);
+            .filter(|&size| size != 0 && size <= MAX_DRAW_VERTEX_BYTES);
         let Some(size) = size else {
             return INVALID;
         };
@@ -2412,12 +2451,12 @@ fn draw_buffer(
                 packed[dest..dest + 16].copy_from_slice(&value);
             }
         };
-        if let Some((_, indices)) = &indexed {
+        if let Some(indices) = referenced {
             for &index in indices {
                 convert(index as usize);
             }
         } else {
-            for index in 0..vertices.unwrap() as usize {
+            for index in 0..vertex_count as usize {
                 convert(index);
             }
         }
@@ -4397,6 +4436,16 @@ mod tests {
         );
         assert_eq!(strip_triangles(&[1, 1, 2, 2]).unwrap(), [1, 1, 2, 1, 2, 2]);
         assert!(strip_triangles(&[1, 2]).is_none());
+    }
+    #[test]
+    fn indexed_fetch_visits_repeated_sparse_vertices_once_in_first_use_order() {
+        let triangles = [90, 3, 11, 90, 11, 7, 90, 90, 7].repeat(128);
+        assert_eq!(
+            unique_vertex_indices(&triangles, 100),
+            Some(vec![90, 3, 11, 7])
+        );
+        assert_eq!(unique_vertex_indices(&triangles, 90), None);
+        assert_eq!(unique_vertex_indices(&[0], u32::MAX), None);
     }
     #[test]
     fn capability_record_does_not_invent_unimplemented_shader_or_texture_support() {
