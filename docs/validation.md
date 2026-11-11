@@ -9170,14 +9170,18 @@ logging are enabled. Each window covers twelve complete Present intervals.
 | Schedule | Frames | Elapsed | Frame time | FPS |
 | --- | ---: | ---: | ---: | ---: |
 | Earlier serialized control, `032a76d` | 211 | 61.717 s | 292.5 ms | 3.42 |
+| Same runner, parallel mode off | 143 | 62.874 s | 439.7 ms | 2.27 |
 | Parallel guest, FIFO host gate | 131 | 63.067 s | 481.4 ms | 2.08 |
 | Parallel guest, direct host mutex | 340 | 61.660 s | 181.4 ms | 5.51 |
 
 Both parallel runs match the saved-view screenshot crop with a mean RGB
 difference rounding to 0.0. They average about 264 cached draws and 1,198
 upload writes per frame, with zero new pipeline builds or staging drains.
-The direct-mutex run's five-second rates span 5.11–6.21 FPS. Background
-activity remains uncontrolled. This profile stays opt-in while compatibility
+The direct-mutex run's five-second rates span 5.11–6.21 FPS. In the
+same-binary pair, parallel mode lowers average frame time by 59%. The control
+and parallel replay reach the matched saved view in 191 and 90 seconds,
+respectively. The binary hash and launch arguments agree apart from the mode
+flag and isolated Documents path. Background activity remains uncontrolled. This profile stays opt-in while compatibility
 and guest-memory synchronization coverage expand.
 
 Twelve repeated runs of the parallel PE with heap lifecycles pass. The
@@ -9191,3 +9195,7 @@ state and metadata plus a valid 512×256 BC1 thumbnail, and loads that
 quicksave back into the rendered world. The save bytes stay intact after F9.
 AudioQueue continues consuming nonzero PCM. These checks use isolated
 Documents copies. The original input hashes are unchanged at shutdown.
+
+
+Both same-binary runs retain the original input hashes at shutdown. The new
+native comparison is scheduled in the [PE binary execution workflow](https://github.com/daeken/Alkyhol/actions/runs/43066124167).
