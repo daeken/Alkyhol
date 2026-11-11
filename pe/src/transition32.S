@@ -17,7 +17,7 @@ _alkyhol_enter_pe32:
     pushq %rax
     movw %ss,%ax
     pushq %rax
-    pushq $0 /* Preserve SysV 16-byte alignment with the extra FS save. */
+    pushq %r8 /* Guest FS for this frame, also preserving SysV alignment. */
     movw %fs,%ax
     pushq %rax
     movq %rsp,%r12
@@ -26,8 +26,7 @@ _alkyhol_enter_pe32:
     movw %cx,%ds
     movw %cx,%es
     movw %cx,%ss
-    movw $0x1017,%ax /* Process-owned slot 514, installed for this entry. */
-    movw %ax,%fs
+    movw %r8w,%fs
     movq %rsi,%rsp
     pushq %rdx
     pushq %rdi
@@ -79,7 +78,7 @@ _alkyhol_pe32_gate_start:
     shrq $32,%r11
     testl %r11d,%r11d
     jnz 2f
-    movw $0x1017,%cx
+    movw 8(%r12),%cx
     movw %cx,%fs
     movl 4(%r15),%ecx
     leaq 8(%r15),%rsp

@@ -204,7 +204,7 @@ impl ExecutionContext32<'_> {
         Ok((result as u32, bytes, result >> 32 != 0))
     }
 }
-pub(super) unsafe fn enter(entry: u32, stack: u32, _code: u32, _data: u32) -> u64 {
+pub(super) unsafe fn enter(entry: u32, stack: u32, _code: u32, _data: u32, _fs: u32) -> u64 {
     ACTIVE.with(|slot| {
         let image = unsafe { slot.get().cast::<LoadedImage32<'_>>().as_ref() }
             .unwrap_or_else(|| unsupported("no active emulated PE32 image"));

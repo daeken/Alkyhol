@@ -1,8 +1,12 @@
 //! Recursive critical sections with actual guest-thread ownership and waits.
-//! Metadata transitions run under the CPU lease; contended waits release it.
-//! Track real ownership/depth rather than treating synchronization as a no-op.
+//! Each object synchronizes its own state. Contended waits release the CPU lease.
 use super::{LoadedImage32, unsupported};
-use std::ptr;
+use std::{
+    ptr,
+    sync::{Arc, Condvar, Mutex},
+    time::Duration,
+};
+
 pub(super) struct Section {
     depth: u32,
     owner: u32,
@@ -38,7 +42,7 @@ impl Section {
         }
         Ok(())
     }
-    fn write(&self, address: u32) {
+    unsafe fn write(&self, address: *mut u32) {
         // The public Win32 width is 24 bytes. Debug/semaphore extensions are not
         // exposed; copying/modifying a live object is unsupported by Win32 too.
         let words = [
@@ -50,10 +54,62 @@ impl Section {
             self.spin,
         ];
         unsafe {
-            ptr::copy_nonoverlapping(words.as_ptr(), address as *mut u32, words.len());
+            ptr::copy_nonoverlapping(words.as_ptr(), address, words.len());
         }
     }
 }
+pub(super) struct CriticalSection {
+    ownership: Mutex<Section>,
+    released: Condvar,
+}
+impl CriticalSection {
+    fn new(spin: u32) -> Self {
+        Self {
+            ownership: Mutex::new(Section::new(spin)),
+            released: Condvar::new(),
+        }
+    }
+
+    unsafe fn try_enter(&self, thread: u32, address: *mut u32) -> crate::Result<bool> {
+        let mut state = self.ownership.lock().unwrap();
+        if state.depth != 0 && state.owner != thread {
+            return Ok(false);
+        }
+        state.enter(thread)?;
+        unsafe { state.write(address) };
+        Ok(true)
+    }
+
+    unsafe fn leave(&self, thread: u32, address: *mut u32) -> crate::Result<()> {
+        let mut state = self.ownership.lock().unwrap();
+        state.leave(thread)?;
+        unsafe { state.write(address) };
+        if state.depth == 0 {
+            self.released.notify_one();
+        }
+        Ok(())
+    }
+
+    fn wait_until_unowned(&self) {
+        let mut state = self.ownership.lock().unwrap();
+        let owned = |state: &mut Section| state.depth != 0;
+        if !super::window_host32::is_main_thread() {
+            drop(self.released.wait_while(state, owned).unwrap());
+            return;
+        }
+        // The section owner may need synchronous AppKit work from this thread.
+        while owned(&mut state) {
+            (state, _) = self
+                .released
+                .wait_timeout_while(state, Duration::from_millis(1), owned)
+                .unwrap();
+            drop(state);
+            super::window_host32::pump_tasks();
+            state = self.ownership.lock().unwrap();
+        }
+    }
+}
+
 pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u32 {
     let address = args[0];
     if matches!(id, 38 | 51 | 75 | 76) {
@@ -80,49 +136,56 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
     if !address.is_multiple_of(4) || !image.permits(address as usize, 24, true) {
         unsupported("PE32 critical section outside writable aligned guest storage");
     }
-    let mut sections = image.cpu.critical_sections.borrow_mut();
+    let mut sections = image.cpu.critical_sections.lock().unwrap();
     if id == 32 || id == 33 {
         if sections.contains_key(&address) {
             unsupported("PE32 critical section already initialized");
         }
-        let section = Section::new(if id == 32 { args[1] } else { 0 });
-        section.write(address);
-        sections.insert(address, section);
+        let mut section = CriticalSection::new(if id == 32 { args[1] } else { 0 });
+        unsafe {
+            section
+                .ownership
+                .get_mut()
+                .unwrap()
+                .write(address as *mut u32)
+        };
+        sections.insert(address, Arc::new(section));
         return 1;
     }
+    let entry = sections
+        .get_mut(&address)
+        .unwrap_or_else(|| unsupported("unknown/uninitialized PE32 critical section"));
+    if id == 36 {
+        let section = Arc::get_mut(entry).unwrap_or_else(|| {
+            unsupported("deleting a PE32 critical section during an active operation")
+        });
+        if section.ownership.get_mut().unwrap().depth != 0 {
+            unsupported("deleting an owned PE32 critical section");
+        }
+        sections.remove(&address);
+        return 0;
+    }
+    let section = Arc::clone(entry);
     drop(sections);
     let thread = alkyhol::ffi::GetCurrentThreadId();
-    loop {
-        let mut sections = image.cpu.critical_sections.borrow_mut();
-        let section = sections
-            .get_mut(&address)
-            .unwrap_or_else(|| unsupported("unknown/uninitialized PE32 critical section"));
-        if matches!(id, 34 | 37) && section.depth != 0 && section.owner != thread {
-            if id == 37 {
-                return 0;
-            }
-            drop(sections);
-            super::thread32::without_cpu(image, || {
-                std::thread::sleep(std::time::Duration::from_millis(1))
-            });
-            continue;
-        }
-        match id {
-            34 | 37 => section.enter(thread).unwrap_or_else(|e| unsupported(&e)),
-            35 => section.leave(thread).unwrap_or_else(|e| unsupported(&e)),
-            36 => {
-                if section.depth != 0 {
-                    unsupported("deleting an owned PE32 critical section");
-                }
-                sections.remove(&address);
-                return 0;
-            }
-            _ => unreachable!(),
-        }
-        section.write(address);
+    if id == 35 {
+        unsafe { section.leave(thread, address as *mut u32) }.unwrap_or_else(|e| unsupported(&e));
         return 1;
     }
+    debug_assert!(matches!(id, 34 | 37));
+    loop {
+        let acquired = unsafe { section.try_enter(thread, address as *mut u32) }
+            .unwrap_or_else(|e| unsupported(&e));
+        if acquired || id == 37 {
+            return acquired as u32;
+        }
+        super::thread32::without_cpu(image, || section.wait_until_unowned());
+        if !image.permits(address as usize, 24, true) {
+            unsupported("PE32 critical section storage disappeared during a pending wait");
+        }
+    }
 }
+
 fn compare_exchange(value: &std::sync::atomic::AtomicU32, exchange: u32, comparand: u32) -> u32 {
     match value.compare_exchange(
         comparand,
@@ -152,11 +215,7 @@ mod tests {
     }
     #[test]
     fn ownership_recursion_and_unbalanced_operations_are_checked() {
-        let mut s = Section {
-            depth: 0,
-            owner: 0,
-            spin: 4000,
-        };
+        let mut s = Section::new(4000);
         assert!(s.leave(7).is_err());
         s.enter(7).unwrap();
         s.enter(7).unwrap();
@@ -169,5 +228,40 @@ mod tests {
         assert_eq!((s.depth, s.owner), (0, 0));
         s.enter(8).unwrap();
         assert_eq!(s.owner, 8);
+    }
+
+    #[test]
+    fn recursive_owner_wakes_native_waiter_only_on_final_release() {
+        let section = Arc::new(CriticalSection::new(4000));
+        let mut mirror = [0; 6];
+        assert!(unsafe { section.try_enter(7, mirror.as_mut_ptr()) }.unwrap());
+        assert!(unsafe { section.try_enter(7, mirror.as_mut_ptr()) }.unwrap());
+        assert_eq!(&mirror[1..4], &[1, 2, 7]);
+
+        let worker_section = Arc::clone(&section);
+        let (contended, started) = std::sync::mpsc::channel();
+        let (acquired, finished) = std::sync::mpsc::channel();
+        let worker = std::thread::spawn(move || {
+            let mut mirror = [0; 6];
+            assert!(!unsafe { worker_section.try_enter(9, mirror.as_mut_ptr()) }.unwrap());
+            contended.send(()).unwrap();
+            worker_section.wait_until_unowned();
+            assert!(unsafe { worker_section.try_enter(9, mirror.as_mut_ptr()) }.unwrap());
+            assert_eq!(&mirror[1..4], &[0, 1, 9]);
+            unsafe { worker_section.leave(9, mirror.as_mut_ptr()) }.unwrap();
+            acquired.send(()).unwrap();
+        });
+
+        started.recv_timeout(Duration::from_secs(2)).unwrap();
+        unsafe { section.leave(7, mirror.as_mut_ptr()) }.unwrap();
+        assert_eq!(&mirror[1..4], &[0, 1, 7]);
+        assert!(matches!(
+            finished.recv_timeout(Duration::from_millis(20)),
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout)
+        ));
+        unsafe { section.leave(7, mirror.as_mut_ptr()) }.unwrap();
+        assert_eq!(&mirror[1..4], &[u32::MAX, 0, 0]);
+        finished.recv_timeout(Duration::from_secs(2)).unwrap();
+        worker.join().unwrap();
     }
 }

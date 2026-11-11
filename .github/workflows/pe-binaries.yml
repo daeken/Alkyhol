@@ -313,6 +313,12 @@ jobs:
         run: |
           python tools/observe_pe32_gdi_window.py
           python tools/observe_pe32_gdi_window.py --host
+      - name: Exercise simultaneous Rosetta guests through the production CPU gates
+        run: |
+          clang -arch x86_64 -Wall -Wextra -Werror -Wl,-pagezero_size,0x1000 \
+            pe/probe_concurrent32.c pe/probe_concurrent32.S pe/src/transition32.S pe/src/memory_host32.c \
+            -o local/pe/startup-microtests/probe-concurrent32
+          local/pe/startup-microtests/probe-concurrent32
       - name: Execute original worker threads with distinct TEB and TLS state
         run: |
           python tools/observe_pe32_thread_family.py

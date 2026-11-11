@@ -2,7 +2,8 @@
 //! Guest execution yields at API boundaries. Windows CPU affinity/preemption and
 //! arbitrary asynchronous thread suspension are not implemented.
 use super::{
-    CallingConvention32, Cpu32, LoadedImage32, LowMapping, PAGE, STACK, TebLease, unsupported,
+    CallingConvention32, Cpu32, CpuLease, LoadedImage32, LowMapping, PAGE, STACK,
+    teb_selector32::TebSelector, unsupported,
 };
 use crate::Result;
 use std::{
@@ -25,7 +26,8 @@ const SERVICE_QUANTUM: (u32, std::time::Duration) = if cfg!(target_arch = "x86_6
 
 thread_local! {
     static CURRENT: Cell<*const Record> = const { Cell::new(ptr::null()) };
-    static LEASE: RefCell<Option<TebLease>> = const { RefCell::new(None) };
+    static GUEST_FS: Cell<u16> = const { Cell::new(0) };
+    static LEASE: RefCell<Option<CpuLease>> = const { RefCell::new(None) };
     static QUANTUM: RefCell<Option<(u32,std::time::Instant)>> = const { RefCell::new(None) };
 }
 struct Record {
@@ -134,29 +136,34 @@ pub(super) fn exit_state() -> Option<u32> {
         .with(|p| unsafe { p.get().as_ref() })
         .and_then(|r| r.requested_exit.get())
 }
-pub(super) struct MainLease;
-impl MainLease {
-    pub(super) fn install(teb: u32) -> Result<Self> {
-        let lease = TebLease::install(teb)?;
-        LEASE.with(|slot| {
-            if slot.borrow().is_some() {
-                return Err::<(), String>("nested native CPU lease".into());
-            }
-            *slot.borrow_mut() = Some(lease);
-            Ok(())
-        })?;
-        Ok(Self)
+pub(super) fn guest_fs() -> u16 {
+    GUEST_FS.get()
+}
+
+pub(super) struct ThreadEntry {
+    _selector: TebSelector,
+}
+impl ThreadEntry {
+    pub(super) fn install(teb: u32, wait: bool) -> Result<Self> {
+        if guest_fs() != 0 {
+            return Err("nested PE32 thread entry".into());
+        }
+        let lease = CpuLease::acquire(wait)?;
+        let selector = TebSelector::allocate(teb)?;
+        GUEST_FS.set(selector.value());
+        LEASE.with(|slot| *slot.borrow_mut() = Some(lease));
+        Ok(Self { _selector: selector })
     }
 }
-impl Drop for MainLease {
+impl Drop for ThreadEntry {
     fn drop(&mut self) {
+        GUEST_FS.set(0);
         LEASE.with(|slot| drop(slot.borrow_mut().take()));
     }
 }
 // All process RefCell borrows must end before this function. The closure may
 // touch only independently synchronized host objects, never shared guest state.
-pub(super) fn without_cpu<T>(image: &LoadedImage32<'_>, call: impl FnOnce() -> T) -> T {
-    let teb = image.cpu.teb().base as u32;
+pub(super) fn without_cpu<T>(_image: &LoadedImage32<'_>, call: impl FnOnce() -> T) -> T {
     let saved = alkyhol::ffi::GetLastError();
     let lease = LEASE
         .with(|slot| slot.borrow_mut().take())
@@ -165,7 +172,7 @@ pub(super) fn without_cpu<T>(image: &LoadedImage32<'_>, call: impl FnOnce() -> T
     super::window_host32::pump_tasks();
     let value = call();
     super::window_host32::pump_tasks();
-    let lease = TebLease::acquire(teb, true).unwrap_or_else(|e| unsupported(&e));
+    let lease = CpuLease::acquire(true).unwrap_or_else(|e| unsupported(&e));
     LEASE.with(|slot| *slot.borrow_mut() = Some(lease));
     QUANTUM.with(|q| *q.borrow_mut() = Some((0, std::time::Instant::now())));
     alkyhol::ffi::SetLastError(saved);
@@ -384,10 +391,10 @@ unsafe fn run(
     snapshot: crate::process::ChildSnapshot,
 ) {
     let record = unsafe { &*record };
-    let lease = TebLease::acquire(record.teb.base as u32, true).unwrap_or_else(|e| unsupported(&e));
-    LEASE.with(|s| *s.borrow_mut() = Some(lease));
-    let _lease = MainLease;
-    let native_fs = super::segment_state()[3];
+    let _thread = ThreadEntry::install(record.teb.base as u32, true)
+        .unwrap_or_else(|e| unsupported(&e));
+    let native_segments = super::segment_state();
+    let native_fs = native_segments[3];
     if ![0, 0x23].contains(&native_fs) {
         unsupported("worker native FS is outside the observed Darwin profile");
     }
@@ -406,8 +413,17 @@ unsafe fn run(
         ((frame + 4) as *mut u32).write(parameter);
     }
     let result = unsafe {
-        super::alkyhol_enter_pe32(entry, frame, u32::from(image.code), u32::from(image.data))
+        super::alkyhol_enter_pe32(
+            entry,
+            frame,
+            u32::from(image.code),
+            u32::from(image.data),
+            u32::from(guest_fs()),
+        )
     };
+    if super::segment_state() != native_segments {
+        unsupported("PE32 worker did not restore native segment selectors");
+    }
     let observed = (result >> 32) as u32;
     let status = if observed == 0 {
         record
@@ -576,8 +592,7 @@ pub(super) fn host_fs_valid(fs: u16) -> bool {
 
 pub(super) fn wait_handle(image: &LoadedImage32<'_>, handle: u32, milliseconds: u32) -> u32 {
     // An atomic, nonblocking kernel poll needs no CPU-lease/TEB handoff.
-    // Normal service scheduling still bounds API bursts to 256 calls or 2ms;
-    // blocking waits retain the release/pump/wait/reacquire path on both hosts.
+    // Blocking waits release the CPU lease and service AppKit on host main.
     if milliseconds == 0 {
         return alkyhol::ffi::WaitForSingleObject(handle as usize, 0);
     }

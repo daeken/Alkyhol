@@ -116,7 +116,12 @@ pub(super) fn deliver_registers(image: &LoadedImage32<'_>, regs: [u32; 9]) -> u3
     }
     let mut context = [0u32; 179];
     context[0] = 0x10007;
-    context[35..39].copy_from_slice(&[0, 0x1017, u32::from(image.data), u32::from(image.data)]);
+    context[35..39].copy_from_slice(&[
+        0,
+        u32::from(super::thread32::guest_fs()),
+        u32::from(image.data),
+        u32::from(image.data),
+    ]);
     context[39..47].copy_from_slice(&[
         regs[0], regs[1], regs[4], regs[5], regs[6], regs[7], regs[2], caller,
     ]);

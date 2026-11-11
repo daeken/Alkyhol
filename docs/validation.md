@@ -9073,3 +9073,49 @@ unchanged. [Conformance](https://github.com/daeken/Alkyhol/actions/runs/42956853
 [DirectInput](https://github.com/daeken/Alkyhol/actions/runs/42956853444),
 [PE execution](https://github.com/daeken/Alkyhol/actions/runs/42956853516),
 [D3D9 comparison](https://github.com/daeken/Alkyhol/actions/runs/42956853362).
+
+### PE32 thread-owned selectors and contended critical sections
+
+Every active Rosetta guest thread now owns its FS selector for the lifetime of
+its entry, including blocking waits and nested callbacks. Allocation skips
+occupied descriptors. The production assembly restores the calling host
+thread's FS before dispatch and reloads the saved guest selector on return.
+Software exception contexts record the current guest selector. The bounded
+hardware exception bridge checks and passes that selector to its handler.
+
+The new transition probe uses the production assembly on the physical M4.
+Two native workers rendezvous inside i386 code and then make 4,096 host calls
+apiece. It checks each guest FS marker, restored host FS, return value and ESP.
+On macOS 27.0.1 build 26A434, the cold probe hit a Rosetta
+`unfair_lock_unlock_slow with no waiters` abort in 6 of 150 runs. A separate
+cold probe with no import calls hit it in 10 of 100 runs. A host-only mutex
+control passed all 120 runs. The production gate probe passed 450 consecutive
+runs after one serial run of its code. In local variants, a separate short
+serial guest entry and staggering the first two guest entries each passed
+100 runs. Separate cold guest entry addresses still produced 5 aborts in 100
+runs. These results isolate a timing-sensitive failure in the tested cold
+transition setup. The exact Rosetta trigger remains unknown. CI runs the
+warmed probe. Run `probe-concurrent32 --cold` on a physical test host to
+exercise the cold case.
+
+The Win32 critical-section table and each object's recursive ownership state
+now have their own locks. Contended native workers sleep until the owner
+releases the section. A native main-thread waiter also services AppKit
+requests. Guest-visible ownership words publish under the object's lock.
+Deletion checks for both ownership and in-flight operations, consistent with
+the caller's lifetime contract. [Microsoft EnterCriticalSection](https://learn.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-entercriticalsection),
+[Microsoft DeleteCriticalSection](https://learn.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-deletecriticalsection).
+
+The selector build reached the original DAO main menu and rendered its load
+menu from an isolated profile. The run ended before entering Castle Cousland
+and verified unchanged original input hashes. The production runner still
+serializes guest instructions to protect shared host state and guest buffers.
+The warmed CPU probe exercises parallel gates outside the game runtime.
+
+The final build passes 255 PE library tests with two ignored, PE all-target
+Clippy, the native ARM shared-runtime compile check and 86 source-layer tests.
+The unchanged thread-family, deferred-DLL, worker-window, software exception
+and bounded hardware exception PEs pass on physical Rosetta. The thread-family
+witness covers actual contended guest critical sections. A new host unit also
+checks that a native waiter acquires only after the recursive owner performs
+its final release.

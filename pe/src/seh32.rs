@@ -1,6 +1,6 @@
 //! Opt-in, integer-only UD2 SEH continuation. Native ABI contracts: docs/pe32.md.
 //! No default-loader behavior changes and no nested/unwind/software exceptions.
-use super::{LoadedImage32, PAGE, STACK, alkyhol_enter_pe32, mmap, mprotect, munmap};
+use super::{LoadedImage32, PAGE, STACK, alkyhol_enter_pe32, mmap, mprotect, munmap, thread32};
 use crate::{ProcessContext, Result};
 use std::{
     ffi::c_void,
@@ -373,7 +373,7 @@ extern "C" fn signal(number: i32, info: *const SignalInfo, context: *mut UserCon
         return;
     }
     // The process action may briefly coexist with another thread's ordinary
-    // entry before this profile acquires the exclusive FS lease. Never route
+    // entry before this profile acquires the exclusive CPU lease. Never route
     // that thread's fault through this image's handler table or memory view.
     if super::ACTIVE.with(|slot| slot.get()) != owner.cast_const() {
         forward_prior(number, info, context);
@@ -503,10 +503,12 @@ unsafe fn dispatch_exception(
         .map_err(|_| &b"Alkyhol PE32 unsupported: exception PC width\n"[..])?;
     let sp = u32::try_from(machine.registers[7])
         .map_err(|_| &b"Alkyhol PE32 unsupported: exception SP width\n"[..])?;
-    if !code(image, pc, 2)
+    let fs = thread32::guest_fs();
+    if fs == 0
+        || !code(image, pc, 2)
         || !image.permits(pc as usize, 2, false)
         || !stack(image, sp, 4)
-        || machine.registers[19] != 0x1017
+        || machine.registers[19] != u64::from(fs)
         || unsafe { (pc as usize as *const u16).read_unaligned() } != 0x0b0f
     {
         return Err(b"Alkyhol PE32 unsupported: hardware exception form outside UD2 profile\n");
@@ -575,6 +577,7 @@ unsafe fn dispatch_exception(
                 frame_at,
                 u32::from(image.code),
                 u32::from(image.data),
+                u32::from(fs),
             )
         };
         if (result >> 32) as u32 != frame_at + 4 {
@@ -723,7 +726,7 @@ mod tests {
     }
     #[test]
     fn signal_guard_exclusively_owns_a_high_guarded_stack_and_restores_actual_host_state() {
-        let _serial = super::super::FS_SLOT.lock().unwrap();
+        let _serial = super::super::GUEST_CPU.lock().unwrap();
         let image = super::super::tests::layout();
         let blocked = 1u32 << (SIGILL - 1);
         let mut old_mask = 0u32;

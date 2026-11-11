@@ -101,6 +101,8 @@ mod startup32;
 mod sync32;
 #[path = "thread32.rs"]
 mod thread32;
+#[path = "teb_selector32.rs"]
+mod teb_selector32;
 #[path = "time32.rs"]
 mod time32;
 #[path = "ui32.rs"]
@@ -150,7 +152,7 @@ unsafe extern "C" {
     fn i386_get_ldt(start: i32, entries: *mut u64, count: i32) -> i32;
     fn i386_set_ldt(start: i32, entries: *const u64, count: i32) -> i32;
     #[cfg(target_arch = "x86_64")]
-    fn alkyhol_enter_pe32(entry: u32, stack: u32, code: u32, data: u32) -> u64;
+    fn alkyhol_enter_pe32(entry: u32, stack: u32, code: u32, data: u32, fs: u32) -> u64;
     #[cfg(target_arch = "x86_64")]
     static alkyhol_pe32_gate_start: u8;
     #[cfg(target_arch = "x86_64")]
@@ -631,11 +633,10 @@ static SELECTORS: OnceLock<Result<(u16, u16)>> = OnceLock::new();
 fn selectors() -> Result<(u16, u16)> {
     SELECTORS
         .get_or_init(|| {
-            // Rosetta aborts for LDT_AUTO_ALLOC. Inspect the task's existing table,
-            // reserve two flat entries for this process lifetime and check the
-            // third slot used only during an exclusively leased FS entry.
-            let mut entries = [0u64; 3];
-            let count = unsafe { i386_get_ldt(512, entries.as_mut_ptr(), 3) };
+            // Rosetta requires explicitly numbered, single-entry LDT operations.
+            // Reserve the flat pair for the process lifetime.
+            let mut entries = [0u64; 2];
+            let count = unsafe { i386_get_ldt(512, entries.as_mut_ptr(), 2) };
             if !(0..=8192).contains(&count) {
                 return Err("cannot inspect task LDT".into());
             }
@@ -644,7 +645,7 @@ fn selectors() -> Result<(u16, u16)> {
                 .enumerate()
                 .any(|(index, &value)| count > 512 + index as i32 && value != 0)
             {
-                return Err("PE32 host LDT slots 512/513/514 are already occupied".into());
+                return Err("PE32 host LDT slots 512/513 are already occupied".into());
             }
             let descriptors = [0x00cffa000000ffffu64, 0x00cff2000000ffff];
             for (index, descriptor) in descriptors.iter().enumerate() {
@@ -658,9 +659,9 @@ fn selectors() -> Result<(u16, u16)> {
         })
         .clone()
 }
-// LDT entries belong to the process, while FS state belongs to a thread.
-// Serialize CPU entries so a second thread cannot retarget the active TEB slot.
-static FS_SLOT: Mutex<()> = Mutex::new(());
+// The process state and borrowed guest buffers currently require exclusive
+// execution. TEB selector ownership is independent of this admission lock.
+static GUEST_CPU: Mutex<()> = Mutex::new(());
 // FIFO admission prevents a polling main thread from starving behind workers.
 struct CpuTickets {
     next: u64,
@@ -715,26 +716,23 @@ fn teb_descriptor(base: u32) -> u64 {
         | (u64::from((base >> 16) & 0xff) << 32)
         | (u64::from(base >> 24) << 56)
 }
-struct TebLease {
+struct CpuLease {
     guard: Option<MutexGuard<'static, ()>>,
     ticket: u64,
     profile_started: Option<std::time::Instant>,
 }
-impl TebLease {
-    fn install(base: u32) -> Result<Self> {
-        Self::acquire(base, false)
-    }
-    fn acquire(base: u32, wait: bool) -> Result<Self> {
+impl CpuLease {
+    fn acquire(wait: bool) -> Result<Self> {
         let (guard, ticket) = if !wait {
             let mut queue = CPU_TICKETS
                 .lock()
                 .map_err(|_| "CPU admission queue poisoned")?;
             if queue.next != queue.serving {
-                return Err("another PE32 entry owns the FS slot".into());
+                return Err("another PE32 entry owns the guest CPU".into());
             }
-            let guard = FS_SLOT
+            let guard = GUEST_CPU
                 .try_lock()
-                .map_err(|_| "another PE32 entry owns the FS slot")?;
+                .map_err(|_| "another PE32 entry owns the guest CPU")?;
             let ticket = queue.reserve()?;
             (guard, ticket)
         } else {
@@ -765,27 +763,11 @@ impl TebLease {
                 }
             }
             drop(queue);
-            let guard = FS_SLOT
+            let guard = GUEST_CPU
                 .lock()
                 .unwrap_or_else(|_| unsupported("exclusive CPU lease poisoned"));
             (guard, ticket)
         };
-        #[cfg(target_arch = "x86_64")]
-        {
-            let mut descriptor = 0u64;
-            let count = unsafe { i386_get_ldt(514, &mut descriptor, 1) };
-            if !(0..=8192).contains(&count) || (count > 514 && descriptor != 0) {
-                drop(guard);
-                finish_cpu_ticket(ticket);
-                return Err("PE32 FS slot 514 is already occupied or cannot be inspected".into());
-            }
-            descriptor = teb_descriptor(base);
-            if unsafe { i386_set_ldt(514, &descriptor, 1) } != 514 {
-                drop(guard);
-                finish_cpu_ticket(ticket);
-                return Err("cannot install bounded PE32 TEB descriptor".into());
-            }
-        }
         Ok(Self {
             guard: Some(guard),
             ticket,
@@ -793,19 +775,9 @@ impl TebLease {
         })
     }
 }
-impl Drop for TebLease {
+impl Drop for CpuLease {
     fn drop(&mut self) {
         perf32::record_lease(self.profile_started.take());
-        #[cfg(target_arch = "x86_64")]
-        {
-            let empty = 0u64;
-            if unsafe { i386_set_ldt(514, &empty, 1) } != 514 {
-                // Host FS is restored before this guard is dropped. Do not leave an
-                // apparently reusable descriptor pointing at soon-to-be-freed memory.
-                eprintln!("Alkyhol PE32 unsupported: cannot clear owned FS descriptor");
-                std::process::abort();
-            }
-        }
         drop(self.guard.take());
         finish_cpu_ticket(self.ticket);
     }
@@ -1040,7 +1012,7 @@ struct TlsBlock {
     alignment: usize,
 }
 // Linked images on one guest thread share one stack and FS/last-error state.
-// An Rc keeps them thread-bound; the exclusive FS lease still guards CPU entry.
+// An Rc keeps them thread-bound. Worker access uses the exclusive CPU lease.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Phase32 {
     Isolated,
@@ -1107,7 +1079,7 @@ struct Cpu32 {
     callback_stack: Cell<u32>,
     callback_depth: Cell<u32>,
     pointer_cookie: u32,
-    critical_sections: RefCell<std::collections::BTreeMap<u32, sync32::Section>>,
+    critical_sections: Mutex<std::collections::BTreeMap<u32, Arc<sync32::CriticalSection>>>,
     service_gates: Cell<u32>,
     activation: RefCell<Result<()>>,
     bound_activation: RefCell<Option<activation32::State>>,
@@ -1244,7 +1216,7 @@ impl Cpu32 {
             callback_stack: Cell::new(0),
             callback_depth: Cell::new(0),
             pointer_cookie: cookie_entropy()?,
-            critical_sections: RefCell::new(Default::default()),
+            critical_sections: Mutex::new(Default::default()),
             service_gates: Cell::new(0),
             activation: RefCell::new(Err(
                 "PE32 activation context is unknown outside the checked process profile".into(),
@@ -1990,7 +1962,7 @@ impl<'a> LoadedImage32<'a> {
         unsafe { self.invoke(self.entry, &[], CallingConvention32::Cdecl) }
     }
     // Synchronous stdcall callback while an API gateway has suspended the guest.
-    // Reuse the exclusively leased TEB, but place the frame below the suspended
+    // Reuse this thread's TEB selector and place the frame below the suspended
     // guest ESP. Never overwrite the outer frame or reinitialize static TLS.
     unsafe fn callback(&self, entry: u32, value: u32) -> Result<()> {
         if unsafe { self.callback_frame(entry, &[value], CallingConvention32::Stdcall) }?.is_none()
@@ -2056,8 +2028,15 @@ impl<'a> LoadedImage32<'a> {
         self.cpu
             .callback_depth()
             .set(self.cpu.callback_depth().get() + 1);
-        let result =
-            unsafe { alkyhol_enter_pe32(entry, frame, u32::from(self.code), u32::from(self.data)) };
+        let result = unsafe {
+            alkyhol_enter_pe32(
+                entry,
+                frame,
+                u32::from(self.code),
+                u32::from(self.data),
+                u32::from(thread32::guest_fs()),
+            )
+        };
         self.cpu
             .callback_depth()
             .set(self.cpu.callback_depth().get() - 1);
@@ -2117,7 +2096,7 @@ impl<'a> LoadedImage32<'a> {
             } else {
                 None
             };
-            let _teb_lease = thread32::MainLease::install(self.cpu.teb().base as u32)?;
+            let _thread = thread32::ThreadEntry::install(self.cpu.teb().base as u32, false)?;
             slot.set(ptr::from_ref(self).cast());
             let _guard = ActiveGuard;
             let sp = self.cpu.stack().base as u32 + offset as u32;
@@ -2143,7 +2122,13 @@ impl<'a> LoadedImage32<'a> {
                 }
             }
             let result = unsafe {
-                alkyhol_enter_pe32(entry, sp, u32::from(self.code), u32::from(self.data))
+                alkyhol_enter_pe32(
+                    entry,
+                    sp,
+                    u32::from(self.code),
+                    u32::from(self.data),
+                    u32::from(thread32::guest_fs()),
+                )
             };
             self.cpu.threads.borrow().require_completed();
             if segment_state() != before {
@@ -3144,7 +3129,7 @@ mod tests {
                 callback_stack: Cell::new(0),
                 callback_depth: Cell::new(0),
                 pointer_cookie: 0x89345621,
-                critical_sections: RefCell::new(Default::default()),
+                critical_sections: Mutex::new(Default::default()),
                 service_gates: Cell::new(0),
                 activation: RefCell::new(Err("test layout has no activation context".into())),
                 bound_activation: RefCell::new(None),
@@ -3321,7 +3306,7 @@ mod tests {
         assert!(!image.permits(0x5fffff, 1, false));
     }
     #[test]
-    fn last_error_guard_reflects_early_host_outcomes_and_exclusive_entry_fails_before_ldt() {
+    fn last_error_guard_reflects_early_host_outcomes_and_exclusive_entry_is_checked() {
         let previous = alkyhol::ffi::GetLastError();
         let mut guest_error = 0x31415926u32;
         {
@@ -3330,8 +3315,8 @@ mod tests {
         }
         assert_eq!(guest_error, 127);
         alkyhol::ffi::SetLastError(previous);
-        let _occupied = FS_SLOT.lock().unwrap();
-        assert!(TebLease::install(0x600000).is_err());
+        let _occupied = GUEST_CPU.lock().unwrap();
+        assert!(CpuLease::acquire(false).is_err());
     }
     #[test]
     fn tls_buffer_permissions_use_the_logical_template_extent_without_page_padding() {
