@@ -179,7 +179,7 @@ pub(super) fn dll_onexit(image: &LoadedImage32<'_>, args: &[u32; 8]) -> u32 {
         unsupported("invalid DLL onexit table endpoints");
     }
     let mut state = image.cpu.crt.borrow_mut();
-    let mut heap = image.cpu.heap.borrow_mut();
+    let mut heap = image.cpu.heap.write().unwrap();
     let handle = if let Some(h) = state.heap {
         h
     } else {
@@ -314,7 +314,7 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
         };
         return std::mem::replace(slot, args[0]);
     }
-    let mut heap = image.cpu.heap.borrow_mut();
+    let mut heap = image.cpu.heap.write().unwrap();
     let handle = if let Some(handle) = state.heap {
         handle
     } else {
@@ -357,7 +357,8 @@ pub(super) fn deallocate(image: &LoadedImage32<'_>, pointer: u32) -> u32 {
     image
         .cpu
         .heap
-        .borrow_mut()
+        .write()
+        .unwrap()
         .free(handle, 0, pointer)
         .unwrap_or_else(|e| unsupported(&e));
     0 // void ABI; the owned allocation was actually freed.

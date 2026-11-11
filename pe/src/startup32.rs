@@ -513,7 +513,8 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
             if image
                 .cpu
                 .events
-                .borrow_mut()
+                .write()
+                .unwrap()
                 .close(args[0])
                 .unwrap_or_else(|e| unsupported(&e))
             {
@@ -569,31 +570,7 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
                 args[0]
             }
         }
-        16 => image
-            .cpu
-            .heap
-            .borrow_mut()
-            .handle()
-            .unwrap_or_else(|e| unsupported(&e)),
-        17 => image
-            .cpu
-            .heap
-            .borrow_mut()
-            .allocate(args[0], args[1], args[2])
-            .unwrap_or_else(|e| unsupported(&e)),
-        18 => image
-            .cpu
-            .heap
-            .borrow_mut()
-            .free(args[0], args[1], args[2])
-            .unwrap_or_else(|e| unsupported(&e)),
         19 => version(image, args[0], false),
-        20 => image
-            .cpu
-            .heap
-            .borrow_mut()
-            .create(args[0], args[1], args[2])
-            .unwrap_or_else(|e| unsupported(&e)),
         21 => {
             let Some(name) = read_units::<u8>(image, args[0], -1) else {
                 return 0;

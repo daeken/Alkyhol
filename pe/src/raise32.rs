@@ -65,7 +65,13 @@ struct Storage<'a> {
 impl Drop for Storage<'_> {
     fn drop(&mut self) {
         let error = alkyhol::ffi::GetLastError();
-        let _ = self.image.cpu.heap.borrow_mut().free(self.heap, 0, self.at);
+        let _ = self
+            .image
+            .cpu
+            .heap
+            .write()
+            .unwrap()
+            .free(self.heap, 0, self.at);
         alkyhol::ffi::SetLastError(error);
     }
 }
@@ -140,13 +146,15 @@ pub(super) fn deliver_registers(image: &LoadedImage32<'_>, regs: [u32; 9]) -> u3
     let heap = image
         .cpu
         .heap
-        .borrow_mut()
+        .write()
+        .unwrap()
         .handle()
         .unwrap_or_else(|e| unsupported(&e));
     let at = image
         .cpu
         .heap
-        .borrow_mut()
+        .write()
+        .unwrap()
         .allocate(heap, 0, 80 + 716)
         .unwrap_or_else(|e| unsupported(&e));
     if at == 0 {

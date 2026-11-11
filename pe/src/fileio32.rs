@@ -305,7 +305,7 @@ pub(super) fn handle_information(image: &LoadedImage32<'_>, handle: u32, out: u3
     }
     let known = matches!(handle, 0xffffffff | 0xfffffffe)
         || (0x70000001..=0x70000003).contains(&handle)
-        || image.cpu.events.borrow().contains(handle)
+        || image.cpu.events.read().unwrap().contains(handle)
         || image.cpu.threads.borrow().contains(handle)
         || image.cpu.unnamed_mutexes.contains(handle)
         || image.cpu.watches.borrow().contains(handle);

@@ -9200,3 +9200,36 @@ shutdown.
 
 The new native comparison is scheduled in the
 [PE binary execution workflow](https://github.com/daeken/Alkyhol/actions/runs/43066124167).
+
+### Independent Win32 calls in the parallel Rosetta runner
+
+A diagnostic DAO intro run recorded approximately 1.5 million Win32 calls
+per five seconds. Zero-timeout waits, critical-section TryEnter and Leave,
+and SwitchToThread were among the most frequent calls. The presenting thread
+spent about one second per five-second window waiting to acquire the host
+gate in that profile.
+
+The parallel runner now bypasses the shared gate for those operations and for
+independently synchronized heap, event, immediate critical-section, thread
+local and clock operations. A heap reader pins live storage for independent
+pointer writes. Stack, TEB and image writes use checked writable ranges.
+Other storage families and services still take the gate. Critical-section
+deletion retires the object while holding its state lock. Completed calls can
+release their references after deletion, and stale entrants cannot publish to
+the deleted section. This replaces the earlier in-flight reference check that
+stopped an original DAO startup replay after the shared gate was narrowed.
+
+An intermediate independent-services build replayed the same isolated Castle
+Cousland view on physical M4 at 7.57 FPS over 461 frames in 60.91 seconds. It
+matched the reference screenshot crop to 0.0 mean RGB difference at the
+reported precision. Cached draws averaged 264.1 per frame and upload writes
+averaged 1,197.3, with zero new pipeline builds and staging drains. The prior
+direct host gate run measured 5.51 FPS. Both runs use the original PE and
+DLLs, 1710×1107 backbuffer and the same saved view. Background activity
+remained uncontrolled.
+
+The independent-services build passes 258 PE library tests with two ignored,
+PE formatting and all-target Clippy, and the ARM shared-runtime compile check.
+The unchanged three-thread parallel witness, worker family, deferred DLL,
+worker window, software exception and unnamed mutex PEs also pass on physical
+Rosetta with parallel mode enabled.

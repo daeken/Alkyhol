@@ -135,7 +135,7 @@ pub(super) fn event_api(image: &LoadedImage32<'_>, id: u32, a: &[u32; 8]) -> u32
         }
         return super::event32::wait_set(image, a);
     }
-    if !image.cpu.events.borrow().is_event(a[0]) {
+    if !image.cpu.events.read().unwrap().is_event(a[0]) {
         alkyhol::ffi::SetLastError(6);
         return 0;
     }
@@ -144,7 +144,8 @@ pub(super) fn event_api(image: &LoadedImage32<'_>, id: u32, a: &[u32; 8]) -> u32
         283 => image
             .cpu
             .events
-            .borrow_mut()
+            .write()
+            .unwrap()
             .close(a[0])
             .unwrap_or_else(|e| unsupported(&e)) as u32,
         _ => unreachable!(),

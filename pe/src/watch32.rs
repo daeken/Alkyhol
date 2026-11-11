@@ -457,7 +457,7 @@ pub(super) fn read(image: &LoadedImage32<'_>, a: &[u32; 8]) -> u32 {
     }
     let overlap = unsafe { (a[6] as *const [u32; 5]).read() };
     let event = if overlap[4] == 0 { a[0] } else { overlap[4] };
-    if event != a[0] && !image.cpu.events.borrow().contains(event) {
+    if event != a[0] && !image.cpu.events.read().unwrap().contains(event) {
         unsupported("directory completion event must be an owned event");
     }
     let notify = kernel()

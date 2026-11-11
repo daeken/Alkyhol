@@ -3,7 +3,10 @@
 use super::{LoadedImage32, unsupported};
 use std::{
     ptr,
-    sync::{Arc, Condvar, Mutex},
+    sync::{
+        Arc, Condvar, Mutex,
+        atomic::{AtomicU32, Ordering},
+    },
     time::Duration,
 };
 
@@ -58,41 +61,66 @@ impl Section {
         }
     }
 }
+struct CriticalState {
+    ownership: Section,
+    retired: bool,
+}
 pub(super) struct CriticalSection {
-    ownership: Mutex<Section>,
+    state: Mutex<CriticalState>,
     released: Condvar,
 }
 impl CriticalSection {
     fn new(spin: u32) -> Self {
         Self {
-            ownership: Mutex::new(Section::new(spin)),
+            state: Mutex::new(CriticalState {
+                ownership: Section::new(spin),
+                retired: false,
+            }),
             released: Condvar::new(),
         }
     }
 
     unsafe fn try_enter(&self, thread: u32, address: *mut u32) -> crate::Result<bool> {
-        let mut state = self.ownership.lock().unwrap();
-        if state.depth != 0 && state.owner != thread {
+        let mut state = self.state.lock().unwrap();
+        if state.retired {
+            return Err("entering a deleted PE32 critical section".into());
+        }
+        let ownership = &mut state.ownership;
+        if ownership.depth != 0 && ownership.owner != thread {
             return Ok(false);
         }
-        state.enter(thread)?;
-        unsafe { state.write(address) };
+        ownership.enter(thread)?;
+        unsafe { ownership.write(address) };
         Ok(true)
     }
 
     unsafe fn leave(&self, thread: u32, address: *mut u32) -> crate::Result<()> {
-        let mut state = self.ownership.lock().unwrap();
-        state.leave(thread)?;
-        unsafe { state.write(address) };
-        if state.depth == 0 {
+        let mut state = self.state.lock().unwrap();
+        let ownership = &mut state.ownership;
+        ownership.leave(thread)?;
+        unsafe { ownership.write(address) };
+        if ownership.depth == 0 {
             self.released.notify_one();
         }
         Ok(())
     }
 
+    fn retire(&self) -> crate::Result<()> {
+        let mut state = self.state.lock().unwrap();
+        if state.ownership.depth != 0 {
+            return Err("deleting an owned PE32 critical section".into());
+        }
+        // An API can have completed its state operation while its Arc is
+        // still alive. Retire the object rather than rejecting that reference.
+        // Old entrants then fail explicitly, even if the address is reused.
+        state.retired = true;
+        self.released.notify_all();
+        Ok(())
+    }
+
     fn wait_until_unowned(&self) {
-        let mut state = self.ownership.lock().unwrap();
-        let owned = |state: &mut Section| state.depth != 0;
+        let mut state = self.state.lock().unwrap();
+        let owned = |state: &mut CriticalState| state.ownership.depth != 0;
         if !super::window_host32::is_main_thread() {
             drop(self.released.wait_while(state, owned).unwrap());
             return;
@@ -105,37 +133,35 @@ impl CriticalSection {
                 .unwrap();
             drop(state);
             super::window_host32::pump_tasks();
-            state = self.ownership.lock().unwrap();
+            state = self.state.lock().unwrap();
         }
     }
 }
 
-pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u32 {
+pub(super) fn is_interlocked(id: u32) -> bool {
+    matches!(id, 38 | 51 | 75 | 76 | 127)
+}
+
+/// The caller keeps a checked, aligned, live DWORD writable until this returns.
+pub(super) unsafe fn interlocked(id: u32, args: &[u32; 8]) -> u32 {
+    let atomic = unsafe { AtomicU32::from_ptr(args[0] as *mut u32) };
+    match id {
+        38 => atomic.fetch_add(1, Ordering::SeqCst).wrapping_add(1),
+        51 => atomic.fetch_sub(1, Ordering::SeqCst).wrapping_sub(1),
+        75 => compare_exchange(atomic, args[1], args[2]),
+        76 => atomic.swap(args[1], Ordering::SeqCst),
+        127 => atomic.fetch_add(args[1], Ordering::SeqCst),
+        _ => unreachable!(),
+    }
+}
+
+/// The caller keeps the checked CRITICAL_SECTION storage live and writable.
+pub(super) unsafe fn critical_immediate(
+    image: &LoadedImage32<'_>,
+    id: u32,
+    args: &[u32; 8],
+) -> u32 {
     let address = args[0];
-    if matches!(id, 38 | 51 | 75 | 76) {
-        if !address.is_multiple_of(4) || !image.permits(address as usize, 4, true) {
-            unsupported("PE32 interlocked target outside writable aligned guest storage");
-        }
-        let atomic = unsafe { std::sync::atomic::AtomicU32::from_ptr(address as *mut u32) };
-        if id == 75 {
-            return compare_exchange(atomic, args[1], args[2]);
-        }
-        if id == 76 {
-            return atomic.swap(args[1], std::sync::atomic::Ordering::SeqCst);
-        }
-        return if id == 38 {
-            atomic
-                .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
-                .wrapping_add(1)
-        } else {
-            atomic
-                .fetch_sub(1, std::sync::atomic::Ordering::SeqCst)
-                .wrapping_sub(1)
-        };
-    }
-    if !address.is_multiple_of(4) || !image.permits(address as usize, 24, true) {
-        unsupported("PE32 critical section outside writable aligned guest storage");
-    }
     let mut sections = image.cpu.critical_sections.lock().unwrap();
     if id == 32 || id == 33 {
         if sections.contains_key(&address) {
@@ -144,9 +170,10 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
         let mut section = CriticalSection::new(if id == 32 { args[1] } else { 0 });
         unsafe {
             section
-                .ownership
+                .state
                 .get_mut()
                 .unwrap()
+                .ownership
                 .write(address as *mut u32)
         };
         sections.insert(address, Arc::new(section));
@@ -156,12 +183,7 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
         .get_mut(&address)
         .unwrap_or_else(|| unsupported("unknown/uninitialized PE32 critical section"));
     if id == 36 {
-        let section = Arc::get_mut(entry).unwrap_or_else(|| {
-            unsupported("deleting a PE32 critical section during an active operation")
-        });
-        if section.ownership.get_mut().unwrap().depth != 0 {
-            unsupported("deleting an owned PE32 critical section");
-        }
+        entry.retire().unwrap_or_else(|e| unsupported(&e));
         sections.remove(&address);
         return 0;
     }
@@ -170,14 +192,44 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
     let thread = alkyhol::ffi::GetCurrentThreadId();
     if id == 35 {
         unsafe { section.leave(thread, address as *mut u32) }.unwrap_or_else(|e| unsupported(&e));
-        return 1;
+        1
+    } else {
+        debug_assert_eq!(id, 37);
+        u32::from(
+            unsafe { section.try_enter(thread, address as *mut u32) }
+                .unwrap_or_else(|e| unsupported(&e)),
+        )
     }
-    debug_assert!(matches!(id, 34 | 37));
+}
+
+pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u32 {
+    let address = args[0];
+    if is_interlocked(id) {
+        if !address.is_multiple_of(4) || !image.permits(address as usize, 4, true) {
+            unsupported("PE32 interlocked target outside writable aligned guest storage");
+        }
+        return unsafe { interlocked(id, args) };
+    }
+    if !address.is_multiple_of(4) || !image.permits(address as usize, 24, true) {
+        unsupported("PE32 critical section outside writable aligned guest storage");
+    }
+    if id != 34 {
+        return unsafe { critical_immediate(image, id, args) };
+    }
+    let section = image
+        .cpu
+        .critical_sections
+        .lock()
+        .unwrap()
+        .get(&address)
+        .cloned()
+        .unwrap_or_else(|| unsupported("unknown/uninitialized PE32 critical section"));
+    let thread = alkyhol::ffi::GetCurrentThreadId();
     loop {
         let acquired = unsafe { section.try_enter(thread, address as *mut u32) }
             .unwrap_or_else(|e| unsupported(&e));
-        if acquired || id == 37 {
-            return acquired as u32;
+        if acquired {
+            return 1;
         }
         super::thread32::without_cpu(image, || section.wait_until_unowned());
         if !image.permits(address as usize, 24, true) {
@@ -228,6 +280,20 @@ mod tests {
         assert_eq!((s.depth, s.owner), (0, 0));
         s.enter(8).unwrap();
         assert_eq!(s.owner, 8);
+    }
+
+    #[test]
+    fn retired_section_rejects_stale_entrants_without_rejecting_completed_references() {
+        let section = Arc::new(CriticalSection::new(0));
+        let previous = Arc::clone(&section);
+        let mut mirror = [0; 6];
+        assert!(unsafe { previous.try_enter(7, mirror.as_mut_ptr()) }.unwrap());
+        assert!(section.retire().is_err());
+        unsafe { previous.leave(7, mirror.as_mut_ptr()) }.unwrap();
+        section.retire().unwrap();
+        let before = mirror;
+        assert!(unsafe { previous.try_enter(9, mirror.as_mut_ptr()) }.is_err());
+        assert_eq!(mirror, before);
     }
 
     #[test]

@@ -126,7 +126,8 @@ impl ExecutionContext32<'_> {
             .image
             .cpu
             .heap
-            .borrow()
+            .read()
+            .unwrap()
             .cpu_permits(address as usize, length)
         {
             return true;

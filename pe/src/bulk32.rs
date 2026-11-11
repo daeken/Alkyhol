@@ -1,7 +1,6 @@
 //! Family adapters for the actual DAO import surface. All state is shared with
 //! existing checked gateways; unsupported handle/path profiles remain explicit.
 use super::{LoadedImage32, directory32, files32, startup32, unsupported};
-use std::sync::atomic::{AtomicU32, Ordering};
 pub(super) fn ascii(image: &LoadedImage32<'_>, address: u32) -> String {
     let value = startup32::read_units::<u8>(image, address, -1)
         .unwrap_or_else(|| unsupported("ANSI family input outside checked guest storage"));
@@ -58,11 +57,4 @@ pub(super) fn attributes(image: &LoadedImage32<'_>, address: u32, ansi: bool) ->
             u32::MAX
         }
     }
-}
-pub(super) fn exchange_add(image: &LoadedImage32<'_>, args: &[u32; 8]) -> u32 {
-    if !args[0].is_multiple_of(4) || !image.permits(args[0] as usize, 4, true) {
-        unsupported("interlocked add operand outside aligned writable guest storage");
-    }
-    let value = unsafe { &*(args[0] as *const AtomicU32) };
-    value.fetch_add(args[1], Ordering::SeqCst)
 }

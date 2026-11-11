@@ -10,7 +10,7 @@ use std::{
     ptr,
     rc::Rc,
     sync::{
-        Arc, Condvar, Mutex, MutexGuard, OnceLock, TryLockError,
+        Arc, Condvar, Mutex, MutexGuard, OnceLock, RwLock, TryLockError,
         atomic::{AtomicBool, AtomicU64, Ordering},
     },
 };
@@ -888,6 +888,11 @@ struct LowMapping {
     base: *mut u8,
     len: usize,
 }
+// SAFETY: the mapping owns a task-wide VM range. Sharing the address and
+// length is safe. Access to mapped bytes still requires an unsafe operation
+// and the caller's lifetime, permission and synchronization checks.
+unsafe impl Send for LowMapping {}
+unsafe impl Sync for LowMapping {}
 impl LowMapping {
     fn new_in(
         len: usize,
@@ -1134,8 +1139,8 @@ struct Cpu32 {
     diagnostic: Option<diagnostic32::Traps>,
     parallel_guest_threads: bool,
     trace_first_calls: bool,
-    trace_seen: RefCell<std::collections::BTreeSet<u32>>,
-    heap: RefCell<heap32::Heap>,
+    trace_seen: [AtomicU64; 1024],
+    heap: RwLock<heap32::Heap>,
     crt: RefCell<crt32::State>,
     fls: RefCell<fiber32::Slots>,
     dynamic_tls: RefCell<[bool; 64]>,
@@ -1158,12 +1163,13 @@ struct Cpu32 {
     mutexes: Option<RefCell<mutex32::State>>,
     current_directory: RefCell<Option<directory32::Directory>>,
     icons: RefCell<icon32::State>,
-    events: RefCell<event32::State>,
+    events: RwLock<event32::State>,
     ui: RefCell<ui32::State>,
     gdi: RefCell<gdi32::State>,
     utc_timezone: bool,
     version_workstation: bool,
     threads: RefCell<thread32::State>,
+    worker_created: AtomicBool,
     watches: RefCell<watch32::State>,
     winsock: RefCell<winsock32::State>,
     sections: RefCell<section32::State>,
@@ -1197,14 +1203,14 @@ impl Cpu32 {
         self.fls.borrow_mut().clear();
         self.unnamed_mutexes.clear();
         self.com.borrow_mut().clear();
-        self.heap.borrow_mut().clear();
+        self.heap.write().unwrap().clear();
         *self.crt.borrow_mut() = Default::default();
     }
     fn close_files(&self) {
         let error = alkyhol::ffi::GetLastError();
         self.watches.borrow_mut().clear();
         self.sections.borrow_mut().clear_handles();
-        self.events.borrow_mut().clear();
+        self.events.write().unwrap().clear();
         self.current_directory.borrow_mut().take();
         if let Some(mutexes) = &self.mutexes {
             mutexes.borrow_mut().clear();
@@ -1272,8 +1278,8 @@ impl Cpu32 {
                 std::env::var("ALKYHOL_PE32_TRACE_CALLS").as_deref(),
                 Ok("first")
             ),
-            trace_seen: RefCell::new(Default::default()),
-            heap: RefCell::new(heap32::Heap::with_bounds(bounds)),
+            trace_seen: [const { AtomicU64::new(0) }; 1024],
+            heap: RwLock::new(heap32::Heap::with_bounds(bounds)),
             crt: RefCell::new(Default::default()),
             fls: RefCell::new(Default::default()),
             dynamic_tls: RefCell::new([false; 64]),
@@ -1298,12 +1304,13 @@ impl Cpu32 {
             mutexes: None,
             current_directory: RefCell::new(None),
             icons: RefCell::new(Default::default()),
-            events: RefCell::new(Default::default()),
+            events: RwLock::new(Default::default()),
             ui: RefCell::new(Default::default()),
             gdi: RefCell::new(Default::default()),
             utc_timezone: false,
             version_workstation: false,
             threads: RefCell::new(Default::default()),
+            worker_created: AtomicBool::new(false),
             watches: RefCell::new(Default::default()),
             winsock: RefCell::new(Default::default()),
             sections: RefCell::new(Default::default()),
@@ -1863,7 +1870,7 @@ impl<'a> LoadedImage32<'a> {
         {
             return true;
         }
-        if self.cpu.heap.borrow().permits(address, len) {
+        if self.cpu.heap.read().unwrap().permits(address, len) {
             return true;
         }
         if let Some(block) = &self.tls {
@@ -2406,11 +2413,173 @@ fn query_name(address: u32, mut read: impl FnMut(u32) -> Result<u8>) -> Result<S
     }
     Err("export query exceeds 4096-byte bound".into())
 }
+fn trace_service(
+    image: &LoadedImage32<'_>,
+    id: u32,
+    arguments: *const u32,
+    name: &str,
+    words: &[u32],
+    return_pc_is_checked: bool,
+) {
+    if image.cpu.diagnostic.is_none() {
+        return;
+    }
+    if image.cpu.trace_first_calls {
+        let seen = &image.cpu.trace_seen[(id / 64) as usize];
+        let bit = 1 << (id % 64);
+        if seen.load(Ordering::Relaxed) & bit != 0
+            || seen.fetch_or(bit, Ordering::Relaxed) & bit != 0
+        {
+            return;
+        }
+    }
+    let return_address = (arguments as usize)
+        .checked_sub(4)
+        .filter(|&p| return_pc_is_checked || image.permits(p, 4, false))
+        .unwrap_or_else(|| unsupported("diagnostic return address outside guest storage"));
+    let pc = unsafe { (return_address as *const u32).read_unaligned() };
+    eprintln!("PE32 diagnostic call: {name}; return_pc=0x{pc:08x}; stack_words={words:x?}");
+}
+
+fn stable_writable(image: &LoadedImage32<'_>, address: usize, len: usize) -> bool {
+    let Some(end) = address.checked_add(len) else {
+        return false;
+    };
+    let stack = image.cpu.stack().base as usize + PAGE;
+    let teb = image.cpu.teb().base as usize;
+    (address >= stack && end <= stack + STACK)
+        || (address >= teb && end <= teb + PAGE)
+        || image.regions.iter().any(|&(first, last, rights)| {
+            rights & 0x80000000 != 0 && address >= first && end <= last
+        })
+}
+
+fn with_writable<R>(
+    image: &LoadedImage32<'_>,
+    address: u32,
+    len: usize,
+    operation: impl FnOnce() -> R,
+) -> Option<R> {
+    if !address.is_multiple_of(4) {
+        return None;
+    }
+    let address = address as usize;
+    if stable_writable(image, address, len) {
+        return Some(operation());
+    }
+    // Allocation/free may run concurrently with this service. Pin the live
+    // extent until the operation completes. Other mapping families retain
+    // their existing validated dispatch path.
+    let heap = image.cpu.heap.read().unwrap();
+    heap.permits(address, len).then(operation)
+}
+
+fn thread_local_service(id: u32, args: &[u32; 8]) -> Option<u32> {
+    Some(match id {
+        0 => alkyhol::ffi::GetLastError(),
+        1 => {
+            alkyhol::ffi::SetLastError(args[0]);
+            0
+        }
+        39 => alkyhol::ffi::GetCurrentThreadId(),
+        71 => std::process::id(),
+        72 | 110 => time32::tick_count(),
+        _ => return None,
+    })
+}
+
+fn counter_value(id: u32, address: u32) -> u32 {
+    let value = if id == 73 {
+        alkyhol::kernel::performance_counter()
+    } else {
+        alkyhol::kernel::PERFORMANCE_FREQUENCY
+    };
+    let bytes = value.to_le_bytes();
+    unsafe {
+        ptr::copy_nonoverlapping(bytes.as_ptr(), address as usize as *mut u8, 8);
+    }
+    1
+}
+
+fn parallel_dispatch(id: u32, arguments: *const u32) -> Option<u32> {
+    if !matches!(
+        id,
+        0 | 1 | 16..=18 | 20 | 32..=33 | 35..=39 | 51 | 54 | 71..=76
+            | 99 | 104..=105 | 110 | 113 | 116..=119 | 125..=127 | 136 | 142 | 217
+    ) {
+        return None;
+    }
+    ACTIVE.with(|slot| {
+        let image = unsafe { slot.get().cast::<LoadedImage32<'_>>().as_ref() }?;
+        let (name, bytes) = gateway_signature(id)?;
+        let first = (arguments as usize).checked_sub(4)?;
+        let last = (arguments as usize).checked_add(bytes as usize)?;
+        let stack = image.cpu.stack().base as usize + PAGE;
+        if !first.is_multiple_of(4) || first < stack || last > stack + STACK {
+            return None;
+        }
+        let mut args = [0; 8];
+        let count = usize::from(bytes) / 4;
+        for (i, word) in args.iter_mut().enumerate().take(count) {
+            *word = unsafe { arguments.add(i).read() };
+        }
+        let error = unsafe { image.cpu.teb().base.add(0x34).cast::<u32>() };
+        alkyhol::ffi::SetLastError(unsafe { error.read_unaligned() });
+        let _teb_error = TebError(error);
+        let timer = perf32::start();
+        let result = match id {
+            16..=18 | 20 | 54 | 99 | 104..=105 => heap32::dispatch(image, id, &args),
+            32 | 33 | 35..=37 => with_writable(image, args[0], 24, || unsafe {
+                sync32::critical_immediate(image, id, &args)
+            })?,
+            id if sync32::is_interlocked(id) => with_writable(image, args[0], 4, || unsafe {
+                sync32::interlocked(id, &args)
+            })?,
+            73 | 74 => with_writable(image, args[0], 8, || counter_value(id, args[0]))?,
+            113 | 136 => {
+                if args[2] != 0 {
+                    return None;
+                }
+                if args[1] == 0 {
+                    image.cpu.events.read().unwrap().poll_if_owned(args[0])?
+                } else {
+                    if !image.cpu.worker_created.load(Ordering::Acquire)
+                        || !image.cpu.events.read().unwrap().contains(args[0])
+                    {
+                        return None;
+                    }
+                    thread32::wait_native(args[0], args[1])
+                }
+            }
+            116..=119 => event32::dispatch(image, id, &args),
+            125 => event32::dispatch(image, 116, &args),
+            126 => event32::dispatch(image, 119, &args),
+            142 => {
+                window_host32::pump_tasks();
+                thread32::sleep_native(args[0]);
+                window_host32::pump_tasks();
+                0
+            }
+            217 => thread32::switch_to_thread_unlocked(),
+            _ => thread_local_service(id, &args)?,
+        };
+        trace_service(image, id, arguments, name, &args[..count], true);
+        perf32::record(0, Some(id), timer);
+        Some(result)
+    })
+}
+
 extern "C" fn dispatch(id: u32, arguments: *const u32) -> u64 {
     if seh32::in_handler() {
         seh32::async_fail(b"Alkyhol PE32 unsupported: imports from an exception handler\n");
     }
     let parallel = thread32::parallel_guest();
+    if parallel
+        && !thread32::has_lease()
+        && let Some(result) = parallel_dispatch(id, arguments)
+    {
+        return u64::from(result);
+    }
     let parallel_wait = if parallel { perf32::start() } else { None };
     let boundary = thread32::ServiceLease::enter();
     if boundary.is_some() {
@@ -2509,26 +2678,18 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
             *value = unsafe { arguments.add(index).read_unaligned() };
         }
         let args: &[u32; 8] = words[..8].try_into().expect("fixed gateway prefix");
-        let trace_call = image.cpu.diagnostic.is_some()
-            && (!image.cpu.trace_first_calls || image.cpu.trace_seen.borrow_mut().insert(id));
-        if trace_call {
-            let return_address = (arguments as usize)
-                .checked_sub(4)
-                .filter(|&p| image.permits(p, 4, false))
-                .unwrap_or_else(|| unsupported("diagnostic return address outside guest storage"));
-            let pc = unsafe { (return_address as *const u32).read_unaligned() };
-            eprintln!(
-                "PE32 diagnostic call: {}; return_pc=0x{pc:08x}; stack_words={:x?}",
-                name,
-                &words[..bytes as usize / 4]
-            );
+        trace_service(
+            image,
+            id,
+            arguments,
+            name,
+            &words[..bytes as usize / 4],
+            false,
+        );
+        if let Some(result) = thread_local_service(id, args) {
+            return result;
         }
         match id {
-            0 => alkyhol::ffi::GetLastError(),
-            1 => {
-                alkyhol::ffi::SetLastError(args[0]);
-                0
-            }
             2 => {
                 let index = match args[0] {
                     0xfffffff6 => 0,
@@ -2564,11 +2725,10 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
                 }
                 Err(error) => unsupported(&error),
             },
-            7..=21 => startup32::dispatch(image, id, args),
+            7..=15 | 19 | 21 => startup32::dispatch(image, id, args),
             22..=29 => fiber32::dispatch(image, id, args),
             30 | 31 => pointer_transform(args[0], image.cpu.pointer_cookie, id == 31),
             32..=38 => sync32::dispatch(image, id, args),
-            39 => alkyhol::ffi::GetCurrentThreadId(),
             40 | 41 => startup32::dispatch(image, id, args),
             // Documented obsolete DOS API: Win32 deliberately has no effect
             // and returns the exact requested count. This is its API contract.
@@ -2582,12 +2742,7 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
             51 => sync32::dispatch(image, id, args),
             52 => machine32::processor_feature(args[0]).unwrap_or_else(|e| unsupported(&e)),
             53 => startup32::dispatch(image, id, args),
-            54 => image
-                .cpu
-                .heap
-                .borrow()
-                .size(args[0], args[1], args[2])
-                .unwrap_or_else(|e| unsupported(&e)),
+            16..=18 | 20 | 54 | 99 | 104..=105 => heap32::dispatch(image, id, args),
             55 => activation32::find(image, args),
             56 => module_path32::filename(image, args),
             57 => module_path32::long_name(image, args),
@@ -2600,22 +2755,11 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
             68..=70 | 304 => time32::dispatch(image, id, args),
             305 => copy_file32::dispatch(image, args),
             306 => number_format32::dispatch(image, args),
-            71 => std::process::id(),
-            72 | 110 => time32::tick_count(),
             73 | 74 => {
                 if !args[0].is_multiple_of(4) || !image.permits(args[0] as usize, 8, true) {
                     unsupported("PE32 performance-counter output outside checked guest storage");
                 }
-                let value = if id == 73 {
-                    alkyhol::kernel::performance_counter()
-                } else {
-                    alkyhol::kernel::PERFORMANCE_FREQUENCY
-                };
-                let bytes = value.to_le_bytes();
-                unsafe {
-                    ptr::copy_nonoverlapping(bytes.as_ptr(), args[0] as usize as *mut u8, 8);
-                }
-                1
+                counter_value(id, args[0])
             }
             75 | 76 => sync32::dispatch(image, id, args),
             77 => {
@@ -2636,12 +2780,6 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
             96 => crt32::dll_onexit(image, args),
             97 => startup32::dispatch(image, 40, args),
             98 => module_path32::filename_ansi(image, args),
-            99 => image
-                .cpu
-                .heap
-                .borrow_mut()
-                .reallocate(args[0], args[1], args[2], args[3])
-                .unwrap_or_else(|e| unsupported(&e)),
             100 => cursor32::position(image, args[0]),
             299 => ui32::set_capture(image, args[0]),
             300 => ui32::release_capture(image),
@@ -2651,12 +2789,6 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
             101 => module_path32::windows_directory_ansi(image, args),
             102 => module_path32::system_directory_ansi(image, args),
             103 => exception_filter32::replace(image, args[0]),
-            104 | 105 => image
-                .cpu
-                .heap
-                .borrow_mut()
-                .lock(args[0], alkyhol::ffi::GetCurrentThreadId(), id == 104)
-                .unwrap_or_else(|e| unsupported(&e)),
             106 => machine32::information(image, args[0]),
             107 | 108 | 216 => registry32::dispatch(image, id, args),
             109 => mutex32::create(image, args),
@@ -2667,7 +2799,7 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
             }
             113 if image.cpu.watches.borrow().contains(args[0]) => thread32::wait(image, args),
             113 if image.cpu.threads.borrow().contains(args[0]) => thread32::wait(image, args),
-            113 if image.cpu.events.borrow().contains(args[0]) => {
+            113 if image.cpu.events.read().unwrap().contains(args[0]) => {
                 event32::dispatch(image, id, args)
             }
             113 | 114 => mutex32::ownership(image, args, id == 113),
@@ -2680,7 +2812,7 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
             124 => event32::release(image, args),
             125 => event32::dispatch(image, 116, args),
             126 => event32::dispatch(image, 119, args),
-            127 => bulk32::exchange_add(image, args),
+            127 => sync32::dispatch(image, id, args),
             128 | 129 => bulk32::file_size(image, args, id == 129),
             130 => 0xfffffffe,
             131 => shell_folder32::create_ansi(image, args),
@@ -2695,7 +2827,7 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
                     || image.cpu.watches.borrow().contains(args[0])
                 {
                     thread32::wait(image, args)
-                } else if image.cpu.events.borrow().contains(args[0]) {
+                } else if image.cpu.events.read().unwrap().contains(args[0]) {
                     event32::dispatch(image, 113, args)
                 } else {
                     mutex32::ownership(image, args, true)
@@ -2706,10 +2838,7 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
             140 => files32::first_kind(image, args, true),
             141 => files32::next_kind(image, args, true),
             142 => {
-                if args[0] > 60000 {
-                    unsupported("Sleep exceeds the bounded non-alertable host wait profile");
-                }
-                thread32::without_cpu(image, || alkyhol::ffi::Sleep(args[0]));
+                thread32::without_cpu(image, || thread32::sleep_native(args[0]));
                 0
             }
             143 | 144 => fileio32::seek(image, args, id == 144),
@@ -3193,8 +3322,8 @@ mod tests {
                     std::env::var("ALKYHOL_PE32_TRACE_CALLS").as_deref(),
                     Ok("first")
                 ),
-                trace_seen: RefCell::new(Default::default()),
-                heap: RefCell::new(Default::default()),
+                trace_seen: [const { AtomicU64::new(0) }; 1024],
+                heap: RwLock::new(Default::default()),
                 crt: RefCell::new(Default::default()),
                 fls: RefCell::new(Default::default()),
                 dynamic_tls: RefCell::new([false; 64]),
@@ -3217,12 +3346,13 @@ mod tests {
                 mutexes: None,
                 current_directory: RefCell::new(None),
                 icons: RefCell::new(Default::default()),
-                events: RefCell::new(Default::default()),
+                events: RwLock::new(Default::default()),
                 ui: RefCell::new(Default::default()),
                 gdi: RefCell::new(Default::default()),
                 utc_timezone: false,
                 version_workstation: false,
                 threads: RefCell::new(Default::default()),
+                worker_created: AtomicBool::new(false),
                 watches: RefCell::new(Default::default()),
                 winsock: RefCell::new(Default::default()),
                 sections: RefCell::new(Default::default()),
@@ -3253,6 +3383,18 @@ mod tests {
             _process: PhantomData,
         })
     }
+    #[test]
+    fn independent_memory_uses_full_writable_extents_without_other_registries() {
+        let image = layout();
+        let _other_state = image.cpu.sections.borrow_mut();
+        assert_eq!(with_writable(&image, 0x401000, 8, || 7), Some(7));
+        assert_eq!(with_writable(&image, 0x600ffc, 4, || 9), Some(9));
+        assert_eq!(with_writable(&image, 0x200ffc, 4, || 11), Some(11));
+        for (address, length) in [(0x400ffc, 4), (0x100000, 4), (0x200ffc, 8), (0x200001, 4)] {
+            assert_eq!(with_writable(&image, address, length, || 1), None);
+        }
+    }
+
     #[test]
     fn buffer_validation_obeys_actual_section_permissions_stack_bounds_and_overflow() {
         let image = layout();

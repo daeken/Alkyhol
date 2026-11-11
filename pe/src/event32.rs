@@ -98,12 +98,16 @@ impl State {
         }
         Ok(1)
     }
+    pub(super) fn poll_if_owned(&self, h: u32) -> Option<u32> {
+        self.contains(h)
+            .then(|| alkyhol::ffi::WaitForSingleObject(h as usize, 0))
+    }
+
     #[cfg(test)]
     fn poll(&self, h: u32) -> Result<u32> {
-        if !self.contains(h) {
-            return Err("event wait requires an owned live event".into());
-        }
-        let result = alkyhol::ffi::WaitForSingleObject(h as usize, 0);
+        let result = self
+            .poll_if_owned(h)
+            .ok_or("event wait requires an owned live event")?;
         if ![0, 258].contains(&result) {
             return Err("event backing wait failed outside its admitted state".into());
         }
@@ -125,7 +129,8 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
         let allocation = image
             .cpu
             .events
-            .borrow_mut()
+            .write()
+            .unwrap()
             .semaphore(args[1] as i32, args[2] as i32);
         // Drop the registry borrow before any fatal diagnostic can terminate
         // while another guest worker is reacquiring the CPU lease.
@@ -141,7 +146,8 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
         let allocation = image
             .cpu
             .events
-            .borrow_mut()
+            .write()
+            .unwrap()
             .create(args[1] != 0, args[2] != 0);
         let h = allocation.unwrap_or_else(|e| unsupported(&e));
         if h != 0 {
@@ -154,7 +160,14 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
             && !image.cpu.watches.borrow().completion_event(args[0])
             && !super::dsound32::completion_event(image, args[0])
         {
-            if image.cpu.events.borrow().semaphores.contains(&args[0]) {
+            if image
+                .cpu
+                .events
+                .read()
+                .unwrap()
+                .semaphores
+                .contains(&args[0])
+            {
                 unsupported("semaphore waits require zero timeout and alertable FALSE");
             }
             unsupported("event waits require zero timeout and alertable FALSE");
@@ -163,12 +176,12 @@ pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, args: &[u32; 8]) -> u
             unsupported("alertable event/semaphore waits require APC delivery");
         }
         // No event registry borrow crosses the released CPU lease.
-        if !image.cpu.events.borrow().contains(args[0]) {
+        if !image.cpu.events.read().unwrap().contains(args[0]) {
             unsupported("wait requires an owned event/semaphore");
         }
         super::thread32::wait_handle(image, args[0], args[1])
     } else {
-        let result = image.cpu.events.borrow().change(args[0], id == 117);
+        let result = image.cpu.events.read().unwrap().change(args[0], id == 117);
         result.unwrap_or_else(|e| unsupported(&e))
     }
 }
@@ -188,7 +201,7 @@ pub(super) fn wait_set(image: &LoadedImage32<'_>, args: &[u32; 8]) -> u32 {
         .map(|index| unsafe { (args[1] as *const u32).add(index).read_unaligned() as usize })
         .collect();
     for &handle in &handles {
-        let state = image.cpu.events.borrow();
+        let state = image.cpu.events.read().unwrap();
         if !state.is_event(handle as u32) && !image.cpu.threads.borrow().contains(handle as u32) {
             if state.contains(handle as u32) {
                 unsupported(
@@ -207,7 +220,14 @@ pub(super) fn wait_set(image: &LoadedImage32<'_>, args: &[u32; 8]) -> u32 {
     }
 }
 pub(super) fn release(image: &LoadedImage32<'_>, args: &[u32; 8]) -> u32 {
-    if !image.cpu.events.borrow().semaphores.contains(&args[0]) {
+    if !image
+        .cpu
+        .events
+        .read()
+        .unwrap()
+        .semaphores
+        .contains(&args[0])
+    {
         unsupported("semaphore release requires an owned live counting semaphore");
     }
     if args[2] != 0 && (!args[2].is_multiple_of(4) || !image.permits(args[2] as usize, 4, true)) {
@@ -293,6 +313,29 @@ mod tests {
         state.clear();
         assert!(state.poll(automatic).is_err());
     }
+    #[test]
+    fn concurrent_pollers_consume_one_automatic_event_signal() {
+        use std::sync::{Arc, Barrier, RwLock};
+
+        let mut state = State::default();
+        let event = state.create(false, true).unwrap();
+        let state = Arc::new(RwLock::new(state));
+        let ready = Arc::new(Barrier::new(2));
+        let workers = std::array::from_fn::<_, 2, _>(|_| {
+            let state = Arc::clone(&state);
+            let ready = Arc::clone(&ready);
+            std::thread::spawn(move || {
+                ready.wait();
+                state.read().unwrap().poll_if_owned(event).unwrap()
+            })
+        });
+        let mut results = workers.map(|worker| worker.join().unwrap());
+        results.sort_unstable();
+        assert_eq!(results, [0, 258]);
+        state.write().unwrap().close(event).unwrap();
+        assert_eq!(state.read().unwrap().poll_if_owned(event), None);
+    }
+
     #[test]
     fn counting_semaphores_consume_real_permits_and_preserve_type_and_signed_ranges() {
         let mut state = State::default();

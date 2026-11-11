@@ -1,6 +1,6 @@
 //! Bounded process/private heaps reached by original DLL startup. Handles are
 //! inaccessible opaque tokens; 8-byte-aligned blocks live in real low arenas.
-use super::{LowMapping, PAGE};
+use super::{LoadedImage32, LowMapping, PAGE, unsupported};
 use crate::Result;
 use std::collections::BTreeMap;
 struct Region {
@@ -285,6 +285,25 @@ impl Heap {
         self.default = None;
     }
 }
+pub(super) fn dispatch(image: &LoadedImage32<'_>, id: u32, a: &[u32; 8]) -> u32 {
+    let heap = &image.cpu.heap;
+    let result = match id {
+        16 => heap.write().unwrap().handle(),
+        17 => heap.write().unwrap().allocate(a[0], a[1], a[2]),
+        18 => heap.write().unwrap().free(a[0], a[1], a[2]),
+        20 => heap.write().unwrap().create(a[0], a[1], a[2]),
+        54 => heap.read().unwrap().size(a[0], a[1], a[2]),
+        99 => heap.write().unwrap().reallocate(a[0], a[1], a[2], a[3]),
+        104 | 105 => {
+            heap.write()
+                .unwrap()
+                .lock(a[0], alkyhol::ffi::GetCurrentThreadId(), id == 104)
+        }
+        _ => unreachable!(),
+    };
+    result.unwrap_or_else(|e| unsupported(&e))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

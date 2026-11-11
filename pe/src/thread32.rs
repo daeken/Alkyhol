@@ -170,6 +170,10 @@ pub(super) fn parallel_guest() -> bool {
     PARALLEL.get()
 }
 
+pub(super) fn has_lease() -> bool {
+    LEASE.with(|slot| slot.borrow().is_some())
+}
+
 fn acquire_lease() {
     let lease = CpuLease::acquire(true, parallel_guest()).unwrap_or_else(|e| unsupported(&e));
     LEASE.with(|slot| {
@@ -212,7 +216,7 @@ pub(super) unsafe fn enter_guest(entry: u32, stack: u32, code: u16, data: u16) -
 pub(super) struct ServiceLease;
 impl ServiceLease {
     pub(super) fn enter() -> Option<Self> {
-        if !PARALLEL.get() || LEASE.with(|slot| slot.borrow().is_some()) {
+        if !PARALLEL.get() || has_lease() {
             return None;
         }
         acquire_lease();
@@ -427,6 +431,7 @@ pub(super) fn create(image: &LoadedImage32<'_>, a: &[u32; 8]) -> u32 {
     let mut state = image.cpu.threads.borrow_mut();
     state.records.insert(h as u32, record);
     state.joins.push(join);
+    image.cpu.worker_created.store(true, Ordering::Release);
     drop(state);
     if a[5] != 0 {
         output(image, a[5], id);
@@ -645,37 +650,44 @@ pub(super) fn host_fs_valid(fs: u16) -> bool {
         .map_or(fs == 0, |r| r.host_fs.get() == fs)
 }
 
-pub(super) fn wait_handle(image: &LoadedImage32<'_>, handle: u32, milliseconds: u32) -> u32 {
-    // An atomic, nonblocking kernel poll needs no CPU-lease/TEB handoff.
-    // Blocking waits release the CPU lease and service AppKit on host main.
-    if milliseconds == 0 {
-        return alkyhol::ffi::WaitForSingleObject(handle as usize, 0);
+pub(super) fn wait_native(handle: u32, milliseconds: u32) -> u32 {
+    if milliseconds == 0 || !super::window_host32::is_main_thread() {
+        return alkyhol::ffi::WaitForSingleObject(handle as usize, milliseconds);
     }
-    without_cpu(image, || {
-        if !super::window_host32::is_main_thread() || milliseconds == 0 {
-            return alkyhol::ffi::WaitForSingleObject(handle as usize, milliseconds);
+    let start = std::time::Instant::now();
+    loop {
+        super::window_host32::pump_tasks();
+        let slice = if milliseconds == u32::MAX {
+            1
+        } else {
+            milliseconds
+                .saturating_sub(start.elapsed().as_millis().min(u32::MAX as u128) as u32)
+                .min(1)
+        };
+        let result = alkyhol::ffi::WaitForSingleObject(handle as usize, slice);
+        if result != 258 {
+            return result;
         }
-        let start = std::time::Instant::now();
-        loop {
-            super::window_host32::pump_tasks();
-            let slice = if milliseconds == u32::MAX {
-                1
-            } else {
-                milliseconds
-                    .saturating_sub(start.elapsed().as_millis().min(u32::MAX as u128) as u32)
-                    .min(1)
-            };
-            let result = alkyhol::ffi::WaitForSingleObject(handle as usize, slice);
-            if result != 258 {
-                return result;
-            }
-            if milliseconds != u32::MAX
-                && start.elapsed() >= std::time::Duration::from_millis(milliseconds as u64)
-            {
-                return 258;
-            }
+        if milliseconds != u32::MAX
+            && start.elapsed() >= std::time::Duration::from_millis(milliseconds as u64)
+        {
+            return 258;
         }
-    })
+    }
+}
+
+pub(super) fn wait_handle(image: &LoadedImage32<'_>, handle: u32, milliseconds: u32) -> u32 {
+    if milliseconds == 0 {
+        return wait_native(handle, 0);
+    }
+    without_cpu(image, || wait_native(handle, milliseconds))
+}
+
+pub(super) fn sleep_native(milliseconds: u32) {
+    if milliseconds > 60000 {
+        unsupported("Sleep exceeds the bounded non-alertable host wait profile");
+    }
+    alkyhol::ffi::Sleep(milliseconds);
 }
 
 /// Event sets use the portable kernel dispatcher. Only synchronized host
@@ -701,6 +713,16 @@ pub(super) fn wait_event_set(
         )
     })
 }
+pub(super) fn switch_to_thread_unlocked() -> u32 {
+    let before = super::execution_epoch(true);
+    super::window_host32::pump_tasks();
+    std::thread::yield_now();
+    super::window_host32::pump_tasks();
+    // Observe another thread's gated service admission. Native guest-only
+    // work can also progress during this call without changing the counter.
+    u32::from(super::execution_epoch(true) != before)
+}
+
 pub(super) fn switch_to_thread(image: &LoadedImage32<'_>) -> u32 {
     let parallel = parallel_guest();
     let before = super::execution_epoch(parallel);

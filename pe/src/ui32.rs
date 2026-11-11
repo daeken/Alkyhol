@@ -228,7 +228,7 @@ struct Scratch<'a> {
 }
 impl<'a> Scratch<'a> {
     fn new(cpu: &'a Cpu32, words: &[u32]) -> Self {
-        let mut heap = cpu.heap.borrow_mut();
+        let mut heap = cpu.heap.write().unwrap();
         let h = stop(heap.handle());
         let address = stop(heap.allocate(h, 8, (words.len() * 4) as u32));
         if address == 0 {
@@ -247,7 +247,12 @@ impl<'a> Scratch<'a> {
 impl Drop for Scratch<'_> {
     fn drop(&mut self) {
         let e = alkyhol::ffi::GetLastError();
-        let _ = self.cpu.heap.borrow_mut().free(self.heap, 0, self.address);
+        let _ = self
+            .cpu
+            .heap
+            .write()
+            .unwrap()
+            .free(self.heap, 0, self.address);
         alkyhol::ffi::SetLastError(e);
     }
 }
