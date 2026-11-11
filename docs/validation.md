@@ -8950,3 +8950,17 @@ All nine retained heap-lock/reallocation cases and all nine stateful runtime
 family cases retain their observed outputs or explicit rejection outcomes on
 the physical M4. Their frozen native fixtures and comparison criteria remain
 unchanged. Original assets, snapshots, saves and raw measurements stay local.
+
+In the 509.5 ms run, the presenting guest thread averages 181.9 ms per frame
+inside explicit SwitchToThread calls and 249.2 ms in automatic handoff
+processing. These are elapsed times and can include useful work by other
+threads while the presenter waits. This accounts for much more of the
+presenter's elapsed time than GPU readback in the observed intervals.
+
+On the same runner, F5 writes new game state and metadata plus a decodable
+512×256 DXT1 thumbnail. F9 reads that save and returns to the rendered scene
+with the HUD. The save files retain their hashes after the reload. Native
+keyboard and mouse actions then create a separate pause-menu manual save with
+state, metadata, portrait, story and thumbnail. Earlier manual slots retain
+their bytes. AudioQueue continues consuming nonzero audio. These operations
+use an isolated profile copy and leave the primary saves intact.
