@@ -9181,8 +9181,9 @@ The direct-mutex run's five-second rates span 5.11–6.21 FPS. In the
 same-binary pair, parallel mode lowers average frame time by 59%. The control
 and parallel replay reach the matched saved view in 191 and 90 seconds,
 respectively. The binary hash and launch arguments agree apart from the mode
-flag and isolated Documents path. Background activity remains uncontrolled. This profile stays opt-in while compatibility
-and guest-memory synchronization coverage expand.
+flag and isolated Documents path. Background activity remains uncontrolled.
+This profile stays opt-in while compatibility and guest-memory
+synchronization coverage expand.
 
 Twelve repeated runs of the parallel PE with heap lifecycles pass. The
 unchanged worker, deferred-library, worker-window, software exception and
@@ -9194,8 +9195,8 @@ The direct-mutex DAO run receives keyboard movement, writes new quicksave
 state and metadata plus a valid 512×256 BC1 thumbnail, and loads that
 quicksave back into the rendered world. The save bytes stay intact after F9.
 AudioQueue continues consuming nonzero PCM. These checks use isolated
-Documents copies. The original input hashes are unchanged at shutdown.
+Documents copies. Both same-binary runs retain the original input hashes at
+shutdown.
 
-
-Both same-binary runs retain the original input hashes at shutdown. The new
-native comparison is scheduled in the [PE binary execution workflow](https://github.com/daeken/Alkyhol/actions/runs/43066124167).
+The new native comparison is scheduled in the
+[PE binary execution workflow](https://github.com/daeken/Alkyhol/actions/runs/43066124167).
