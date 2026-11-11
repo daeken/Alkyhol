@@ -8856,5 +8856,35 @@ hashes after reload. The pause-menu Save Game path also created a separate
 manual slot with state, metadata, portrait, story and a decodable DXT1 thumbnail,
 then returned to gameplay. Existing manual slots were left intact. This verifies
 the tested save and quicksave reload in the original executable on the physical
-M4. Native comparison of the expanded PE fixture is pending in CI 42910361660,
-which still has the earlier Vulkan volume-rounding failure.
+M4. CI 42910361660 passes the identical-PE native Windows comparison for the
+expanded save-resources fixture. The overall workflow still fails earlier
+native D3D9 cases and the Vulkan volume-rounding check.
+
+## Castle Cousland frame-time baseline
+
+For this comparison, each Rosetta release runner starts with a separate copy
+of the same Documents profile and shader cache on the physical M4. Use the
+original Load Game menu to select the same Castle Cousland quicksave. Keep the
+window in the foreground at a 1710×1107 backbuffer, with the same camera and
+graphics settings. Enable completed-Present reporting and first-call tracing,
+with input tracing disabled. After the world and HUD appear, leave the camera
+and controls idle. Skip the first reporting boundary and collect twelve
+complete intervals. Divide elapsed time by completed Presents for aggregate
+frame time, and difference the cumulative draw, upload and drain counters
+between the first and last boundaries.
+
+The `d4ec9b9` baseline presents 147 frames in 63.031 seconds, averaging
+428.8 ms per frame. Five-second throughput ranges from 1.88 to 2.92 FPS.
+There are no new pipeline builds, about 265 cached pipeline uses and 1,199
+upload writes per frame, and 371 staging drains. These are whole-application
+measurements, including Rosetta, rendering and presentation. The raw logs,
+game files and captures remain local.
+
+The `8ee2a42` build passes all 57 D3D9 tests including the physical GPU cases,
+plus all-target D3D9 Clippy. In the original game, a 31.7-second Castle Cousland
+playtest interval presents 43 frames, averaging 1.35 FPS. It performs roughly
+412 cached pipeline uses and 1,864 upload writes per frame, with no pipeline
+builds or staging drains during that interval. Peak tracked staging capacity
+is 7.37 MiB, and AudioQueue continues consuming nonzero audio. This playtest
+resumed a manual save and the camera moved, so its throughput is not a matched
+comparison with the baseline. The fixed-camera candidate replay remains pending.
