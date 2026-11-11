@@ -718,6 +718,7 @@ fn teb_descriptor(base: u32) -> u64 {
 struct TebLease {
     guard: Option<MutexGuard<'static, ()>>,
     ticket: u64,
+    profile_started: Option<std::time::Instant>,
 }
 impl TebLease {
     fn install(base: u32) -> Result<Self> {
@@ -788,11 +789,13 @@ impl TebLease {
         Ok(Self {
             guard: Some(guard),
             ticket,
+            profile_started: perf32::start(),
         })
     }
 }
 impl Drop for TebLease {
     fn drop(&mut self) {
+        perf32::record_lease(self.profile_started.take());
         #[cfg(target_arch = "x86_64")]
         {
             let empty = 0u64;
@@ -1781,6 +1784,20 @@ impl<'a> LoadedImage32<'a> {
         let Some(end) = address.checked_add(len) else {
             return false;
         };
+        // API argument stacks and local outputs are the common case. Check the
+        // same owned stack/TEB extents before scanning unrelated resource maps.
+        let current = self.cpu.stack().base as usize + PAGE;
+        if address >= current && end <= current + STACK {
+            return true;
+        }
+        let primary = self.cpu.stack.base as usize + PAGE;
+        if address >= primary && end <= primary + STACK {
+            return true;
+        }
+        let teb = self.cpu.teb().base as usize;
+        if address >= teb && end <= teb + self.cpu.teb().len {
+            return true;
+        }
         if self.cpu.com_storage.borrow().iter().any(|(m, writable)| {
             (!write || *writable) && address >= m.base as usize && end <= m.base as usize + m.len
         }) {
@@ -1796,10 +1813,6 @@ impl<'a> LoadedImage32<'a> {
             return true;
         }
         if self.cpu.threads.borrow().permits(address, len) {
-            return true;
-        }
-        let primary = self.cpu.stack.base as usize + PAGE;
-        if address >= primary && end <= primary + STACK {
             return true;
         }
         if startup32::permits(&self.cpu, address, len, write) {
@@ -1822,14 +1835,6 @@ impl<'a> LoadedImage32<'a> {
             if address >= first && end <= first + block.size {
                 return true;
             }
-        }
-        let teb = self.cpu.teb().base as usize;
-        if address >= teb && end <= teb + self.cpu.teb().len {
-            return true;
-        }
-        let first = self.cpu.stack().base as usize + PAGE;
-        if address >= first && end <= first + STACK {
-            return true;
         }
         let mask = if write { 0x80000000 } else { 0x40000000 };
         self.regions
@@ -2379,11 +2384,11 @@ extern "C" fn dispatch(id: u32, arguments: *const u32) -> u64 {
         } else {
             0
         };
-        perf32::record(category, Some(timer));
+        perf32::record(category, Some(id), Some(timer));
     }
     let timer = perf32::start();
     thread32::yield_cpu();
-    perf32::record(3, timer);
+    perf32::record(3, None, timer);
     // ExitProcess and CRT termination escapes are non-returning guest operations.
     // The assembly gate uses
     // a separate control bit, never a forged stdcall return-stack observation.
@@ -2397,6 +2402,14 @@ extern "C" fn dispatch(id: u32, arguments: *const u32) -> u64 {
             0
         }
 }
+fn gateway_signature(id: u32) -> Option<(&'static str, u16)> {
+    APIS.get(id as usize)
+        .copied()
+        .or_else(|| d3d9_32::signature(id))
+        .or_else(|| input8_32::signature(id))
+        .or_else(|| dsound32::signature(id))
+}
+
 fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
     if seh32::in_handler() {
         seh32::async_fail(b"Alkyhol PE32 unsupported: imports from an exception handler\n");
@@ -2416,13 +2429,7 @@ fn dispatch_inner(id: u32, arguments: *const u32) -> u32 {
                 self.0.set(self.1);
             }
         }
-        let Some((name, bytes)) = APIS
-            .get(id as usize)
-            .copied()
-            .or_else(|| d3d9_32::signature(id))
-            .or_else(|| input8_32::signature(id))
-            .or_else(|| dsound32::signature(id))
-        else {
+        let Some((name, bytes)) = gateway_signature(id) else {
             unsupported("unknown gateway");
         };
         if !(arguments as usize).is_multiple_of(4)

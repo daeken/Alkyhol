@@ -255,6 +255,30 @@ pub(super) struct State {
     headers: Vec<(u32, u32)>,
     buffer_arenas: Vec<(u32, u32)>,
     failures: BTreeMap<u32, Vec<(u32, [u32; 16])>>,
+    pending_gpu: Option<Rc<Gpu>>,
+}
+impl State {
+    fn flush_draws(&mut self) {
+        if let Some(gpu) = self.pending_gpu.take() {
+            gpu.flush_legacy_draws().unwrap_or_else(|e| unsupported(&e));
+        }
+    }
+}
+
+fn batch_draws_enabled() -> bool {
+    static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ENABLED.get_or_init(|| std::env::var_os("ALKYHOL_D3D9_BATCH_DRAWS").is_some())
+}
+
+// These calls only change CPU draw state or encode the next draw. Everything
+// else is a conservative submission boundary, including resource locks,
+// transfers, query operations, releases, scene changes and presentation.
+fn preserves_draw_batch(kind: u32, slot: u32) -> bool {
+    kind == 1
+        && matches!(
+            slot,
+            44..=48 | 57 | 65 | 67 | 69 | 81..=84 | 87 | 89 | 92 | 94 | 100 | 102 | 104 | 107 | 109
+        )
 }
 // Exact stack sizes for implemented slots. Unknown slots never return to the
 // guest, so their unsupported gate only snapshots this and terminates explicitly.
@@ -2526,6 +2550,22 @@ fn draw_buffer(
     } else {
         Vec::new()
     };
+    let queued = !fixed && batch_draws_enabled();
+    if queued || s.pending_gpu.is_some() {
+        let Body::Device { gpu, .. } = &s.objects[&a[0]].body else {
+            unreachable!()
+        };
+        let draw_gpu = gpu.clone();
+        if s.pending_gpu
+            .as_ref()
+            .is_some_and(|pending| fixed || !Rc::ptr_eq(pending, &draw_gpu))
+        {
+            s.flush_draws();
+        }
+        if queued {
+            s.pending_gpu = Some(draw_gpu);
+        }
+    }
     let program = s.programs.get(&program_key);
     let pixel_spirv = if fixed {
         Vec::new()
@@ -2581,28 +2621,35 @@ fn draw_buffer(
         gpu.draw_transformed_depth_state(&mut active, bytes, render_state, depth.as_ref())
             .unwrap_or_else(|e| unsupported(&e));
     } else {
-        gpu.draw_legacy_viewport_depth_state(
-            &mut active,
-            &LegacyDraw {
-                indices: indexed
-                    .as_ref()
-                    .map(|(_, indices)| indices.as_slice())
-                    .or(strip.as_deref()),
-                textures: if xyz { &[] } else { &textures },
-                vertex_spirv: &program.unwrap().spirv,
-                pixel_spirv: &pixel_spirv,
-                vertices: &packed,
-                stride: packed_stride as u64,
-                attributes: &attributes,
-                vertex_constants: if xyz {
-                    &xyz_constants
-                } else if pretransformed {
-                    &fixed_constants
-                } else {
-                    vertex_constants
-                },
-                pixel_constants,
+        let draw = LegacyDraw {
+            indices: indexed
+                .as_ref()
+                .map(|(_, indices)| indices.as_slice())
+                .or(strip.as_deref()),
+            textures: if xyz { &[] } else { &textures },
+            vertex_spirv: &program.unwrap().spirv,
+            pixel_spirv: &pixel_spirv,
+            vertices: &packed,
+            stride: packed_stride as u64,
+            attributes: &attributes,
+            vertex_constants: if xyz {
+                &xyz_constants
+            } else if pretransformed {
+                &fixed_constants
+            } else {
+                vertex_constants
             },
+            pixel_constants,
+        };
+        let submit = if queued {
+            Gpu::queue_legacy_viewport_depth_state
+        } else {
+            Gpu::draw_legacy_viewport_depth_state
+        };
+        submit(
+            gpu,
+            &mut active,
+            &draw,
             render_state,
             depth.as_ref(),
             viewport,
@@ -2665,6 +2712,10 @@ fn profile_present(
             eprintln!(
                 "PE32 D3D9 service timing [Win32,draw,other-D3D9,CPU-handoff]: seconds={service_seconds:?} calls={service_calls:?}"
             );
+            for (id, seconds, calls) in super::perf32::take_apis().into_iter().take(8) {
+                let (name, _) = super::gateway_signature(id).unwrap();
+                eprintln!("PE32 D3D9 API timing: api={name} seconds={seconds:.6} calls={calls}");
+            }
         }
         let frames = period.frames;
         if phases.is_some() {
@@ -3433,6 +3484,9 @@ fn dispatch_inner(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32 {
     if o.refs == 0 || o.body.kind() != kind {
         unsupported("D3D9 COM this/type mismatch or missing external reference");
     }
+    if !preserves_draw_batch(kind, slot) {
+        s.flush_draws();
+    }
     if !image.cpu.trace_first_calls {
         eprintln!(
             "PE32 D3D9 COM: kind={kind} slot={slot} this={:x} args={:x?}",
@@ -3471,6 +3525,11 @@ fn dispatch_inner(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32 {
             if a[1] != 0 || a[2] > 1 {
                 unsupported(
                     "SetGammaRamp supports only implicit swap chain zero and documented flags",
+                );
+            }
+            for (thread, seconds, leases) in super::perf32::take_leases() {
+                eprintln!(
+                    "PE32 D3D9 guest lease timing: thread={thread:?} seconds={seconds:.6} leases={leases}"
                 );
             }
             checked(image, a[3], 3 * 256 * 2, false);
@@ -4446,6 +4505,35 @@ mod tests {
         );
         assert_eq!(unique_vertex_indices(&triangles, 90), None);
         assert_eq!(unique_vertex_indices(&[0], u32::MAX), None);
+    }
+    #[test]
+    fn queued_draw_boundaries_keep_state_changes_and_flush_dependencies() {
+        for slot in [
+            44, 47, 57, 65, 67, 69, 81, 82, 83, 84, 87, 92, 94, 100, 104, 107, 109,
+        ] {
+            assert!(preserves_draw_batch(1, slot));
+        }
+        for (kind, slot) in [
+            (1, 2),  // Release
+            (1, 17), // Present
+            (1, 30), // UpdateSurface
+            (1, 31), // UpdateTexture
+            (1, 32), // GetRenderTargetData
+            (1, 34), // StretchRect
+            (1, 35), // ColorFill
+            (1, 37), // SetRenderTarget
+            (1, 41), // BeginScene
+            (1, 42), // EndScene
+            (1, 43), // Clear
+            (3, 11), // Vertex buffer lock
+            (3, 12), // Vertex buffer unlock
+            (7, 19), // Texture lock
+            (7, 20), // Texture unlock
+            (11, 6), // Query Issue
+            (11, 7), // Query GetData
+        ] {
+            assert!(!preserves_draw_batch(kind, slot));
+        }
     }
     #[test]
     fn capability_record_does_not_invent_unimplemented_shader_or_texture_support() {

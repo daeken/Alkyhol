@@ -8913,3 +8913,40 @@ output byte-for-byte. The standard x86_64 PE library suite passes 251 tests
 with two ignored. The low-PAGEZERO test configuration also passes the new
 indexed unit. Its full run trips the PE64 test that assumes a high mapping,
 which passes with standard PAGEZERO. Both crates pass all-target Clippy.
+
+### Submission batching and address validation replay
+
+The physical M4 D3D9 suite passes all 57 tests with the additional queued
+submission cases. The 128-draw test checks identical complete output and five
+submissions including prewarm, compared with 129 immediate submissions.
+Changing queued constants, vertices and indices survive a rejected draw,
+capacity changes and a real staging drain. With batching enabled, eight
+unchanged indexed, user-draw, separate-stream, occlusion, transfer,
+NULL-texture, alpha-test and depth PEs match their retained Metal output
+byte-for-byte.
+
+A fixed-scene run with draw and service profiling enabled presents 92 frames
+in 63.276 seconds, or 687.8 ms per frame. Draw preparation, encoding and
+submission total 75.9 ms per frame. Readback and AppKit display total 12.4 ms.
+The first batching replay presents 105 frames in 64.276 seconds, or 612.1 ms
+per frame, with about 130 submissions per frame. The API report identifies
+SwitchToThread and automatic guest CPU handoffs as large elapsed-time costs.
+Service totals refer to the presenting thread, while graphics counters are
+shared by its underlying GPU.
+
+After replacing linear live-heap scans with predecessor lookups and checking
+owned stack/TEB extents first, the next fixed-scene replay presents 123 frames
+in 62.664 seconds, or 509.5 ms per frame. Its five-second rates span 1.75–2.10
+FPS. Both runs use the same original quicksave, shader cache seed, 1710×1107
+backbuffer, camera and graphics settings, plus the same profiling flags.
+Concurrent background processes remain an uncontrolled factor. The earlier
+428.8 ms baseline used fewer profiling options, so a fresh matching-options
+comparison with that build remains required.
+
+The standard x86_64 PE suite passes 253 tests with two ignored. Both crates
+pass all-target Clippy. The new heap lookup differential includes removals,
+zero-size allocations, adjacent ranges, 32-bit endpoints and overflow.
+All nine retained heap-lock/reallocation cases and all nine stateful runtime
+family cases retain their observed outputs or explicit rejection outcomes on
+the physical M4. Their frozen native fixtures and comparison criteria remain
+unchanged. Original assets, snapshots, saves and raw measurements stay local.

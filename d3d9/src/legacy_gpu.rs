@@ -209,6 +209,10 @@ impl Device {
     pub fn take_legacy_draw_profile(&self) -> LegacyDrawProfile {
         std::mem::take(&mut self.legacy_uploads.lock().unwrap().profile)
     }
+    /// Submit queued legacy draws before any other GPU work or readback.
+    pub fn flush_legacy_draws(&self) -> Result<()> {
+        self.legacy_uploads.lock().unwrap().submit_pending(self)
+    }
     fn prepare_pipeline(
         &self,
         draw: &LegacyDraw<'_>,
@@ -343,6 +347,29 @@ impl Device {
         state: &RenderState,
         depth: Option<&Depth>,
         viewport: [f32; 6],
+    ) -> Result<()> {
+        self.draw_legacy_inner(target, draw, state, depth, viewport, false)
+    }
+    /// Queue an ordered draw. Flush before transfers, resource writes or
+    /// readbacks. Batches also submit automatically at a bounded draw count.
+    pub fn queue_legacy_viewport_depth_state(
+        &self,
+        target: &mut Target,
+        draw: &LegacyDraw<'_>,
+        state: &RenderState,
+        depth: Option<&Depth>,
+        viewport: [f32; 6],
+    ) -> Result<()> {
+        self.draw_legacy_inner(target, draw, state, depth, viewport, true)
+    }
+    fn draw_legacy_inner(
+        &self,
+        target: &mut Target,
+        draw: &LegacyDraw<'_>,
+        state: &RenderState,
+        depth: Option<&Depth>,
+        viewport: [f32; 6],
+        queued: bool,
     ) -> Result<()> {
         let started = self.legacy_profile_enabled().then(Instant::now);
         validate_viewport(viewport, target.width, target.height)?;
@@ -551,13 +578,25 @@ impl Device {
         if let Some(query) = &query {
             query.resolve(&mut encoder);
         }
-        uploads.finish();
+        let command = encoder.finish();
         let submit_started = started.map(|_| Instant::now());
-        self.queue.submit([encoder.finish()]);
-        uploads.recall();
-        self.finish()?;
-        if let Some(query) = query {
-            query.submitted()?;
+        if queued && query.is_none() {
+            self.finish()?;
+        } else {
+            uploads.submit(self, Some(command));
+            self.finish()?;
+            if let Some(query) = query {
+                query.submitted()?;
+            }
+            if let (Some(started), Some(encode_started), Some(submit_started)) =
+                (started, encode_started, submit_started)
+            {
+                uploads.profile.draws += 1;
+                uploads.profile.prepare += encode_started - started;
+                uploads.profile.encode += submit_started - encode_started;
+                uploads.profile.submit += submit_started.elapsed();
+            }
+            return Ok(());
         }
         if let (Some(started), Some(encode_started), Some(submit_started)) =
             (started, encode_started, submit_started)
@@ -565,8 +604,9 @@ impl Device {
             uploads.profile.draws += 1;
             uploads.profile.prepare += encode_started - started;
             uploads.profile.encode += submit_started - encode_started;
-            uploads.profile.submit += submit_started.elapsed();
+            uploads.profile.encode += submit_started.elapsed();
         }
+        uploads.enqueue(self, command)?;
         Ok(())
     }
 }
@@ -786,7 +826,13 @@ mod cache_timing {
             textures: &[],
         };
         let mut reference = None;
-        for (enabled, reuse) in [(false, false), (false, true), (true, false), (true, true)] {
+        for (enabled, reuse, queued) in [
+            (false, false, false),
+            (false, true, false),
+            (true, false, false),
+            (true, true, false),
+            (true, true, true),
+        ] {
             {
                 let mut cache = device.legacy_pipelines.lock().unwrap();
                 *cache = PipelineCache {
@@ -805,8 +851,18 @@ mod cache_timing {
             assert_eq!(device.take_legacy_draw_profile().draws, 1);
             let start = std::time::Instant::now();
             for _ in 0..128 {
-                device.draw_legacy(&mut target, &draw).unwrap();
+                device
+                    .draw_legacy_inner(
+                        &mut target,
+                        &draw,
+                        &RenderState::default(),
+                        None,
+                        [0., 0., 32., 32., 0., 1.],
+                        queued,
+                    )
+                    .unwrap();
             }
+            device.flush_legacy_draws().unwrap();
             let pixels = device.readback(&target).unwrap();
             let elapsed = start.elapsed();
             let profile = device.take_legacy_draw_profile();
@@ -819,7 +875,7 @@ mod cache_timing {
             );
             let stats = device.legacy_pipeline_cache_stats();
             eprintln!(
-                "finite_pipeline_batch pipeline_cache={enabled} upload_reuse={reuse} draws=128 seconds={:.6} stats={stats:?}",
+                "finite_pipeline_batch pipeline_cache={enabled} upload_reuse={reuse} queued={queued} draws=128 seconds={:.6} stats={stats:?}",
                 elapsed.as_secs_f64()
             );
             eprintln!("finite_draw_profile {profile:?}");
@@ -828,6 +884,7 @@ mod cache_timing {
             let upload_stats = device.legacy_upload_stats();
             assert_eq!(upload_stats.allocations, if reuse { 3 } else { 387 });
             assert_eq!(upload_stats.writes, 387);
+            assert_eq!(upload_stats.submissions, if queued { 5 } else { 129 });
             eprintln!("finite_upload_allocations {upload_stats:?}");
             if let Some(ref pixels_before) = reference {
                 assert_eq!(&pixels, pixels_before);

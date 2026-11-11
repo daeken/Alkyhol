@@ -259,8 +259,11 @@ impl Heap {
         };
         self.objects.values().any(|heap| {
             heap.blocks
-                .iter()
-                .any(|(&first, b)| address >= first as usize && end <= first as usize + b.size)
+                .range(..=address.min(u32::MAX as usize) as u32)
+                .next_back()
+                .is_some_and(|(&first, b)| {
+                    address >= first as usize && end <= first as usize + b.size
+                })
         })
     }
     #[cfg(target_arch = "aarch64")]
@@ -285,6 +288,70 @@ impl Heap {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn predecessor_permissions_match_live_extents_at_gaps_zero_sizes_and_address_limits() {
+        let mut heap = std::mem::ManuallyDrop::new(Heap::default());
+        let blocks = [
+            (0x20000, 8),
+            (0x20008, 16),
+            (0x20020, 0),
+            (0x20028, 5),
+            (0xfffffff8, 8),
+        ];
+        heap.objects.insert(
+            0x10000,
+            Object {
+                _handle: LowMapping {
+                    base: 0x10000usize as *mut u8,
+                    len: 0,
+                },
+                regions: Vec::new(),
+                blocks: blocks
+                    .into_iter()
+                    .map(|(address, size)| {
+                        (
+                            address,
+                            Block {
+                                size,
+                                capacity: size.max(1).div_ceil(8) * 8,
+                            },
+                        )
+                    })
+                    .collect(),
+                free: Vec::new(),
+                lock: super::super::sync32::Section::new(0),
+                serialized: true,
+            },
+        );
+        for removed in [None, Some(0x20008), Some(0x20020)] {
+            if let Some(address) = removed {
+                heap.objects
+                    .get_mut(&0x10000)
+                    .unwrap()
+                    .blocks
+                    .remove(&address);
+            }
+            let expected = |address: usize, length: usize| {
+                address.checked_add(length).is_some_and(|end| {
+                    heap.objects[&0x10000].blocks.iter().any(|(&first, block)| {
+                        address >= first as usize && end <= first as usize + block.size
+                    })
+                })
+            };
+            for address in (0x1ffff..=0x20030)
+                .chain(0xfffffff7..=0x100000001)
+                .chain([usize::MAX])
+            {
+                for length in [0, 1, 7, 8, 9, 16, 17, usize::MAX] {
+                    assert_eq!(
+                        heap.permits(address, length),
+                        expected(address, length),
+                        "{address:x}+{length:x}"
+                    );
+                }
+            }
+        }
+    }
     #[test]
     fn size_uses_requested_extent_and_rejects_interior_foreign_and_freed_bases() {
         // Metadata-only ownership test; no fabricated mapping is dereferenced.

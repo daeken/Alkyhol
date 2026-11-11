@@ -6,6 +6,7 @@ use wgpu::util::DeviceExt;
 
 const STAGING_CHUNK_SIZE: u64 = 64 * 1024;
 pub(crate) const STAGING_BUDGET: u64 = 32 * 1024 * 1024;
+pub(crate) const DRAW_BATCH_LIMIT: usize = 32;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct LegacyUploadStats {
@@ -14,6 +15,7 @@ pub struct LegacyUploadStats {
     pub resident_bytes: u64,
     pub staging_drains: u64,
     pub staging_peak_bytes: u64,
+    pub submissions: u64,
 }
 pub(crate) struct Uploads {
     buffers: [Option<wgpu::Buffer>; 5],
@@ -21,6 +23,7 @@ pub(crate) struct Uploads {
     belt: wgpu::util::StagingBelt,
     staging_buffers: HashSet<wgpu::Buffer>,
     staging_bytes: u64,
+    pub(crate) pending: Vec<wgpu::CommandBuffer>,
     pub(crate) stats: LegacyUploadStats,
     pub(crate) profile: crate::LegacyDrawProfile,
 }
@@ -32,6 +35,7 @@ impl Default for Uploads {
             belt: wgpu::util::StagingBelt::new(STAGING_CHUNK_SIZE),
             staging_buffers: HashSet::new(),
             staging_bytes: 0,
+            pending: Vec::new(),
             stats: Default::default(),
             profile: Default::default(),
         }
@@ -48,6 +52,7 @@ impl Uploads {
         if self.staging_bytes <= budget {
             return Ok(());
         }
+        self.submit_pending(device)?;
         device
             .device
             .poll(wgpu::PollType::wait_indefinitely())
@@ -118,11 +123,39 @@ impl Uploads {
         self.stats.writes += 1;
         buffer.clone()
     }
-    pub(crate) fn finish(&mut self) {
+    pub(crate) fn submit(&mut self, device: &Device, command: Option<wgpu::CommandBuffer>) {
         self.belt.finish();
-    }
-    pub(crate) fn recall(&mut self) {
+        device.queue.submit(self.pending.drain(..).chain(command));
         self.belt.recall();
+        self.stats.submissions += 1;
+    }
+
+    pub(crate) fn submit_pending(&mut self, device: &Device) -> crate::Result<()> {
+        if self.pending.is_empty() {
+            return Ok(());
+        }
+        let started = device
+            .legacy_profile_enabled()
+            .then(std::time::Instant::now);
+        device.scope();
+        self.submit(device, None);
+        let result = device.finish();
+        if let Some(started) = started {
+            self.profile.submit += started.elapsed();
+        }
+        result
+    }
+
+    pub(crate) fn enqueue(
+        &mut self,
+        device: &Device,
+        command: wgpu::CommandBuffer,
+    ) -> crate::Result<()> {
+        self.pending.push(command);
+        if self.pending.len() >= DRAW_BATCH_LIMIT || self.staging_bytes > STAGING_BUDGET {
+            self.submit_pending(device)?;
+        }
+        Ok(())
     }
 }
 
@@ -146,12 +179,18 @@ mod tests {
                 shader_location: 1,
             },
         ];
+        let mut targets = Vec::new();
+        for _ in 0..16 {
+            let mut target = device.create_target(32, 32).unwrap();
+            device.clear(&mut target, 0xff0000ff).unwrap();
+            targets.push(target);
+        }
         let mut frames = Vec::new();
-        for n in 0..16 {
+        for (n, mut target) in targets.into_iter().enumerate() {
             if n == 8 {
                 let mut uploads = device.legacy_uploads.lock().unwrap();
                 let bytes = uploads.staging_bytes;
-                assert!(bytes > 0 && bytes <= n * STAGING_CHUNK_SIZE);
+                assert!(bytes > 0 && bytes <= n as u64 * STAGING_CHUNK_SIZE);
                 uploads.drain_if_over_budget(&device, bytes).unwrap();
                 assert_eq!(uploads.stats.staging_drains, 0);
                 uploads.drain_if_over_budget(&device, bytes - 1).unwrap();
@@ -182,26 +221,43 @@ mod tests {
                 constants.extend_from_within(..);
             }
             let indices: Vec<u32> = (0..if green { 6 } else { 3 }).collect();
-            let mut target = device.create_target(32, 32).unwrap();
-            device.clear(&mut target, 0xff0000ff).unwrap();
+            let mut draw = LegacyDraw {
+                indices: Some(&indices),
+                vertex_spirv: include_bytes!("../tests/fixtures/legacy-color.vs.spv"),
+                pixel_spirv: include_bytes!("../tests/fixtures/legacy-color.ps.spv"),
+                vertices: &vertices,
+                stride: 32,
+                attributes: &attributes,
+                vertex_constants: &constants,
+                pixel_constants: &[],
+                textures: &[],
+            };
             device
-                .draw_legacy(
+                .queue_legacy_viewport_depth_state(
                     &mut target,
-                    &LegacyDraw {
-                        indices: Some(&indices),
-                        vertex_spirv: include_bytes!("../tests/fixtures/legacy-color.vs.spv"),
-                        pixel_spirv: include_bytes!("../tests/fixtures/legacy-color.ps.spv"),
-                        vertices: &vertices,
-                        stride: 32,
-                        attributes: &attributes,
-                        vertex_constants: &constants,
-                        pixel_constants: &[],
-                        textures: &[],
-                    },
+                    &draw,
+                    &crate::RenderState::default(),
+                    None,
+                    [0., 0., 32., 32., 0., 1.],
                 )
                 .unwrap();
+            if n == 7 {
+                draw.vertex_constants = &constants[..16];
+                assert!(
+                    device
+                        .queue_legacy_viewport_depth_state(
+                            &mut target,
+                            &draw,
+                            &crate::RenderState::default(),
+                            None,
+                            [0., 0., 32., 32., 0., 1.],
+                        )
+                        .is_err()
+                );
+            }
             frames.push((target, green));
         }
+        device.flush_legacy_draws().unwrap();
         // Deliberately defer all readbacks: a later upload must not overwrite
         // an earlier submission's constants, vertices or normalized indices.
         for (target, green) in frames {
@@ -219,8 +275,9 @@ mod tests {
         }
         let stats = device.legacy_upload_stats();
         assert_eq!(stats.allocations, 7);
-        assert_eq!(stats.writes, 64);
+        assert_eq!(stats.writes, 68);
         assert_eq!(stats.resident_bytes, 432);
         assert_eq!(stats.staging_drains, 1);
+        assert_eq!(stats.submissions, 2);
     }
 }
