@@ -105,6 +105,12 @@ struct TextureLevel {
     surface: u32,
     lock: Option<bool>,
     initialized: bool,
+    uploaded_luminance: Option<Box<[u8]>>,
+}
+impl TextureLevel {
+    fn luminance_changed(&self, bytes: &[u8]) -> bool {
+        self.uploaded_luminance.as_deref() != Some(bytes)
+    }
 }
 enum Body {
     Volume {
@@ -3219,6 +3225,7 @@ fn create_texture(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16], cube:
             surface: 0,
             lock: None,
             initialized: false,
+            uploaded_luminance: None,
         })
         .collect();
     addref(s, a[0]);
@@ -3418,8 +3425,7 @@ fn texture_operation(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16], sl
             }
             // A fresh managed L8 mip already owns real CPU storage. READONLY
             // may expose it, but its initial contents are not a Windows-value
-            // promise. This neither uploads zero pixels nor initializes the GPU;
-            // sampling still requires an actual writable unlock.
+            // promise. Unlock publishes the actual bytes if needed.
             write(image, a[2], &[level.pitch, level.data + offset]);
             level.lock = Some(readonly);
             0
@@ -3428,33 +3434,41 @@ fn texture_operation(image: &LoadedImage32<'_>, s: &mut State, a: &[u32; 16], sl
             let Some(readonly) = level.lock.take() else {
                 return INVALID;
             };
-            // Managed textures start wholly dirty. A first read-only unlock
-            // does not erase that initial dirty state: upload actual owned CPU
-            // bytes, without promising their undefined initial Windows values.
-            if !readonly || *format == 50 && *pool == 1 && !level.initialized {
-                let length = level.length as usize;
-                checked(image, level.data, length, false);
-                let mut bytes =
-                    unsafe { std::slice::from_raw_parts(level.data as *const u8, length) }.to_vec();
-                if *format == 22 {
-                    for pixel in bytes.as_chunks_mut::<4>().0 {
-                        pixel[3] = 255;
-                    }
-                }
-                if *pool == 2 {
-                    level.initialized = true;
-                    return 0;
-                }
-                let mut texture = gpu.borrow_mut();
-                let mips = texture.levels();
-                let upload = if texture.is_cube() {
-                    device.upload_cube_face(&mut texture, a[1] / mips, a[1] % mips, &bytes)
-                } else {
-                    device.upload_texture(&mut texture, a[1], &bytes)
-                };
-                upload.unwrap_or_else(|e| unsupported(&e));
-                level.initialized = true;
+            let managed_luminance = *format == 50 && *pool == 1;
+            if readonly && !managed_luminance {
+                return 0;
             }
+            let length = level.length as usize;
+            checked(image, level.data, length, false);
+            let source = unsafe { std::slice::from_raw_parts(level.data as *const u8, length) };
+            // The movie decoder can change managed L8 bytes through a READONLY
+            // lock. Publish actual changes, including the first upload, while
+            // leaving the UpdateTexture dirty-region bookkeeping independent.
+            if readonly && !level.luminance_changed(source) {
+                return 0;
+            }
+            let mut bytes = source.to_vec();
+            if *format == 22 {
+                for pixel in bytes.as_chunks_mut::<4>().0 {
+                    pixel[3] = 255;
+                }
+            }
+            if *pool == 2 {
+                level.initialized = true;
+                return 0;
+            }
+            let mut texture = gpu.borrow_mut();
+            let mips = texture.levels();
+            let upload = if texture.is_cube() {
+                device.upload_cube_face(&mut texture, a[1] / mips, a[1] % mips, &bytes)
+            } else {
+                device.upload_texture(&mut texture, a[1], &bytes)
+            };
+            upload.unwrap_or_else(|e| unsupported(&e));
+            if managed_luminance {
+                level.uploaded_luminance = Some(bytes.into_boxed_slice());
+            }
+            level.initialized = true;
             0
         }
         _ => unreachable!(),
@@ -4312,6 +4326,31 @@ fn dispatch_inner(image: &LoadedImage32<'_>, id: u32, a: &[u32; 16]) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn managed_luminance_detects_changes_across_readonly_unlocks() {
+        let mut level = TextureLevel {
+            dirty: false,
+            depth: 1,
+            data: 0,
+            width: 2,
+            height: 2,
+            pitch: 2,
+            length: 4,
+            surface: 0,
+            lock: None,
+            initialized: false,
+            uploaded_luminance: None,
+        };
+        let previous = [16, 34, 128, 235];
+        let current = [16, 34, 128, 234];
+        assert!(level.luminance_changed(&previous));
+        level.uploaded_luminance = Some(Box::new(previous));
+        assert!(!level.luminance_changed(&previous));
+        assert!(level.luminance_changed(&current));
+        level.uploaded_luminance = Some(Box::new(current));
+        assert!(!level.luminance_changed(&current));
+        assert!(level.luminance_changed(&previous));
+    }
     #[test]
     fn storage_slots_align_without_overflow_or_reusing_tail_bytes() {
         let mut used = 0;

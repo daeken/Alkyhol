@@ -46,6 +46,7 @@ fn layout(
             surface: 0,
             lock: None,
             initialized: false,
+            uploaded_luminance: None,
         });
     }
     Some((result, total))

@@ -9233,3 +9233,45 @@ PE formatting and all-target Clippy, and the ARM shared-runtime compile check.
 The unchanged three-thread parallel witness, worker family, deferred DLL,
 worker window, software exception and unnamed mutex PEs also pass on physical
 Rosetta with parallel mode enabled.
+
+### DAO startup movie texture coherence
+
+An instrumented physical M4 replay captured luminance from the guest texture
+and its last GPU upload at the actual draw. It also sampled BGRA from GPU
+readback at Present. The original clips were decoded locally to identify
+source frames. In the baseline, 168 of 397 sampled movie draws had different
+guest and uploaded luminance. One successive pair sampled source frames 23
+and 20, while the guest textures contained frames 23 and 24. The stale copy
+was visible before the AppKit handoff. In the baseline, 58 successive pairs
+jumped backward by 2–14 frames under the exact-byte, strong-match
+filter. The original decoder's guest textures did not show that reversal.
+
+The original movie code supplies new luminance bytes through managed L8
+texture storage even on locks flagged `D3DLOCK_READONLY`. This flag is a
+hint and such writes have undefined results on native D3D9. Alkyhol now
+compares the entire CPU mip to its last successful GPU upload at read-only
+unlock for managed L8 `LockRect`. It publishes the first or changed bytes
+and leaves identical data and the `UpdateTexture` dirty-region rules alone.
+[Microsoft resource locking documentation](https://learn.microsoft.com/en-us/windows/win32/direct3d9/locking-resources).
+
+In a fresh replay through both clips with this fix, all 437 sampled movie
+draws agreed across guest and uploaded luminance and matched decoded source
+samples exactly. There were zero backward jumps under the same filter.
+The 64×42 Present readback samples had zero exact recurrences after a
+visible change within the previous 15 Presents, down from 60 in the baseline.
+Playback still skipped frames under load. The trace was local instrumentation
+and no original movie data or derived captures are checked in. The PE library
+suite passes 259 tests with two ignored, including a test for first upload,
+unchanged data and a one-byte edit. Formatting, all-target PE Clippy and the
+ARM shared-runtime compile check pass. The owned L8 COM and pixel witness
+passes on physical M4 with its ordinary lock and sampling inputs. These
+results do not define native Windows behavior for an application writing
+through a read-only lock.
+
+The release runner with both changes completed a matched Castle Cousland
+replay at 7.68 FPS over 468 Presents in 60.91 seconds. The backbuffer was
+1710×1107 and the saved-view screenshot crop again matched to 0.0 mean RGB
+difference at the reported precision. It averaged 264.4 cached draws and
+1,198.7 upload writes per frame with zero pipeline builds or staging drains
+during measurement. The isolated replay preserved the original input hashes
+through shutdown.
