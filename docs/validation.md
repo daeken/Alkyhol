@@ -9021,8 +9021,7 @@ The last run's median five-second throughput is 4.26 FPS. The selected change
 keeps the existing FIFO implementation and increases only the Rosetta service
 quantum. Its aggregate frame time falls 39% in this profiled comparison. The
 native ARM quantum stays at 256 calls or 2 ms. Background host activity remains
-uncontrolled. A throughput-only comparison with the original baseline is in
-progress.
+uncontrolled.
 
 The combined experimental runner also accepts movement through the game's
 actual keyboard binding and writes a fresh quicksave and DXT1 thumbnail while
@@ -9031,3 +9030,46 @@ AudioQueue continues consuming nonzero PCM. The selected quantum passes all
 tests and the shared native ARM compile check. The original thread-family,
 deferred-library and worker-window PEs pass on the selected release runner.
 Their comparison inputs remain unchanged.
+
+### Castle Cousland release comparison
+
+The physical M4 replays the same original Windows executable, saved camera,
+shader-cache seed and 1710×1107 graphics settings under Rosetta. Both release
+builds use the same throughput and first-call logging. Detailed timings and
+optional draw batching are off. Each measurement covers twelve consecutive
+completed-Present intervals after the world is visible.
+
+| Runner | Frames | Elapsed | Frame time | FPS | Upload staging drains |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `d4ec9b9`, earlier control | 147 | 63.031 s | 428.8 ms | 2.33 | 371 |
+| `d4ec9b9`, fresh control | 118 | 63.484 s | 538.0 ms | 1.86 | 298 |
+| `032a76d`, release | 211 | 61.717 s | 292.5 ms | 3.42 | 0 |
+
+The release averages 32–46% lower frame time across these comparisons.
+Its five-second rates range from 1.92 to 4.48 FPS, with a median of 3.65 FPS.
+The fresh control and release each average about 264 cached draws and 1,199
+upload writes per frame with zero new pipeline builds. The measured screenshot
+crop matches the baseline to a mean RGB difference that rounds to 0.0.
+Background activity varies between replays. This is a single Castle Cousland
+view and the measured rate remains below a playable frame rate.
+
+After the timed run, mouse and keyboard input moved the party in the original
+game. The pause menu wrote a new manual save with state, metadata, portrait,
+story and a 512×256 DXT1 thumbnail. The two earlier manual slots retained their
+bytes. F5 changed the quicksave state, metadata and thumbnail. Both thumbnails
+decoded successfully. F9 reopened the exact fresh slot and returned to the
+rendered Castle Cousland world with the HUD. The quicksave retained its bytes
+after reload. AudioQueue consumed nonzero PCM through the replay and reload.
+The isolated profile contained all new writes, and the runner's original input
+hashes matched at shutdown. Original game files, profiles and captures remain
+local.
+
+For `032a76d`, conformance and the native Windows/Rosetta DirectInput
+comparison pass. The PE library, Rosetta PE32 startup and PE64 comparison jobs
+also pass. The hosted Metal D3D9 producer passes. The native PE32 startup,
+native D3D9 and software Vulkan jobs report failures in steps that also failed
+on `1801d8a`. The identical-binary references and comparison criteria are
+unchanged. [Conformance](https://github.com/daeken/Alkyhol/actions/runs/42956853348),
+[DirectInput](https://github.com/daeken/Alkyhol/actions/runs/42956853444),
+[PE execution](https://github.com/daeken/Alkyhol/actions/runs/42956853516),
+[D3D9 comparison](https://github.com/daeken/Alkyhol/actions/runs/42956853362).
