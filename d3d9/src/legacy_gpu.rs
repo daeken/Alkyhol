@@ -424,15 +424,7 @@ impl Device {
                 .collect::<Vec<_>>()
         });
         let mut uploads = self.legacy_uploads.lock().unwrap();
-        uploads.reserve(
-            self,
-            data.iter()
-                .enumerate()
-                .filter(|(n, _)| used.contains(&(*n as u32, 0)))
-                .map(|(_, d)| d.len())
-                .chain(std::iter::once(draw.vertices.len()))
-                .chain(index_data.iter().map(Vec::len)),
-        )?;
+        uploads.drain_if_over_budget(self, crate::legacy_upload::STAGING_BUDGET)?;
         self.scope();
         let mut encoder = self.device.create_command_encoder(&Default::default());
         let buffers: Vec<_> = (0..3)

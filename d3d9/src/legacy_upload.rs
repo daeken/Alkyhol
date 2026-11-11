@@ -1,19 +1,26 @@
 //! Reuse draw destinations and suballocate asynchronous staging writes. Copies
 //! and their draw share one encoder; the mutex is held through queue submission.
 use crate::Device;
+use std::collections::HashSet;
 use wgpu::util::DeviceExt;
+
+const STAGING_CHUNK_SIZE: u64 = 64 * 1024;
+pub(crate) const STAGING_BUDGET: u64 = 32 * 1024 * 1024;
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct LegacyUploadStats {
     pub allocations: u64,
     pub writes: u64,
     pub resident_bytes: u64,
     pub staging_drains: u64,
+    pub staging_peak_bytes: u64,
 }
 pub(crate) struct Uploads {
     buffers: [Option<wgpu::Buffer>; 5],
     pub(crate) reuse: bool,
     belt: wgpu::util::StagingBelt,
-    budget: u64,
+    staging_buffers: HashSet<wgpu::Buffer>,
+    staging_bytes: u64,
     pub(crate) stats: LegacyUploadStats,
 }
 impl Default for Uploads {
@@ -21,39 +28,32 @@ impl Default for Uploads {
         Self {
             buffers: Default::default(),
             reuse: std::env::var_os("ALKYHOL_D3D9_DISABLE_UPLOAD_REUSE").is_none(),
-            belt: wgpu::util::StagingBelt::new(65536),
-            budget: 0,
+            belt: wgpu::util::StagingBelt::new(STAGING_CHUNK_SIZE),
+            staging_buffers: HashSet::new(),
+            staging_bytes: 0,
             stats: Default::default(),
         }
     }
 }
 impl Uploads {
-    // Bound staging residency between explicit GPU completion/drain checkpoints.
-    // A single checked draw can exceed this soft budget without clipping data.
-    pub(crate) fn reserve(
+    // A single checked draw can exceed the soft budget. Reclaim the belt before
+    // the next draw, after all copies from its staging buffers have completed.
+    pub(crate) fn drain_if_over_budget(
         &mut self,
         device: &Device,
-        lengths: impl Iterator<Item = usize>,
+        budget: u64,
     ) -> crate::Result<()> {
-        if !self.reuse {
+        if self.staging_bytes <= budget {
             return Ok(());
         }
-        let estimate: u64 = lengths
-            .filter(|n| *n != 0)
-            .map(|n| (n as u64).div_ceil(65536) * 65536)
-            .sum();
-        if self.budget != 0 && self.budget + estimate > 32 * 1024 * 1024 {
-            device
-                .device
-                .poll(wgpu::PollType::wait_indefinitely())
-                .map_err(|e| e.to_string())?;
-            // Completed callbacks own no unfinished work; dropping the belt also
-            // releases peak free staging buffers instead of retaining them forever.
-            self.belt = wgpu::util::StagingBelt::new(65536);
-            self.budget = 0;
-            self.stats.staging_drains += 1;
-        }
-        self.budget += estimate;
+        device
+            .device
+            .poll(wgpu::PollType::wait_indefinitely())
+            .map_err(|e| e.to_string())?;
+        self.belt = wgpu::util::StagingBelt::new(STAGING_CHUNK_SIZE);
+        self.staging_buffers.clear();
+        self.staging_bytes = 0;
+        self.stats.staging_drains += 1;
         Ok(())
     }
     pub(crate) fn write(
@@ -98,15 +98,21 @@ impl Uploads {
             self.buffers[slot] = Some(buffer);
         }
         let buffer = self.buffers[slot].as_ref().unwrap();
-        self.belt
-            .write_buffer(
-                encoder,
-                buffer,
-                0,
-                wgpu::BufferSize::new(size).unwrap(),
-                &device.device,
-            )
-            .copy_from_slice(data);
+        let slice = self.belt.allocate(
+            wgpu::BufferSize::new(size).unwrap(),
+            wgpu::BufferSize::new(wgpu::COPY_BUFFER_ALIGNMENT).unwrap(),
+            &device.device,
+        );
+        let staging = slice.buffer();
+        // A chunk can serve several writes and return for later submissions.
+        // Count the backing allocation once, including its unused capacity.
+        if !self.staging_buffers.contains(staging) {
+            self.staging_buffers.insert(staging.clone());
+            self.staging_bytes += staging.size();
+            self.stats.staging_peak_bytes = self.stats.staging_peak_bytes.max(self.staging_bytes);
+        }
+        slice.get_mapped_range_mut().copy_from_slice(data);
+        encoder.copy_buffer_to_buffer(staging, slice.offset(), buffer, 0, size);
         self.stats.writes += 1;
         buffer.clone()
     }
@@ -141,7 +147,14 @@ mod tests {
         let mut frames = Vec::new();
         for n in 0..16 {
             if n == 8 {
-                device.legacy_uploads.lock().unwrap().budget = 32 * 1024 * 1024;
+                let mut uploads = device.legacy_uploads.lock().unwrap();
+                let bytes = uploads.staging_bytes;
+                assert!(bytes > 0 && bytes <= n * STAGING_CHUNK_SIZE);
+                uploads.drain_if_over_budget(&device, bytes).unwrap();
+                assert_eq!(uploads.stats.staging_drains, 0);
+                uploads.drain_if_over_budget(&device, bytes - 1).unwrap();
+                assert!(uploads.staging_buffers.is_empty());
+                assert_eq!(uploads.staging_bytes, 0);
             }
             let green = n % 2 != 0;
             let color = if green {
