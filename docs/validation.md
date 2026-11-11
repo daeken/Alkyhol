@@ -9001,3 +9001,33 @@ establish the hardware transition behavior for a future parallel runtime.
 Alkyhol's game runner still shares its exclusive guest slot. Host state
 ownership, nested callbacks and exception handling still need runtime work
 for concurrent execution. Raw probes and benchmark artifacts remain local.
+
+### Longer Rosetta service quantum
+
+All three longer-quantum and FIFO experiments replay the same saved Castle
+Cousland view on the physical M4 with the same draw and service profiling,
+queued submission enabled, and a 1710×1107 backbuffer. The saved view matches
+the reference crop, with roughly 264 cached draw uses and 1,198 upload writes
+per frame and zero new pipeline builds across the measured windows.
+
+| Rosetta schedule | Frames | Elapsed | Frame time | FPS |
+| --- | ---: | ---: | ---: | ---: |
+| Existing FIFO, 256 calls or 2 ms | 146 | 62.637 s | 429.0 ms | 2.33 |
+| Reserved FIFO handoff, 256 calls or 2 ms | 121 | 63.862 s | 527.8 ms | 1.89 |
+| Reserved FIFO handoff, 1,024 calls or 4 ms | 254 | 61.205 s | 241.0 ms | 4.15 |
+| Existing FIFO, 1,024 calls or 4 ms | 237 | 61.879 s | 261.1 ms | 3.83 |
+
+The last run's median five-second throughput is 4.26 FPS. The selected change
+keeps the existing FIFO implementation and increases only the Rosetta service
+quantum. Its aggregate frame time falls 39% in this profiled comparison. The
+native ARM quantum stays at 256 calls or 2 ms. Background host activity remains
+uncontrolled. A throughput-only comparison with the original baseline is in
+progress.
+
+The combined experimental runner also accepts movement through the game's
+actual keyboard binding and writes a fresh quicksave and DXT1 thumbnail while
+AudioQueue continues consuming nonzero PCM. The selected quantum passes all
+253 standard PE tests with two ignored, PE all-target Clippy, 86 source-layer
+tests and the shared native ARM compile check. The original thread-family,
+deferred-library and worker-window PEs pass on the selected release runner.
+Their comparison inputs remain unchanged.

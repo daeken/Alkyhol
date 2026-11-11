@@ -16,6 +16,13 @@ use std::{
     },
     thread::JoinHandle,
 };
+
+const SERVICE_QUANTUM: (u32, std::time::Duration) = if cfg!(target_arch = "x86_64") {
+    (1024, std::time::Duration::from_millis(4))
+} else {
+    (256, std::time::Duration::from_millis(2))
+};
+
 thread_local! {
     static CURRENT: Cell<*const Record> = const { Cell::new(ptr::null()) };
     static LEASE: RefCell<Option<TebLease>> = const { RefCell::new(None) };
@@ -173,7 +180,7 @@ pub(super) fn yield_cpu() {
             let mut q = q.borrow_mut();
             let (count, start) = q.get_or_insert_with(|| (0, std::time::Instant::now()));
             *count += 1;
-            *count >= 256 || start.elapsed() >= std::time::Duration::from_millis(2)
+            *count >= SERVICE_QUANTUM.0 || start.elapsed() >= SERVICE_QUANTUM.1
         });
         if due {
             // Checking every finished worker at every API call was part of the
